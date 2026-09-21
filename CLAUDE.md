@@ -1,6 +1,6 @@
 # Amoeba — Phase 1
 
-Amoeba is a research system (DTech thesis, Purdue Northwest) in which a team of AI helpers is drafted per task and, in later phases, reshapes itself under plain-code control. Motto: **first make it, then make it better.** Principle everywhere: **LLM proposes, deterministic code disposes.**
+Amoeba is a research system in which a team of AI helpers is drafted per task and, in later phases, reshapes itself under plain-code control. Motto: **first make it, then make it better.** Principle everywhere: **LLM proposes, deterministic code disposes.**
 
 Phase 1 builds three boxes only: **Task → Plan a new team → Team runs the task.** No memory, monitor, gate, or cost handling.
 
