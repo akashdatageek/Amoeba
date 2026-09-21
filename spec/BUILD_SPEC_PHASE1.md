@@ -81,12 +81,14 @@ Purple boxes in the diagram (LLM): Planner, Agent Observer, Plan Observer, each 
 amoeba/
   amoeba/
     llm/client.py            # OpenAICompatibleClient, MockLLMClient
+    llm/toy_mock.py          # scripted stand-in model so `--toy` runs offline (added in the build)
     config/schema.py         # §4
     config/validate.py       # §4.1
     config/io.py             # load_yaml, dump_yaml, config_hash
     config/prompts/          # §7 prompt files + __init__.py (PROMPT.<stem>, render)
     task/models.py           # Task, Answer, RunResult, Episode, Message, AgentResult
-    task/source.py           # ToyTaskSource
+    task/source.py           # ToyTaskSource (3 families), solve_toy oracle
+    task/evaluate.py         # normalise / score: exact match → 1.0 | 0.0, None without ground truth (added in the build)
     task/draft.py            # BOX 2: draft_team()           §5
     task/parsers.py          # parse_sections, parse_role_blobs, parse_plan, parse_critic   §5.1
     task/instantiate.py      # Draft → TeamConfig            §5.3
@@ -131,6 +133,7 @@ class AgentSpec(BaseModel):
     limits: Limits = Limits()
     suggestions: str = ""                  # AutoAgents role field
     description: str = ""                  # AutoAgents role field (observers only) / AgentVerse role_description
+    role_prompt: str = ""                  # AutoAgents drafted `prompt` field; rendered into {role} of the worker USER message (custom_action.py:148)
     max_history: int = 5                   # AgentVerse: solver 5, critic 3 (solver.py:23, critic.py:22)
     created_by: Literal["human","drafter"] = "drafter"
     temperature: float = 0.2
@@ -472,6 +475,13 @@ python -m scripts.run_task ... --llm openai --base-url http://localhost:8000/v1 
 | D9 | No answer object; Final Output text includes the whole scratchpad | answer = last step's `ActionInput` | Phase 2 needs a scorable answer |
 | D10 | AgentVerse critic `max_retry` 1000 | 2 | — |
 | D11 | AgentVerse critics reviewed in parallel | sequential | simplicity; same semantics |
+| D12 | Spec §4 as first written: no field for the drafted `prompt` | `AgentSpec.role_prompt` | §6.1 renders it into `{role}`; `description` is already AgentVerse's `${role_description}` |
+| D13 | Spec §7: drop "Write the code step by step." from the stored solver append file | file verbatim; the sentence is dropped at load time as `seed:agentverse_solver_append_generic` | keeps T11 byte-exact while applying the deviation |
+| D14 | AutoAgents: every `{…}` blob becomes a role, duplicates included | a blob without a `name` is skipped; duplicate names keep the first | a step cannot address a nameless role; duplicate names collide in the roster |
+| D15 | `parse_blocks` raises `ValueError` on a title-only block (common.py:43) | empty body | one malformed heading should not abort the run |
+| D16 | AgentVerse `memory[-max_history:]` with `max_history=0` means *all* history (`[-0:]`) | 0 means no history | Python slice foot-gun |
+| D17 | §8: `manager_output_real.txt` = a captured Manager run | at first hand-composed in the `FORMAT_EXAMPLE` shape, then replaced by a real capture from the first live run | no API access during the offline build; provenance in `tests/fixtures/README.md` |
+| D18 | §3 layout as first written | plus `task/evaluate.py` and `llm/toy_mock.py` | the diagram already named `task/evaluate.py`; the CLI must run offline |
 
 Everything else — caps 3/5/3, the "No Suggestions" and "Final Output" sentinels, the observer history strings, the 5th-iteration hint, the shared `completed_steps`, `{context}` = step text, role prompt in the user message, chat-history delivery of plans/reviews, silent-agree, solver ≤4 — follows the code.
 
