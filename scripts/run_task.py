@@ -3,6 +3,7 @@
     python -m scripts.run_task "Reverse the string 'adaptive' then uppercase it" --topology flat
     python -m scripts.run_task --toy --seed 0 --n 20 --topology boss_reviewers
     python -m scripts.run_task ... --llm openai --base-url http://localhost:8000/v1 --model qwen2.5
+    AMOEBA_BASE_URL=... AMOEBA_API_KEY=... AMOEBA_MODEL=... python -m scripts.run_task --toy --llm openai
 """
 from __future__ import annotations
 
@@ -63,8 +64,11 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
 def build_llm(args: argparse.Namespace) -> LLMClient:
     if args.llm == "mock":
         return toy_mock_client()
-    api_key = args.api_key or os.environ.get("OPENAI_API_KEY") or "EMPTY"
-    return OpenAICompatibleClient(base_url=args.base_url, api_key=api_key, model=args.model)
+    # flags win; else the AMOEBA_* env vars; else OPENAI_API_KEY / the SDK default endpoint
+    base_url = args.base_url or os.environ.get("AMOEBA_BASE_URL") or None
+    api_key = args.api_key or os.environ.get("AMOEBA_API_KEY") or os.environ.get("OPENAI_API_KEY") or "EMPTY"
+    model = args.model or os.environ.get("AMOEBA_MODEL") or "gpt-4o-mini"
+    return OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=model)
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -76,7 +80,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--topology", choices=["flat", "boss_reviewers"], default="flat")
     p.add_argument("--llm", choices=["mock", "openai"], default="mock")
     p.add_argument("--base-url", default=None)
-    p.add_argument("--model", default="gpt-4o-mini")
+    p.add_argument("--model", default=None, help="default: $AMOEBA_MODEL, else gpt-4o-mini")
     p.add_argument("--api-key", default=None)
     p.add_argument("--runs-dir", default="runs")
     args = p.parse_args(argv)

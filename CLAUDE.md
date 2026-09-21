@@ -28,3 +28,8 @@ T1–T11 in spec §9 pass, and `python -m scripts.run_task --toy --seed 0 --n 20
 
 ## The diagram
 `diagram/amoeba_phase1.html` is the living architecture page (drill-down boxes, hover cards, per-box change requests). `diagram/CLAUDE_CODE_EDIT_LOOP.md` says how to serve it and apply the requests that land in `edits.jsonl`. When you change a module's behaviour, update its box's `data-card` (Description / Input / Output / Who decides / Limits / If it fails / Files / Code / Later) in the same commit.
+`tests/test_diagram_sync.py` enforces the Files side of this in the normal `pytest` run: every `Files:` path in a card must exist under `amoeba/`, and every module under `amoeba/` must be named by at least one card.
+
+Viewing and change requests (no republishing anywhere):
+- The user opens `diagram/amoeba_phase1.html` directly from their checkout (a localhost server inside a remote container is not reachable to them; `python diagram/serve_edits.py diagram/amoeba_phase1.html` is only for a local checkout). After each milestone, say that the page has changed so they reload it.
+- With no server behind the page, "Send" queues requests in the browser and "Copy edits" puts the JSON lines on the clipboard. The user pastes those lines into the chat with **"apply pending edits"**; append them to `diagram/edits.jsonl` (`status: "pending"`), apply them following `diagram/CLAUDE_CODE_EDIT_LOOP.md`, and show the list of lines set to `applied` / `skipped` with their notes. Never apply requests without that phrase.
