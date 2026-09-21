@@ -1,0 +1,569 @@
+<title>Amoeba Phase 1</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --bg:#f7f8f6; --ink:#1d221f; --muted:#5d665f; --line:#8c948e;
+    --llm-fill:#ece8f7; --llm-line:#6b5bb5;
+    --code-fill:#e3f1e8; --code-line:#2f7d57;
+    --data-fill:#fff7e3; --data-line:#b8860b;
+    --plain-fill:#ffffff; --plain-line:#8c948e;
+    --p1:#1f5fbf; --p1-fill:#e3ecfa; --hover:#d7e4fa;
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+    --bg:#15181a; --ink:#e8ebe7; --muted:#a3aba5; --line:#6b736d;
+    --llm-fill:#2b2544; --llm-line:#a798e8;
+    --code-fill:#1d3328; --code-line:#6cc596;
+    --data-fill:#3a3115; --data-line:#e2b94a;
+    --plain-fill:#20252a; --plain-line:#6b736d;
+    --p1:#8fb6f5; --p1-fill:#1c2a40; --hover:#26385a;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#15181a; --ink:#e8ebe7; --muted:#a3aba5; --line:#6b736d;
+    --llm-fill:#2b2544; --llm-line:#a798e8;
+    --code-fill:#1d3328; --code-line:#6cc596;
+    --data-fill:#3a3115; --data-line:#e2b94a;
+    --plain-fill:#20252a; --plain-line:#6b736d;
+    --p1:#8fb6f5; --p1-fill:#1c2a40; --hover:#26385a;
+  }
+  body{background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,sans-serif;padding-block:24px;padding-inline:16px;margin:0}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:22px;font-weight:600;margin:0 0 4px;text-wrap:balance}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 12px;max-width:72ch}
+  .legend{display:flex;flex-wrap:wrap;gap:12px 20px;font-size:13px;margin:0 0 12px;align-items:center}
+  .legend span{display:inline-flex;align-items:center;gap:7px}
+  .sw{width:22px;height:14px;border-radius:3px;border:1.5px solid;display:inline-block}
+  .sw.llm{background:var(--llm-fill);border-color:var(--llm-line)}
+  .sw.code{background:var(--code-fill);border-color:var(--code-line)}
+  .sw.data{background:var(--data-fill);border-color:var(--data-line)}
+  .crumb{display:flex;align-items:center;gap:10px;margin:0 0 10px;font-size:13.5px;min-height:32px}
+  .crumb button{font:inherit;font-weight:600;color:var(--p1);background:var(--p1-fill);border:1.5px solid var(--p1);border-radius:6px;padding:5px 12px;cursor:pointer}
+  .crumb button:focus-visible{outline:2px solid var(--p1);outline-offset:2px}
+  .crumb .here{color:var(--muted)}
+  .panel{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--plain-fill)}
+  svg{display:block;min-width:900px;width:100%;height:auto;font-family:"IBM Plex Sans",system-ui,sans-serif}
+  [hidden]{display:none!important}
+  .box{stroke-width:1.5}
+  .box.llm{fill:var(--llm-fill);stroke:var(--llm-line)}
+  .box.code{fill:var(--code-fill);stroke:var(--code-line)}
+  .box.data{fill:var(--data-fill);stroke:var(--data-line)}
+  .box.plain{fill:var(--plain-fill);stroke:var(--plain-line)}
+  .t{fill:var(--ink);font-size:13.5px;font-weight:600}
+  .t2{fill:var(--ink);font-size:12px;font-weight:600}
+  .s{fill:var(--muted);font-size:11px}
+  .src{fill:var(--muted);font-size:10px;font-family:"IBM Plex Mono",monospace}
+  .arrow{stroke:var(--line);stroke-width:1.6;fill:none}
+  .arrow.loop{stroke:var(--llm-line)}
+  .lbl{fill:var(--muted);font-size:11px}
+  .hd{fill:var(--muted);font-size:11px;font-weight:600;letter-spacing:.06em}
+  .group{fill:none;stroke:var(--line);stroke-dasharray:6 4;stroke-width:1.2}
+  /* clickable top-level boxes */
+  .hit{cursor:pointer}
+  .hit rect.big{fill:var(--p1-fill);stroke:var(--p1);stroke-width:3;transition:fill .15s}
+  .hit:hover rect.big,.hit:focus-visible rect.big{fill:var(--hover)}
+  .hit:focus-visible{outline:none}
+  .hint{fill:var(--p1);font-size:11px;font-weight:600}
+  .open{fill:var(--p1);font-size:10.5px;font-weight:600;letter-spacing:.05em}
+  .notes{margin-top:14px;font-size:13.5px;line-height:1.5;color:var(--muted);max-width:90ch}
+  @media (prefers-reduced-motion: reduce){ .hit rect.big{transition:none} }
+  .tt{position:fixed;z-index:50;max-width:420px;background:var(--plain-fill);color:var(--ink);border:1.5px solid var(--p1);border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.45;box-shadow:0 6px 18px rgba(0,0,0,.14);opacity:0;pointer-events:none;transition:opacity .18s ease;transform:translateY(2px)}
+  .tt.on{opacity:1;transform:none}
+  .tt b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--p1);margin-bottom:4px}
+  .tt dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:3px 10px}
+  .tt dt{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--p1);font-weight:600;padding-top:1px}
+  .tt dd{margin:0}
+  .tt dd.c{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--code-line)}
+  .tt code{font-family:"IBM Plex Mono",monospace;font-size:11.5px}
+  .tip{cursor:pointer}
+  .glyph{fill:var(--p1);font-size:13px;cursor:pointer}
+  .glyph:hover{font-weight:700}
+  .ov{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:60;padding:16px}
+  .ed{background:var(--plain-fill);color:var(--ink);border:1.5px solid var(--p1);border-radius:10px;width:min(560px,100%);padding:16px 18px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+  .ed h2{font-size:14px;margin:0 0 4px}
+  .ed .box-id{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);margin:0 0 10px}
+  .ed textarea{width:100%;min-height:120px;font:inherit;font-size:13.5px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);box-sizing:border-box;resize:vertical}
+  .ed .row{display:flex;gap:10px;justify-content:flex-end;margin-top:10px;align-items:center;flex-wrap:wrap}
+  .ed .st{margin-right:auto;font-size:12.5px;color:var(--muted)}
+  .btn{font:inherit;font-weight:600;border-radius:6px;padding:6px 14px;cursor:pointer;border:1.5px solid var(--p1);background:var(--p1-fill);color:var(--p1)}
+  .btn.primary{background:var(--p1);color:#fff}
+  .btn:focus-visible{outline:2px solid var(--p1);outline-offset:2px}
+  .queue{margin-left:auto;display:inline-flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted)}
+  .tip:focus-visible{outline:none}
+  .tip:hover rect.box,.tip:focus-visible rect.box{stroke-width:2.5}
+  @media (prefers-reduced-motion: reduce){ .tt{transition:none} }
+</style>
+<div class="wrap">
+  <h1>Amoeba Phase 1 — three boxes</h1>
+  <p class="sub">Task → Plan a new team → Team runs the task. Click a box to see what is inside it; use Back to return.</p>
+  <div class="legend">
+    <span><i class="sw llm"></i>an AI writes text</span>
+    <span><i class="sw code"></i>plain code decides</span>
+    <span><i class="sw data"></i>data passed along</span>
+    <span><code style="font-family:'IBM Plex Mono',monospace;font-size:12px">group.py:75</code> = the original file and line this comes from</span>
+  </div>
+  <div class="crumb" id="crumb"></div>
+
+  <svg width="0" height="0" style="position:absolute;min-width:0" aria-hidden="true">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--line)"/></marker>
+      <marker id="ahp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--llm-line)"/></marker>
+    </defs>
+  </svg>
+  <div class="panel">
+
+  <!-- ================= OVERVIEW ================= -->
+  <svg id="v-overview" viewBox="0 0 1180 300" role="img" aria-label="Phase 1 overview: Task, Plan a new team, Team runs the task">
+    <text x="30" y="40" class="hd">PHASE 1 · what gets built first</text>
+
+    <g class="hit tip" tabindex="0" role="button" data-view="task" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;One job to do. For practice jobs we also know the right answer, so the system can grade itself.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;A sentence from you, or one generated toy task&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;A Task record&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;A task with no known answer runs but gets no score&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;task/models.py · task/source.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;Task(id, prompt, family, ground_truth, tags)&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;Phase 2: real tasks and an AI judge for tasks without a known answer&lt;/dd&gt;&lt;/dl&gt;" aria-label="Open Task">
+      <rect x="30" y="70" width="230" height="120" rx="8" class="big"/>
+      <text x="145" y="102" text-anchor="middle" class="t">1 · Task</text>
+      <text x="145" y="122" text-anchor="middle" class="s">a prompt, plus the right answer</text>
+      <text x="145" y="137" text-anchor="middle" class="s">when we have one (toy tasks)</text>
+      <text x="145" y="176" text-anchor="middle" class="open">CLICK TO OPEN ▸</text>
+    </g>
+
+    <g class="hit tip" tabindex="0" role="button" data-view="plan" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;An AI drafts a team and a step plan for this job; two other AIs criticise it; the drafter revises. Then plain code checks the draft and builds the team.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;Task.prompt + the list of allowed tools&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;TeamConfig: helpers with ids, prompts, tools; step plan; who talks to whom&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;AI drafts, plain code decides what is accepted&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;3 rounds · 3 AI calls per round · 2–5 helpers&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;Bad JSON is skipped; a step naming nobody is dropped; too few roles → DraftError&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;task/draft.py · task/instantiate.py — mirrors AutoAgents manager.py, environment.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;draft_team() → Draft → instantiate() → TeamConfig&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;Phase 2: look in memory first and reuse a stored team&lt;/dd&gt;&lt;/dl&gt;" aria-label="Open Plan a new team">
+      <rect x="360" y="70" width="290" height="120" rx="8" class="big"/>
+      <text x="505" y="102" text-anchor="middle" class="t">2 · Plan a new team</text>
+      <text x="505" y="122" text-anchor="middle" class="s">Planner + Agent Observer + Plan Observer,</text>
+      <text x="505" y="137" text-anchor="middle" class="s">up to 3 rounds, then code builds the team</text>
+      <text x="505" y="156" text-anchor="middle" class="src">AutoAgents drafting</text>
+      <text x="505" y="176" text-anchor="middle" class="open">CLICK TO OPEN ▸</text>
+    </g>
+
+    <g class="hit tip" tabindex="0" role="button" data-view="run" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;The helpers do the job, either step by step (flat) or one writer plus reviewers (boss + reviewers). Every AI call is written to a log.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;TeamConfig + Task&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;Answer, score, trace.jsonl, result.json&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;AIs do the work; plain code routes messages and stops loops&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;flat: 5 turns per step · boss: 3 review rounds&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;Turns run out → the last output is kept and error=&amp;#x27;max_turns&amp;#x27;&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;interp/runtime.py · interp/trace.py — mirrors AutoAgents group.py, AgentVerse vertical_solver_first.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;Interpreter.run(cfg, task, seed) → Episode&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;Phase 3: a monitor reads the trace and can change the team mid-run&lt;/dd&gt;&lt;/dl&gt;" aria-label="Open Team runs the task">
+      <rect x="750" y="70" width="290" height="120" rx="8" class="big"/>
+      <text x="895" y="102" text-anchor="middle" class="t">3 · Team runs the task</text>
+      <text x="895" y="122" text-anchor="middle" class="s">2–5 helpers, flat or boss + reviewers</text>
+      <text x="895" y="137" text-anchor="middle" class="s">every AI call is traced</text>
+      <text x="895" y="156" text-anchor="middle" class="src">AutoAgents / AgentVerse</text>
+      <text x="895" y="176" text-anchor="middle" class="open">CLICK TO OPEN ▸</text>
+    </g>
+
+    <path d="M260 130 H360" class="arrow" marker-end="url(#ah)"/>
+    <text x="310" y="122" text-anchor="middle" class="lbl">Task</text>
+    <path d="M650 130 H750" class="arrow" marker-end="url(#ah)"/>
+    <text x="700" y="122" text-anchor="middle" class="lbl">TeamConfig</text>
+    <path d="M1040 130 H1090" class="arrow" marker-end="url(#ah)"/>
+
+    <rect x="1090" y="105" width="70" height="50" rx="6" class="box plain"/>
+    <text x="1125" y="134" text-anchor="middle" class="t2">Answer</text>
+
+    <rect x="30" y="220" width="1130" height="52" rx="6" class="box data"/>
+    <text x="45" y="242" class="t2">What every run leaves behind (raw material for Phase 2's memory box)</text>
+    <text x="45" y="260" class="src">runs/&lt;run_id&gt;/  team.yaml · plan.json · trace.jsonl (one line per AI call, with token counts recorded but not enforced) · result.json (answer, score, calls)</text>
+  </svg>
+
+  <!-- ================= BOX 1: TASK ================= -->
+  <svg id="v-task" viewBox="0 0 1180 330" role="img" aria-label="Inside Task" hidden>
+    <text x="30" y="36" class="hd">INSIDE BOX 1 · TASK</text>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Makes practice tasks whose answers we already know, the same ones every time for a given seed.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;seed, how many&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;Task records with ground_truth&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;3 task families in Phase 1&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;task/source.py · llm/toy_mock.py (a scripted stand-in model that solves these families offline, so the CLI runs without a key)&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;ToyTaskSource(seed, n) · random.Random(seed)&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;more families, then real tasks&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="30" y="70" width="200" height="100" rx="6" class="box code"/>
+    <text x="130" y="94" text-anchor="middle" class="t">Toy task source</text>
+    <text x="130" y="110" text-anchor="middle" class="s">seeded, repeatable</text>
+    <text x="130" y="124" text-anchor="middle" class="s">arithmetic chains</text>
+    <text x="130" y="138" text-anchor="middle" class="s">string transforms · JSON extraction</text>
+    <text x="130" y="160" text-anchor="middle" class="src">task/source.py</text>
+    </g>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;A task you type yourself. It runs normally but cannot be graded.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;a string from the command line&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;Task(family=&amp;#x27;freeform&amp;#x27;, ground_truth=None)&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;scripts/run_task.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;Task(id=uuid, prompt=text, family=&amp;#x27;freeform&amp;#x27;)&lt;/dd&gt;&lt;/dl&gt;"freeform", ground_truth=None). It runs like any other task but score stays None.">
+    <rect x="30" y="200" width="200" height="60" rx="6" class="box plain"/>
+    <text x="130" y="226" text-anchor="middle" class="t">Free-text task</text>
+    <text x="130" y="244" text-anchor="middle" class="s">typed on the command line</text>
+    </g>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;The one record everything else reads. Box 2 only looks at the prompt.&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;id · prompt · family · ground_truth · tags&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;task/models.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;class Task(BaseModel)&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="330" y="105" width="230" height="120" rx="6" class="box data"/>
+    <text x="445" y="130" text-anchor="middle" class="t">Task</text>
+    <text x="445" y="150" text-anchor="middle" class="src">id · prompt · family</text>
+    <text x="445" y="166" text-anchor="middle" class="src">ground_truth (toy only)</text>
+    <text x="445" y="182" text-anchor="middle" class="src">tags</text>
+    <text x="445" y="206" text-anchor="middle" class="s">one plain record, nothing else</text>
+    </g>
+
+    <path d="M230 115 H300 V150 H330" class="arrow" marker-end="url(#ah)"/>
+    <text x="252" y="108" class="lbl">has an answer</text>
+    <path d="M230 230 H300 V180 H330" class="arrow" marker-end="url(#ah)"/>
+    <text x="244" y="248" class="lbl">no answer, no score</text>
+
+    <path d="M560 165 H640" class="arrow" marker-end="url(#ah)"/>
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Hand-off. The drafting function receives the Task and reads its prompt.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;Task&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;task/draft.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;draft_team(task, llm, envelope, trace)&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="640" y="125" width="200" height="80" rx="6" class="box plain"/>
+    <text x="740" y="152" text-anchor="middle" class="t">→ Box 2</text>
+    <text x="740" y="170" text-anchor="middle" class="s">Plan a new team</text>
+    <text x="740" y="188" text-anchor="middle" class="s">reads only the prompt</text>
+    </g>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Compares the answer with the known answer after trimming spaces and case.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;answer, ground_truth&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;1.0 or 0.0, or None if there is no known answer&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;No AI judge here on purpose&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;task/evaluate.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;normalise(answer) == normalise(truth)&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;Phase 2: AI judge as a signal only, with agreement logged&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="880" y="105" width="270" height="120" rx="6" class="box code"/>
+    <text x="1015" y="130" text-anchor="middle" class="t">Scoring (after Box 3)</text>
+    <text x="1015" y="150" text-anchor="middle" class="s">exact match after trimming spaces</text>
+    <text x="1015" y="164" text-anchor="middle" class="s">and case → 1.0 or 0.0</text>
+    <text x="1015" y="180" text-anchor="middle" class="s">only when ground_truth exists</text>
+    <text x="1015" y="206" text-anchor="middle" class="src">no AI judge in Phase 1</text>
+    </g>
+
+    <text x="30" y="300" class="s">Why toy tasks: the same 20 tasks run identically every time, so any change to Box 2 or Box 3 can be compared fairly. Real tasks come in Phase 2.</text>
+  </svg>
+
+  <!-- ================= BOX 2: PLAN ================= -->
+  <svg id="v-plan" viewBox="0 0 1180 600" role="img" aria-label="Inside Plan a new team" hidden>
+    <text x="30" y="36" class="hd">INSIDE BOX 2 · PLAN A NEW TEAM   (AutoAgents drafting: manager.py, environment.py)</text>
+
+    <!-- loop group -->
+    <rect x="30" y="56" width="760" height="270" rx="8" class="group"/>
+    <text x="44" y="76" class="lbl">repeat up to 3 times (manager.py:27) — stop early when both observers say "No Suggestions"</text>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;The AI that writes the team: a JSON blob per role and a numbered plan. Each round it sees only the previous round&amp;#x27;s suggestions.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;task, allowed tools, last draft, last suggestions&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;sections: Selected Roles, Created Roles, Execution Plan, RoleFeedback, PlanFeedback&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;AI&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;1 call per round&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;Missing section → one repair call, then DraftError&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;config/prompts/autoagents_create_roles.txt ← create_roles.py:9-95&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;llm.chat(MANAGER_PREFIX, render(create_roles, …))&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="50" y="110" width="200" height="110" rx="6" class="box llm"/>
+    <text x="150" y="134" text-anchor="middle" class="t">Planner</text>
+    <text x="150" y="152" text-anchor="middle" class="s">writes roles as JSON blobs</text>
+    <text x="150" y="166" text-anchor="middle" class="s">+ a numbered step plan</text>
+    <text x="150" y="180" text-anchor="middle" class="s">sees last round's suggestions</text>
+    <text x="150" y="206" text-anchor="middle" class="src">create_roles.py · 1 call</text>
+    </g>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Cuts the AI&amp;#x27;s answer into its &amp;#x27;## …&amp;#x27; sections so the next steps can read one part each.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;raw AI text&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;dict {section title: body}&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;Required section missing → repair call&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;task/parsers.py ← common.py:31-59&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;text.split(&amp;#x27;##&amp;#x27;) · strip trailing &amp;#x27;:&amp;#x27; · first ``` block&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="300" y="110" width="150" height="110" rx="6" class="box code"/>
+    <text x="375" y="134" text-anchor="middle" class="t">Split sections</text>
+    <text x="375" y="152" text-anchor="middle" class="s">"## Created Roles List"</text>
+    <text x="375" y="166" text-anchor="middle" class="s">"## Execution Plan"</text>
+    <text x="375" y="180" text-anchor="middle" class="s">"## RoleFeedback" …</text>
+    <text x="375" y="206" text-anchor="middle" class="src">common.py:31-59</text>
+    </g>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;A second AI that reads the roles and says what is wrong with them, or &amp;#x27;No Suggestions&amp;#x27;.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;task, Selected + Created roles, history of earlier suggestions&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;&amp;#x27;Suggestions&amp;#x27; text&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;AI&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;1 call per round&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;autoagents_check_roles.txt ← check_roles.py:9-74&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;history = &amp;#x27;## Role Suggestions\n…\n## Feedback\n&amp;#x27; + RoleFeedback&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="490" y="92" width="290" height="64" rx="6" class="box llm"/>
+    <text x="635" y="114" text-anchor="middle" class="t">Agent Observer</text>
+    <text x="635" y="132" text-anchor="middle" class="s">checks the roles → suggestions, or "No Suggestions"</text>
+    <text x="635" y="148" text-anchor="middle" class="src">check_roles.py · 1 call</text>
+    </g>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;A third AI that reads the step plan and says what is wrong with it, or &amp;#x27;No Suggestions&amp;#x27;.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;task, roles, plan, history of earlier plan suggestions&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;&amp;#x27;Suggestions&amp;#x27; text&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;AI&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;1 call per round&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;Original passed role suggestions here by mistake; we pass plan suggestions&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;autoagents_check_plans.txt ← check_plans.py:8-56&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;consensus = &amp;#x27;No Suggestions&amp;#x27; in sr and &amp;#x27;No Suggestions&amp;#x27; in sp&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="490" y="172" width="290" height="64" rx="6" class="box llm"/>
+    <text x="635" y="194" text-anchor="middle" class="t">Plan Observer</text>
+    <text x="635" y="212" text-anchor="middle" class="s">checks the plan → suggestions, or "No Suggestions"</text>
+    <text x="635" y="228" text-anchor="middle" class="src">check_plans.py · 1 call</text>
+    </g>
+
+    <path d="M250 165 H300" class="arrow" marker-end="url(#ah)"/>
+    <path d="M450 150 H470 V124 H490" class="arrow" marker-end="url(#ah)"/>
+    <path d="M450 180 H470 V204 H490" class="arrow" marker-end="url(#ah)"/>
+
+    <!-- feedback loop -->
+    <path d="M635 236 V280 H150 V220" class="arrow loop" marker-end="url(#ahp)"/>
+    <text x="392" y="296" text-anchor="middle" class="lbl" style="fill:var(--llm-line)">both observers' suggestions go back to the Planner for the next round (3 AI calls per round, at most 9)</text>
+
+    <!-- publish -->
+    <path d="M790 190 H830" class="arrow" marker-end="url(#ah)"/>
+    <text x="810" y="180" text-anchor="middle" class="lbl">last</text>
+    <text x="810" y="205" text-anchor="middle" class="lbl">draft</text>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Turns the last draft into something safe to build from. The original trusted the AI for all of this.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;final draft sections&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;clean roles list + resolved plan steps&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;2 ≤ roles ≤ 5&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;No usable step → DraftError; bad JSON blob → skipped&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;task/draft.py · task/parsers.py ← environment.py:62,78&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;re.findall(r&amp;#x27;{[\s\S]*?}&amp;#x27;) · re.split(r&amp;#x27;\n\d+\. &amp;#x27;) · tools ⊆ allowed&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="830" y="70" width="320" height="250" rx="6" class="box code"/>
+    <text x="990" y="94" text-anchor="middle" class="t">Plain-code checks on the final draft</text>
+    <text x="846" y="120" class="s">1  parse role JSON blobs  <tspan class="src">environment.py:62</tspan></text>
+    <text x="846" y="138" class="s">2  parse "1. [Role A, Role B]: step"  <tspan class="src">environment.py:78</tspan></text>
+    <text x="846" y="156" class="s">3  drop tools not in the allowed list</text>
+    <text x="846" y="174" class="s">4  add a no-tool summariser if missing</text>
+    <text x="846" y="192" class="s">5  require 2–5 roles</text>
+    <text x="846" y="210" class="s">6  match each step's names to roles;</text>
+    <text x="846" y="226" class="s">    drop a step that names nobody</text>
+    <text x="846" y="252" class="s" style="font-style:italic">3–6 are ours; the original trusts the prompt</text>
+    <text x="846" y="268" class="s" style="font-style:italic">and crashes on a bad step (group.py:104)</text>
+    <text x="846" y="300" class="src">task/draft.py · task/parsers.py</text>
+    </g>
+
+    <!-- instantiate -->
+    <path d="M990 320 V360" class="arrow" marker-end="url(#ah)"/>
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Creates the helpers from the roles and wires them together for the chosen shape.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;Draft, topology flag&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;TeamConfig (validated)&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;validate() rejects unknown ids, tools outside the list, wrong counts&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;task/instantiate.py · config/validate.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;AgentSpec(agent_id=str(uuid4()), …) · Edge(src, dst, type)&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;Phase 3: edits (split, merge, rewire) produce new versions of this&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="720" y="360" width="430" height="110" rx="6" class="box code"/>
+    <text x="935" y="384" text-anchor="middle" class="t">Build the team (instantiate)</text>
+    <text x="935" y="404" text-anchor="middle" class="s">permanent id per helper · drafted prompt, tools, suggestions attached</text>
+    <text x="935" y="420" text-anchor="middle" class="s">flat:  step 1 → step 2 → … → last step   (entry = step 1, answer = last helper)</text>
+    <text x="935" y="436" text-anchor="middle" class="s">boss + reviewers:  summariser = solver, everyone else = critic</text>
+    <text x="935" y="458" text-anchor="middle" class="src">task/instantiate.py</text>
+    </g>
+
+    <path d="M720 415 H660" class="arrow" marker-end="url(#ah)"/>
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;The team written down as data: who exists, what each one may do, who talks to whom.&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;agents · edges · entry · exit · plan · topology&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;config/schema.py → runs/&amp;lt;id&amp;gt;/team.yaml&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;class TeamConfig(BaseModel) · config_hash()&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;Phase 2 stores these; Phase 3 edits them&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="440" y="372" width="220" height="86" rx="6" class="box data"/>
+    <text x="550" y="396" text-anchor="middle" class="t">TeamConfig</text>
+    <text x="550" y="414" text-anchor="middle" class="src">agents · edges · entry · exit</text>
+    <text x="550" y="428" text-anchor="middle" class="src">plan[] · topology</text>
+    <text x="550" y="446" text-anchor="middle" class="s">validated, then → Box 3</text>
+    </g>
+
+    <text x="30" y="380" class="hd">WHAT THE PLANNER MUST OUTPUT</text>
+    <text x="30" y="402" class="src">{ "name": "Data Analyst",</text>
+    <text x="30" y="418" class="src">  "description": "…",</text>
+    <text x="30" y="434" class="src">  "tools": ["calc"],</text>
+    <text x="30" y="450" class="src">  "suggestions": "…",</text>
+    <text x="30" y="466" class="src">  "prompt": "You are …" }</text>
+    <text x="30" y="492" class="src">## Execution Plan:</text>
+    <text x="30" y="508" class="src">1. [Data Analyst]: compute …</text>
+    <text x="30" y="524" class="src">2. [Language Expert]: summarise …</text>
+
+    <text x="30" y="562" class="s">Deviations from AutoAgents, all in plain code: current-round consensus test (theirs is cumulative);</text>
+    <text x="30" y="578" class="s">plan observer gets plan suggestions (theirs gets role suggestions — a bug); bad JSON is skipped (theirs crashes).</text>
+  </svg>
+
+  <!-- ================= BOX 3: RUN ================= -->
+  <svg id="v-run" viewBox="0 0 1180 640" role="img" aria-label="Inside Team runs the task" hidden>
+    <text x="30" y="36" class="hd">INSIDE BOX 3 · TEAM RUNS THE TASK   (the Interpreter picks one of two runners from TeamConfig.topology)</text>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;The team written down as data: who exists, what each one may do, who talks to whom.&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;agents · edges · entry · exit · plan · topology&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;config/schema.py → runs/&amp;lt;id&amp;gt;/team.yaml&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;class TeamConfig(BaseModel) · config_hash()&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;Phase 2 stores these; Phase 3 edits them&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="30" y="56" width="180" height="60" rx="6" class="box data"/>
+    <text x="120" y="80" text-anchor="middle" class="t">TeamConfig</text>
+    <text x="120" y="100" text-anchor="middle" class="s">from Box 2</text>
+    </g>
+    <path d="M210 86 H260" class="arrow" marker-end="url(#ah)"/>
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Reads the team shape and hands the job to the right runner. Also opens the trace for this run.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;TeamConfig, Task, seed&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;Episode (answer, history, outputs)&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;interp/runtime.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;run_flat if cfg.topology == &amp;#x27;flat&amp;#x27; else run_boss_reviewers&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;Phase 3: one generic runner with a proper fan-in rule replaces both&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="260" y="56" width="170" height="60" rx="6" class="box code"/>
+    <text x="345" y="80" text-anchor="middle" class="t">Interpreter</text>
+    <text x="345" y="100" text-anchor="middle" class="s">topology = ?</text>
+    </g>
+    <path d="M430 76 H470 V150 H510" class="arrow" marker-end="url(#ah)"/>
+    <text x="446" y="120" class="lbl">flat</text>
+    <path d="M430 96 H470 V420 H510" class="arrow" marker-end="url(#ah)"/>
+    <text x="440" y="300" class="lbl">boss +</text>
+    <text x="440" y="314" class="lbl">reviewers</text>
+
+    <!-- FLAT -->
+    <rect x="510" y="130" width="640" height="220" rx="8" class="group"/>
+    <text x="524" y="150" class="hd">FLAT · AutoAgents Group (group.py, custom_action.py)</text>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Takes the plan&amp;#x27;s steps in order and gathers everything earlier steps produced.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;plan steps&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;per step: the helpers named + &amp;#x27;previous&amp;#x27; text&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;one pass over the plan&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;interp/runtime.py ← environment.py:256, group.py:76&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;previous = &amp;#x27;[&amp;#x27; + &amp;#x27;, &amp;#x27;.join(previous_msgs) + &amp;#x27;]&amp;#x27;&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="530" y="170" width="120" height="70" rx="6" class="box code"/>
+    <text x="590" y="194" text-anchor="middle" class="t2">For each step</text>
+    <text x="590" y="210" text-anchor="middle" class="s">in plan order</text>
+    <text x="590" y="226" text-anchor="middle" class="src">environment.py:256</text>
+    </g>
+
+    <path d="M650 205 H690" class="arrow" marker-end="url(#ah)"/>
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;The AI worker for this step. Its own role text sits in the user message; it sees the step, the task and a shared scratchpad.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;step text, previous, completed_steps, tool list&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;sections: Thought · CurrentStep · Action · ActionInput&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;AI&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;up to 5 turns, shared by all helpers in the step&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;autoagents_custom_action.txt ← custom_action.py:18-77,148&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;render(custom_action, role=agent.role_prompt, context=step.text, previous=…, completed_steps=…, tool=str(agent.tools + [&amp;#x27;Print&amp;#x27;, &amp;#x27;Final Output&amp;#x27;]))&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="690" y="170" width="200" height="70" rx="6" class="box llm"/>
+    <text x="790" y="192" text-anchor="middle" class="t2">Helper(s) named in the step</text>
+    <text x="790" y="208" text-anchor="middle" class="s">sees: the step, the task, all earlier</text>
+    <text x="790" y="222" text-anchor="middle" class="s">steps' outputs, shared scratchpad</text>
+    </g>
+
+    <path d="M890 205 H930" class="arrow" marker-end="url(#ah)"/>
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Decides what the helper&amp;#x27;s answer means: run a tool and go again, or accept &amp;#x27;Final Output&amp;#x27;.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;parsed sections&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;tool result appended, or the step&amp;#x27;s final text&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;turn 5 adds a &amp;#x27;please synthesize&amp;#x27; hint&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;5 turns without Final Output → keep last output, error=&amp;#x27;max_turns&amp;#x27;&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;interp/runtime.py ← custom_action.py:207-220, group.py:80-96&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;if act in tools: execute · if &amp;#x27;Final Output&amp;#x27; in act: done&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="930" y="170" width="200" height="70" rx="6" class="box code"/>
+    <text x="1030" y="192" text-anchor="middle" class="t2">Read "## Action"</text>
+    <text x="1030" y="208" text-anchor="middle" class="s">tool name → run tool, loop again</text>
+    <text x="1030" y="222" text-anchor="middle" class="s">"Final Output" → step done</text>
+    </g>
+
+    <path d="M1030 240 V270 H790 V240" class="arrow loop" marker-end="url(#ahp)"/>
+    <text x="910" y="286" text-anchor="middle" class="lbl" style="fill:var(--llm-line)">up to 5 turns per step (group.py:75); turn 5 adds "please synthesize" (group.py:82)</text>
+    <text x="830" y="320" text-anchor="middle" class="s">the last step's "Final Output" is the answer · every helper's every call is one traced AI call</text>
+    <text x="830" y="336" text-anchor="middle" class="src">interp/runtime.py::run_flat</text>
+
+    <!-- BOSS -->
+    <rect x="510" y="380" width="640" height="220" rx="8" class="group"/>
+    <text x="524" y="400" class="hd">BOSS + REVIEWERS · AgentVerse vertical-solver-first (vertical_solver_first.py)</text>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;The one AI that writes the answer, and rewrites it when reviewers object.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;task; its own past answers and the objections, as chat history&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;the plan text&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;AI&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;speaks at most 4 times (1 + 3 revisions)&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;Empty reply → empty plan&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;agentverse_solver_*.txt ← pythoncalculator/config.yaml:28-35, solver.py (the append prompt is used minus its last sentence &amp;#x27;Write the code step by step.&amp;#x27; — derived at load time so the file stays verbatim)&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;messages = [system] + memory[-5:] + [user] · one retry on an empty reply&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="530" y="430" width="150" height="80" rx="6" class="box llm"/>
+    <text x="605" y="454" text-anchor="middle" class="t2">Solver</text>
+    <text x="605" y="470" text-anchor="middle" class="s">writes the answer;</text>
+    <text x="605" y="484" text-anchor="middle" class="s">revises when told</text>
+    <text x="605" y="500" text-anchor="middle" class="src">solver.py</text>
+    </g>
+
+    <path d="M680 470 H730" class="arrow" marker-end="url(#ah)"/>
+    <text x="705" y="462" text-anchor="middle" class="lbl">plan</text>
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Reviewer AIs. Each says &amp;#x27;Action: Agree&amp;#x27; or &amp;#x27;Action: Disagree&amp;#x27; plus a reason; agreeing ones stay silent.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;task, role; the plan and others&amp;#x27; objections as chat history&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;(agree?, criticism)&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;AI&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;3 rounds · 2 parse attempts&lt;/dd&gt;&lt;dt&gt;If it fails&lt;/dt&gt;&lt;dd&gt;Unreadable reply counts as agree&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;agentverse_critic_*.txt ← config.yaml:37-64, output_parser.py:541-561&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;first.strip(&amp;#x27;. &amp;#x27;) == &amp;#x27;Action: Agree&amp;#x27;&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="730" y="430" width="180" height="80" rx="6" class="box llm"/>
+    <text x="820" y="454" text-anchor="middle" class="t2">Critics (all others)</text>
+    <text x="820" y="470" text-anchor="middle" class="s">reply "Action: Agree" or</text>
+    <text x="820" y="484" text-anchor="middle" class="s">"Action: Disagree" + why</text>
+    <text x="820" y="500" text-anchor="middle" class="src">critic.py · output_parser.py</text>
+    </g>
+
+    <path d="M910 470 H960" class="arrow" marker-end="url(#ah)"/>
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;Plain code counts the objections. None → finished. Some → send them to everyone and let the solver revise.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;all reviews&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;stop, or a new round&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;max_inner_turns = 3; the last revision is never reviewed&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;interp/runtime.py ← vertical_solver_first.py:44-72&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;nonempty = [r for r in reviews if not r.is_agree and r.content]&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="960" y="430" width="170" height="80" rx="6" class="box code"/>
+    <text x="1045" y="454" text-anchor="middle" class="t2">Anyone disagree?</text>
+    <text x="1045" y="470" text-anchor="middle" class="s">no → done, answer = plan</text>
+    <text x="1045" y="484" text-anchor="middle" class="s">yes → send only the</text>
+    <text x="1045" y="498" text-anchor="middle" class="s">disagreements to everyone</text>
+    </g>
+
+    <path d="M1045 510 V540 H605 V510" class="arrow loop" marker-end="url(#ahp)"/>
+    <text x="830" y="556" text-anchor="middle" class="lbl" style="fill:var(--llm-line)">up to 3 review rounds → solver speaks at most 4 times, each critic 3; an unreadable critic reply counts as "agree"</text>
+    <text x="830" y="580" text-anchor="middle" class="s">plans and reviews reach each helper as chat history, not as a fill-in-the-blank prompt</text>
+    <text x="830" y="594" text-anchor="middle" class="src">interp/runtime.py::run_boss_reviewers</text>
+
+    <!-- outputs -->
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;The log. One line per AI call and tool call, with who, model, tokens and time, in the standard OpenTelemetry names.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;every call&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;runs/&amp;lt;id&amp;gt;/trace.jsonl&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Limits&lt;/dt&gt;&lt;dd&gt;tokens are recorded, never enforced (Phase 1)&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;interp/trace.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;TraceWriter.span(&amp;#x27;chat&amp;#x27;, {gen_ai.usage.input_tokens: …})&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;Phase 3&amp;#x27;s monitor reads these lines unchanged&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="30" y="150" width="400" height="110" rx="6" class="box data"/>
+    <text x="230" y="174" text-anchor="middle" class="t">Every AI call → one trace line</text>
+    <text x="230" y="194" text-anchor="middle" class="src">who (helper id, name) · model · tokens in/out · time · tool</text>
+    <text x="230" y="212" text-anchor="middle" class="s">names follow the OpenTelemetry GenAI standard</text>
+    <text x="230" y="228" text-anchor="middle" class="s">so Phase 3's monitor can read them unchanged</text>
+    <text x="230" y="248" text-anchor="middle" class="src">interp/trace.py → runs/&lt;id&gt;/trace.jsonl</text>
+    </g>
+
+    <g class="tip" tabindex="0" data-card="&lt;dl&gt;&lt;dt&gt;Description&lt;/dt&gt;&lt;dd&gt;The summary of one run: the answer, its score, how many calls and tokens it took, whether the draft reached consensus.&lt;/dd&gt;&lt;dt&gt;Input&lt;/dt&gt;&lt;dd&gt;Episode + Draft&lt;/dd&gt;&lt;dt&gt;Output&lt;/dt&gt;&lt;dd&gt;runs/&amp;lt;id&amp;gt;/result.json&lt;/dd&gt;&lt;dt&gt;Who decides&lt;/dt&gt;&lt;dd&gt;Plain code&lt;/dd&gt;&lt;dt&gt;Files&lt;/dt&gt;&lt;dd&gt;task/models.py&lt;/dd&gt;&lt;dt&gt;Code&lt;/dt&gt;&lt;dd class=&quot;c&quot;&gt;RunResult(answer, score, total_tokens, n_llm_calls, draft_rounds, consensus, error)&lt;/dd&gt;&lt;dt&gt;Later&lt;/dt&gt;&lt;dd&gt;Phase 2 memory indexes these&lt;/dd&gt;&lt;/dl&gt;">
+    <rect x="30" y="290" width="400" height="90" rx="6" class="box data"/>
+    <text x="230" y="314" text-anchor="middle" class="t">RunResult</text>
+    <text x="230" y="334" text-anchor="middle" class="src">answer · score · total_tokens · n_llm_calls</text>
+    <text x="230" y="350" text-anchor="middle" class="src">draft_rounds · consensus · error</text>
+    <text x="230" y="368" text-anchor="middle" class="s">→ runs/&lt;id&gt;/result.json</text>
+    </g>
+
+    <text x="30" y="430" class="s">Tools in Phase 1: <tspan class="src">echo</tspan> and <tspan class="src">calc</tspan> only.</text>
+    <text x="30" y="448" class="s">AutoAgents sent every tool name to a web search;</text>
+    <text x="30" y="464" class="s">we dispatch by name through a small registry.</text>
+    <text x="30" y="490" class="s">Costs: token counts are written down, nothing</text>
+    <text x="30" y="506" class="s">stops a run for spending. That is Phase 3.</text>
+  </svg>
+
+  </div>
+
+  <p class="notes" id="note"></p>
+</div>
+<div class="tt" id="tt" role="tooltip" aria-hidden="true"></div>
+<div class="ov" id="ov" hidden><div class="ed" role="dialog" aria-modal="true" aria-labelledby="edh"><h2 id="edh">Request a change</h2><p class="box-id" id="edbox"></p><textarea id="edtxt" placeholder="What should change in this box? (wording, logic, a cap, a missing arrow…)"></textarea><div class="row"><span class="st" id="edst"></span><button type="button" class="btn" id="edcancel">Cancel</button><button type="button" class="btn primary" id="edsend">Send</button></div></div></div>
+
+<script>
+(function(){
+  var views = {
+    overview: {el: document.getElementById('v-overview'), title: 'Phase 1 overview', note: 'Three boxes, three modules. Everything purple is one or more AI calls; everything green is ordinary Python that Claude Code can unit-test without a model.'},
+    task:     {el: document.getElementById('v-task'),     title: '1 · Task',              note: 'The Task box is deliberately dumb: a record with a prompt and, for toy tasks, the right answer. Nothing here calls an AI.'},
+    plan:     {el: document.getElementById('v-plan'),     title: '2 · Plan a new team',   note: 'Nine AI calls at most. Everything after the loop is plain code, and that code is what protects the rest of the system from a sloppy draft.'},
+    run:      {el: document.getElementById('v-run'),      title: '3 · Team runs the task', note: 'Two runners, one interface. Both write the same trace and the same RunResult, so later phases never care which topology ran.'}
+  };
+  var crumb = document.getElementById('crumb');
+  var note = document.getElementById('note');
+  function show(name){
+    if(!views[name]) name = 'overview';
+    Object.keys(views).forEach(function(k){ if(k === name) views[k].el.removeAttribute('hidden'); else views[k].el.setAttribute('hidden',''); });
+    crumb.innerHTML = '';
+    if(name !== 'overview'){
+      var b = document.createElement('button'); b.type='button'; b.textContent = '◂ Back to overview';
+      b.addEventListener('click', function(){ go('overview'); });
+      crumb.appendChild(b);
+      var here = document.createElement('span'); here.className='here'; here.textContent = 'Inside: ' + views[name].title;
+      crumb.appendChild(here);
+    } else {
+      var h = document.createElement('span'); h.className='here'; h.textContent = 'Overview — click any box';
+      crumb.appendChild(h);
+    }
+    note.textContent = views[name].note;
+    var q = document.querySelector('.queue'); if(q) crumb.appendChild(q);
+  }
+  function go(name){
+    try { history.replaceState(null, '', '#' + name); } catch(e){}
+    show(name);
+    window.scrollTo({top: 0});
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.hit'), function(g){
+    g.addEventListener('click', function(){ go(g.getAttribute('data-view')); });
+    g.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(g.getAttribute('data-view')); } });
+  });
+  window.addEventListener('hashchange', function(){ show(location.hash.replace('#','')); });
+  show((location.hash || '#overview').replace('#',''));
+})();
+
+(function(){
+  var tt = document.getElementById('tt'); var hideT = null; var current = null;
+  function place(x, y){
+    var pad = 14, w = tt.offsetWidth, h = tt.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+    var left = x + pad, top = y + pad;
+    if(left + w > vw - 8) left = x - w - pad;
+    if(left < 8) left = 8;
+    if(top + h > vh - 8) top = y - h - pad;
+    if(top < 8) top = 8;
+    tt.style.left = left + 'px'; tt.style.top = top + 'px';
+  }
+  function showFor(el, x, y){
+    clearTimeout(hideT); current = el;
+    tt.innerHTML = el.getAttribute('data-card') || '';
+    tt.setAttribute('aria-hidden', 'false');
+    place(x, y); tt.classList.add('on');
+  }
+  function hide(){ hideT = setTimeout(function(){ tt.classList.remove('on'); tt.setAttribute('aria-hidden','true'); current = null; }, 60); }
+  Array.prototype.forEach.call(document.querySelectorAll('.tip'), function(el){
+    el.addEventListener('mouseenter', function(e){ showFor(el, e.clientX, e.clientY); });
+    el.addEventListener('mousemove', function(e){ if(current === el) place(e.clientX, e.clientY); });
+    el.addEventListener('mouseleave', hide);
+    el.addEventListener('focus', function(){ var r = el.getBoundingClientRect(); showFor(el, r.left + r.width/2, r.bottom); });
+    el.addEventListener('blur', hide);
+    el.addEventListener('touchstart', function(e){ var t = e.touches[0]; if(current === el){ hide(); } else { showFor(el, t.clientX, t.clientY); } }, {passive:true});
+  });
+  document.addEventListener('scroll', hide, {passive:true});
+})();
+
+(function(){
+  // ---- per-box change requests -> Claude Code (local server) or a local queue you can copy ----
+  var ENDPOINT = (location.protocol === 'http:' || location.protocol === 'https:') && /^(localhost|127\.0\.0\.1)/.test(location.host) ? '/edit' : null;
+  var ov = document.getElementById('ov'), edbox = document.getElementById('edbox'), edtxt = document.getElementById('edtxt'),
+      edst = document.getElementById('edst'), crumb = document.getElementById('crumb');
+  var currentBox = null, queue = [];
+  try { queue = JSON.parse(localStorage.getItem('amoeba_edits') || '[]'); } catch(e){ queue = []; }
+  function saveQueue(){ try { localStorage.setItem('amoeba_edits', JSON.stringify(queue)); } catch(e){} renderQueue(); }
+  function boxTitle(el){ var t = el.querySelector('text.t, text.t2'); return t ? t.textContent.trim() : (el.getAttribute('aria-label') || 'box'); }
+  function viewOf(el){ var sv = el.closest('svg'); return sv ? sv.id.replace(/^v-/, '') : ''; }
+  function openEditor(el){
+    currentBox = {view: viewOf(el), box: boxTitle(el)};
+    edbox.textContent = 'view: ' + currentBox.view + '   box: ' + currentBox.box;
+    edtxt.value = ''; edst.textContent = ENDPOINT ? 'Will be sent to Claude Code (' + ENDPOINT + ').' : 'No local server: request is queued here; use Copy edits to hand them to Claude Code.';
+    ov.removeAttribute('hidden'); edtxt.focus();
+  }
+  function closeEditor(){ ov.setAttribute('hidden',''); currentBox = null; }
+  function send(){
+    var text = edtxt.value.trim(); if(!text) { edtxt.focus(); return; }
+    var rec = {view: currentBox.view, box: currentBox.box, request: text, ts: new Date().toISOString(), page: document.title};
+    if(ENDPOINT){
+      fetch(ENDPOINT, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(rec)})
+        .then(function(r){ if(!r.ok) throw new Error(r.status); edst.textContent = 'Sent to Claude Code.'; setTimeout(closeEditor, 500); })
+        .catch(function(){ queue.push(rec); saveQueue(); edst.textContent = 'Server not reachable; queued locally.'; setTimeout(closeEditor, 900); });
+    } else { queue.push(rec); saveQueue(); closeEditor(); }
+  }
+  document.getElementById('edcancel').addEventListener('click', closeEditor);
+  document.getElementById('edsend').addEventListener('click', send);
+  ov.addEventListener('click', function(e){ if(e.target === ov) closeEditor(); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape' && !ov.hasAttribute('hidden')) closeEditor(); });
+
+  // inner boxes: click opens the editor. Top-level boxes: a pencil in the corner does.
+  Array.prototype.forEach.call(document.querySelectorAll('.tip'), function(el){
+    if(el.classList.contains('hit')){
+      var r = el.querySelector('rect'); var x = parseFloat(r.getAttribute('x')) + parseFloat(r.getAttribute('width')) - 22, y = parseFloat(r.getAttribute('y')) + 20;
+      var g = document.createElementNS('http://www.w3.org/2000/svg','text');
+      g.setAttribute('x', x); g.setAttribute('y', y); g.setAttribute('class','glyph'); g.textContent = '✎';
+      g.setAttribute('role','button'); g.setAttribute('aria-label','Request a change to ' + boxTitle(el));
+      g.addEventListener('click', function(e){ e.stopPropagation(); openEditor(el); });
+      g.addEventListener('mouseenter', function(e){ e.stopPropagation(); });
+      el.appendChild(g);
+    } else {
+      el.addEventListener('click', function(){ openEditor(el); });
+      el.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); openEditor(el); } });
+    }
+  });
+
+  // queue indicator + copy
+  var qwrap = document.createElement('span'); qwrap.className = 'queue'; crumb.parentNode.insertBefore(qwrap, crumb.nextSibling);
+  function renderQueue(){
+    qwrap.innerHTML = '';
+    if(!queue.length) return;
+    var n = document.createElement('span'); n.textContent = queue.length + ' pending edit' + (queue.length > 1 ? 's' : ''); qwrap.appendChild(n);
+    var c = document.createElement('button'); c.type = 'button'; c.className = 'btn'; c.textContent = 'Copy edits';
+    c.addEventListener('click', function(){
+      var txt = queue.map(function(q){ return JSON.stringify(q); }).join('\n');
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(function(){ c.textContent = 'Copied'; setTimeout(function(){ c.textContent = 'Copy edits'; }, 1200); }); }
+      else { window.prompt('Copy these lines into edits.jsonl:', txt); }
+    });
+    var x = document.createElement('button'); x.type = 'button'; x.className = 'btn'; x.textContent = 'Clear';
+    x.addEventListener('click', function(){ queue = []; saveQueue(); });
+    qwrap.appendChild(c); qwrap.appendChild(x);
+  }
+  // put the queue on the crumb row
+  crumb.style.flexWrap = 'wrap'; crumb.appendChild(qwrap); renderQueue();
+  var origShow = window.__amoebaShow; // no-op guard
+})();
+</script>

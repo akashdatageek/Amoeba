@@ -1,0 +1,186 @@
+"""BOX 3 — Team runs the task (spec §6). Two explicit topology runners; plain code owns loops, caps, parsing, trace."""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+
+from amoeba.config.prompts import PROMPT, render, resolve
+from amoeba.config.schema import AgentSpec, TeamConfig
+from amoeba.interp.trace import NoopListener, TracedLLM, TraceWriter
+from amoeba.llm.client import LLMClient, Messages
+from amoeba.task.models import AgentResult, Episode, Message, Task
+from amoeba.task.parsers import MissingSections, ParseError, parse_critic
+from amoeba.tools.registry import ToolError, ToolRegistry
+
+WORKER_SECTIONS = ["CurrentStep", "Action", "ActionInput"]           # custom_action.py:79-83
+SYNTHESIZE_HINT = "\n You should synthesize the responses of previous steps and provide the final feedback."  # group.py:83
+FINAL_OUTPUT = "Final Output"
+
+
+@dataclass
+class _Msg:
+    sender: str
+    content: str
+    is_agree: bool | None = None
+
+
+class Interpreter:
+    def __init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None = None,
+                 listener: NoopListener | None = None):
+        self.trace = trace or TraceWriter(None)
+        self.listener = listener or NoopListener()   # spec §12: Phase 3's monitor plugs in here; no-op now
+        self.llm = TracedLLM(llm, self.trace, self.listener)
+        self.tools = tools
+
+    # ---- entry -------------------------------------------------------------------------------------------
+    def run(self, cfg: TeamConfig, task: Task, seed: int = 0) -> Episode:
+        ep = Episode(episode_id=self.trace.episode_id, team_id=cfg.team_id, team_version=cfg.version,
+                     task_id=task.id, seed=seed)
+        t0 = time.perf_counter()
+        with self.trace.span("invoke_workflow", {"gen_ai.workflow.name": cfg.name,
+                                                 "gen_ai.conversation.id": ep.episode_id}):
+            try:
+                if cfg.topology == "flat":
+                    ep.answer, ep.error = self.run_flat(cfg, task, ep)
+                else:
+                    ep.answer, ep.error = self.run_boss_reviewers(cfg, task, ep)
+            except (ParseError, MissingSections) as e:
+                ep.answer, ep.error = None, f"parse: {e}"
+        ep.latency_ms = int((time.perf_counter() - t0) * 1000)
+        return ep
+
+    # ---- shared LLM helper: one chat span, history + outputs + token sums ---------------------------------
+    def _record(self, agent: AgentSpec, ep: Episode, content: str, n_in: int, n_out: int) -> None:
+        ep.history.append(Message(name=agent.name, role=agent.role, content=content))
+        ep.outputs.setdefault(agent.agent_id, []).append(
+            AgentResult(agent_id=agent.agent_id, body=content, input_tokens=n_in, output_tokens=n_out))
+        ep.total_tokens += n_in + n_out
+        ep.n_llm_calls += 1
+
+    def _llm_messages(self, agent: AgentSpec, messages: Messages, ep: Episode) -> str:
+        resp = self.llm.chat_messages(messages, ep.seed, agent_id=agent.agent_id, agent_name=agent.name)
+        self._record(agent, ep, resp.content, resp.input_tokens, resp.output_tokens)
+        return resp.content
+
+    def _llm_sections(self, agent: AgentSpec, system: str, user: str, keys: list[str], ep: Episode
+                      ) -> tuple[str, dict[str, str]]:
+        before = self.trace.n_llm_calls
+        raw, sec = self.llm.chat_sections(system, user, keys, ep.seed, agent_id=agent.agent_id,
+                                          agent_name=agent.name)
+        for rec in self.trace.spans("chat")[before:]:   # the repair call, if any, is a call too
+            self._record(agent, ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
+                         rec.get("gen_ai.usage.output_tokens", 0))
+        return raw, sec
+
+    # ---- flat: AutoAgents Group._think/_act + CustomAction.run -------------------------------------------
+    def run_flat(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]:
+        previous_msgs = [f"Question/Task: {task.prompt}"]   # group.py:76 str(important_memory): task + every step's message
+        published: str | None = None
+        answer: str | None = None
+        last_step_done = False
+        for step in cfg.plan:                                # environment.py:256 while Group.steps
+            agents = [cfg.agents[a] for a in step.agent_ids]
+            previous = "[" + ", ".join(previous_msgs) + "]"  # group.py:76 — full history, not just the last edge
+            completed_steps = ""                             # group.py:75 — SHARED by all agents of the step
+            consensus = [0] * len(agents)
+            it, response, final_inp = 0, None, None
+            max_turns = agents[0].limits.max_turns           # group.py:75 num_steps = 5
+            while sum(consensus) < len(agents) and it < max_turns:   # group.py:80
+                if it > max_turns - 2:                       # group.py:82-83 — fires once, at the start of the 5th iteration
+                    completed_steps += SYNTHESIZE_HINT
+                for i, agent in enumerate(agents):           # group.py:85 — every agent each iteration, even ones already done
+                    user = render(PROMPT.autoagents_custom_action,
+                                  role=agent.role_prompt,                 # custom_action.py:148 — role prompt in the USER msg
+                                  context=step.text,                      # :146 — the STEP string (task is inside `previous`)
+                                  suggestions=agent.suggestions, previous=previous, completed_steps=completed_steps,
+                                  tool=str(list(agent.tools) + ["Print", FINAL_OUTPUT]),   # :144 (DEVIATION D7: no "Write File")
+                                  format_example=PROMPT.autoagents_custom_action_format)  # its "[{tool}]" stays literal
+                    with self.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id,
+                                                          "gen_ai.agent.name": agent.name}):
+                        _, sec = self._llm_sections(agent, resolve(agent.prompt.system), user, WORKER_SECTIONS, ep)
+                        act, inp = sec["Action"], sec["ActionInput"]
+                        if act in agent.tools:               # :207 exact membership; original always calls SerpAPI (D7)
+                            resp = self._tool(agent, act, inp)
+                        else:                                # :213 — Print, Final Output, unknown → echo
+                            resp = f"\n{inp}\n"
+                    if FINAL_OUTPUT in act:                  # :215 substring
+                        info = f"\n## Step\n{step.text}\n## Response\n{completed_steps}>>>> Final Output\n{resp}\n>>>>"  # :216
+                        consensus[i] = 1
+                        final_inp = inp
+                    else:
+                        info = f"\n## Step\n{step.text}\n## Response\n{resp}\n## Action\n{sec['CurrentStep']}\n"   # :220
+                        completed_steps += f">{agent.name} Substep:\n{sec['CurrentStep']}\n>Subresponse:\n{resp}\n"  # group.py:94
+                    response = info
+                    # original sleeps 30 s here (group.py:12,98) — dropped (D8)
+                it += 1
+            published = response                             # group.py:104-110 — the last agent's last response, final or not
+            previous_msgs.append(f"user: {published}")       # Message role defaults to 'user' (schema.py:27)
+            last_step_done = sum(consensus) == len(agents)
+            answer = final_inp
+        # original has no answer object (explorer.py:58). DEVIATION D9: answer = the last step's Final Output
+        # ActionInput; if the last step never reached Final Output, the published text with error="max_turns"
+        if last_step_done:
+            return answer, None
+        return published, "max_turns"
+
+    def _tool(self, agent: AgentSpec, name: str, action_input: str) -> str:
+        with self.trace.span("execute_tool", {"gen_ai.tool.name": name, "gen_ai.agent.id": agent.agent_id,
+                                              "gen_ai.agent.name": agent.name}) as rec:
+            try:
+                result = self.tools.execute(name, action_input, agent)
+            except ToolError as e:
+                rec["error.type"] = type(e).__name__
+                result = f"error: {e}"
+        self.listener.on_tool_call(agent.agent_id, result)
+        return result
+
+    # ---- boss_reviewers: AgentVerse VerticalSolverFirstDecisionMaker.astep --------------------------------
+    def run_boss_reviewers(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]:
+        solver = cfg.agents[cfg.exit]
+        critics = [cfg.agents[e.dst] for e in cfg.edges if e.type == "review"]
+        memory: dict[str, list[_Msg]] = {a.agent_id: [] for a in [solver, *critics]}   # ChatHistoryMemory; never reset
+
+        def broadcast(msgs: list[_Msg]) -> None:             # vertical_solver_first.py:74-76
+            for a in [solver, *critics]:
+                memory[a.agent_id].extend(msgs)
+
+        def call(agent: AgentSpec, kw: dict) -> str:         # solver.py:38-59 / critic.py:65-91 + llms/openai.py:436-446
+            system = render(resolve(agent.prompt.system), **kw)          # prepend template
+            recent = memory[agent.agent_id][-agent.max_history:] if agent.max_history > 0 else []
+            hist = [{"role": "assistant", "content": f"[{m.sender}]: {m.content}"} for m in recent]   # chat_history.py:102-107
+            user = render(resolve(agent.prompt.user), **kw)              # append template
+            with self.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name}):
+                return self._llm_messages(agent, [{"role": "system", "content": system}, *hist,
+                                                  {"role": "user", "content": user}], ep)
+            # This is why format="history+append": the plan and reviews reach agents as chat history, not placeholders.
+
+        def solve() -> _Msg:
+            kw = dict(task_description=task.prompt, role_description=solver.description)
+            raw = call(solver, kw)                           # parser 'dummy' → raw text (output_parser.py:300-303)
+            if not raw.strip():                              # one retry on empty; on failure content "" (solver.py:70-76)
+                raw = call(solver, kw)
+            return _Msg(sender=solver.name, content=raw or "")
+
+        def review(c: AgentSpec) -> _Msg:
+            kw = dict(task_description=task.prompt, role_description=c.description)
+            for _attempt in range(2):                        # original max_retry from config (1000!); DEVIATION D10: 2
+                try:
+                    agree, crit = parse_critic(call(c, kw))
+                    break
+                except ParseError:
+                    continue
+            else:
+                agree, crit = False, ""                      # critic.py:100-108 → SILENT (== agree) at vertical_solver_first.py:62
+            return _Msg(sender=c.name, content=crit, is_agree=agree)
+
+        plan = solve()                                       # :41
+        broadcast([plan])                                    # :42
+        for _round in range(cfg.max_inner_turns):            # :44 — 3
+            reviews = [review(c) for c in critics]           # :45-49 parallel in the original; sequential here (D11)
+            nonempty = [r for r in reviews if not r.is_agree and r.content != ""]   # :60-63 — agreeing critics are silent
+            if not nonempty:                                 # :64-66 "Consensus Reached"
+                break
+            broadcast(nonempty)                              # :67 — only the disagreements, to everyone
+            plan = solve()                                   # :68
+            broadcast([plan])                                # :70
+        return plan.content, None                            # :71-72 → answer. NB the last revision is never reviewed.
