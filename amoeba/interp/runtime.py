@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 
 from amoeba.config.prompts import PROMPT, render, resolve
-from amoeba.config.schema import AgentSpec, TeamConfig
+from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.trace import NoopListener, TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient, Messages
 from amoeba.task.models import AgentResult, CapabilityRequest, Episode, Message, Task
@@ -31,6 +31,34 @@ def with_unavailable(agent: AgentSpec) -> str:
     """The agent's suggestions plus one line per tool its role named that is not registered (D21)."""
     lines = [UNAVAILABLE.format(name=t) for t in agent.missing_tools]
     return "\n".join([agent.suggestions, *lines]) if lines else agent.suggestions
+
+
+def _output_text(o) -> str:
+    if isinstance(o, dict):
+        art, fmt = o.get("artifact", ""), o.get("format", "")
+        return f"{art} ({fmt})" if art and fmt else (art or fmt or str(o))
+    return str(o)
+
+
+def role_card(agent: AgentSpec) -> str:
+    """D24: what the draft says this helper must achieve and produce. Empty for a d19 team, so its prompt is
+    unchanged."""
+    lines = [f"Goal: {agent.goal}" if agent.goal else "",
+             f"Skills: {'; '.join(agent.skills)}" if agent.skills else "",
+             f"Outputs: {'; '.join(_output_text(o) for o in agent.outputs)}" if agent.outputs else "",
+             f"Success criteria: {'; '.join(agent.success_criteria)}" if agent.success_criteria else ""]
+    return "\n".join(x for x in lines if x)
+
+
+def with_card(text: str, agent: AgentSpec) -> str:
+    card = role_card(agent)
+    return f"{text}\n\n{card}" if card else text
+
+
+def step_context(step: PlanStep) -> str:
+    """D24: the step line plus its do / output / done_when lines. Just the step line for a d19 team."""
+    extra = [f"{k}: {getattr(step, k)}" for k in ("do", "output", "done_when") if getattr(step, k)]
+    return "\n".join([step.text, *extra])
 
 
 class Interpreter:
@@ -99,8 +127,8 @@ class Interpreter:
                     completed_steps += SYNTHESIZE_HINT
                 for i, agent in enumerate(agents):           # group.py:85 — every agent each iteration, even ones already done
                     user = render(PROMPT.autoagents_custom_action,
-                                  role=agent.role_prompt,                 # custom_action.py:148 — role prompt in the USER msg
-                                  context=step.text,                      # :146 — the STEP string (task is inside `previous`)
+                                  role=with_card(agent.role_prompt, agent),   # custom_action.py:148 — role prompt in the USER msg (+ D24 card)
+                                  context=step_context(step),             # :146 — the STEP string (task is inside `previous`; + D24 detail)
                                   suggestions=with_unavailable(agent), previous=previous,
                                   completed_steps=completed_steps,
                                   tool=str(list(agent.tools) + [PRINT, FINAL_OUTPUT]),   # :144 (DEVIATION D7: no "Write File")
@@ -192,14 +220,14 @@ class Interpreter:
             # This is why format="history+append": the plan and reviews reach agents as chat history, not placeholders.
 
         def solve() -> _Msg:
-            kw = dict(task_description=task.prompt, role_description=solver.description)
+            kw = dict(task_description=task.prompt, role_description=with_card(solver.description, solver))   # + D24 card
             raw = call(solver, kw)                           # parser 'dummy' → raw text (output_parser.py:300-303)
             if not raw.strip():                              # one retry on empty; on failure content "" (solver.py:70-76)
                 raw = call(solver, kw)
             return _Msg(sender=solver.name, content=raw or "")
 
         def review(c: AgentSpec) -> _Msg:
-            kw = dict(task_description=task.prompt, role_description=c.description)
+            kw = dict(task_description=task.prompt, role_description=with_card(c.description, c))   # + D24 card
             for _attempt in range(2):                        # original max_retry from config (1000!); DEVIATION D10: 2
                 try:
                     agree, crit = parse_critic(call(c, kw))
