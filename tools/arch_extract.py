@@ -673,6 +673,7 @@ def prompts(F: Facts) -> list[dict]:
                     "text": getattr(PROMPT, f"{stem}_d19"), "placeholders": placeholders(getattr(PROMPT, f"{stem}_d19")),
                     "style": "{x} (str.format, rendered once) — derived",
                     "loaded_by": loaders.get(f"{stem}_d19", []),
+                    "derived_from": stem, "edits": [{"old": o, "new": n} for o, n in edits],
                     "note": f"{len(edits)} exact replacement(s): 'use only existing tools' → 'prefer existing tools; "
                             f"request a missing tool or skill under ## Capability Requests'"})
     return out
