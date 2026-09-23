@@ -46,13 +46,18 @@ class OpenAICompatibleClient(LLMClient):
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.sends_seed = True   # False once the endpoint has rejected the field (Gemini's OpenAI layer does)
 
     def chat_messages(self, messages: Messages, seed: int = 0) -> ChatResponse:
         t0 = time.perf_counter()
-        resp = self._client.chat.completions.create(
-            model=self.model, messages=messages, temperature=self.temperature,
-            max_tokens=self.max_tokens, seed=seed,
-        )
+        kw = dict(model=self.model, messages=messages, temperature=self.temperature, max_tokens=self.max_tokens)
+        try:
+            resp = self._client.chat.completions.create(**kw, **({"seed": seed} if self.sends_seed else {}))
+        except Exception as e:   # openai.BadRequestError; matched by status so the SDK's error classes don't matter
+            if not (self.sends_seed and getattr(e, "status_code", None) == 400 and "seed" in str(e)):
+                raise
+            self.sends_seed = False   # the run is then not seed-reproducible on this endpoint
+            resp = self._client.chat.completions.create(**kw)
         usage = getattr(resp, "usage", None)
         return ChatResponse(
             content=resp.choices[0].message.content or "",
