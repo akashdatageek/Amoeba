@@ -3,12 +3,13 @@
     python -m scripts.eval_draft --tasks tasks/draft_eval.jsonl --repeats 3 --llm openai
     python -m scripts.eval_draft --tasks tasks/draft_eval.jsonl --repeats 3            # offline stand-in AI
 
-Writes runs/draft_eval/<stamp>/{attempts.jsonl, summary.csv, traces/, planner/}:
+Writes runs/draft_eval/<stamp>/{attempts.jsonl, summary.csv, traces/, planner/, replies/}:
 - attempts.jsonl: one line per attempt: ok or the DraftError, rounds, consensus, roster, plan steps, capability
   requests, tokens and calls, and the roles the final planner reply holds under the copied AutoAgents regex vs a
   brace-balanced parse (what a D22 fix would recover).
 - summary.csv: one row per task plus an ALL row.
 - planner/: the final Planner reply of each attempt, so failures can be read.
+- replies/: every reply of each attempt (planner, agent_observer, plan_observer, repairs), in order.
 """
 from __future__ import annotations
 
@@ -86,6 +87,9 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
                    roster=0, plan_steps=0, requests_final=0, requests_proposed=0, requests_dropped=0, request_names=[])
     finally:
         trace.close()
+    (out / "replies").mkdir(parents=True, exist_ok=True)   # every reply of the attempt, in order, to read the rounds
+    (out / "replies" / f"{task.id}.{rep}.json").write_text(
+        json.dumps([{"kind": k, "text": t} for k, t in rec.replies], ensure_ascii=False, indent=1), encoding="utf-8")
     planner = [text for kind, text in rec.replies if kind == "planner"]
     final = planner[-1] if planner else ""
     if final:

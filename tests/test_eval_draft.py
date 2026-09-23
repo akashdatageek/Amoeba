@@ -20,6 +20,8 @@ def test_attempt_ok_and_regex_loss(tmp_path, task, envelope):
     assert bad["roles_regex"] == ["Writer"] and bad["lost_to_regex"] == ["Calculator"]
     assert bad["ok_with_balanced_parse"] and bad["rounds"] == 1
     assert (tmp_path / "planner" / f"{task.id}.1.txt").read_text() == BRACES
+    assert [r["kind"] for r in json.loads((tmp_path / "replies" / f"{task.id}.1.json").read_text())] == \
+        ["planner", "agent_observer", "plan_observer"]
     rows = summarise([ok, bad])
     assert rows[-1]["task_id"] == "ALL" and rows[-1]["ok"] == 1 and rows[-1]["ok_with_balanced_parse"] == 2
     assert rows[-1]["errors"] == "roster size 1 x1"
