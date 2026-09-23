@@ -10,7 +10,7 @@ from scripts.run_task import main, run_one
 from tests.conftest import fx, mock
 
 OK, COMPLAINT = "observer_no_suggestions", "observer_complaint"
-BRACES = fx("draft_round_ok").replace('"You are a Calculator.', '"You are a Calculator. Evaluate {expression}.')
+from tests.test_t04_draft import ONE_ROLE   # a single role: roster size 1, rejected by plain code
 
 
 def test_every_round_is_recorded(task, envelope, trace):
@@ -28,9 +28,9 @@ def test_every_round_is_recorded(task, envelope, trace):
 
 def test_failed_draft_keeps_its_rounds(task, envelope, trace):
     with pytest.raises(DraftError) as ei:
-        draft_team(task, mock(planner=[BRACES]), envelope, trace)
+        draft_team(task, mock(planner=[ONE_ROLE]), envelope, trace)
     [r] = ei.value.rounds
-    assert r.planner_raw == BRACES and [x["name"] for x in r.roles] == ["Writer"] and r.consensus
+    assert r.planner_raw == ONE_ROLE and [x["name"] for x in r.roles] == ["Writer"]
 
 
 def test_missing_section_failure_keeps_the_open_round(task, envelope, trace):
@@ -40,11 +40,11 @@ def test_missing_section_failure_keeps_the_open_round(task, envelope, trace):
 
 
 def test_run_one_writes_plan_json_for_a_failed_draft(tmp_path, envelope, tools):
-    r = run_one(Task(prompt="Compute 17 * 23 + 5.", ground_truth="396"), "flat", mock(planner=[BRACES]),
+    r = run_one(Task(prompt="Compute 17 * 23 + 5.", ground_truth="396"), "flat", mock(planner=[ONE_ROLE]),
                 envelope, tools, tmp_path)
     saved = json.loads((tmp_path / r.run_id / "plan.json").read_text())
     assert saved["error"] == r.error == "draft: roster size 1 outside 2..5"
-    assert saved["rounds"][0]["planner_raw"] == BRACES and r.draft_rounds == 1   # the round that ran is counted
+    assert saved["rounds"][0]["planner_raw"] == ONE_ROLE and r.draft_rounds == 1   # the round that ran is counted
 
 
 def test_trace_content_is_opt_in_on_the_writer(task, envelope):

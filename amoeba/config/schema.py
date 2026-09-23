@@ -1,7 +1,7 @@
 """Team configuration schema (spec §4). Names match the full BUILD_SPEC so later phases add fields, not renames."""
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -44,6 +44,11 @@ class AgentSpec(BaseModel):
     max_history: int = 5  # AgentVerse: solver 5, critic 3 (solver.py:23, critic.py:22)
     missing_tools: list[str] = Field(default_factory=list)   # tools the draft named that are not registered (D19)
     is_summariser: bool = False   # writes the team's final answer; boss_reviewers makes it the solver (D20)
+    # D24 role record, carried from the draft into the helper's prompt (role_card); empty for d19 teams
+    goal: str = ""
+    skills: list[str] = Field(default_factory=list)
+    outputs: list[Any] = Field(default_factory=list)
+    success_criteria: list[str] = Field(default_factory=list)
     created_by: Literal["human", "drafter"] = "drafter"
     temperature: float = 0.2
     max_tokens: int = 2048
@@ -61,6 +66,12 @@ class PlanStep(BaseModel):
     index: int
     agent_ids: list[str]
     text: str  # the raw "[Role A, Role B]: STEP TEXT" line
+    # D24 step detail, shown to the step's helpers (step_context); empty for d19 teams
+    covers: list[str] = Field(default_factory=list)
+    depends_on: list[int] = Field(default_factory=list)
+    do: str = ""
+    output: str = ""
+    done_when: str = ""
 
 
 class TeamConfig(BaseModel):

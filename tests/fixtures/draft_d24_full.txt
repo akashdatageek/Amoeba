@@ -1,0 +1,70 @@
+---
+## Thought
+Size the storage, check residency, test both schemas, then assemble the memo.
+
+## Requirements:
+R1: gather current benchmark results for PostgreSQL and MongoDB
+- R2: estimate the monthly cost for 50 tenants at 200 GB each
+R3: prototype and test the event schema in both databases
+R4: deliver a recommendation memo with a risk table
+
+## Givens and Assumptions:
+- given: 50 tenants x 200 GB
+- derived: 50 x 200 GB = 10,000 GB = 10 TB
+- assumption: 30% yearly data growth
+
+## Selected Roles List:
+```
+None
+```
+
+## Created Roles List:
+```
+{"name": "Cost Analyst", "seniority": "senior", "description": "Prices managed databases.", "goal": "a defensible monthly cost", "responsibilities": ["price both options"], "skills": ["TCO modelling", "managed-database pricing"], "tools": ["web_search", "calc"], "inputs": ["R2 sizing"], "outputs": [{"artifact": "cost table", "format": "markdown table: provider x db x monthly USD"}], "success_criteria": ["every number has a source"], "constraints": ["12-person team"], "covers": ["R1", "R2"], "is_summariser": false, "prompt": "You are a cost analyst. For each {provider} and {db}, price storage for 10 TB and compute for the peak load."},
+{"name": "Schema Engineer", "seniority": "staff", "description": "Designs and tests schemas.", "goal": "a tested schema in both databases", "responsibilities": ["design", "test"], "skills": ["schema design", "load testing"], "tools": ["database_sandbox"], "inputs": ["event model"], "outputs": [{"artifact": "test report", "format": "markdown"}], "success_criteria": ["p95 latency measured at 5,000 queries/min"], "constraints": [], "covers": ["R3"], "is_summariser": false, "prompt": "You are a schema engineer. Build the schema and run the test."},
+{"name": "Memo Writer", "seniority": "senior", "description": "Assembles the memo.", "goal": "the memo", "responsibilities": ["assemble"], "skills": ["technical writing"], "tools": [], "inputs": ["steps 1-3"], "outputs": ["memo"], "success_criteria": ["every requirement answered"], "constraints": [], "covers": ["R4"], "is_summariser": true, "prompt": "You are the writer. Assemble the specialists' outputs; add no new analysis."}
+```
+
+## Execution Plan:
+1. [Cost Analyst]: Price both databases
+   covers: R1, R2
+   depends_on: none
+   do: 1) search current pricing
+       2) compute 10 TB storage and peak compute
+   output: cost table (markdown)
+   done_when: every cell sourced
+2. [Schema Engineer]: Prototype and test
+   covers: R3
+   depends_on: none
+   do: build the event schema in both databases and load-test at 5,000 queries/min
+   output: test report
+   done_when: p95 latency recorded for both
+3. [Schema Engineer, Cost Analyst]: Cross-check numbers
+   covers: R2, R3
+   depends_on: 1, 2
+   do: re-derive the cost from the measured load
+   output: reconciled figures
+   done_when: both agree within 10%
+4. [Memo Writer]: Assemble the memo
+   covers: R4
+   depends_on: 3
+   do: assemble outputs into the memo with the risk table
+   output: memo (markdown)
+   done_when: every requirement id answered
+
+## Capability Requests:
+```
+{"name": "web_search", "kind": "tool", "for_role": "Cost Analyst", "what_it_does": "fetch current pricing", "input": "query", "output": "snippets", "example_input": "RDS PostgreSQL price per GB", "example_output": {"results": []}},
+{"name": "database_sandbox", "kind": "tool", "for_role": "Schema Engineer", "what_it_does": "run PostgreSQL and MongoDB", "input": "DDL + load script", "output": "timings", "example_input": "CREATE TABLE events (...)", "example_output": "p95 12 ms"}
+```
+
+## Risks and Decisions:
+- If EU residency rules out a region, re-run step 1 for the allowed regions.
+- Benchmark sources may be vendor-biased.
+
+## RoleFeedback
+None.
+
+## PlanFeedback
+None.
+---

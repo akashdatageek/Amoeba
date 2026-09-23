@@ -25,13 +25,15 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
             prompt=PromptRef(system=GROUP_PREFIX, user="seed:autoagents_custom_action", format="sections"),
             tools=list(r.tools), suggestions=r.suggestions, role_prompt=r.prompt,
             missing_tools=list(r.missing_tools), is_summariser=r.is_summariser,
+            goal=r.goal, skills=list(r.skills), outputs=list(r.outputs), success_criteria=list(r.success_criteria),
             description=r.description or r.prompt,   # AgentVerse ${role_description}: description, else prompt
         )
     common = dict(team_id=str(uuid4()), name=f"team-{topology}-{task.id[:8]}",
                   meta={"task_id": task.id, "draft_rounds": draft.rounds_used, "consensus": draft.consensus})
 
     if topology == "flat":
-        plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text)
+        plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text, covers=s.covers,
+                         depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when)   # D24 detail
                 for s in draft.plan]
         edges = [Edge(src=a, dst=b, type="sequential")
                  for s1, s2 in pairwise(plan) for a in s1.agent_ids for b in s2.agent_ids]

@@ -19,15 +19,15 @@ def parse_sections(text: str) -> dict[str, str]:
     """AutoAgents OutputParser.parse_blocks + parse_code (system/utils/common.py:31-59)."""
     out: dict[str, str] = {}
     for block in text.split("##"):                                  # common.py:33
-        if not block.strip():
-            continue
+        if not block.strip() or re.fullmatch(r"\s*-{3,}\s*", block):
+            continue   # DEVIATION D23: a bare '---' fence (copied from the FORMAT_EXAMPLE) is not a section
         if "\n" in block:
             title, body = block.split("\n", 1)                      # common.py:43
         else:
             title, body = block, ""   # DEVIATION: a title-only block raises ValueError in the original
         if title.endswith(":"):                                     # common.py:45-46 (checked before .strip())
             title = title[:-1]
-        body = body.strip()
+        body = re.sub(r"(?:\n\s*-{3,}\s*)+$", "", body.strip())   # DEVIATION D23: drop a closing '---' fence
         m = re.search(r"```.*?\s+(.*?)```", body, re.DOTALL)        # common.py:53 — first fenced block, tag dropped
         if m:
             body = m.group(1)
@@ -104,6 +104,59 @@ def parse_json_objects(text: str) -> list[dict]:
                 if isinstance(d, dict) and d:
                     out.append(d)
     return out
+
+
+STEP_FIELDS = ("covers", "depends_on", "do", "output", "done_when")
+
+
+def parse_plan_d24(text: str) -> list[tuple[list[str], str, dict]]:
+    """D24 plan: like parse_plan (same step split, same '[A, B]: title' first line, so name matching is unchanged)
+    but the indented 'covers / depends_on / do / output / done_when' lines under each step are kept.
+    Returns (names, first line, fields); a field's continuation lines are joined to it."""
+    out: list[tuple[list[str], str, dict]] = []
+    for block in re.split(r"\n\d+\. ", "\n" + text)[1:]:
+        first, *rest = block.split("\n")
+        m = re.match(r"\s*\[(.*?)\]\s*:\s*(.*)", first)
+        names = [n.strip() for n in m.group(1).split(",")] if m else []
+        fields: dict = {"title": (m.group(2) if m else first).strip()}
+        key = None
+        for line in rest:
+            f = re.match(r"^\s*[-*]?\s*(covers|depends_on|do|output|done_when)\s*:\s*(.*)$", line, re.I)
+            if f:
+                key = f.group(1).lower()
+                fields[key] = f.group(2).strip()
+            elif key and line.strip():
+                fields[key] += "\n" + line.strip()
+        fields["covers"] = re.findall(r"R\d+", fields.get("covers", ""))
+        dep = fields.get("depends_on", "")
+        fields["depends_on"] = [] if re.match(r"\s*(none|-|n/a)?\s*$", dep, re.I) else [int(x) for x in re.findall(r"\d+", dep)]
+        out.append((names, first, fields))
+    return out
+
+
+def parse_requirements(text: str) -> dict[str, str]:
+    """D24 '## Requirements': lines 'R1: ...' (a leading '-' and ':', '.', ')' or '-' after the id are accepted)."""
+    out: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        m = re.match(r"^\s*[-*]?\s*\**(R\d+)\**\s*[:.)\-–]\s*(.+)$", line)
+        if m and m.group(1) not in out:
+            out[m.group(1)] = m.group(2).strip()
+    return out
+
+
+def parse_bullets(text: str) -> list[str]:
+    """D24 givens / risks: one item per non-empty line, leading '- ' removed; 'None' and '...' dropped."""
+    items = [re.sub(r"^\s*[-*]\s*", "", line).strip() for line in (text or "").splitlines()]
+    return [x for x in items if x and x.lower() not in ("none", "none.", "...")]
+
+
+def parse_verdict(sections: dict[str, str]) -> str | None:
+    """D24 '## Verdict': "APPROVE" or "REVISE" when that is the whole answer (markdown emphasis and a final full stop
+    are ignored); "OTHER" for anything else; None when the section is missing."""
+    if "Verdict" not in sections:
+        return None
+    word = re.sub(r"[*_`]", "", sections["Verdict"]).strip().rstrip(".").strip()
+    return word if word in ("APPROVE", "REVISE") else "OTHER"
 
 
 CRITIC_DEFAULT = "I think it is not correct. Please think carefully and improve it."
