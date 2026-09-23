@@ -145,6 +145,7 @@ class Draft(BaseModel):
     raw_draft: str = ""
     capability_requests: list[CapabilityRequest] = Field(default_factory=list)
     rounds: list[DraftRound] = Field(default_factory=list)     # every round, in order; the last one is raw_draft
+    prompts: str = "d19"                                           # which drafting prompts ran: d19 | d24 (D24)
     requests_proposed: int = 0                 # distinct capabilities asked for in round 1
     requests_dropped_by_observers: int = 0     # of those, how many the final draft no longer asks for
 

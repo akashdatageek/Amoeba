@@ -71,15 +71,15 @@ def would_pass(text: str, names: list[str], max_agents: int) -> bool:
 
 
 def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path, seed: int,
-            log_content: bool = True) -> dict:
+            log_content: bool = True, prompts: str = "d19") -> dict:
     rec = Recording(llm)
     trace = TraceWriter(out / "traces" / f"{task.id}.{rep}.jsonl", episode_id=f"{task.id}.{rep}",
                         log_content=log_content)
     t0 = time.perf_counter()
-    row = {"task_id": task.id, "family": task.family, "repeat": rep}
+    row = {"task_id": task.id, "family": task.family, "repeat": rep, "prompts": prompts, "model": llm.model}
     saved: dict = {}
     try:
-        d = draft_team(task, rec, envelope, trace, seed)
+        d = draft_team(task, rec, envelope, trace, seed, prompts=prompts)
         row.update(ok=True, error="", rounds=d.rounds_used, consensus=d.consensus, roster=len(d.created_roles),
                    plan_steps=len(d.plan), requests_final=len(d.capability_requests),
                    requests_proposed=d.requests_proposed, requests_dropped=d.requests_dropped_by_observers,
@@ -161,6 +161,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--api-key", default=None)
     p.add_argument("--out", default=None, help="default: runs/draft_eval/<UTC stamp>")
     p.add_argument("--no-log-content", action="store_true", help="leave prompts and replies out of the traces")
+    p.add_argument("--draft-prompts", choices=["d19", "d24"], default="d19", help="Box 2 prompts (D24)")
     return p.parse_args(argv)
 
 
@@ -175,7 +176,8 @@ def main(argv: list[str] | None = None) -> int:
     with open(out / "attempts.jsonl", "w", encoding="utf-8") as fh:
         for task in load_tasks(args.tasks):
             for rep in range(args.repeats):
-                row = attempt(task, rep, llm, envelope, out, args.seed, log_content=not args.no_log_content)
+                row = attempt(task, rep, llm, envelope, out, args.seed, log_content=not args.no_log_content,
+                              prompts=args.draft_prompts)
                 rows.append(row)
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
                 fh.flush()

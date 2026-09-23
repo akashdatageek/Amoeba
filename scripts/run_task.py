@@ -31,7 +31,7 @@ from amoeba.tools.registry import ToolRegistry, default_registry
 
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
-            runs_dir: str | Path, seed: int = 0, log_content: bool = False) -> RunResult:
+            runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19") -> RunResult:
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -41,7 +41,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     answer = error = None
     team_id = ""
     try:
-        draft = draft_team(task, llm, envelope, trace, seed)
+        draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts)
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         dump_yaml(cfg, run_dir / "team.yaml")
@@ -94,6 +94,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--model", default=None, help="default: $AMOEBA_MODEL, else gpt-4o-mini")
     p.add_argument("--api-key", default=None)
     p.add_argument("--runs-dir", default="runs")
+    p.add_argument("--draft-prompts", choices=["d19", "d24"], default="d19",
+                   help="Box 2 prompts: d19 = AutoAgents + D19 edits (default), d24 = ours (spec/BOX2_PROMPT_UPGRADE_D24.md)")
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
@@ -111,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for task in tasks:
         r = run_one(task, args.topology, llm, envelope, tools, args.runs_dir, args.seed,
-                    log_content=not args.no_log_content)
+                    log_content=not args.no_log_content, draft_prompts=args.draft_prompts)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

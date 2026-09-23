@@ -86,10 +86,13 @@ class MockLLMClient(LLMClient):
     Every call is kept in ``calls`` as ``{kind, messages, seed, response}``.
     """
 
-    SIGNATURES: dict[str, str] = {
-        "planner": "You are a manager and expert prompt engineer",
-        "agent_observer": "identifying issues in role design",
-        "plan_observer": "Review the Execution Plan for clarity",
+    SIGNATURES: dict[str, str | tuple[str, ...]] = {   # a kind may have several phrases (d19 and D24 prompts)
+        "planner": ("You are a manager and expert prompt engineer",
+                    "delivery lead with 15+ years of experience running cross-functional projects"),        # D24
+        "agent_observer": ("identifying issues in role design",
+                           "You are a staffing reviewer who has built and run many expert teams"),         # D24
+        "plan_observer": ("Review the Execution Plan for clarity",
+                          "You are a senior delivery reviewer. You judge whether this plan"),              # D24
         "worker": "Based on prior agents' results and completed steps",
         "solver": "You are faced with the task",
         "critic": "Now the group is asking your opinion",
@@ -108,7 +111,7 @@ class MockLLMClient(LLMClient):
     def classify(cls, messages: Messages) -> str:
         text = "\n".join(m.get("content", "") for m in messages)
         for kind, signature in cls.SIGNATURES.items():
-            if signature in text:
+            if any(s in text for s in ((signature,) if isinstance(signature, str) else signature)):
                 return kind
         return "other"
 

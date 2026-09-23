@@ -13,6 +13,11 @@ from amoeba.task.models import CapabilityRequest, Draft, DraftedRole, DraftPlanS
 from amoeba.task.parsers import MissingSections, parse_json_objects, parse_plan, parse_role_blobs
 
 PLANNER_SECTIONS = ["Selected Roles List", "Created Roles List", "Execution Plan", "RoleFeedback", "PlanFeedback"]
+# DEVIATION D24 (spec/BOX2_PROMPT_UPGRADE_D24.md): our prompts, one system message per role, more sections
+D19, D24 = "d19", "d24"
+DRAFT_PROMPTS = (D19, D24)
+D24_PLANNER_SECTIONS = ["Requirements", "Givens and Assumptions", "Selected Roles List", "Created Roles List",
+                        "Execution Plan", "Risks and Decisions", "RoleFeedback", "PlanFeedback"]
 REQUESTS_SECTION = "Capability Requests"   # D19: optional — never required, so a missing one costs no repair call
 MAX_ROUNDS = 3  # manager.py:27 num_steps = 3
 NO_SUGGESTIONS = "No Suggestions"
@@ -85,15 +90,25 @@ def pick_summariser(roles: list[DraftedRole], plan: list[DraftPlanStep]) -> Draf
     return chosen
 
 
+def requirements_text(sec: dict[str, str]) -> str:
+    """D24: what the observers are shown as the planner's requirements and givens."""
+    return (f"## Requirements\n{sec.get('Requirements', '')}\n\n"
+            f"## Givens and Assumptions\n{sec.get('Givens and Assumptions', '')}")
+
+
 def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
-              log: list[DraftRound]) -> tuple[str, dict[str, str]]:
+              log: list[DraftRound], system: str = MANAGER_PREFIX) -> tuple[str, dict[str, str]]:
     try:
-        return llm.chat_sections(MANAGER_PREFIX, user, keys, seed, agent_name=name)  # action.py:60 system = prefix
+        return llm.chat_sections(system, user, keys, seed, agent_name=name)  # action.py:60 system = prefix (d19)
     except MissingSections as e:
         raise DraftError(f"{name}: {e}", log) from e
 
 
-def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0) -> Draft:
+def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
+               prompts: str = D19) -> Draft:
+    if prompts not in DRAFT_PROMPTS:
+        raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
+    d24 = prompts == D24
     tl = TracedLLM(llm, trace)
     tools = envelope.tool_catalog_string()
     ctx = f"[Question/Task: {task.prompt}]"          # manager.py:32 str(important_memory) — keep the bracketed form
@@ -107,10 +122,17 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
         while not consensus and rounds < MAX_ROUNDS:  # manager.py:27,30
             log.append(rec := DraftRound(index=rounds + 1))
             # state 0 — Planner (CreateRoles)
-            raw, sec = _sections(tl, "planner", render(   # D19 variants: may request missing capabilities
-                PROMPT.autoagents_create_roles_d19, context=ctx, existing_roles="[]", tools=tools, history=history,
-                suggestions=suggestions, format_example=PROMPT.autoagents_create_roles_format_d19),
-                PLANNER_SECTIONS, seed, log)
+            if d24:   # D24: plan the ideal first, full role records, detailed steps, requirements and givens
+                raw, sec = _sections(tl, "planner", render(
+                    PROMPT.d24_create_team, context=task.prompt, existing_roles="[]", tools=tools, history=history,
+                    suggestions=suggestions, max_agents=str(envelope.max_agents),
+                    format_example=PROMPT.d24_create_team_format),
+                    D24_PLANNER_SECTIONS, seed, log, system=PROMPT.d24_planner_system.strip())
+            else:
+                raw, sec = _sections(tl, "planner", render(   # D19 variants: may request missing capabilities
+                    PROMPT.autoagents_create_roles_d19, context=ctx, existing_roles="[]", tools=tools, history=history,
+                    suggestions=suggestions, format_example=PROMPT.autoagents_create_roles_format_d19),
+                    PLANNER_SECTIONS, seed, log)
             rec.planner_raw = raw
             rec.roles = parse_role_blobs(sec["Created Roles List"]) + parse_role_blobs(sec["Selected Roles List"])
             rec.plan = [{"agents": names, "text": text} for names, text in parse_plan(sec["Execution Plan"])]
@@ -123,23 +145,38 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
 
             # state 1 — Agent Observer (CheckRoles). Always runs: the guard at manager.py:34 is dead code.
             hist_roles = f"## Role Suggestions\n{sugg_roles}\n\n## Feedback\n{sec['RoleFeedback']}"   # manager.py:36
-            rec.agent_observer_raw, s = _sections(tl, "agent_observer", render(
-                PROMPT.autoagents_check_roles_d19, capability_requests=requests_text,   # D19
-                question=task.prompt,   # original: regex on the planner's raw text (check_roles.py:95); DEVIATION D4
-                existing_roles="[]", selected_roles=sec["Selected Roles List"], created_roles=sec["Created Roles List"],
-                history=hist_roles, tools=tools,   # original TOOLS='None' for observers (check_roles.py:86); DEVIATION D4
-                format_example=PROMPT.autoagents_check_roles_format), ["Suggestions"], seed, log)
+            if d24:
+                rec.agent_observer_raw, s = _sections(tl, "agent_observer", render(
+                    PROMPT.d24_review_team, question=task.prompt, requirements=requirements_text(sec),
+                    created_roles=sec["Created Roles List"], selected_roles=sec["Selected Roles List"],
+                    capability_requests=requests_text, tools=tools, history=hist_roles,
+                    max_agents=str(envelope.max_agents)),
+                    ["Suggestions"], seed, log, system=PROMPT.d24_agent_observer_system.strip())
+            else:
+                rec.agent_observer_raw, s = _sections(tl, "agent_observer", render(
+                    PROMPT.autoagents_check_roles_d19, capability_requests=requests_text,   # D19
+                    question=task.prompt,   # original: regex on the planner's raw text (check_roles.py:95); DEVIATION D4
+                    existing_roles="[]", selected_roles=sec["Selected Roles List"], created_roles=sec["Created Roles List"],
+                    history=hist_roles, tools=tools,   # original TOOLS='None' for observers (check_roles.py:86); DEVIATION D4
+                    format_example=PROMPT.autoagents_check_roles_format), ["Suggestions"], seed, log)
             sr = rec.agent_observer = s["Suggestions"]
             sugg_roles += sr                          # manager.py:38
 
             # state 2 — Plan Observer (CheckPlans)
             hist_plan = f"## Plan Suggestions\n{sugg_plan}\n\n## Feedback\n{sec['PlanFeedback']}"
             # original passes sugg_roles here (manager.py:41) — a bug; fixed (DEVIATION D3)
-            rec.plan_observer_raw, s = _sections(tl, "plan_observer", render(
-                PROMPT.autoagents_check_plans_d19, capability_requests=requests_text, context=task.prompt,   # D19
-                roles=sec["Selected Roles List"] + sec["Created Roles List"],   # check_plans.py:72-75
-                plan=sec["Execution Plan"], history=hist_plan, tools=tools,
-                format_example=PROMPT.autoagents_check_plans_format), ["Suggestions"], seed, log)
+            if d24:
+                rec.plan_observer_raw, s = _sections(tl, "plan_observer", render(
+                    PROMPT.d24_review_plan, context=task.prompt, requirements=requirements_text(sec),
+                    roles=sec["Selected Roles List"] + sec["Created Roles List"], plan=sec["Execution Plan"],
+                    risks=sec["Risks and Decisions"], capability_requests=requests_text, history=hist_plan),
+                    ["Suggestions"], seed, log, system=PROMPT.d24_plan_observer_system.strip())
+            else:
+                rec.plan_observer_raw, s = _sections(tl, "plan_observer", render(
+                    PROMPT.autoagents_check_plans_d19, capability_requests=requests_text, context=task.prompt,   # D19
+                    roles=sec["Selected Roles List"] + sec["Created Roles List"],   # check_plans.py:72-75
+                    plan=sec["Execution Plan"], history=hist_plan, tools=tools,
+                    format_example=PROMPT.autoagents_check_plans_format), ["Suggestions"], seed, log)
             sp = rec.plan_observer = s["Suggestions"]
             sugg_plan += sp                           # manager.py:43
             suggestions = f"## Role Suggestions\n{sr}\n\n## Plan Suggestions\n{sp}"   # manager.py:45
@@ -185,4 +222,4 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                                            "capability.for_role": q.for_role, "capability.source": q.source})
     return Draft(created_roles=roles, plan=plan, rounds_used=rounds, consensus=consensus,
                  role_feedback=sugg_roles, plan_feedback=sugg_plan, raw_draft=raw, capability_requests=requests, rounds=log,
-                 requests_proposed=proposed, requests_dropped_by_observers=dropped)
+                 requests_proposed=proposed, requests_dropped_by_observers=dropped, prompts=prompts)
