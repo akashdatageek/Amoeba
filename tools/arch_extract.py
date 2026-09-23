@@ -153,7 +153,10 @@ BOXES: list[dict] = [
     dict(id="agent_obs", view="plan", title="Agent Observer", kind="llm", plan="Agent Observer", ai="agent_observer",
          sentence="A second AI checks the list of helpers and replies with suggestions, or 'No Suggestions'.",
          what=["The checking AI reads the job, the drafted helpers, the capability requests and every earlier "
-               "helper suggestion; it says whether each request is really needed or an existing tool is enough.",
+               "helper suggestion.",
+               "A helper using a tool we lack that is not requested gets 'add a Capability Request for it', never "
+               "'remove the tool'; a request may be questioned only if the job does not need that ability at all, "
+               "not because an existing tool could work around it.",
                "It lists problems with the helpers, or writes 'No Suggestions'.",
                "It runs every round, even after it has once agreed."],
          proposes="Suggestions about the helpers, or 'No Suggestions'.",
@@ -165,7 +168,7 @@ BOXES: list[dict] = [
     dict(id="plan_obs", view="plan", title="Plan Observer", kind="llm", plan="Plan Observer", ai="plan_observer",
          sentence="A third AI checks the step plan; the loop stops when both checkers say 'No Suggestions' in one round.",
          what=["The plan-checking AI reads the job, the helpers, the step plan, the capability requests and every "
-               "earlier plan suggestion.",
+               "earlier plan suggestion; like the helper checker, it may question a request only on need.",
                "It lists problems with the plan, or writes 'No Suggestions'.",
                "Drafting stops early only when both checkers wrote 'No Suggestions' in the same round."],
          proposes="Suggestions about the plan, or 'No Suggestions'.",
@@ -229,7 +232,9 @@ BOXES: list[dict] = [
          what=["One record per request: name, tool or skill, for which helper, what it does, input, output and an "
                "example of each.",
                "Where it came from: the planner's list, a helper's tool list, or an action during the run.",
-               "Also in result.json (with the steps that answered BLOCKED) and as one log line each."],
+               "Also in result.json (with the steps that answered BLOCKED) and as one log line each.",
+               "result.json also says how many requests round 1 proposed and how many were gone from the final draft "
+               "(requests_proposed, requests_dropped_by_observers)."],
          proposes="Nothing.", disposes="Plain code writes the file, empty when nothing was asked for.",
          anchors=["amoeba/task/models.py::CapabilityRequest", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="teamconfig", view="plan", title="TeamConfig", kind="data", plan="TeamConfig",
@@ -335,7 +340,8 @@ BOXES: list[dict] = [
          sentence="The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
          what=["Summarises the run in one record saved as result.json.",
                "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
-               "It also lists the steps that answered BLOCKED and every capability request."],
+               "It also lists the steps that answered BLOCKED and every capability request, and counts how many "
+               "requests round 1 made and how many the checkers talked the planner out of."],
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,

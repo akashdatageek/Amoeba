@@ -50,6 +50,25 @@ def resolve_tools(roles: list[DraftedRole], envelope: Envelope,
     return out
 
 
+def section_requests(sec: dict[str, str], envelope: Envelope) -> list[CapabilityRequest]:
+    """The requests one planner reply makes: its Capability Requests part plus unregistered tools in its role blobs.
+    Works on copies; used to see which round-1 requests survive to the final draft."""
+    roles, seen = [], set()
+    for b in parse_role_blobs(sec.get("Created Roles List", "")) + parse_role_blobs(sec.get("Selected Roles List", "")):
+        name = str(b.get("name", "")).strip()
+        if name and name not in seen:
+            seen.add(name)
+            roles.append(DraftedRole(**b))
+    return resolve_tools(roles, envelope, parse_capability_requests(sec.get(REQUESTS_SECTION, "")))
+
+
+def request_survival(first: list[CapabilityRequest], final: list[CapabilityRequest]) -> tuple[int, int]:
+    """(requests_proposed, requests_dropped_by_observers): distinct capability names asked for in round 1, and how
+    many of them the final draft no longer asks for. Matched by name, case-insensitive (roles may be renamed)."""
+    proposed = {q.name.lower() for q in first}
+    return len(proposed), len(proposed - {q.name.lower() for q in final})
+
+
 def pick_summariser(roles: list[DraftedRole], plan: list[DraftPlanStep]) -> DraftedRole:
     """D20: the role that writes the final answer — the first one the planner marks "is_summariser": true, else
     the last role named by the plan's last step (the flat runner's exit). Having no tools says nothing about it;
@@ -77,6 +96,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     sugg_roles, sugg_plan = "", ""                    # manager.py:26 — cumulative strings
     suggestions = ""                                  # manager.py:27 — what the planner sees: LATEST round only
     consensus, rounds, last = False, 0, None
+    first_requests: list[CapabilityRequest] = []
     with trace.span("invoke_agent", {"gen_ai.agent.name": "planner"}):
         while not consensus and rounds < MAX_ROUNDS:  # manager.py:27,30
             # state 0 — Planner (CreateRoles)
@@ -85,6 +105,8 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                 suggestions=suggestions, format_example=PROMPT.autoagents_create_roles_format_d19),
                 PLANNER_SECTIONS, seed)
             requests_text = sec.get(REQUESTS_SECTION, "").strip() or "None"
+            if rounds == 0:
+                first_requests = section_requests(sec, envelope)   # what the observers are shown first
             last = (raw, sec)
             history = raw   # original: str(instruct_content) pydantic repr (manager.py:33). DEVIATION D1: raw text
 
@@ -146,8 +168,10 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     pick_summariser(roles, plan)                      # D20 (was: "the first role without tools")
     if not 2 <= len(roles) <= envelope.max_agents:
         raise DraftError(f"roster size {len(roles)} outside 2..{envelope.max_agents}")
+    proposed, dropped = request_survival(first_requests, requests)
     for q in requests:
         trace.event("capability_request", {"capability.name": q.name, "capability.kind": q.kind,
                                            "capability.for_role": q.for_role, "capability.source": q.source})
     return Draft(created_roles=roles, plan=plan, rounds_used=rounds, consensus=consensus,
-                 role_feedback=sugg_roles, plan_feedback=sugg_plan, raw_draft=raw, capability_requests=requests)
+                 role_feedback=sugg_roles, plan_feedback=sugg_plan, raw_draft=raw, capability_requests=requests,
+                 requests_proposed=proposed, requests_dropped_by_observers=dropped)

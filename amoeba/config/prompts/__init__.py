@@ -32,8 +32,14 @@ _DERIVED = {
 # the verbatim text with the exact replacements below, and a replacement whose source text is gone fails loudly.
 CAPABILITY_REQUEST_KEYS = ("name, kind (tool|skill), for_role, what_it_does, input, output, "
                            "example_input, example_output")
+# observers critique a request only on need, never because a workaround exists (box comment a1a2f8ad)
+KEEP_REQUESTS = ("Do not recommend removing a requested capability only because an existing tool could work around "
+                 "it; recommend removal only if the task does not need that ability at all.")
+REQUESTED_TOOLS = "tools may be existing ({tools}) or requested under Capability Requests"
 CAPABILITY_EDITS: dict[str, list[tuple[str, str]]] = {
     "autoagents_create_roles": [
+        ("Select existing expert roles (from {tools})",   # a slip in the source: the roles come from existing_roles
+         "Select existing expert roles (from {existing_roles})"),
         ("tools (from {tools} only)",
          "tools (prefer existing tools from {tools}; a tool or skill we lack goes under Capability Requests)"),
         ("2. Use only existing tools {tools}; do NOT invent new tools.",
@@ -48,11 +54,15 @@ CAPABILITY_EDITS: dict[str, list[tuple[str, str]]] = {
     "autoagents_check_roles": [
         ("# Created Roles List\n{created_roles}\n",
          "# Created Roles List\n{created_roles}\n\n# Capability Requests\n{capability_requests}\n"),
+        ("Validate selected existing roles against the problem and tools ({tools}).",
+         "Validate selected existing roles against the problem; " + REQUESTED_TOOLS + "."),
+        ("Validate each new role against the problem and tools ({tools}).",
+         "Validate each new role against the problem; " + REQUESTED_TOOLS + "."),
         ("tools (from {tools} only)",
          "tools (prefer {tools}; anything else must appear under Capability Requests)"),
         ("4. Ensure no tool outside ({tools}) is referenced; remove any that are.",
-         "4. A tool outside ({tools}) may appear only if it is listed under Capability Requests. For each request, "
-         "say whether it is really needed and whether an existing tool is enough."),
+         "4. If a role uses a tool outside ({tools}) that is not under Capability Requests, tell the Planner to ADD a "
+         "Capability Request for it — do not tell it to remove the tool. " + KEEP_REQUESTS),
         ("4. Only use existing tools ({tools}); do NOT create new tools.",
          "4. Prefer existing tools ({tools}); a missing tool or skill is requested under Capability Requests, "
          "never invented silently."),
@@ -61,8 +71,8 @@ CAPABILITY_EDITS: dict[str, list[tuple[str, str]]] = {
         ("# Execution Plan\n{plan}\n",
          "# Execution Plan\n{plan}\n\n# Capability Requests\n{capability_requests}\n"),
         ("1. Only use existing tools {tools}; do NOT create new tools.",
-         "1. Prefer existing tools {tools}. For each Capability Request, say whether the plan really needs it or "
-         "whether an existing tool is enough."),
+         "1. Prefer existing tools {tools}. For each Capability Request, say whether the plan really needs that "
+         "ability. " + KEEP_REQUESTS),
     ],
 }
 
