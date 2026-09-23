@@ -512,10 +512,10 @@ var RENDER = {
   var stems = used.concat(sources);
   stems.forEach(function(s){ var p = P[s]; if(!p){ h += '<h4>' + esc(s) + '</h4><p class="warnline">unknown: prompt not found</p>'; return; }
    if(derivedFrom[s]) h += '<h4>Verbatim source ' + esc(s) + ' — NOT sent as-is</h4><p class="warnline">Kept byte-for-byte as copied from the source repo; the AI receives <code>' + esc(derivedFrom[s]) + '</code> (above) instead.</p>';
-   if(p.edits && p.edits.length) h += '<p class="muted">Edits applied at load time to <code>' + esc(p.derived_from) + '</code>:</p><table><tr><th>original wording</th><th>sent instead</th></tr>' + p.edits.map(function(e){ return '<tr><td class="mono">' + esc(e.old) + '</td><td class="mono">' + esc(e.new) + '</td></tr>'; }).join('') + '</table>';
    var t = esc(p.text).replace(/\$\{(\w+)\}/g, '<mark>${$1}</mark>').replace(/(^|[^{])\{(\w+)\}(?!\})/g, '$1<mark>{$2}</mark>');
    h += '<h4>' + esc(s) + '</h4><p class="muted mono">' + esc(p.header) + '</p><p>Placeholders: ' + (p.placeholders.length ? p.placeholders.map(function(x){ return '<mark class="mono">' + esc(x) + '</mark>'; }).join(' ') : 'none') + ' · ' + esc(p.style) + (p.note ? ' · ' + esc(p.note) : '') + '</p>';
-   h += '<p class="muted">Loaded by: ' + (p.loaded_by.length ? p.loaded_by.map(function(l){ return '<code>' + esc(shortKey(l.key)) + '</code> (' + fl(l) + ')'; }).join(', ') : 'nothing') + '</p><pre>' + t + '</pre>'; });
+   h += '<p class="muted">Loaded by: ' + (p.loaded_by.length ? p.loaded_by.map(function(l){ return '<code>' + esc(shortKey(l.key)) + '</code> (' + fl(l) + ')'; }).join(', ') : 'nothing') + '</p><pre>' + t + '</pre>';
+   if(p.edits && p.edits.length) h += '<p class="muted">Built from the verbatim <code>' + esc(p.derived_from) + '</code> with these edits (DEVIATION D19):</p><table><tr><th>original wording</th><th>sent instead</th></tr>' + p.edits.map(function(e){ return '<tr><td class="mono">' + esc(e.old) + '</td><td class="mono">' + esc(e.new) + '</td></tr>'; }).join('') + '</table>'; });
   var kind = b.ai, call = null; ['flat','boss_reviewers'].forEach(function(tp){ if(!call) (A.sample.runs[tp].calls||[]).forEach(function(c){ if(!call && c.kind === kind) call = c; }); });
   h += '<h4>Filled in, as sent in the sample run (first ' + esc(kind) + ' call)</h4>';
   if(call){ call.messages.forEach(function(m){ h += '<p class="muted mono">' + esc(m.role) + '</p><pre>' + esc(j(m.content, 6000)) + '</pre>'; }); h += '<p class="muted mono">reply</p><pre>' + esc(j(call.response, 3000)) + '</pre>'; }
