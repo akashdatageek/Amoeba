@@ -28,16 +28,17 @@ def original_parser_plan(context):                                # environment.
 def test_parsers_reproduce_environment_py_on_manager_output():
     raw = fx("manager_output_real")
     sec = parse_sections(raw)
+    # a real gemini-3.1-flash-lite Planner reply (see tests/fixtures/README.md); it wraps the whole answer in '---'
+    # lines copied from the FORMAT_EXAMPLE and adds the D19 Capability Requests section
     assert set(sec) >= {"Thought", "Question or Task", "Selected Roles List", "Created Roles List",
-                        "Execution Plan", "RoleFeedback", "PlanFeedback"}
-    # roles: original scans the whole text; ours the Created section — identical here (Selected is empty)
+                        "Execution Plan", "Capability Requests", "RoleFeedback", "PlanFeedback"}
+    # roles: original scans the whole text; ours the Created section — identical here (Selected is 'None')
     assert parse_role_blobs(sec["Created Roles List"]) == original_parser_roles(raw)
-    assert [r["name"] for r in parse_role_blobs(sec["Created Roles List"])] == \
-        ["Market Researcher", "Market Analyst", "Language Expert"]
+    assert [r["name"] for r in parse_role_blobs(sec["Created Roles List"])] == ["StringManipulator", "LanguageExpert"]
     # plan: original keeps a leading '' sentinel; ours does not, and adds the parsed bracket
     ours = parse_plan(sec["Execution Plan"])
     assert [text for _, text in ours] == original_parser_plan(raw)[1:]
-    assert [names for names, _ in ours] == [["Market Researcher"], ["Market Analyst"], ["Language Expert"]]
+    assert [names for names, _ in ours] == [["StringManipulator"], ["LanguageExpert"]]
 
 
 def test_parse_sections_strips_colon_and_first_fence():
