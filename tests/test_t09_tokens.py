@@ -30,3 +30,29 @@ def test_nothing_in_the_code_path_reads_a_budget():
             if re.search(r"budget", code, re.I):
                 offenders.append(f"{path.relative_to(ROOT)}:{n}")
     assert offenders == []
+
+
+def test_openai_client_drops_seed_when_the_endpoint_rejects_it():
+    # Gemini's OpenAI-compatible endpoint answers 400 'Unknown name "seed"'; retry once without it, then never send it
+    from amoeba.llm.client import OpenAICompatibleClient
+
+    class BadRequest(Exception):
+        status_code = 400
+
+    sent = []
+
+    class Completions:
+        def create(self, **kw):
+            sent.append(kw)
+            if "seed" in kw:
+                raise BadRequest('Error code: 400 - Unknown name "seed": Cannot find field.')
+            msg = type("M", (), {"content": "ok"})
+            return type("R", (), {"choices": [type("C", (), {"message": msg})], "model": "m",
+                                  "usage": type("U", (), {"prompt_tokens": 3, "completion_tokens": 1})})
+
+    c = OpenAICompatibleClient(base_url="http://x", api_key="k", model="m")
+    c._client = type("O", (), {"chat": type("Ch", (), {"completions": Completions()})})
+    r1 = c.chat("s", "u", seed=0)
+    r2 = c.chat("s", "u", seed=0)
+    assert (r1.content, r1.input_tokens, r1.output_tokens) == ("ok", 3, 1) and r2.content == "ok"
+    assert ["seed" in k for k in sent] == [True, False, False] and c.sends_seed is False
