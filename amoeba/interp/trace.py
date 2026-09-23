@@ -20,8 +20,9 @@ class TraceWriter:
     """Spans: invoke_workflow | invoke_agent | chat | execute_tool. Kept in memory and, if a path is given, appended
     to a JSONL file as they close."""
 
-    def __init__(self, path: str | Path | None = None, episode_id: str | None = None):
+    def __init__(self, path: str | Path | None = None, episode_id: str | None = None, log_content: bool = False):
         self.path = Path(path) if path else None
+        self.log_content = log_content   # also write each call's messages and reply (gen_ai.input/output.messages)
         self.episode_id = episode_id or str(uuid4())
         self.records: list[dict] = []
         self._fh = None
@@ -100,7 +101,11 @@ class TracedLLM:
         attrs = {"gen_ai.agent.id": agent_id, "gen_ai.agent.name": agent_name,
                  "gen_ai.request.model": self.llm.model}
         with self.trace.span("chat", attrs) as rec:
+            if self.trace.log_content:   # OTel GenAI opt-in content capture: the exact prompt, even if the call fails
+                rec["gen_ai.input.messages"] = [dict(m) for m in messages]
             resp = self.llm.chat_messages(messages, seed)
+            if self.trace.log_content:
+                rec["gen_ai.output.messages"] = [{"role": "assistant", "content": resp.content}]
             rec["gen_ai.request.model"] = resp.model or self.llm.model
             rec["gen_ai.usage.input_tokens"] = resp.input_tokens
             rec["gen_ai.usage.output_tokens"] = resp.output_tokens

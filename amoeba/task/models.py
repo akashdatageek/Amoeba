@@ -120,6 +120,21 @@ class DraftPlanStep(BaseModel):
     text: str  # the raw "[Role A, Role B]: STEP TEXT" line
 
 
+class DraftRound(BaseModel):
+    """One drafting round, as it happened: the Planner's reply (raw and parsed) and both observers' replies."""
+
+    index: int                                                    # 1-based
+    planner_raw: str = ""
+    roles: list[dict] = Field(default_factory=list)               # role blobs as parsed from this reply (before checks)
+    plan: list[dict] = Field(default_factory=list)                # [{"agents": [...], "text": "..."}] as written
+    capability_requests: list[CapabilityRequest] = Field(default_factory=list)   # this reply's own section (D19)
+    agent_observer_raw: str = ""
+    agent_observer: str = ""                                      # its Suggestions section
+    plan_observer_raw: str = ""
+    plan_observer: str = ""
+    consensus: bool = False                                       # both said "No Suggestions" this round (D2)
+
+
 class Draft(BaseModel):
     created_roles: list[DraftedRole]
     plan: list[DraftPlanStep]
@@ -129,6 +144,7 @@ class Draft(BaseModel):
     plan_feedback: str = ""
     raw_draft: str = ""
     capability_requests: list[CapabilityRequest] = Field(default_factory=list)
+    rounds: list[DraftRound] = Field(default_factory=list)     # every round, in order; the last one is raw_draft
     requests_proposed: int = 0                 # distinct capabilities asked for in round 1
     requests_dropped_by_observers: int = 0     # of those, how many the final draft no longer asks for
 

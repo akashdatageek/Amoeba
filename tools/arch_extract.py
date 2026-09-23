@@ -84,8 +84,9 @@ BOXES: list[dict] = [
          sentence="Every run saves five files: the team, the draft, a log line per AI call, the tools or skills the "
                   "team asked for, and a result summary.",
          what=["Each run gets its own folder named by a random run id.",
-               "It holds the team as built, the planner's final draft, the call log, the list of requested tools and "
-               "skills (empty when none), and a one-line result.",
+               "It holds the team as built, the planner's draft with every round (each planner reply and both "
+               "checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list "
+               "of requested tools and skills (empty when none), and a one-line result.",
                "These files are the raw material later phases will learn from."],
          proposes="Nothing.", disposes="Plain code writes the files, even when drafting fails.",
          anchors=["scripts/run_task.py::run_one"], guard_anchors=[]),
@@ -331,6 +332,8 @@ BOXES: list[dict] = [
          what=["Every AI call becomes one log line with the helper, model, tokens in and out, and time taken.",
                "Tool calls, each helper's turn and the whole run get their own lines too.",
                "Point events are logged too: capability_request, blocked and unknown_tool.",
+               "From the command line each AI line also holds the exact prompt sent and the reply received "
+               "(turn off with --no-log-content).",
                "Token counts are only recorded; no code reads them to stop a run."],
          proposes="Nothing.", disposes="Plain code writes the log.",
          anchors=["amoeba/interp/trace.py::TraceWriter", "amoeba/interp/trace.py::TraceWriter.event",
@@ -1164,7 +1167,8 @@ def data_types(F: Facts) -> dict:
             "AgentSpec": "amoeba/config/schema.py::AgentSpec", "Envelope": "amoeba/safety/envelope.py::Envelope",
             "Episode": "amoeba/task/models.py::Episode", "RunResult": "amoeba/task/models.py::RunResult",
             "_Msg": "amoeba/interp/runtime.py::_Msg", "ChatResponse": "amoeba/llm/client.py::ChatResponse",
-            "CapabilityRequest": "amoeba/task/models.py::CapabilityRequest"}
+            "CapabilityRequest": "amoeba/task/models.py::CapabilityRequest",
+            "DraftRound": "amoeba/task/models.py::DraftRound"}
     return {k: class_record(F, v) for k, v in keys.items() if v in F.defs}
 
 
