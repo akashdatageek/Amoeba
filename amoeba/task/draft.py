@@ -9,7 +9,7 @@ from amoeba.config.prompts import MANAGER_PREFIX, PROMPT, render
 from amoeba.interp.trace import TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient
 from amoeba.safety.envelope import Envelope
-from amoeba.task.models import CapabilityRequest, Draft, DraftedRole, DraftPlanStep, Task
+from amoeba.task.models import CapabilityRequest, Draft, DraftedRole, DraftPlanStep, DraftRound, Task
 from amoeba.task.parsers import MissingSections, parse_json_objects, parse_plan, parse_role_blobs
 
 PLANNER_SECTIONS = ["Selected Roles List", "Created Roles List", "Execution Plan", "RoleFeedback", "PlanFeedback"]
@@ -19,7 +19,11 @@ NO_SUGGESTIONS = "No Suggestions"
 
 
 class DraftError(RuntimeError):
-    pass
+    """Drafting failed. `rounds` holds every round up to the failure, so a failed draft is still on record."""
+
+    def __init__(self, message: str, rounds: list[DraftRound] | None = None):
+        super().__init__(message)
+        self.rounds = rounds if rounds is not None else []
 
 
 def parse_capability_requests(text: str) -> list[CapabilityRequest]:
@@ -81,11 +85,12 @@ def pick_summariser(roles: list[DraftedRole], plan: list[DraftPlanStep]) -> Draf
     return chosen
 
 
-def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int) -> tuple[str, dict[str, str]]:
+def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
+              log: list[DraftRound]) -> tuple[str, dict[str, str]]:
     try:
         return llm.chat_sections(MANAGER_PREFIX, user, keys, seed, agent_name=name)  # action.py:60 system = prefix
     except MissingSections as e:
-        raise DraftError(f"{name}: {e}") from e
+        raise DraftError(f"{name}: {e}", log) from e
 
 
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0) -> Draft:
@@ -97,13 +102,19 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     suggestions = ""                                  # manager.py:27 — what the planner sees: LATEST round only
     consensus, rounds, last = False, 0, None
     first_requests: list[CapabilityRequest] = []
+    log: list[DraftRound] = []                        # ours: the full record of every round (Draft.rounds)
     with trace.span("invoke_agent", {"gen_ai.agent.name": "planner"}):
         while not consensus and rounds < MAX_ROUNDS:  # manager.py:27,30
+            log.append(rec := DraftRound(index=rounds + 1))
             # state 0 — Planner (CreateRoles)
             raw, sec = _sections(tl, "planner", render(   # D19 variants: may request missing capabilities
                 PROMPT.autoagents_create_roles_d19, context=ctx, existing_roles="[]", tools=tools, history=history,
                 suggestions=suggestions, format_example=PROMPT.autoagents_create_roles_format_d19),
-                PLANNER_SECTIONS, seed)
+                PLANNER_SECTIONS, seed, log)
+            rec.planner_raw = raw
+            rec.roles = parse_role_blobs(sec["Created Roles List"]) + parse_role_blobs(sec["Selected Roles List"])
+            rec.plan = [{"agents": names, "text": text} for names, text in parse_plan(sec["Execution Plan"])]
+            rec.capability_requests = parse_capability_requests(sec.get(REQUESTS_SECTION, ""))
             requests_text = sec.get(REQUESTS_SECTION, "").strip() or "None"
             if rounds == 0:
                 first_requests = section_requests(sec, envelope)   # what the observers are shown first
@@ -112,28 +123,28 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
 
             # state 1 — Agent Observer (CheckRoles). Always runs: the guard at manager.py:34 is dead code.
             hist_roles = f"## Role Suggestions\n{sugg_roles}\n\n## Feedback\n{sec['RoleFeedback']}"   # manager.py:36
-            _, s = _sections(tl, "agent_observer", render(
+            rec.agent_observer_raw, s = _sections(tl, "agent_observer", render(
                 PROMPT.autoagents_check_roles_d19, capability_requests=requests_text,   # D19
                 question=task.prompt,   # original: regex on the planner's raw text (check_roles.py:95); DEVIATION D4
                 existing_roles="[]", selected_roles=sec["Selected Roles List"], created_roles=sec["Created Roles List"],
                 history=hist_roles, tools=tools,   # original TOOLS='None' for observers (check_roles.py:86); DEVIATION D4
-                format_example=PROMPT.autoagents_check_roles_format), ["Suggestions"], seed)
-            sr = s["Suggestions"]
+                format_example=PROMPT.autoagents_check_roles_format), ["Suggestions"], seed, log)
+            sr = rec.agent_observer = s["Suggestions"]
             sugg_roles += sr                          # manager.py:38
 
             # state 2 — Plan Observer (CheckPlans)
             hist_plan = f"## Plan Suggestions\n{sugg_plan}\n\n## Feedback\n{sec['PlanFeedback']}"
             # original passes sugg_roles here (manager.py:41) — a bug; fixed (DEVIATION D3)
-            _, s = _sections(tl, "plan_observer", render(
+            rec.plan_observer_raw, s = _sections(tl, "plan_observer", render(
                 PROMPT.autoagents_check_plans_d19, capability_requests=requests_text, context=task.prompt,   # D19
                 roles=sec["Selected Roles List"] + sec["Created Roles List"],   # check_plans.py:72-75
                 plan=sec["Execution Plan"], history=hist_plan, tools=tools,
-                format_example=PROMPT.autoagents_check_plans_format), ["Suggestions"], seed)
-            sp = s["Suggestions"]
+                format_example=PROMPT.autoagents_check_plans_format), ["Suggestions"], seed, log)
+            sp = rec.plan_observer = s["Suggestions"]
             sugg_plan += sp                           # manager.py:43
             suggestions = f"## Role Suggestions\n{sr}\n\n## Plan Suggestions\n{sp}"   # manager.py:45
             if NO_SUGGESTIONS in sr and NO_SUGGESTIONS in sp:
-                consensus = True
+                consensus = rec.consensus = True
             # original tests the CUMULATIVE strings (manager.py:47): one early "No Suggestions" sticks forever.
             # DEVIATION D2: current-round test (stricter, saner).
             rounds += 1
@@ -164,14 +175,14 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
         if who:                                       # original: empty match → UnboundLocalError (group.py:104)
             plan.append(DraftPlanStep(index=i, agent_names=who, text=text))
     if not plan:
-        raise DraftError("empty plan")
+        raise DraftError("empty plan", log)
     pick_summariser(roles, plan)                      # D20 (was: "the first role without tools")
     if not 2 <= len(roles) <= envelope.max_agents:
-        raise DraftError(f"roster size {len(roles)} outside 2..{envelope.max_agents}")
+        raise DraftError(f"roster size {len(roles)} outside 2..{envelope.max_agents}", log)
     proposed, dropped = request_survival(first_requests, requests)
     for q in requests:
         trace.event("capability_request", {"capability.name": q.name, "capability.kind": q.kind,
                                            "capability.for_role": q.for_role, "capability.source": q.source})
     return Draft(created_roles=roles, plan=plan, rounds_used=rounds, consensus=consensus,
-                 role_feedback=sugg_roles, plan_feedback=sugg_plan, raw_draft=raw, capability_requests=requests,
+                 role_feedback=sugg_roles, plan_feedback=sugg_plan, raw_draft=raw, capability_requests=requests, rounds=log,
                  requests_proposed=proposed, requests_dropped_by_observers=dropped)

@@ -418,6 +418,8 @@ Counts: solver ≤ 1 + max_inner_turns = **4** invocations, each critic ≤ 3. (
 One JSONL line per span: `{ts, episode_id, kind:"span", name: invoke_workflow|invoke_agent|chat|execute_tool, gen_ai.agent.id, gen_ai.agent.name, gen_ai.request.model, gen_ai.usage.input_tokens, gen_ai.usage.output_tokens, gen_ai.tool.name, latency_ms, error.type}`, plus point events `{kind:"event", name: capability_request|blocked|unknown_tool, …}` (D19, D21).
 `RunResult{run_id, task_id, team_id, topology, answer, error, score|None, total_tokens, latency_ms, n_llm_calls, draft_rounds, consensus, blocked_steps, requested_capabilities, requests_proposed, requests_dropped_by_observers}` → `runs/<run_id>/result.json` next to `team.yaml`, `plan.json`, `trace.jsonl`, `capability_requests.json` (every `CapabilityRequest{name, kind: tool|skill, for_role, what_it_does, input, output, example_input, example_output, source}` from the draft and the run; `[]` when none — recorded, never fetched).
 
+**What is kept of drafting.** `plan.json` is the `Draft` with `rounds: list[DraftRound]`, one per round: `index`, `planner_raw`, the `roles` and `plan` as parsed from that reply (before the checks), its `capability_requests`, `agent_observer_raw`/`agent_observer` (Suggestions), `plan_observer_raw`/`plan_observer`, and `consensus`. A failed draft is kept too: `DraftError.rounds` carries every round up to the failure, and `plan.json` becomes `{error, rounds}` (`draft_rounds` counts the rounds that completed). With content logging, each `chat` line in `trace.jsonl` also holds `gen_ai.input.messages` (the exact system and user prompt) and `gen_ai.output.messages` (the reply), the OpenTelemetry GenAI opt-in content fields. The CLI logs content by default (`--no-log-content` turns it off); `TraceWriter` and `run_one` default to off.
+
 ---
 
 ## 7. Prompt files (`config/prompts/`) — verbatim copies, one source header line each
@@ -467,6 +469,8 @@ A captured **real** AutoAgents Manager output (from the paper's example or a one
 python -m scripts.run_task "Reverse the string 'adaptive' then uppercase it" --topology flat
 python -m scripts.run_task --toy --seed 0 --n 20 --topology boss_reviewers
 python -m scripts.run_task ... --llm openai --base-url http://localhost:8000/v1 --model qwen2.5
+python -m scripts.run_task --toy --n 1 --no-log-content          # keep prompts and replies out of trace.jsonl
+python -m scripts.eval_draft --tasks tasks/draft_eval.jsonl --repeats 3 --llm openai   # Box 2 only
 ```
 
 ---

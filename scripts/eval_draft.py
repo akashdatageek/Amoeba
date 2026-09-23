@@ -3,13 +3,15 @@
     python -m scripts.eval_draft --tasks tasks/draft_eval.jsonl --repeats 3 --llm openai
     python -m scripts.eval_draft --tasks tasks/draft_eval.jsonl --repeats 3            # offline stand-in AI
 
-Writes runs/draft_eval/<stamp>/{attempts.jsonl, summary.csv, traces/, planner/, replies/}:
+Writes runs/draft_eval/<stamp>/{attempts.jsonl, summary.csv, drafts/, traces/, planner/, replies/}:
 - attempts.jsonl: one line per attempt: ok or the DraftError, rounds, consensus, roster, plan steps, capability
   requests, tokens and calls, and the roles the final planner reply holds under the copied AutoAgents regex vs a
   brace-balanced parse (what a D22 fix would recover).
 - summary.csv: one row per task plus an ALL row.
 - planner/: the final Planner reply of each attempt, so failures can be read.
 - replies/: every reply of each attempt (planner, agent_observer, plan_observer, repairs), in order.
+- drafts/: the Draft with its per-round record (Draft.rounds), or the error and the rounds of a failed one.
+- traces/: one line per call, with the full prompt and reply unless --no-log-content.
 """
 from __future__ import annotations
 
@@ -68,25 +70,34 @@ def would_pass(text: str, names: list[str], max_agents: int) -> bool:
     return 2 <= len(names) <= max_agents and bool(named)
 
 
-def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path, seed: int) -> dict:
+def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path, seed: int,
+            log_content: bool = True) -> dict:
     rec = Recording(llm)
-    trace = TraceWriter(out / "traces" / f"{task.id}.{rep}.jsonl", episode_id=f"{task.id}.{rep}")
+    trace = TraceWriter(out / "traces" / f"{task.id}.{rep}.jsonl", episode_id=f"{task.id}.{rep}",
+                        log_content=log_content)
     t0 = time.perf_counter()
     row = {"task_id": task.id, "family": task.family, "repeat": rep}
+    saved: dict = {}
     try:
         d = draft_team(task, rec, envelope, trace, seed)
         row.update(ok=True, error="", rounds=d.rounds_used, consensus=d.consensus, roster=len(d.created_roles),
                    plan_steps=len(d.plan), requests_final=len(d.capability_requests),
                    requests_proposed=d.requests_proposed, requests_dropped=d.requests_dropped_by_observers,
                    request_names=sorted({q.name for q in d.capability_requests}))
+        saved = d.model_dump(mode="json")
     except DraftError as e:
+        saved = {"error": f"draft: {e}", "rounds": [r.model_dump(mode="json") for r in e.rounds]}
         row.update(ok=False, error=f"draft: {e}", rounds=sum(k == "plan_observer" for k, _ in rec.replies), consensus=False,
                    roster=0, plan_steps=0, requests_final=0, requests_proposed=0, requests_dropped=0, request_names=[])
     except Exception as e:   # an API failure is recorded, not hidden, and does not stop the other attempts
+        saved = {"error": f"exception: {type(e).__name__}: {e}"}
         row.update(ok=False, error=f"exception: {type(e).__name__}: {str(e)[:160]}", rounds=0, consensus=False,
                    roster=0, plan_steps=0, requests_final=0, requests_proposed=0, requests_dropped=0, request_names=[])
     finally:
         trace.close()
+    (out / "drafts").mkdir(parents=True, exist_ok=True)   # the Draft (or the rounds of a failed one), as plan.json
+    (out / "drafts" / f"{task.id}.{rep}.json").write_text(json.dumps(saved, indent=1, ensure_ascii=False),
+                                                         encoding="utf-8")
     (out / "replies").mkdir(parents=True, exist_ok=True)   # every reply of the attempt, in order, to read the rounds
     (out / "replies" / f"{task.id}.{rep}.json").write_text(
         json.dumps([{"kind": k, "text": t} for k, t in rec.replies], ensure_ascii=False, indent=1), encoding="utf-8")
@@ -149,6 +160,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--model", default=None)
     p.add_argument("--api-key", default=None)
     p.add_argument("--out", default=None, help="default: runs/draft_eval/<UTC stamp>")
+    p.add_argument("--no-log-content", action="store_true", help="leave prompts and replies out of the traces")
     return p.parse_args(argv)
 
 
@@ -163,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     with open(out / "attempts.jsonl", "w", encoding="utf-8") as fh:
         for task in load_tasks(args.tasks):
             for rep in range(args.repeats):
-                row = attempt(task, rep, llm, envelope, out, args.seed)
+                row = attempt(task, rep, llm, envelope, out, args.seed, log_content=not args.no_log_content)
                 rows.append(row)
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
                 fh.flush()

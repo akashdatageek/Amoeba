@@ -31,13 +31,13 @@ from amoeba.tools.registry import ToolRegistry, default_registry
 
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
-            runs_dir: str | Path, seed: int = 0) -> RunResult:
+            runs_dir: str | Path, seed: int = 0, log_content: bool = False) -> RunResult:
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id)
+    trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id, log_content=log_content)
     t0 = time.perf_counter()
-    draft = ep = None
+    draft = ep = failed = None
     answer = error = None
     team_id = ""
     try:
@@ -49,9 +49,12 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         answer, error = ep.answer, ep.error
     except DraftError as e:
         error = f"draft: {e}"
+        failed = e
     finally:
-        (run_dir / "plan.json").write_text(
-            json.dumps(draft.model_dump() if draft else {}, indent=2, ensure_ascii=False), encoding="utf-8")
+        # a failed draft is kept too: the error and every round up to it
+        saved = draft.model_dump(mode="json") if draft else \
+            {"error": error, "rounds": [r.model_dump(mode="json") for r in (failed.rounds if failed else [])]}
+        (run_dir / "plan.json").write_text(json.dumps(saved, indent=2, ensure_ascii=False), encoding="utf-8")
         trace.close()
     # D19/D21: every tool or skill the team asked for and did not get — recorded, never fetched (always written)
     requested = (draft.capability_requests if draft else []) + (ep.requested_capabilities if ep else [])
@@ -61,7 +64,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         run_id=run_id, task_id=task.id, team_id=team_id, topology=topology, answer=answer, error=error,
         score=score(answer, task.ground_truth), total_tokens=trace.total_tokens,
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,
-        draft_rounds=draft.rounds_used if draft else 0, consensus=draft.consensus if draft else False,
+        draft_rounds=draft.rounds_used if draft else sum(bool(r.plan_observer_raw) for r in (failed.rounds if failed else [])), consensus=draft.consensus if draft else False,
         blocked_steps=ep.blocked_steps if ep else [], requested_capabilities=requested,
         requests_proposed=draft.requests_proposed if draft else 0,
         requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0)
@@ -91,6 +94,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--model", default=None, help="default: $AMOEBA_MODEL, else gpt-4o-mini")
     p.add_argument("--api-key", default=None)
     p.add_argument("--runs-dir", default="runs")
+    p.add_argument("--no-log-content", action="store_true",
+                   help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
     if not args.toy and not args.prompt:
         p.error("give a prompt or --toy")
@@ -105,7 +110,8 @@ def main(argv: list[str] | None = None) -> int:
     tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
     results = []
     for task in tasks:
-        r = run_one(task, args.topology, llm, envelope, tools, args.runs_dir, args.seed)
+        r = run_one(task, args.topology, llm, envelope, tools, args.runs_dir, args.seed,
+                    log_content=not args.no_log_content)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
