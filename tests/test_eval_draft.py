@@ -40,3 +40,16 @@ def test_main_writes_summary_csv(tmp_path, monkeypatch):
     rows = list(csv.DictReader(open(out / "summary.csv")))
     assert [r["task_id"] for r in rows] == ["t0", "ALL"] and rows[0]["attempts"] == "2" and rows[0]["ok"] == "2"
     assert len((out / "attempts.jsonl").read_text().splitlines()) == 2
+
+
+def test_draft_transcript_from_an_eval_folder(tmp_path, task, envelope):
+    from scripts.draft_transcript import transcript
+    approve = fx("observer_d24_approve")
+    attempt(task, 0, mock(planner=[fx("draft_d24_full")], agent_observer=[approve], plan_observer=[approve]),
+            envelope, tmp_path, 0, prompts="d24")
+    (tmp_path / "attempts.jsonl").write_text(json.dumps({"task_id": task.id, "model": "mock", "prompts": "d24"}) + "\n")
+    md = transcript(tmp_path, task.id)
+    assert "## Attempt 1: 1 rounds, consensus: yes" in md and "**Agent Observer verdict:** APPROVE" in md
+    assert "- R3: prototype and test the event schema in both databases" in md
+    assert "   - *depends_on*: 1, 2" in md and "**draft_quality:** 5 passed, 1 failed" in md
+    assert md.count("````text") == 3
