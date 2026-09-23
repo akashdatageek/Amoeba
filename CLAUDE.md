@@ -33,3 +33,10 @@ T1–T11 in spec §9 pass, and `python -m scripts.run_task --toy --seed 0 --n 20
 Viewing and change requests (no republishing anywhere):
 - The user opens `diagram/amoeba_phase1.html` directly from their checkout (a localhost server inside a remote container is not reachable to them; `python diagram/serve_edits.py diagram/amoeba_phase1.html` is only for a local checkout). After each milestone, say that the page has changed so they reload it.
 - With no server behind the page, "Send" queues requests in the browser and "Copy edits" puts the JSON lines on the clipboard. The user pastes those lines into the chat with **"apply pending edits"**; append them to `diagram/edits.jsonl` (`status: "pending"`), apply them following `diagram/CLAUDE_CODE_EDIT_LOOP.md`, and show the list of lines set to `applied` / `skipped` with their notes. Never apply requests without that phrase.
+
+## The as-built page
+`docs/arch/phase1.html` shows Phase 1 as the code actually is, compared with the plan page (`docs/arch/plan_phase1.html`). It is generated, never hand-edited:
+
+    python tools/arch_extract.py && python tools/arch_render.py
+
+The extractor reads the code with `ast`, runs pytest and one toy sample run, and writes `docs/arch/architecture.json` (the previous one is kept as `architecture.prev.json` for the "what changed" list). The renderer draws the page and fails if any file:line on it is missing from the commit it names. Box sentences live in the `BOXES` table in `tools/arch_extract.py`; change-request lines from this page (`"page": "Amoeba Phase 1 As-Built"`) are applied to the code or to that table, then the page is regenerated.
