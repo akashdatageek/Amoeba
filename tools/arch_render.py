@@ -503,8 +503,16 @@ var RENDER = {
   return h; },
  prompt: function(b){
   var h = '', P = {}; A.prompts.forEach(function(p){ P[p.stem] = p; });
-  var stems = [b.system].concat(b.prompts||[], b.derived_prompts||[]).filter(Boolean);
+  // the prompts actually sent come first; a verbatim source file that is edited at load time is shown after them,
+  // marked as not sent as-is, so its original wording is never mistaken for what the AI reads
+  var derivedFrom = {}; (b.derived_prompts||[]).forEach(function(s){ var p = P[s]; if(p && p.derived_from) derivedFrom[p.derived_from] = s; });
+  var used = [b.system].concat((b.prompts||[]).filter(function(s){ return !derivedFrom[s]; }), b.derived_prompts||[]).filter(Boolean);
+  var sources = (b.prompts||[]).filter(function(s){ return derivedFrom[s]; });
+  if(sources.length) h += '<p><b>Sent to the AI:</b> ' + used.map(function(s){ return '<code>' + esc(s) + '</code>'; }).join(', ') + '. The verbatim source files at the bottom are <b>not</b> sent as-is.</p>';
+  var stems = used.concat(sources);
   stems.forEach(function(s){ var p = P[s]; if(!p){ h += '<h4>' + esc(s) + '</h4><p class="warnline">unknown: prompt not found</p>'; return; }
+   if(derivedFrom[s]) h += '<h4>Verbatim source ' + esc(s) + ' — NOT sent as-is</h4><p class="warnline">Kept byte-for-byte as copied from the source repo; the AI receives <code>' + esc(derivedFrom[s]) + '</code> (above) instead.</p>';
+   if(p.edits && p.edits.length) h += '<p class="muted">Edits applied at load time to <code>' + esc(p.derived_from) + '</code>:</p><table><tr><th>original wording</th><th>sent instead</th></tr>' + p.edits.map(function(e){ return '<tr><td class="mono">' + esc(e.old) + '</td><td class="mono">' + esc(e.new) + '</td></tr>'; }).join('') + '</table>';
    var t = esc(p.text).replace(/\$\{(\w+)\}/g, '<mark>${$1}</mark>').replace(/(^|[^{])\{(\w+)\}(?!\})/g, '$1<mark>{$2}</mark>');
    h += '<h4>' + esc(s) + '</h4><p class="muted mono">' + esc(p.header) + '</p><p>Placeholders: ' + (p.placeholders.length ? p.placeholders.map(function(x){ return '<mark class="mono">' + esc(x) + '</mark>'; }).join(' ') : 'none') + ' · ' + esc(p.style) + (p.note ? ' · ' + esc(p.note) : '') + '</p>';
    h += '<p class="muted">Loaded by: ' + (p.loaded_by.length ? p.loaded_by.map(function(l){ return '<code>' + esc(shortKey(l.key)) + '</code> (' + fl(l) + ')'; }).join(', ') : 'nothing') + '</p><pre>' + t + '</pre>'; });
@@ -649,7 +657,8 @@ $('#asksend').onclick = function(){
 };
 function factsFor(b){
   var P = {}; A.prompts.forEach(function(p){ P[p.stem] = p; });
-  var stems = [b.system].concat(b.prompts||[], b.derived_prompts||[]).filter(Boolean);
+  var src = {}; (b.derived_prompts||[]).forEach(function(s){ if(P[s] && P[s].derived_from) src[P[s].derived_from] = s; });
+  var stems = [b.system].concat(b.derived_prompts||[], b.prompts||[]).filter(Boolean);
   return JSON.stringify({box: b.title, one_line: b.sentence, what_it_does: b.what, ai_may_suggest: b.proposes, code_checks: b.disposes,
     plan_status: b.status, plan_vs_built: (b.checks||[]).map(function(c){ return c.level + ': ' + c.msg; }),
     code: b.anchors.map(function(a){ return {kind: a.kind, name: a.name, at: a.path + ':' + a.line, signature: a.signature || null, doc: a.doc,
@@ -658,7 +667,7 @@ function factsFor(b){
     guards: (b.guards||[]).concat(b.output_guards||[]).map(function(g){ return {when: g.code, then: g.effect, at: g.path + ':' + g.line}; }),
     deviations_from_sources: (b.deviations||[]).map(function(d){ return d.text + ' (' + d.path + ':' + d.line + ')'; }),
     tests: (b.tests||[]).map(function(x){ return x.test.split('::').pop() + ' ' + x.outcome + ' (' + x.how + ')'; }),
-    prompts: stems.filter(function(s){ return P[s]; }).map(function(s){ return {file: s, text: P[s].text.slice(0, 2500)}; }),
+    prompts: stems.filter(function(s){ return P[s]; }).map(function(s){ return {file: s, sent_to_ai: !src[s], note: src[s] ? 'verbatim source, NOT sent as-is; the AI receives ' + src[s] : undefined, text: P[s].text.slice(0, 2500)}; }),
     sample_run: A.sample.runs[topo].per_box[b.id] || null}).slice(0, 40000);
 }
 $('#askstop').onclick = function(){ if(askCtl) askCtl.abort(); };
