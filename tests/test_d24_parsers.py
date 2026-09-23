@@ -69,3 +69,14 @@ def test_d22_applies_to_d19_as_well(task, envelope, trace):
     braces = fx("draft_round_ok").replace('"You are a Calculator.', '"You are a Calculator. Evaluate {expression}.')
     d = draft_team(task, mock(planner=[braces]), envelope, trace)
     assert [r.name for r in d.created_roles] == ["Calculator", "Writer"]
+
+
+def test_capability_request_without_the_d19_keys_is_kept():
+    from amoeba.task.draft import parse_capability_requests
+    [q] = parse_capability_requests('[{"request": "Database Sandbox Environment", "reason": "to run benchmarks"}]')
+    assert (q.name, q.what_it_does, q.source) == ("Database Sandbox Environment", "to run benchmarks", "planner")
+
+
+def test_d24_prompt_names_the_request_keys():
+    from amoeba.config.prompts import PROMPT
+    assert "request as a JSON\n   blob with keys: name, kind (tool|skill), for_role" in PROMPT.d24_create_team

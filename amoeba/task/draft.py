@@ -41,8 +41,12 @@ def parse_capability_requests(text: str) -> list[CapabilityRequest]:
     """The planner's "## Capability Requests" section (D19). 'None', prose or bad JSON yield nothing."""
     out: list[CapabilityRequest] = []
     for d in parse_json_objects(text or ""):
-        if str(d.get("name", "")).strip():
-            out.append(CapabilityRequest(**{**d, "name": str(d["name"]).strip(), "source": "planner"}))
+        # the D19 keys; a blob that names its capability "request"/"tool"/"capability" and gives a "reason" (as
+        # models write when not shown the keys) is kept too rather than dropped
+        name = next((str(d[k]).strip() for k in ("name", "request", "tool", "capability") if str(d.get(k, "")).strip()), "")
+        if name:
+            extra = {"what_it_does": d["reason"]} if "reason" in d and "what_it_does" not in d else {}
+            out.append(CapabilityRequest(**{**d, **extra, "name": name, "source": "planner"}))
     return out
 
 

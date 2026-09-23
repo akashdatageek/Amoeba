@@ -52,8 +52,9 @@ def draft_quality(d: Draft) -> dict:
                             "tools": (summ.tools + summ.missing_tools) if summ else [], "owns_steps": owns}
 
     # 5. every tool the draft names is installed or requested by the planner itself
-    asked = {q.name.lower() for q in d.capability_requests if q.source == "planner"}
-    unasked = sorted({t for x in d.created_roles for t in x.missing_tools if t.lower() not in asked})
+    key = lambda n: "".join(ch for ch in n.lower() if ch.isalnum())   # 'web_search' == 'Web search'
+    asked = {key(q.name) for q in d.capability_requests if q.source == "planner"}
+    unasked = sorted({t for x in d.created_roles for t in x.missing_tools if key(t) not in asked})
     checks["tools_accounted"] = {"ok": not unasked, "missing_not_requested_by_planner": unasked}
 
     # 6. a verification step: it re-covers requirements an earlier step covered, done by a role not in that step
