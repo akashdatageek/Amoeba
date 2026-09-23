@@ -5,6 +5,7 @@ import json
 from amoeba.task.models import Task
 from scripts.eval_draft import attempt, main, summarise
 from tests.conftest import fx, mock
+from tests.test_t04_draft import ONE_ROLE
 
 # a real failure shape: a {placeholder} inside a role prompt cuts the copied non-greedy regex short (environment.py:62)
 BRACES = fx("draft_round_ok").replace('"You are a Calculator.', '"You are a Calculator. Evaluate {expression}.')
@@ -15,15 +16,18 @@ def test_attempt_ok_and_regex_loss(tmp_path, task, envelope):
     assert ok["ok"] and ok["rounds"] == 1 and ok["roster"] == 2 and ok["calls"] == 3
     assert ok["roles_regex"] == ok["roles_balanced"] == ["Calculator", "Writer"] and ok["lost_to_regex"] == []
     assert ok["request_names"] == ["web_search"] and ok["ok_with_balanced_parse"]
-    bad = attempt(task, 1, mock(planner=[BRACES]), envelope, tmp_path, 0)
-    assert not bad["ok"] and bad["error"].startswith("draft: roster size 1")
-    assert bad["roles_regex"] == ["Writer"] and bad["lost_to_regex"] == ["Calculator"]
-    assert bad["ok_with_balanced_parse"] and bad["rounds"] == 1
+    # D22: the draft the copied regex would lose a role from is now accepted; the regex loss is still reported
+    braces = attempt(task, 1, mock(planner=[BRACES]), envelope, tmp_path, 0)
+    assert braces["ok"] and braces["roster"] == 2
+    assert braces["roles_regex"] == ["Writer"] and braces["lost_to_regex"] == ["Calculator"]
     assert (tmp_path / "planner" / f"{task.id}.1.txt").read_text() == BRACES
     assert [r["kind"] for r in json.loads((tmp_path / "replies" / f"{task.id}.1.json").read_text())] == \
         ["planner", "agent_observer", "plan_observer"]
-    rows = summarise([ok, bad])
-    assert rows[-1]["task_id"] == "ALL" and rows[-1]["ok"] == 1 and rows[-1]["ok_with_balanced_parse"] == 2
+    bad = attempt(task, 2, mock(planner=[ONE_ROLE]), envelope, tmp_path, 0)
+    assert not bad["ok"] and bad["error"].startswith("draft: roster size 1") and bad["rounds"] == 1
+    assert not bad["ok_with_balanced_parse"]
+    rows = summarise([ok, braces, bad])
+    assert rows[-1]["task_id"] == "ALL" and rows[-1]["ok"] == 2 and rows[-1]["ok_with_balanced_parse"] == 2
     assert rows[-1]["errors"] == "roster size 1 x1"
 
 

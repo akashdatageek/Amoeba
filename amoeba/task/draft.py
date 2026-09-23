@@ -10,7 +10,8 @@ from amoeba.interp.trace import TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient
 from amoeba.safety.envelope import Envelope
 from amoeba.task.models import CapabilityRequest, Draft, DraftedRole, DraftPlanStep, DraftRound, Task
-from amoeba.task.parsers import MissingSections, parse_json_objects, parse_plan, parse_role_blobs
+from amoeba.task.parsers import (MissingSections, parse_bullets, parse_json_objects, parse_plan, parse_plan_d24,
+                                 parse_requirements)
 
 PLANNER_SECTIONS = ["Selected Roles List", "Created Roles List", "Execution Plan", "RoleFeedback", "PlanFeedback"]
 # DEVIATION D24 (spec/BOX2_PROMPT_UPGRADE_D24.md): our prompts, one system message per role, more sections
@@ -59,11 +60,18 @@ def resolve_tools(roles: list[DraftedRole], envelope: Envelope,
     return out
 
 
+def role_blobs(sec: dict[str, str]) -> list[dict]:
+    """Role JSON blobs of one planner reply, Created then Selected. DEVIATION D22: brace-balanced parsing
+    (parse_json_objects) instead of AutoAgents' non-greedy regex (environment.py:62, kept as parse_role_blobs for T3),
+    which cut a blob short at the first '}' inside a role prompt ('{expression}') or a nested object."""
+    return parse_json_objects(sec.get("Created Roles List", "")) + parse_json_objects(sec.get("Selected Roles List", ""))
+
+
 def section_requests(sec: dict[str, str], envelope: Envelope) -> list[CapabilityRequest]:
     """The requests one planner reply makes: its Capability Requests part plus unregistered tools in its role blobs.
     Works on copies; used to see which round-1 requests survive to the final draft."""
     roles, seen = [], set()
-    for b in parse_role_blobs(sec.get("Created Roles List", "")) + parse_role_blobs(sec.get("Selected Roles List", "")):
+    for b in role_blobs(sec):
         name = str(b.get("name", "")).strip()
         if name and name not in seen:
             seen.add(name)
@@ -134,8 +142,10 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                     suggestions=suggestions, format_example=PROMPT.autoagents_create_roles_format_d19),
                     PLANNER_SECTIONS, seed, log)
             rec.planner_raw = raw
-            rec.roles = parse_role_blobs(sec["Created Roles List"]) + parse_role_blobs(sec["Selected Roles List"])
-            rec.plan = [{"agents": names, "text": text} for names, text in parse_plan(sec["Execution Plan"])]
+            rec.roles = role_blobs(sec)
+            rec.plan = ([{"agents": names, "text": text, **fields}
+                         for names, text, fields in parse_plan_d24(sec["Execution Plan"])] if d24 else
+                        [{"agents": names, "text": text} for names, text in parse_plan(sec["Execution Plan"])])
             rec.capability_requests = parse_capability_requests(sec.get(REQUESTS_SECTION, ""))
             requests_text = sec.get(REQUESTS_SECTION, "").strip() or "None"
             if rounds == 0:
@@ -188,8 +198,9 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
 
     # publish: the LAST draft is used whether or not consensus was reached (manager.py:52-59)
     raw, sec = last
-    blobs = parse_role_blobs(sec["Created Roles List"]) + parse_role_blobs(sec["Selected Roles List"])
-    steps = parse_plan(sec["Execution Plan"])
+    blobs = role_blobs(sec)                           # D22
+    steps = parse_plan_d24(sec["Execution Plan"]) if d24 else \
+        [(names, text, {}) for names, text in parse_plan(sec["Execution Plan"])]   # D24 keeps the step detail
 
     # DEVIATION D5 — deterministic post-checks; none exist in AutoAgents (all are prompt-only there):
     roles: list[DraftedRole] = []
@@ -204,13 +215,13 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     requests = resolve_tools(roles, envelope, parse_capability_requests(sec.get(REQUESTS_SECTION, "")))
     names = [r.name for r in roles]
     plan: list[DraftPlanStep] = []
-    for i, (bracket, text) in enumerate(steps):
+    for i, (bracket, text, fields) in enumerate(steps):
         who = [n for n in names if n in bracket]      # exact bracket match, roster order
         if not who:                                   # then the AutoAgents substring rule (group.py:61-64)
             head = text.split(":")[0]
             who = [n for n in names if n.replace("_", " ") in head]
         if who:                                       # original: empty match → UnboundLocalError (group.py:104)
-            plan.append(DraftPlanStep(index=i, agent_names=who, text=text))
+            plan.append(DraftPlanStep(index=i, agent_names=who, text=text, **fields))
     if not plan:
         raise DraftError("empty plan", log)
     pick_summariser(roles, plan)                      # D20 (was: "the first role without tools")
@@ -222,4 +233,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                                            "capability.for_role": q.for_role, "capability.source": q.source})
     return Draft(created_roles=roles, plan=plan, rounds_used=rounds, consensus=consensus,
                  role_feedback=sugg_roles, plan_feedback=sugg_plan, raw_draft=raw, capability_requests=requests, rounds=log,
-                 requests_proposed=proposed, requests_dropped_by_observers=dropped, prompts=prompts)
+                 requests_proposed=proposed, requests_dropped_by_observers=dropped, prompts=prompts,
+                 requirements=parse_requirements(sec.get("Requirements", "")) if d24 else {},
+                 givens=parse_bullets(sec.get("Givens and Assumptions", "")) if d24 else [],
+                 risks=parse_bullets(sec.get("Risks and Decisions", "")) if d24 else [])

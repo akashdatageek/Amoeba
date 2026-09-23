@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -98,6 +98,16 @@ class DraftedRole(BaseModel):
     prompt: str = ""
     missing_tools: list[str] = Field(default_factory=list)   # named by the planner, not registered (D19)
     is_summariser: bool = False   # the role that writes the final answer (D20); never inferred from "has no tools"
+    # D24 role record (empty for d19 drafts): what the role must know, receive, produce and how it is judged
+    seniority: str = ""
+    goal: str = ""
+    responsibilities: list[str] = Field(default_factory=list)
+    skills: list[str] = Field(default_factory=list)
+    inputs: list[str] = Field(default_factory=list)
+    outputs: list[Any] = Field(default_factory=list)          # {"artifact", "format"} objects or plain strings
+    success_criteria: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    covers: list[str] = Field(default_factory=list)            # requirement ids, e.g. ["R1", "R3"]
 
     @field_validator("tools", mode="before")
     @classmethod
@@ -108,16 +118,40 @@ class DraftedRole(BaseModel):
             return [v]
         return [str(t) for t in v]
 
-    @field_validator("description", "suggestions", "prompt", mode="before")
+    @field_validator("description", "suggestions", "prompt", "seniority", "goal", mode="before")
     @classmethod
     def _text(cls, v):
         return "" if v is None else str(v)
+
+    @field_validator("responsibilities", "skills", "inputs", "success_criteria", "constraints", "covers",
+                     mode="before")
+    @classmethod
+    def _str_list(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            return [v] if v.strip() else []
+        return [x if isinstance(x, str) else json.dumps(x, ensure_ascii=False) for x in v]
+
+    @field_validator("outputs", mode="before")
+    @classmethod
+    def _outputs(cls, v):
+        if v is None:
+            return []
+        return [v] if isinstance(v, (str, dict)) else list(v)
 
 
 class DraftPlanStep(BaseModel):
     index: int
     agent_names: list[str]
     text: str  # the raw "[Role A, Role B]: STEP TEXT" line
+    # D24 step detail, from the indented lines under the first line (empty for d19 drafts)
+    title: str = ""
+    covers: list[str] = Field(default_factory=list)
+    depends_on: list[int] = Field(default_factory=list)       # step numbers as written (1-based)
+    do: str = ""
+    output: str = ""
+    done_when: str = ""
 
 
 class DraftRound(BaseModel):
@@ -146,6 +180,9 @@ class Draft(BaseModel):
     capability_requests: list[CapabilityRequest] = Field(default_factory=list)
     rounds: list[DraftRound] = Field(default_factory=list)     # every round, in order; the last one is raw_draft
     prompts: str = "d19"                                           # which drafting prompts ran: d19 | d24 (D24)
+    requirements: dict[str, str] = Field(default_factory=dict)     # D24: {"R1": "...", ...} in order
+    givens: list[str] = Field(default_factory=list)                # D24: givens, derived numbers, assumptions
+    risks: list[str] = Field(default_factory=list)                 # D24: risks and decision points
     requests_proposed: int = 0                 # distinct capabilities asked for in round 1
     requests_dropped_by_observers: int = 0     # of those, how many the final draft no longer asks for
 
