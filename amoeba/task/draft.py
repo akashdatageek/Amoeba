@@ -24,6 +24,8 @@ D24_PLANNER_SECTIONS = ["Requirements", "Givens and Assumptions", "Selected Role
                         "Execution Plan", "Risks and Decisions", "RoleFeedback", "PlanFeedback"]
 REQUESTS_SECTION = "Capability Requests"   # D19: optional — never required, so a missing one costs no repair call
 MAX_ROUNDS = 3  # manager.py:27 num_steps = 3
+PLANNER_MAX_TOKENS = 8192     # D24: a detailed draft does not fit the client default (2048); a cut-off one fails
+OBSERVER_MAX_TOKENS = 2048    # to parse, and the trace flags any reply that stops at its limit
 NO_SUGGESTIONS = "No Suggestions"
 
 
@@ -127,7 +129,8 @@ def _observer_sections(llm: TracedLLM, name: str, user: str, seed: int, log: lis
     """D24 observers must write '## Verdict'. A missing one costs the usual single repair call; if the repaired
     reply still has none, its sections are used and the missing verdict counts as REVISE."""
     try:
-        return llm.chat_sections(system, user, ["Suggestions", "Verdict"], seed, agent_name=name)
+        return llm.chat_sections(system, user, ["Suggestions", "Verdict"], seed, agent_name=name,
+                                 max_tokens=OBSERVER_MAX_TOKENS)
     except MissingSections as e:
         if e.missing == ["Verdict"] and getattr(e, "raw", None) is not None:
             return e.raw, parse_sections(e.raw)
@@ -137,7 +140,8 @@ def _observer_sections(llm: TracedLLM, name: str, user: str, seed: int, log: lis
 def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
               log: list[DraftRound], system: str = MANAGER_PREFIX) -> tuple[str, dict[str, str]]:
     try:
-        return llm.chat_sections(system, user, keys, seed, agent_name=name)  # action.py:60 system = prefix (d19)
+        return llm.chat_sections(system, user, keys, seed, agent_name=name,   # action.py:60 system = prefix (d19)
+                                 max_tokens=PLANNER_MAX_TOKENS if name == "planner" else OBSERVER_MAX_TOKENS)
     except MissingSections as e:
         raise DraftError(f"{name}: {e}", log) from e
 

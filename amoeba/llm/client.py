@@ -21,18 +21,20 @@ class ChatResponse:
     output_tokens: int = 0
     model: str = ""
     latency_ms: int = 0
+    finish_reason: str | None = None   # "stop", "length" (hit max_tokens) ... as the API reported it
 
 
 class LLMClient(ABC):
     model: str = ""
 
-    def chat(self, system: str, user: str, seed: int = 0) -> ChatResponse:
+    def chat(self, system: str, user: str, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
         return self.chat_messages(
-            [{"role": "system", "content": system}, {"role": "user", "content": user}], seed
+            [{"role": "system", "content": system}, {"role": "user", "content": user}], seed, max_tokens=max_tokens
         )
 
     @abstractmethod
-    def chat_messages(self, messages: Messages, seed: int = 0) -> ChatResponse: ...
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
+        """max_tokens: this call's reply limit; None = the client's default (D24: the Planner asks for more)."""
 
 
 class OpenAICompatibleClient(LLMClient):
@@ -48,9 +50,10 @@ class OpenAICompatibleClient(LLMClient):
         self.max_tokens = max_tokens
         self.sends_seed = True   # False once the endpoint has rejected the field (Gemini's OpenAI layer does)
 
-    def chat_messages(self, messages: Messages, seed: int = 0) -> ChatResponse:
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
         t0 = time.perf_counter()
-        kw = dict(model=self.model, messages=messages, temperature=self.temperature, max_tokens=self.max_tokens)
+        kw = dict(model=self.model, messages=messages, temperature=self.temperature,
+                  max_tokens=max_tokens or self.max_tokens)
         try:
             resp = self._client.chat.completions.create(**kw, **({"seed": seed} if self.sends_seed else {}))
         except Exception as e:   # openai.BadRequestError; matched by status so the SDK's error classes don't matter
@@ -61,6 +64,7 @@ class OpenAICompatibleClient(LLMClient):
         usage = getattr(resp, "usage", None)
         return ChatResponse(
             content=resp.choices[0].message.content or "",
+            finish_reason=getattr(resp.choices[0], "finish_reason", None),
             input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
             output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
             model=getattr(resp, "model", None) or self.model,
@@ -127,13 +131,14 @@ class MockLLMClient(LLMClient):
             return self._responder(messages, seed)
         raise RuntimeError(f"MockLLMClient: no scripted response for kind={kind!r}")
 
-    def chat_messages(self, messages: Messages, seed: int = 0) -> ChatResponse:
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
         kind = self.classify(messages)
         content = self._next(kind, messages, seed)
-        self.calls.append({"kind": kind, "messages": messages, "seed": seed, "response": content})
+        self.calls.append({"kind": kind, "messages": messages, "seed": seed, "response": content,
+                           "max_tokens": max_tokens})
         n_in = sum(len(m.get("content", "")) for m in messages) // 4
         return ChatResponse(content=content, input_tokens=n_in, output_tokens=len(content) // 4,
-                            model=self.model)
+                            model=self.model, finish_reason="stop")
 
     def calls_of(self, kind: str) -> list[dict]:
         return [c for c in self.calls if c["kind"] == kind]

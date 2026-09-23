@@ -42,10 +42,10 @@ class Recording(LLMClient):
         self.inner, self.model, self.waits = inner, inner.model, waits
         self.replies: list[tuple[str, str]] = []
 
-    def chat_messages(self, messages: Messages, seed: int = 0) -> ChatResponse:
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
         for wait in (*self.waits, None):
             try:
-                resp = self.inner.chat_messages(messages, seed)
+                resp = self.inner.chat_messages(messages, seed, max_tokens=max_tokens)
                 break
             except Exception as e:
                 if wait is None or getattr(e, "status_code", None) not in RETRY_STATUS:
@@ -114,6 +114,7 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
         (out / "planner").mkdir(parents=True, exist_ok=True)
         (out / "planner" / f"{task.id}.{rep}.txt").write_text(final, encoding="utf-8")
     row["derived_correct"] = derived_correct(task, final)
+    row["truncated"] = len(trace.events("truncated"))   # D24: replies cut off at max_tokens
     regex = role_names(final, parse_role_blobs)
     balanced = role_names(final, parse_json_objects)
     row.update(tokens=trace.total_tokens, calls=trace.n_llm_calls, latency_ms=int((time.perf_counter() - t0) * 1000),

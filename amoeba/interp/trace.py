@@ -97,18 +97,25 @@ class TracedLLM:
         self.llm, self.trace, self.listener = llm, trace, listener or NoopListener()
 
     def chat_messages(self, messages: Messages, seed: int = 0, *, agent_id: str | None = None,
-                      agent_name: str | None = None) -> ChatResponse:
+                      agent_name: str | None = None, max_tokens: int | None = None) -> ChatResponse:
         attrs = {"gen_ai.agent.id": agent_id, "gen_ai.agent.name": agent_name,
-                 "gen_ai.request.model": self.llm.model}
+                 "gen_ai.request.model": self.llm.model, "gen_ai.request.max_tokens": max_tokens}
         with self.trace.span("chat", attrs) as rec:
             if self.trace.log_content:   # OTel GenAI opt-in content capture: the exact prompt, even if the call fails
                 rec["gen_ai.input.messages"] = [dict(m) for m in messages]
-            resp = self.llm.chat_messages(messages, seed)
+            resp = self.llm.chat_messages(messages, seed, max_tokens=max_tokens)
             if self.trace.log_content:
                 rec["gen_ai.output.messages"] = [{"role": "assistant", "content": resp.content}]
             rec["gen_ai.request.model"] = resp.model or self.llm.model
             rec["gen_ai.usage.input_tokens"] = resp.input_tokens
             rec["gen_ai.usage.output_tokens"] = resp.output_tokens
+            if resp.finish_reason:
+                rec["gen_ai.response.finish_reasons"] = [resp.finish_reason]
+            if resp.finish_reason == "length":   # D24: the reply was cut off at max_tokens — flag it
+                rec["amoeba.truncated"] = True
+                self.trace.event("truncated", {"gen_ai.agent.name": agent_name, "gen_ai.agent.id": agent_id,
+                                               "gen_ai.request.max_tokens": max_tokens,
+                                               "gen_ai.usage.output_tokens": resp.output_tokens})
         self.listener.on_llm_call(agent_id, resp)
         return resp
 
