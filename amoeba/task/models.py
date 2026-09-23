@@ -129,6 +129,8 @@ class Draft(BaseModel):
     plan_feedback: str = ""
     raw_draft: str = ""
     capability_requests: list[CapabilityRequest] = Field(default_factory=list)
+    requests_proposed: int = 0                 # distinct capabilities asked for in round 1
+    requests_dropped_by_observers: int = 0     # of those, how many the final draft no longer asks for
 
 
 class RunResult(BaseModel):
@@ -146,3 +148,5 @@ class RunResult(BaseModel):
     consensus: bool
     blocked_steps: list[dict] = Field(default_factory=list)
     requested_capabilities: list[CapabilityRequest] = Field(default_factory=list)
+    requests_proposed: int = 0
+    requests_dropped_by_observers: int = 0

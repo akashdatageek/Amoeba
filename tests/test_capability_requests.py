@@ -1,6 +1,7 @@
 """Capability requests (D19), the summariser flag (D20), BLOCKED and unknown tools at run time (D21)."""
 import json
 
+from amoeba.config.prompts import KEEP_REQUESTS
 from amoeba.interp.runtime import UNAVAILABLE, Interpreter
 from amoeba.task.draft import draft_team
 from amoeba.task.instantiate import instantiate
@@ -41,7 +42,7 @@ def test_planner_requests_section_is_parsed(task, envelope, trace):
     for kind in ("agent_observer", "plan_observer"):
         prompt = llm.calls_of(kind)[0]["messages"][1]["content"]
         assert "# Capability Requests\n" in prompt and '"name": "unit_conversion"' in prompt
-        assert "an existing tool is enough" in prompt
+        assert KEEP_REQUESTS in prompt and "whether an existing tool is enough" not in prompt
 
 
 def test_missing_requests_section_costs_no_repair_call(task, envelope, trace):
@@ -139,3 +140,48 @@ def test_run_one_writes_capability_requests_json(tmp_path, envelope, tools):
         ("web_search", "Researcher", "runtime_unknown_tool")]
     assert [q.model_dump() for q in r.requested_capabilities] == saved
     assert r.blocked_steps == [] and r.score == 1.0
+    saved = json.loads((tmp_path / r.run_id / "result.json").read_text())
+    assert (saved["requests_proposed"], saved["requests_dropped_by_observers"]) == (2, 0)
+
+
+# ---- observers keep requests (box comment a1a2f8ad) -----------------------------------------------------------
+def observer(first_reply):
+    """A scripted observer that does what its prompt says: without the keep-requests rule it tells the planner to
+    drop web_search (what the verbatim AutoAgents wording invites); with it, it critiques something else, then agrees."""
+    replies = []
+
+    def reply(messages, seed):
+        prompt = messages[-1]["content"]
+        if KEEP_REQUESTS not in prompt:
+            text = "## Suggestions\n1. Remove web_search from the Researcher; the calc tool is enough.\n"
+        else:
+            text = first_reply if not replies else fx("observer_no_suggestions")
+        replies.append(text)
+        return text
+    reply.replies = replies
+    return reply
+
+
+def test_observers_do_not_talk_the_planner_out_of_requests(task, envelope, trace):
+    agent_obs = observer("## Suggestions\n1. The Researcher's prompt should say where each figure came from.\n")
+    plan_obs = observer(fx("observer_no_suggestions"))
+    llm = mock(planner=[fx(CAP)], agent_observer=agent_obs, plan_observer=plan_obs)
+    d = draft_team(task, llm, envelope, trace)
+    assert d.rounds_used == 2
+    said = agent_obs.replies + plan_obs.replies
+    assert said and not any("remove web_search" in r.lower() for r in said)
+    prompt = llm.calls_of("agent_observer")[0]["messages"][1]["content"]
+    assert "tell the Planner to ADD a Capability Request for it" in prompt and "remove any that are" not in prompt
+    assert "or requested under Capability Requests" in prompt
+    assert ("web_search", "Researcher") in by_key(d.capability_requests)       # still requested in the final draft
+    assert (d.requests_proposed, d.requests_dropped_by_observers) == (2, 0)
+
+
+def test_requests_dropped_after_round_1_are_counted(task, envelope, trace):
+    dropped = (fx(CAP).replace('"tools": ["web_search", "calc"]', '"tools": ["calc"]')
+               .split("## Capability Requests:")[0] + "## Execution Plan:" + fx(CAP).split("## Execution Plan:")[1])
+    llm = mock(planner=[fx(CAP), dropped],
+               agent_observer=[fx("observer_complaint"), fx("observer_no_suggestions")])
+    d = draft_team(task, llm, envelope, trace)
+    assert d.rounds_used == 2 and d.capability_requests == []
+    assert (d.requests_proposed, d.requests_dropped_by_observers) == (2, 2)
