@@ -37,7 +37,7 @@ def test_boss_reviewers(task, envelope, trace):
     cfg = instantiate(draft, "boss_reviewers", task, envelope)
     assert validate(cfg, envelope) == []
     solver = cfg.agents[cfg.exit]
-    assert solver.name == "Writer" and solver.role == "solver" and solver.max_history == 5   # the no-tool role
+    assert solver.name == "Writer" and solver.role == "solver" and solver.max_history == 5   # the summariser (last step)
     assert solver.prompt.format == "history+append" and solver.prompt.system == "seed:agentverse_solver_prepend"
     critics = [a for a in cfg.agents.values() if a.role == "critic"]
     assert {c.name for c in critics} == {"Mathematician", "Auditor"} and all(c.max_history == 3 for c in critics)

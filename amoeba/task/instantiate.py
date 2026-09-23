@@ -24,6 +24,7 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
             # USER message as {role} (custom_action.py:148), as in the original
             prompt=PromptRef(system=GROUP_PREFIX, user="seed:autoagents_custom_action", format="sections"),
             tools=list(r.tools), suggestions=r.suggestions, role_prompt=r.prompt,
+            missing_tools=list(r.missing_tools), is_summariser=r.is_summariser,
             description=r.description or r.prompt,   # AgentVerse ${role_description}: description, else prompt
         )
     common = dict(team_id=str(uuid4()), name=f"team-{topology}-{task.id[:8]}",
@@ -37,7 +38,7 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
         cfg = TeamConfig(**common, topology="flat", agents=agents, edges=edges,
                          entry=list(plan[0].agent_ids), exit=plan[-1].agent_ids[-1], plan=plan)
     elif topology == "boss_reviewers":   # AgentVerse vertical-solver-first
-        solver_id = next(by_name[r.name] for r in draft.created_roles if not r.tools)   # the summariser
+        solver_id = next(by_name[r.name] for r in draft.created_roles if r.is_summariser)   # D20 flag, not "no tools"
         agents[solver_id].role = "solver"
         agents[solver_id].max_history = 5
         agents[solver_id].prompt = PromptRef(system="seed:agentverse_solver_prepend",

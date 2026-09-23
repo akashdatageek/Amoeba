@@ -34,9 +34,9 @@ Rule kept even in this small phase: **the LLM fills text fields; plain code owns
   │ truth    │   │  └──────────┘       └─────────────────┘                        │
   └──────────┘   │        │ final draft: roles[] + plan steps[]                    │
                  │        ▼                                                        │
-                 │  ┌──────────────────────────────┐   plain code: parse, filter   │
-                 │  │ instantiate() → TeamConfig    │   tools, cap 2–5, add        │
-                 │  └──────────────────────────────┘   summariser, resolve steps   │
+                 │  ┌──────────────────────────────┐   plain code: parse, record   │
+                 │  │ instantiate() → TeamConfig    │   missing tools, cap 2–5,    │
+                 │  └──────────────────────────────┘   flag summariser, resolve   │
                  └────────────────┬───────────────────────────────────────────────┘
                                   │ TeamConfig (agents with durable ids, edges, entry, exit)
                                   ▼
@@ -55,7 +55,7 @@ Rule kept even in this small phase: **the LLM fills text fields; plain code owns
                  │   writes trace.jsonl (token counts recorded, not enforced)      │
                  └────────────────┬───────────────────────────────────────────────┘
                                   ▼
-                        Answer + runs/<id>/{team.yaml, plan.json, trace.jsonl, result.json}
+                        Answer + runs/<id>/{team.yaml, plan.json, trace.jsonl, capability_requests.json, result.json}
 ```
 Purple boxes in the diagram (LLM): Planner, Agent Observer, Plan Observer, each helper. Green (code): instantiate, Interpreter, parsers, trace.
 
@@ -135,6 +135,8 @@ class AgentSpec(BaseModel):
     description: str = ""                  # AutoAgents role field (observers only) / AgentVerse role_description
     role_prompt: str = ""                  # AutoAgents drafted `prompt` field; rendered into {role} of the worker USER message (custom_action.py:148)
     max_history: int = 5                   # AgentVerse: solver 5, critic 3 (solver.py:23, critic.py:22)
+    missing_tools: list[str] = []          # tools the draft named that the registry lacks — recorded as capability requests (D19)
+    is_summariser: bool = False            # writes the final answer; boss_reviewers makes it the solver (D20)
     created_by: Literal["human","drafter"] = "drafter"
     temperature: float = 0.2
     max_tokens: int = 2048
@@ -274,8 +276,11 @@ def draft_team(task, llm, envelope, trace) -> Draft:
     roles = parse_role_blobs(sec["Created Roles List"]) + parse_role_blobs(sec["Selected Roles List"])
     steps = parse_plan(sec["Execution Plan"])
     # DEVIATION — deterministic post-checks; none exist in AutoAgents (all are prompt-only there):
-    for r in roles: r["tools"] = [t for t in r.get("tools", []) if t in envelope.allowed_tool_names]
-    if not any(not r["tools"] for r in roles): roles.append(LANGUAGE_EXPERT)          # summariser guaranteed by code
+    for r in roles:                                   # D19: an unregistered tool is recorded, never dropped silently
+        r["missing_tools"] = [t for t in r.get("tools", []) if t not in envelope.allowed_tool_names]
+        r["tools"] = [t for t in r.get("tools", []) if t in envelope.allowed_tool_names]
+    requests = parse_capability_requests(sec.get("Capability Requests", ""))   # optional section: no repair call
+    requests += [CapabilityRequest(name=t, for_role=r["name"], source="unregistered_tool") for r in roles for t in r["missing_tools"]]
     if not 2 <= len(roles) <= envelope.max_agents: raise DraftError("roster size")
     names = [r["name"] for r in roles]
     plan = []
@@ -283,7 +288,9 @@ def draft_team(task, llm, envelope, trace) -> Draft:
         who = [n for n in names if n in bracket] or [n for n in names if n.replace("_", " ") in text.split(":")[0]]  # exact, then AutoAgents substring rule
         if who: plan.append(PlanStep(index=i, agent_names=who, text=text))      # original: empty match → UnboundLocalError (group.py:104)
     if not plan: raise DraftError("empty plan")
-    return Draft(created_roles=[DraftedRole(**r) for r in roles], plan=plan, rounds_used=rounds, consensus=consensus,
+    pick_summariser(roles, plan)   # D20: the role flagged "is_summariser": true, else the last role of the last step
+    for q in requests: trace.event("capability_request", {...})
+    return Draft(capability_requests=requests, created_roles=[DraftedRole(**r) for r in roles], plan=plan, rounds_used=rounds, consensus=consensus,
                  role_feedback=sugg_roles, plan_feedback=sugg_plan)
 ```
 LLM calls: 3 per round, ≤9, plus at most one repair call per parse failure.
@@ -305,7 +312,7 @@ def instantiate(draft, topology, task, envelope) -> TeamConfig:
         entry = plan[0].agent_ids; exit = plan[-1].agent_ids[-1]
         cfg = TeamConfig(..., topology="flat", agents=agents, edges=edges, entry=entry, exit=exit, plan=plan)
     else:  # boss_reviewers — AgentVerse vertical-solver-first
-        solver_id = by_name[first role with no tools (the summariser)]
+        solver_id = by_name[the role with is_summariser]      # D20 (first written: the first role with no tools)
         agents[solver_id].role = "solver"; agents[solver_id].max_history = 5
         agents[solver_id].prompt = PromptRef(system="seed:agentverse_solver_prepend", user="seed:agentverse_solver_append", format="history+append")
         critics = [a for a in agents if a != solver_id]
@@ -349,7 +356,11 @@ def run_flat(cfg, task, ep):
                 sec = require(parse_sections(raw), ["CurrentStep", "Action", "ActionInput"])   # custom_action.py:79-83
                 act, inp = sec["Action"], sec["ActionInput"]
                 if act in agent.tools:  resp = self.tools.execute(act, inp, agent)   # :207 exact membership; original always calls SerpAPI here (DEVIATION: registry)
-                else:                   resp = f"\n{inp}\n"                          # :213 — Print, Final Output, unknown → echo
+                elif act or inp starts with "BLOCKED": record in ep.blocked_steps, trace event "blocked", helper done (D21)
+                elif act in ("Print", "") or "Final Output" in act: resp = f"\n{inp}\n"   # :213 echo
+                else:                   trace event "unknown_tool"; a notice instead of the echo; record a request (D21)
+                # the {suggestions} of a helper with missing_tools gains one line per tool:
+                # "Tool X is unavailable this run; proceed without it or answer BLOCKED: X"   (D21)
                 if "Final Output" in act:                                            # :215 substring
                     info = f"\n## Step\n{step.text}\n## Response\n{completed_steps}>>>> Final Output\n{resp}\n>>>>"   # :216
                     consensus[i] = 1; final_inp = inp
@@ -404,8 +415,8 @@ Counts: solver ≤ 1 + max_inner_turns = **4** invocations, each critic ≤ 3. (
 **Why not the generic edge executor from the full spec here?** With `join="all"` and a conditional `revise` edge, the solver would wait for every critic's edge, but agreeing critics send nothing, so it would never revise unless *all* critics disagreed. The two topology runners above are explicit and correct; the generic executor comes in Phase 3 with proper fan-in semantics, and these two become its regression tests.
 
 ### 6.3 Trace and run record
-One JSONL line per span: `{ts, episode_id, kind:"span", name: invoke_workflow|invoke_agent|chat|execute_tool, gen_ai.agent.id, gen_ai.agent.name, gen_ai.request.model, gen_ai.usage.input_tokens, gen_ai.usage.output_tokens, gen_ai.tool.name, latency_ms, error.type}`.
-`RunResult{run_id, task_id, team_id, topology, answer, error, score|None, total_tokens, latency_ms, n_llm_calls, draft_rounds, consensus}` → `runs/<run_id>/result.json` next to `team.yaml`, `plan.json`, `trace.jsonl`.
+One JSONL line per span: `{ts, episode_id, kind:"span", name: invoke_workflow|invoke_agent|chat|execute_tool, gen_ai.agent.id, gen_ai.agent.name, gen_ai.request.model, gen_ai.usage.input_tokens, gen_ai.usage.output_tokens, gen_ai.tool.name, latency_ms, error.type}`, plus point events `{kind:"event", name: capability_request|blocked|unknown_tool, …}` (D19, D21).
+`RunResult{run_id, task_id, team_id, topology, answer, error, score|None, total_tokens, latency_ms, n_llm_calls, draft_rounds, consensus, blocked_steps, requested_capabilities}` → `runs/<run_id>/result.json` next to `team.yaml`, `plan.json`, `trace.jsonl`, `capability_requests.json` (every `CapabilityRequest{name, kind: tool|skill, for_role, what_it_does, input, output, example_input, example_output, source}` from the draft and the run; `[]` when none — recorded, never fetched).
 
 ---
 
@@ -419,7 +430,7 @@ One JSONL line per span: `{ts, episode_id, kind:"span", name: invoke_workflow|in
 | `autoagents_custom_action.txt` + `_format.txt` | `.../custom_action.py:18-58`, `:60-77` | `{role} {context} {suggestions} {previous} {completed_steps} {tool} {format_example}` |
 | `agentverse_critic_prepend.txt`, `agentverse_critic_append.txt` | `AgentVerse/agentverse/tasks/tasksolving/pythoncalculator/config.yaml:37-64` (this config actually pairs vertical-solver-first with the `critic` parser; `brainstorming/config.yaml:44-62` has the same text but a different loop) | prepend `${role_description} ${task_description}`; append `${role_description}` |
 | `agentverse_solver_prepend.txt`, `agentverse_solver_append.txt` | `.../pythoncalculator/config.yaml:28-35` (generic; the humaneval one is code-specific and its `${former_solution}/${advice}` are commented out) | prepend `${task_description}` ("You are faced with the task … Below is the chat history among you and other teammates."); append has no placeholder ("Now you are going to give a new solution, based upon your former solution and the critics' opinions. Write the code step by step." — drop the last sentence for non-code tasks, DEVIATION) |
-| `language_expert.txt` | ours | — |
+| ~~`language_expert.txt`~~ | ours | removed with the code-appended summariser (D20) |
 
 Store PROMPT_TEMPLATE and FORMAT_EXAMPLE as separate files so T11 can compare each verbatim before rendering.
 
@@ -440,14 +451,14 @@ A captured **real** AutoAgents Manager output (from the paper's example or a one
 | T1 | schema roundtrip | `TeamConfig` → YAML → equal; `config_hash` stable under key reordering |
 | T2 | validate | rejects unknown edge id, tool outside allowlist, >5 agents, duplicate id, empty plan, boss_reviewers with 2 solvers |
 | T3 | parsers vs original | `parse_sections`/`parse_role_blobs`/`parse_plan` on `manager_output_real.txt` reproduce what `environment.py` would produce (minus the `''` sentinel); `parse_critic` passes: `"Action: Agree."`→agree, `"Action: Disagree\nAction Input: x\ny"`→(False,"x\ny"), `"Thought: ..\nAction: Agree"`→ParseError |
-| T4 | draft loop | rounds_used = 1 / 3 / 3 for the three fixtures; ≤9 chat spans; observers called every round; unknown tools stripped; summariser present; step with no matching role dropped |
+| T4 | draft loop | rounds_used = 1 / 3 / 3 for the three fixtures; ≤9 chat spans; observers called every round; unknown tools recorded as capability requests (not dropped); summariser flagged; step with no matching role dropped |
 | T5 | instantiate flat | edges follow plan order; entry = step-0 agents; exit = last agent of last step; UUIDs; `created_by="drafter"`; role prompt appears in the **user** message, system is `GROUP_PREFIX` |
-| T6 | instantiate boss_reviewers | solver = the no-tool role; review + conditional revise edges; solver max_history 5, critics 3 |
+| T6 | instantiate boss_reviewers | solver = the `is_summariser` role; review + conditional revise edges; solver max_history 5, critics 3 |
 | T7 | run_flat | answer = last step's Final Output ActionInput; the worker prompt's `{context}` is the step text and `{previous}` contains the task and every prior step's published message; hint text present in the 5th iteration's prompt only; `worker_never_final` → `error="max_turns"` |
 | T8 | run_boss_reviewers | with `critic_disagree` ×1 then `critic_agree`: solver invoked 2×; all-agree from the start: 1×; always-disagree: solver 4×, each critic 3×; critics' prompts contain the plan as an `assistant` history message `"[<solver name>]: ..."`; `critic_unparseable` counts as agree |
 | T9 | token accounting | every `chat` span has `gen_ai.usage.input_tokens/output_tokens`; `RunResult.total_tokens` equals their sum; nothing in the code path reads a budget |
-| T10 | end-to-end toy | `scripts/run_task.py --toy --seed 0 --n 20 --topology flat` and `... boss_reviewers` write `runs/<id>/` with four files and print mean score / tokens / calls |
-| T11 | prompts verbatim | each prompt file body equals the string sliced from the source file at the cited lines |
+| T10 | end-to-end toy | `scripts/run_task.py --toy --seed 0 --n 20 --topology flat` and `... boss_reviewers` write `runs/<id>/` with five files and print mean score / tokens / calls |
+| T11 | prompts verbatim | each prompt file body equals the string sliced from the source file at the cited lines; each D19 `*_d19` variant equals the file plus exactly its listed replacements |
 
 ---
 
@@ -482,13 +493,16 @@ python -m scripts.run_task ... --llm openai --base-url http://localhost:8000/v1 
 | D16 | AgentVerse `memory[-max_history:]` with `max_history=0` means *all* history (`[-0:]`) | 0 means no history | Python slice foot-gun |
 | D17 | §8: `manager_output_real.txt` = a captured Manager run | at first hand-composed in the `FORMAT_EXAMPLE` shape, then replaced by a real capture from the first live run | no API access during the offline build; provenance in `tests/fixtures/README.md` |
 | D18 | §3 layout as first written | plus `task/evaluate.py` and `llm/toy_mock.py` | the diagram already named `task/evaluate.py`; the CLI must run offline |
+| D19 | AutoAgents: "Use only existing tools {tools}; do NOT invent new tools" (create_roles, check_roles, check_plans); D5 then dropped unknown tool names silently | the prompts (as `*_d19` variants built at load time from the verbatim files, `CAPABILITY_EDITS`) say *prefer* existing tools and list a missing tool or skill under an optional `## Capability Requests` section as JSON `{name, kind: tool\|skill, for_role, what_it_does, input, output, example_input, example_output}`; observers see the requests and critique them (really needed? is an existing tool enough?). An unregistered tool in a role's `tools` becomes `missing_tools` + a recorded request. All go to `runs/<id>/capability_requests.json` and one `capability_request` trace event each | a planner forbidden to name what it lacks hides the gap; recording it is the input a later phase needs to fetch or build tools (not done in Phase 1) |
+| D20 | D5 as first built: the summariser is "the first role with no tools"; if none, code appends a Language Expert | `is_summariser` flag on the drafted role / `AgentSpec`: the role the planner marks `"is_summariser": true`, else the last role of the last plan step (= the flat exit). Nothing is appended; `language_expert.txt` removed | having no tools says nothing about who writes the answer; a tool-using last step was wrongly given a stranger as boss |
+| D21 | AutoAgents echoes any non-tool action (custom_action.py:213) | a helper with `missing_tools` gets one line per tool in `{suggestions}`: "Tool X is unavailable this run; proceed without it or answer BLOCKED: X". An action or input starting `BLOCKED` ends that helper's step, is recorded in `blocked_steps` and a `blocked` event; a blocked last step without a Final Output gives `error="blocked"`. An action naming a tool the helper lacks → `unknown_tool` event and a notice instead of the echo; if unregistered, a `runtime_unknown_tool` request. Print and Final Output still echo | a silent echo hides a missing capability; boss_reviewers ignores tools, as before |
 
 Everything else — caps 3/5/3, the "No Suggestions" and "Final Output" sentinels, the observer history strings, the 5th-iteration hint, the shared `completed_steps`, `{context}` = step text, role prompt in the user message, chat-history delivery of plans/reviews, silent-agree, solver ≤4 — follows the code.
 
 ---
 
 ## 12. Not built now → where it lands
-Memory lookup / reuse / save (Phase 2, reads `runs/`); LLM judge and non-toy scoring (Phase 2); **cost: per-helper token/usd budgets, `BudgetExceeded`, envelope charging, cost-matched reporting (Phase 3, alongside the monitor — add fields to `Limits`, no renames); Monitor (Phase 3 — add a no-op `listener` parameter to `Interpreter.__init__` now); diagnoser / architect / experimenter / gate / logbook / person (Phase 3–4); edit operators and the generic edge executor with fan-in (Phase 3; `run_flat`/`run_boss_reviewers` become its regression tests); web search tool (Phase 2); PreToolUse hook (Phase 4; `ToolRegistry.execute` is the single call site).
+Memory lookup / reuse / save (Phase 2, reads `runs/`); LLM judge and non-toy scoring (Phase 2); **cost: per-helper token/usd budgets, `BudgetExceeded`, envelope charging, cost-matched reporting (Phase 3, alongside the monitor — add fields to `Limits`, no renames); Monitor (Phase 3 — add a no-op `listener` parameter to `Interpreter.__init__` now); diagnoser / architect / experimenter / gate / logbook / person (Phase 3–4); edit operators and the generic edge executor with fan-in (Phase 3; `run_flat`/`run_boss_reviewers` become its regression tests); web search tool (Phase 2); fetching or creating the tools and skills listed in `capability_requests.json` (a later phase — Phase 1 only records them); PreToolUse hook (Phase 4; `ToolRegistry.execute` is the single call site).
 
 ---
 

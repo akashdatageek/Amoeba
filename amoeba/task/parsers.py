@@ -74,6 +74,38 @@ def parse_plan(text: str) -> list[tuple[list[str], str]]:
 # resolves names exactly, then falls back to the substring rule if exact fails.
 
 
+def parse_json_objects(text: str) -> list[dict]:
+    """Every top-level JSON object in `text`, found by brace balance (strings respected), so a request whose
+    example is itself an object survives. Ours, not AutoAgents': role blobs keep the original regex."""
+    out: list[dict] = []
+    depth, start, in_str, esc = 0, -1, False, False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"' and depth > 0:
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}" and depth > 0:
+            depth -= 1
+            if depth == 0:
+                try:
+                    d = json.loads(text[start:i + 1])
+                except json.JSONDecodeError:
+                    d = None   # skip, as with role blobs
+                if isinstance(d, dict) and d:
+                    out.append(d)
+    return out
+
+
 CRITIC_DEFAULT = "I think it is not correct. Please think carefully and improve it."
 
 

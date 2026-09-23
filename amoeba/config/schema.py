@@ -42,6 +42,8 @@ class AgentSpec(BaseModel):
     description: str = ""  # AutoAgents role field (observers only) / AgentVerse role_description
     role_prompt: str = ""  # AutoAgents drafted `prompt` field; rendered into {role} of the USER message (custom_action.py:148)
     max_history: int = 5  # AgentVerse: solver 5, critic 3 (solver.py:23, critic.py:22)
+    missing_tools: list[str] = Field(default_factory=list)   # tools the draft named that are not registered (D19)
+    is_summariser: bool = False   # writes the team's final answer; boss_reviewers makes it the solver (D20)
     created_by: Literal["human", "drafter"] = "drafter"
     temperature: float = 0.2
     max_tokens: int = 2048

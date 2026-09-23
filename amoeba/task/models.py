@@ -1,6 +1,8 @@
 """Data records passed between the three boxes."""
 from __future__ import annotations
 
+import json
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -44,11 +46,44 @@ class Episode(BaseModel):
     total_tokens: int = 0
     n_llm_calls: int = 0
     latency_ms: int = 0
+    blocked_steps: list[dict] = Field(default_factory=list)          # steps a helper answered BLOCKED: X (D21)
+    requested_capabilities: list[CapabilityRequest] = Field(default_factory=list)   # unknown tools chosen at run time
 
 
 class Answer(BaseModel):
     text: str | None
     error: str | None = None
+
+
+class CapabilityRequest(BaseModel):
+    """A tool or skill the team asked for that the registry does not have (D19). Recorded, never acted on."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+    kind: Literal["tool", "skill"] = "tool"
+    for_role: str = ""
+    what_it_does: str = ""
+    input: str = ""
+    output: str = ""
+    example_input: str = ""
+    example_output: str = ""
+    # planner = listed under "## Capability Requests"; unregistered_tool = a role's tools named it and the resolver
+    # found no such tool; runtime_unknown_tool = a helper chose it as an action during the run
+    source: Literal["planner", "unregistered_tool", "runtime_unknown_tool"] = "planner"
+
+    @field_validator("name", "for_role", "what_it_does", "input", "output", "example_input", "example_output",
+                     mode="before")
+    @classmethod
+    def _as_text(cls, v):
+        if v is None:
+            return ""
+        return v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _kind(cls, v):
+        return "skill" if str(v or "").strip().lower() == "skill" else "tool"
 
 
 class DraftedRole(BaseModel):
@@ -61,6 +96,8 @@ class DraftedRole(BaseModel):
     tools: list[str] = Field(default_factory=list)
     suggestions: str = ""
     prompt: str = ""
+    missing_tools: list[str] = Field(default_factory=list)   # named by the planner, not registered (D19)
+    is_summariser: bool = False   # the role that writes the final answer (D20); never inferred from "has no tools"
 
     @field_validator("tools", mode="before")
     @classmethod
@@ -91,6 +128,7 @@ class Draft(BaseModel):
     role_feedback: str = ""
     plan_feedback: str = ""
     raw_draft: str = ""
+    capability_requests: list[CapabilityRequest] = Field(default_factory=list)
 
 
 class RunResult(BaseModel):
@@ -106,3 +144,5 @@ class RunResult(BaseModel):
     n_llm_calls: int
     draft_rounds: int
     consensus: bool
+    blocked_steps: list[dict] = Field(default_factory=list)
+    requested_capabilities: list[CapabilityRequest] = Field(default_factory=list)

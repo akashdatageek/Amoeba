@@ -1,4 +1,5 @@
-"""CLI (spec §10): draft a team for a task, run it, write runs/<run_id>/{team.yaml, plan.json, trace.jsonl, result.json}.
+"""CLI (spec §10): draft a team for a task, run it, write runs/<run_id>/{team.yaml, plan.json, trace.jsonl,
+capability_requests.json, result.json}.
 
     python -m scripts.run_task "Reverse the string 'adaptive' then uppercase it" --topology flat
     python -m scripts.run_task --toy --seed 0 --n 20 --topology boss_reviewers
@@ -36,7 +37,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     run_dir.mkdir(parents=True, exist_ok=True)
     trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id)
     t0 = time.perf_counter()
-    draft = None
+    draft = ep = None
     answer = error = None
     team_id = ""
     try:
@@ -52,11 +53,16 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         (run_dir / "plan.json").write_text(
             json.dumps(draft.model_dump() if draft else {}, indent=2, ensure_ascii=False), encoding="utf-8")
         trace.close()
+    # D19/D21: every tool or skill the team asked for and did not get — recorded, never fetched (always written)
+    requested = (draft.capability_requests if draft else []) + (ep.requested_capabilities if ep else [])
+    (run_dir / "capability_requests.json").write_text(
+        json.dumps([q.model_dump() for q in requested], indent=2, ensure_ascii=False), encoding="utf-8")
     result = RunResult(
         run_id=run_id, task_id=task.id, team_id=team_id, topology=topology, answer=answer, error=error,
         score=score(answer, task.ground_truth), total_tokens=trace.total_tokens,
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,
-        draft_rounds=draft.rounds_used if draft else 0, consensus=draft.consensus if draft else False)
+        draft_rounds=draft.rounds_used if draft else 0, consensus=draft.consensus if draft else False,
+        blocked_steps=ep.blocked_steps if ep else [], requested_capabilities=requested)
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
     return result
 
