@@ -10,6 +10,7 @@ from amoeba.interp.trace import TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient
 from amoeba.safety.envelope import Envelope
 from amoeba.task.models import CapabilityRequest, Draft, DraftedRole, DraftPlanStep, DraftRound, Task
+from amoeba.task.quality import draft_quality
 import re
 
 from amoeba.task.parsers import (MissingSections, parse_bullets, parse_json_objects, parse_plan, parse_plan_d24,
@@ -263,9 +264,14 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     for q in requests:
         trace.event("capability_request", {"capability.name": q.name, "capability.kind": q.kind,
                                            "capability.for_role": q.for_role, "capability.source": q.source})
-    return Draft(created_roles=roles, plan=plan, rounds_used=rounds, consensus=consensus,
+    d = Draft(created_roles=roles, plan=plan, rounds_used=rounds, consensus=consensus,
                  role_feedback=sugg_roles, plan_feedback=sugg_plan, raw_draft=raw, capability_requests=requests, rounds=log,
                  requests_proposed=proposed, requests_dropped_by_observers=dropped, prompts=prompts,
                  requirements=parse_requirements(sec.get("Requirements", "")) if d24 else {},
                  givens=parse_bullets(sec.get("Givens and Assumptions", "")) if d24 else [],
                  risks=parse_bullets(sec.get("Risks and Decisions", "")) if d24 else [])
+    d.quality = draft_quality(d)                      # D24: measured, never used to reject (yet)
+    trace.event("draft_quality", {"amoeba.quality.passed": d.quality["passed"],
+                                  "amoeba.quality.failed": d.quality["failed"],
+                                  "amoeba.quality.failed_checks": ",".join(d.quality["failed_checks"]) or None})
+    return d

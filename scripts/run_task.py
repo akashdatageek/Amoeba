@@ -66,6 +66,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,
         draft_rounds=draft.rounds_used if draft else sum(bool(r.plan_observer_raw) for r in (failed.rounds if failed else [])), consensus=draft.consensus if draft else False,
         blocked_steps=ep.blocked_steps if ep else [], requested_capabilities=requested,
+        draft_quality=draft.quality if draft else {},
         requests_proposed=draft.requests_proposed if draft else 0,
         requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0)
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")

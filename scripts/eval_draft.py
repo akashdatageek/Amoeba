@@ -84,6 +84,13 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
                    plan_steps=len(d.plan), requests_final=len(d.capability_requests),
                    requests_proposed=d.requests_proposed, requests_dropped=d.requests_dropped_by_observers,
                    request_names=sorted({q.name for q in d.capability_requests}))
+        q = d.quality["checks"]
+        row.update(quality_passed=d.quality["passed"], quality_failed=d.quality["failed"],
+                   failed_checks=d.quality["failed_checks"], requirements=len(d.requirements),
+                   requirements_covered=q["requirements_covered"]["ok"],
+                   roles_defined_pct=round(100 * q["roles_fully_defined"]["defined"] / max(1, len(d.created_roles))),
+                   verification_step=q["verification_step"]["ok"], summariser_ok=q["summariser"]["ok"],
+                   last_verdicts=[d.rounds[-1].agent_verdict, d.rounds[-1].plan_verdict] if d.rounds else [])
         saved = d.model_dump(mode="json")
     except DraftError as e:
         saved = {"error": f"draft: {e}", "rounds": [r.model_dump(mode="json") for r in e.rounds]}
@@ -106,6 +113,7 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
     if final:
         (out / "planner").mkdir(parents=True, exist_ok=True)
         (out / "planner" / f"{task.id}.{rep}.txt").write_text(final, encoding="utf-8")
+    row["derived_correct"] = derived_correct(task, final)
     regex = role_names(final, parse_role_blobs)
     balanced = role_names(final, parse_json_objects)
     row.update(tokens=trace.total_tokens, calls=trace.n_llm_calls, latency_ms=int((time.perf_counter() - t0) * 1000),
@@ -116,18 +124,30 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
     return row
 
 
+def derived_correct(task: Task, reply: str) -> bool | None:
+    """Task-specific arithmetic check (D24 §5): every expected derived number appears in the final Planner reply, in
+    any of its listed spellings (spaces and case ignored). None when the task lists none."""
+    wanted = task.expected.get("derived", [])
+    if not wanted or not reply:
+        return None if not wanted else False
+    flat = "".join(reply.lower().split())
+    return all(any("".join(alt.lower().split()) in flat for alt in alts) for alts in wanted)
+
+
 def summarise(rows: list[dict]) -> list[dict]:
     def agg(label: str, family: str, rs: list[dict]) -> dict:
         n = len(rs)
         ok = [r for r in rs if r["ok"]]
         mean = lambda xs: round(sum(xs) / len(xs), 2) if xs else ""
+        rate = lambda xs: (lambda v: round(sum(v) / len(v), 2) if v else "")([1.0 if x else 0.0 for x in xs if x is not None])
         errors: dict[str, int] = {}
         for r in rs:
             if not r["ok"]:
                 key = r["error"].split(" outside")[0].split(":")[1].strip() if r["error"].startswith("draft:") \
                     else r["error"].split(":")[0]
                 errors[key] = errors.get(key, 0) + 1
-        return {"task_id": label, "family": family, "attempts": n, "ok": len(ok), "ok_rate": round(len(ok) / n, 2),
+        return {"task_id": label, "family": family, "prompts": ",".join(sorted({r.get("prompts", "") for r in rs})),
+                "model": ",".join(sorted({r.get("model", "") for r in rs})), "attempts": n, "ok": len(ok), "ok_rate": round(len(ok) / n, 2),
                 "ok_with_balanced_parse": sum(r["ok_with_balanced_parse"] for r in rs),
                 "attempts_losing_roles_to_regex": sum(bool(r["lost_to_regex"]) for r in rs),
                 "mean_rounds_ok": mean([r["rounds"] for r in ok]),
@@ -138,6 +158,14 @@ def summarise(rows: list[dict]) -> list[dict]:
                 "requests_dropped": sum(r["requests_dropped"] for r in rs),
                 "request_names": " ".join(sorted({x for r in rs for x in r["request_names"]})),
                 "mean_tokens": mean([r["tokens"] for r in rs]), "mean_calls": mean([r["calls"] for r in rs]),
+                # D24 draft_quality (accepted drafts; a d19 draft has no requirement ids, so those are blank)
+                "requirements_covered_rate": rate([r.get("requirements_covered") for r in ok]),
+                "mean_roles_defined_pct": mean([r["roles_defined_pct"] for r in ok if "roles_defined_pct" in r]),
+                "verification_step_rate": rate([r.get("verification_step") for r in ok]),
+                "summariser_ok_rate": rate([r.get("summariser_ok") for r in ok]),
+                "derived_correct_rate": rate([r.get("derived_correct") for r in rs]),
+                "mean_requests_final": mean([r["requests_final"] for r in rs]),
+                "truncated_calls": sum(r.get("truncated", 0) for r in rs),
                 "errors": "; ".join(f"{k} x{v}" for k, v in sorted(errors.items()))}
 
     order = list(dict.fromkeys(r["task_id"] for r in rows))

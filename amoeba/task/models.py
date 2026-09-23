@@ -14,6 +14,7 @@ class Task(BaseModel):
     family: str = "freeform"
     ground_truth: str | None = None  # toy tasks only
     tags: list[str] = Field(default_factory=list)
+    expected: dict = Field(default_factory=dict)   # eval only, e.g. {"derived": [["10 TB", "10,000 GB"]]} (D24)
 
 
 class Message(BaseModel):
@@ -187,6 +188,7 @@ class Draft(BaseModel):
     requirements: dict[str, str] = Field(default_factory=dict)     # D24: {"R1": "...", ...} in order
     givens: list[str] = Field(default_factory=list)                # D24: givens, derived numbers, assumptions
     risks: list[str] = Field(default_factory=list)                 # D24: risks and decision points
+    quality: dict = Field(default_factory=dict)                    # D24 draft_quality checks (recorded, not enforced)
     requests_proposed: int = 0                 # distinct capabilities asked for in round 1
     requests_dropped_by_observers: int = 0     # of those, how many the final draft no longer asks for
 
@@ -208,3 +210,4 @@ class RunResult(BaseModel):
     requested_capabilities: list[CapabilityRequest] = Field(default_factory=list)
     requests_proposed: int = 0
     requests_dropped_by_observers: int = 0
+    draft_quality: dict = Field(default_factory=dict)   # D24 checks on the draft (recorded, not enforced)
