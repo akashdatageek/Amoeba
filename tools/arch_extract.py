@@ -64,8 +64,9 @@ BOXES: list[dict] = [
                "The last draft is used whether or not the checkers agreed.",
                "Plain code then cleans the draft, applies the rules and builds the team."],
          proposes="Helper names, descriptions, tools, instructions and the step plan.",
-         disposes="Unreadable entries are skipped, unknown tools removed, a summariser added if missing, team size "
-                  "held to the allowed range, steps naming nobody dropped, and the team must pass every validation rule.",
+         disposes="Unreadable entries are skipped, tools we don't have are recorded as requests (never used), the "
+                  "summariser is flagged, team size held to the allowed range, steps naming nobody dropped, and the team "
+                  "must pass every validation rule.",
          anchors=["amoeba/task/draft.py::draft_team", "amoeba/task/instantiate.py::instantiate"], guard_anchors=[]),
     dict(id="ov_run", view="overview", title="3 · Team runs the task", kind="top", opens="run",
          plan="3 · Team runs the task",
@@ -80,9 +81,11 @@ BOXES: list[dict] = [
                   "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers"], guard_anchors=[]),
     dict(id="ov_leave", view="overview", title="What every run leaves behind", kind="data",
          plan="What every run leaves behind",
-         sentence="Every run saves four files: the team, the draft, a log line per AI call, and a result summary.",
+         sentence="Every run saves five files: the team, the draft, a log line per AI call, the tools or skills the "
+                  "team asked for, and a result summary.",
          what=["Each run gets its own folder named by a random run id.",
-               "It holds the team as built, the planner's final draft, the call log and a one-line result.",
+               "It holds the team as built, the planner's final draft, the call log, the list of requested tools and "
+               "skills (empty when none), and a one-line result.",
                "These files are the raw material later phases will learn from."],
          proposes="Nothing.", disposes="Plain code writes the files, even when drafting fails.",
          anchors=["scripts/run_task.py::run_one"], guard_anchors=[]),
@@ -127,12 +130,15 @@ BOXES: list[dict] = [
                "and a numbered plan saying which helper does which step.",
                "From the second round on it also sees its own last draft and the checkers' latest suggestions.",
                "Its reply must contain five labelled parts; see Split sections for what happens if one is missing.",
+               "It is told to prefer the tools that exist; a tool or skill it needs but we lack goes in an optional "
+               "sixth part, Capability Requests, which costs no retry when absent.",
                "At most three rounds are run."],
          proposes="Helpers (name, description, tools, suggestions, instructions), the step plan, and replies to the "
                   "checkers' feedback.",
          disposes="Nothing is accepted yet: the draft goes to the two checkers, and only the last draft is cleaned "
                   "and checked by plain code after the loop.",
          prompts=["autoagents_create_roles", "autoagents_create_roles_format"], system="MANAGER_PREFIX",
+         derived_prompts=["autoagents_create_roles_d19", "autoagents_create_roles_format_d19"],
          output_checks=["amoeba/task/draft.py::_sections", "amoeba/interp/trace.py::TracedLLM.chat_sections", "amoeba/task/parsers.py::require"], ai_entry="amoeba/task/draft.py::_sections",
          anchors=[("amoeba/task/draft.py::draft_team", None, "# state 1")]),
     dict(id="split", view="plan", title="Split sections", kind="code", plan="Split sections",
@@ -146,22 +152,26 @@ BOXES: list[dict] = [
                   "amoeba/task/draft.py::_sections"]),
     dict(id="agent_obs", view="plan", title="Agent Observer", kind="llm", plan="Agent Observer", ai="agent_observer",
          sentence="A second AI checks the list of helpers and replies with suggestions, or 'No Suggestions'.",
-         what=["The checking AI reads the job, the drafted helpers and every earlier helper suggestion.",
+         what=["The checking AI reads the job, the drafted helpers, the capability requests and every earlier "
+               "helper suggestion; it says whether each request is really needed or an existing tool is enough.",
                "It lists problems with the helpers, or writes 'No Suggestions'.",
                "It runs every round, even after it has once agreed."],
          proposes="Suggestions about the helpers, or 'No Suggestions'.",
          disposes="Plain code only looks for the words 'No Suggestions'; the text itself goes back to the planner.",
          prompts=["autoagents_check_roles", "autoagents_check_roles_format"], system="MANAGER_PREFIX",
+         derived_prompts=["autoagents_check_roles_d19"],
          output_checks=["amoeba/task/draft.py::_sections", "amoeba/interp/trace.py::TracedLLM.chat_sections", "amoeba/task/parsers.py::require"], ai_entry="amoeba/task/draft.py::_sections",
          anchors=[("amoeba/task/draft.py::draft_team", "# state 1", "# state 2")]),
     dict(id="plan_obs", view="plan", title="Plan Observer", kind="llm", plan="Plan Observer", ai="plan_observer",
          sentence="A third AI checks the step plan; the loop stops when both checkers say 'No Suggestions' in one round.",
-         what=["The plan-checking AI reads the job, the helpers, the step plan and every earlier plan suggestion.",
+         what=["The plan-checking AI reads the job, the helpers, the step plan, the capability requests and every "
+               "earlier plan suggestion.",
                "It lists problems with the plan, or writes 'No Suggestions'.",
                "Drafting stops early only when both checkers wrote 'No Suggestions' in the same round."],
          proposes="Suggestions about the plan, or 'No Suggestions'.",
          disposes="Plain code decides whether the round reached agreement.",
          prompts=["autoagents_check_plans", "autoagents_check_plans_format"], system="MANAGER_PREFIX",
+         derived_prompts=["autoagents_check_plans_d19"],
          output_checks=["amoeba/task/draft.py::_sections", "amoeba/interp/trace.py::TracedLLM.chat_sections", "amoeba/task/parsers.py::require"], ai_entry="amoeba/task/draft.py::_sections",
          anchors=[("amoeba/task/draft.py::draft_team", "# state 2", "# publish")]),
     dict(id="envelope", view="plan", title="Allowed tools and team size", kind="code", plan=None,
@@ -173,16 +183,18 @@ BOXES: list[dict] = [
          anchors=["amoeba/safety/envelope.py::Envelope"]),
     dict(id="checks", view="plan", title="Plain-code checks on the final draft", kind="code",
          plan="Plain-code checks on the final draft",
-         sentence="Throws out broken or nameless helper entries and unknown tools, adds a summariser if missing, "
-                  "and drops steps that name nobody.",
+         sentence="Throws out broken or nameless helper entries, records tools we lack instead of dropping them, "
+                  "flags the summariser, and drops steps that name nobody.",
          what=["Reads the helper records and the numbered steps out of the last draft.",
-               "Skips records that are not valid, have no name, or repeat a name; removes tools not on the allowed list.",
-               "Adds a tool-free summariser if no helper is tool-free, then requires a team size in the allowed range.",
+               "Skips records that are not valid, have no name, or repeat a name; tools we lack go to the tool "
+               "resolver below.",
+               "Flags the summariser: the helper the planner marked, else the last helper of the last step (having "
+               "no tools no longer decides it; nothing is appended). Then requires a team size in the allowed range.",
                "Matches each step's names to helpers (exact first, then by part of the name) and drops steps that match "
                "nobody; no steps left means drafting failed."],
          proposes="The final draft text.",
          disposes="Everything listed here; the original project trusted the AI for all of it.",
-         anchors=[("amoeba/task/draft.py::draft_team", "# publish", None), "amoeba/task/draft.py::language_expert",
+         anchors=[("amoeba/task/draft.py::draft_team", "# publish", None), "amoeba/task/draft.py::pick_summariser",
                   "amoeba/task/parsers.py::parse_role_blobs", "amoeba/task/parsers.py::parse_plan",
                   "amoeba/task/models.py::DraftedRole"]),
     dict(id="instantiate", view="plan", title="Build the team (instantiate)", kind="code",
@@ -191,11 +203,35 @@ BOXES: list[dict] = [
                   "if any rule is broken.",
          what=["Each helper gets a permanent id and its drafted instructions, tools and suggestions.",
                "Step by step: every helper of one step hands on to every helper of the next.",
-               "One writer with reviewers: the first tool-free helper writes, all others review.",
+               "One writer with reviewers: the helper flagged as summariser writes, all others review.",
                "The finished team is checked against every validation rule; any failure stops the run."],
          proposes="Nothing new; it works from the cleaned draft.",
          disposes="Plain code builds and validates the team.",
          anchors=["amoeba/task/instantiate.py::instantiate", "amoeba/config/validate.py::validate"]),
+    dict(id="resolver", view="plan", title="Tool resolver", kind="code", plan=None,
+         sentence="Keeps the tools that exist; a tool we lack is recorded as a request, never used and never silently "
+                  "dropped.",
+         what=["After drafting: each helper's tools are split into the ones the registry has (kept) and the rest "
+               "(its missing tools). Each missing one becomes a capability request unless the planner already "
+               "asked for it.",
+               "The planner's own Capability Requests part is read as JSON; entries without a name are ignored.",
+               "During the run: a helper with missing tools is told 'Tool X is unavailable this run; proceed "
+               "without it or answer BLOCKED: X'. BLOCKED ends that helper's step and is logged.",
+               "A helper that names a tool it does not have gets a notice instead of an echo; the log gets an "
+               "'unknown_tool' line and, if no such tool exists at all, a request is recorded.",
+               "Nothing is fetched or built: that is a later phase."],
+         proposes="Tool names in helper records, the Capability Requests part, and helper actions.",
+         disposes="Plain code decides what is registered; the AI can only ask.",
+         anchors=["amoeba/task/draft.py::resolve_tools", "amoeba/task/draft.py::parse_capability_requests",
+                  "amoeba/interp/runtime.py::Interpreter._dispatch", "amoeba/interp/runtime.py::with_unavailable"]),
+    dict(id="capreq", view="plan", title="Capability requests", kind="data", plan=None,
+         sentence="Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
+         what=["One record per request: name, tool or skill, for which helper, what it does, input, output and an "
+               "example of each.",
+               "Where it came from: the planner's list, a helper's tool list, or an action during the run.",
+               "Also in result.json (with the steps that answered BLOCKED) and as one log line each."],
+         proposes="Nothing.", disposes="Plain code writes the file, empty when nothing was asked for.",
+         anchors=["amoeba/task/models.py::CapabilityRequest", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="teamconfig", view="plan", title="TeamConfig", kind="data", plan="TeamConfig",
          sentence="The finished team written down as data: who exists, what each may use and who hands work to whom.",
          what=["The team as a data record: helpers, connections, where work starts and which helper gives the answer.",
@@ -226,6 +262,8 @@ BOXES: list[dict] = [
          sentence="The AI helper for a step reads the step, the earlier results and a shared scratchpad, then picks one action.",
          what=["Each helper named in the step gets its own drafted instructions plus the step, earlier results and "
                "a scratchpad shared with the other helpers of that step.",
+               "If its role named a tool we lack, one line per such tool says it is unavailable this run and that "
+               "it may answer BLOCKED.",
                "It must reply with a current sub-step, one action and that action's input.",
                "The action is a tool name, 'Print', or 'Final Output'."],
          proposes="One action and its input per turn.",
@@ -233,18 +271,22 @@ BOXES: list[dict] = [
          prompts=["autoagents_custom_action", "autoagents_custom_action_format"], system="GROUP_PREFIX",
          output_checks=["amoeba/interp/trace.py::TracedLLM.chat_sections", "amoeba/task/parsers.py::require"],
          ai_entry="amoeba/interp/runtime.py::Interpreter._llm_sections",
-         anchors=[("amoeba/interp/runtime.py::Interpreter.run_flat", "for i, agent in", "act, inp = sec")]),
+         anchors=[("amoeba/interp/runtime.py::Interpreter.run_flat", "for i, agent in", "act, inp = sec"),
+                  "amoeba/interp/runtime.py::with_unavailable"]),
     dict(id="read_action", view="run", title='Read "## Action"', kind="code", plan='Read "## Action"',
          sentence="Reads the helper's chosen action: runs a tool and loops, or accepts a final answer; gives up after five turns.",
          what=["If the chosen action is one of the helper's tools, the tool runs and its result goes on the scratchpad.",
                "'Final Output' marks that helper done; the step ends when every helper of it is done.",
+               "'BLOCKED: X' also marks the helper done and is recorded; a blocked last step without a final answer "
+               "ends the run with error 'blocked'.",
+               "A tool the helper does not have is not run: it gets a notice and the log an 'unknown_tool' line.",
                "On the last allowed turn a 'please synthesize' hint is added to the scratchpad.",
                "If turns run out, the last reply is kept and the run is marked as having hit the turn limit."],
          proposes="The action name and input.",
          disposes="Plain code checks the action against the helper's own tool list and counts turns.",
          anchors=[("amoeba/interp/runtime.py::Interpreter.run_flat", "while sum(consensus)", "for i, agent in"),
                   ("amoeba/interp/runtime.py::Interpreter.run_flat", "act, inp = sec", "published = response"),
-                  "amoeba/interp/runtime.py::Interpreter._tool"]),
+                  "amoeba/interp/runtime.py::Interpreter._dispatch", "amoeba/interp/runtime.py::Interpreter._tool"]),
     dict(id="solver", view="run", title="Solver", kind="llm", plan="Solver", ai="solver",
          sentence="One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply gets one retry.",
          what=["The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
@@ -283,14 +325,17 @@ BOXES: list[dict] = [
          sentence="Writes one log line per AI call and tool call: who, which model, tokens and time. Nothing enforces a budget.",
          what=["Every AI call becomes one log line with the helper, model, tokens in and out, and time taken.",
                "Tool calls, each helper's turn and the whole run get their own lines too.",
+               "Point events are logged too: capability_request, blocked and unknown_tool.",
                "Token counts are only recorded; no code reads them to stop a run."],
          proposes="Nothing.", disposes="Plain code writes the log.",
-         anchors=["amoeba/interp/trace.py::TraceWriter", "amoeba/interp/trace.py::TracedLLM.chat_messages",
+         anchors=["amoeba/interp/trace.py::TraceWriter", "amoeba/interp/trace.py::TraceWriter.event",
+                  "amoeba/interp/trace.py::TracedLLM.chat_messages",
                   "amoeba/interp/trace.py::NoopListener"], guard_anchors=[]),
     dict(id="runresult", view="run", title="RunResult", kind="data", plan="RunResult",
          sentence="The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
          what=["Summarises the run in one record saved as result.json.",
-               "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft."],
+               "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
+               "It also lists the steps that answered BLOCKED and every capability request."],
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,
@@ -321,7 +366,7 @@ BOXES: list[dict] = [
 
 # boxes where plain code rejects, corrects or caps what an AI produced (shield icon when they have guards)
 SHIELD = {"planner", "agent_obs", "plan_obs", "split", "checks", "instantiate", "interpreter", "each_step", "helper",
-          "read_action", "solver", "critics", "disagree", "tools"}
+          "read_action", "solver", "critics", "disagree", "tools", "resolver"}
 
 GLOSSARY = [
     ("helper", "One AI worker in a team, with its own name, instructions and allowed tools."),
@@ -614,6 +659,16 @@ def prompts(F: Facts) -> list[dict]:
                 "text": PROMPT.agentverse_solver_append_generic, "placeholders": [], "style": "literal (derived)",
                 "loaded_by": loaders.get("agentverse_solver_append_generic", []),
                 "note": F.line(ppath, line - 3).strip() + " " + F.line(ppath, line - 2).strip()})
+    from amoeba.config.prompts import CAPABILITY_EDITS
+    line = next(i + 1 for i, l in enumerate(F.src[ppath]) if l.startswith("CAPABILITY_EDITS"))
+    for stem, edits in CAPABILITY_EDITS.items():   # D19 variants: the verbatim file plus exact replacements
+        out.append({"stem": f"{stem}_d19", "path": ppath, "line": line,
+                    "header": f"derived at load time in {ppath}:{line} from {stem} (DEVIATION D19)",
+                    "text": getattr(PROMPT, f"{stem}_d19"), "placeholders": placeholders(getattr(PROMPT, f"{stem}_d19")),
+                    "style": "{x} (str.format, rendered once) — derived",
+                    "loaded_by": loaders.get(f"{stem}_d19", []),
+                    "note": f"{len(edits)} exact replacement(s): 'use only existing tools' → 'prefer existing tools; "
+                            f"request a missing tool or skill under ## Capability Requests'"})
     return out
 
 
@@ -752,6 +807,35 @@ def trim(s: str, n: int = 400) -> str:
     return s if len(s) <= n else s[:n] + f" … [+{len(s) - n} chars]"
 
 
+EVENT_BOX = {"capability_request": "capreq", "unknown_tool": "resolver", "blocked": "read_action"}
+
+
+def capability_example() -> dict:
+    """One offline run of the D19/D21 paths: the planner fixture that requests tools, a helper that picks a tool it
+    lacks, then answers. Scripted by the test fixtures, not by the toy stand-in (which never lacks a tool)."""
+    import tempfile
+    from amoeba.llm.client import MockLLMClient
+    from amoeba.safety.envelope import Envelope
+    from amoeba.task.models import Task
+    from amoeba.tools.registry import default_registry
+    from scripts.run_task import run_one
+    fx = lambda n: (ROOT / "tests" / "fixtures" / f"{n}.txt").read_text(encoding="utf-8")
+    llm = MockLLMClient(script={"planner": [fx("draft_capability_requests")],
+                                "agent_observer": [fx("observer_no_suggestions")],
+                                "plan_observer": [fx("observer_no_suggestions")],
+                                "worker": [fx("worker_unknown_tool"), fx("worker_final_output")]})
+    tools_ = default_registry()
+    with tempfile.TemporaryDirectory() as tmp:
+        r = run_one(Task(prompt="Compute 17 * 23 + 5.", ground_truth="396"), "flat", llm,
+                    Envelope.from_registry(tools_, model=llm.model), tools_, tmp, seed=0)
+        d = Path(tmp) / r.run_id
+        reqs = json.loads((d / "capability_requests.json").read_text())
+        events = [json.loads(l) for l in (d / "trace.jsonl").read_text().splitlines() if '"kind": "event"' in l]
+    return {"fixtures": ["tests/fixtures/draft_capability_requests.txt", "tests/fixtures/worker_unknown_tool.txt",
+                         "tests/fixtures/worker_final_output.txt"],
+            "capability_requests_json": reqs, "events": events, "error": r.error, "answer": r.answer}
+
+
 def sample_runs() -> dict:
     import yaml
     from amoeba.llm.toy_mock import toy_mock_client
@@ -766,7 +850,8 @@ def sample_runs() -> dict:
     from amoeba.task.models import Task
     free = Task(prompt="Reverse the string 'adaptive' then uppercase it").model_dump()   # as scripts/run_task.py main builds it
     out = {"free_text_task": free, "task": task.model_dump(), "toy_tasks": [t.model_dump() for t in ToyTaskSource(seed=0, n=3).tasks()],
-           "calc_example": {"input": "17 * 23 + 5", "output": calc("17 * 23 + 5")}, "runs": {}}
+           "calc_example": {"input": "17 * 23 + 5", "output": calc("17 * 23 + 5")}, "runs": {},
+           "capability_example": capability_example()}
     for topology in ("flat", "boss_reviewers"):
         llm = toy_mock_client()
         env = Envelope.from_registry(tools_, model=llm.model)
@@ -788,6 +873,8 @@ def sample_runs() -> dict:
                 box = "interpreter"
             elif s["name"] == "execute_tool":
                 box = "tools"
+            elif s.get("kind") == "event":   # point events (D19/D21), not calls
+                box = EVENT_BOX.get(s["name"], "trace")
             elif name in ("planner", "agent_observer", "plan_observer"):
                 box = {"planner": "planner", "agent_observer": "agent_obs", "plan_observer": "plan_obs"}[name]
             else:
@@ -803,6 +890,9 @@ def sample_runs() -> dict:
                 result = f"ran tool {s.get('gen_ai.tool.name')} (result is not written to the trace)"
             elif s["name"] == "invoke_workflow":
                 result = f"answer {r.answer!r}"
+            elif s.get("kind") == "event":
+                result = f"{s['name']}: " + ", ".join(f"{k.split('.')[-1]}={v}" for k, v in s.items()
+                                                       if k not in ("ts", "episode_id", "kind", "name"))
             timeline.append({"i": len(timeline), "file_line": file_idx + 1, "span": s["name"], "box": box,
                              "helper": name, "tokens": s.get("gen_ai.usage.input_tokens", 0) + s.get("gen_ai.usage.output_tokens", 0),
                              "latency_ms": s.get("latency_ms", 0), "result": trim(result, 120), "raw": s})
@@ -975,7 +1065,9 @@ def compare(B: dict, F: Facts, C, facts: dict, plan: dict) -> list[tuple[str, st
     if pid == "ov_leave":
         files = facts["sample"]["runs"]["flat"]["files"]
         want = ["plan.json", "result.json", "team.yaml", "trace.jsonl"]
-        res.append(("ok" if files == want else "differs", f"Files written by the sample run: {', '.join(files)}"))
+        extra = [f for f in files if f not in want]
+        res.append(("ok" if files == want else "differs", f"Files written by the sample run: {', '.join(files)}"
+                    + (f" (the plan lists four; {', '.join(extra)} is new, D19)" if extra else "")))
     return res
 
 
@@ -1064,7 +1156,8 @@ def data_types(F: Facts) -> dict:
             "TeamConfig": "amoeba/config/schema.py::TeamConfig", "PlanStep": "amoeba/config/schema.py::PlanStep",
             "AgentSpec": "amoeba/config/schema.py::AgentSpec", "Envelope": "amoeba/safety/envelope.py::Envelope",
             "Episode": "amoeba/task/models.py::Episode", "RunResult": "amoeba/task/models.py::RunResult",
-            "_Msg": "amoeba/interp/runtime.py::_Msg", "ChatResponse": "amoeba/llm/client.py::ChatResponse"}
+            "_Msg": "amoeba/interp/runtime.py::_Msg", "ChatResponse": "amoeba/llm/client.py::ChatResponse",
+            "CapabilityRequest": "amoeba/task/models.py::CapabilityRequest"}
     return {k: class_record(F, v) for k, v in keys.items() if v in F.defs}
 
 

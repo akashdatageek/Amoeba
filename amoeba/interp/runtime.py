@@ -8,13 +8,16 @@ from amoeba.config.prompts import PROMPT, render, resolve
 from amoeba.config.schema import AgentSpec, TeamConfig
 from amoeba.interp.trace import NoopListener, TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient, Messages
-from amoeba.task.models import AgentResult, Episode, Message, Task
+from amoeba.task.models import AgentResult, CapabilityRequest, Episode, Message, Task
 from amoeba.task.parsers import MissingSections, ParseError, parse_critic
 from amoeba.tools.registry import ToolError, ToolRegistry
 
 WORKER_SECTIONS = ["CurrentStep", "Action", "ActionInput"]           # custom_action.py:79-83
 SYNTHESIZE_HINT = "\n You should synthesize the responses of previous steps and provide the final feedback."  # group.py:83
 FINAL_OUTPUT = "Final Output"
+PRINT = "Print"
+BLOCKED = "BLOCKED"
+UNAVAILABLE = "Tool {name} is unavailable this run; proceed without it or answer BLOCKED: {name}"   # D21
 
 
 @dataclass
@@ -22,6 +25,12 @@ class _Msg:
     sender: str
     content: str
     is_agree: bool | None = None
+
+
+def with_unavailable(agent: AgentSpec) -> str:
+    """The agent's suggestions plus one line per tool its role named that is not registered (D21)."""
+    lines = [UNAVAILABLE.format(name=t) for t in agent.missing_tools]
+    return "\n".join([agent.suggestions, *lines]) if lines else agent.suggestions
 
 
 class Interpreter:
@@ -77,13 +86,13 @@ class Interpreter:
         previous_msgs = [f"Question/Task: {task.prompt}"]   # group.py:76 str(important_memory): task + every step's message
         published: str | None = None
         answer: str | None = None
-        last_step_done = False
+        last_step_done = last_step_blocked = False
         for step in cfg.plan:                                # environment.py:256 while Group.steps
             agents = [cfg.agents[a] for a in step.agent_ids]
             previous = "[" + ", ".join(previous_msgs) + "]"  # group.py:76 — full history, not just the last edge
             completed_steps = ""                             # group.py:75 — SHARED by all agents of the step
             consensus = [0] * len(agents)
-            it, response, final_inp = 0, None, None
+            it, response, final_inp, blocked = 0, None, None, False
             max_turns = agents[0].limits.max_turns           # group.py:75 num_steps = 5
             while sum(consensus) < len(agents) and it < max_turns:   # group.py:80
                 if it > max_turns - 2:                       # group.py:82-83 — fires once, at the start of the 5th iteration
@@ -92,18 +101,21 @@ class Interpreter:
                     user = render(PROMPT.autoagents_custom_action,
                                   role=agent.role_prompt,                 # custom_action.py:148 — role prompt in the USER msg
                                   context=step.text,                      # :146 — the STEP string (task is inside `previous`)
-                                  suggestions=agent.suggestions, previous=previous, completed_steps=completed_steps,
-                                  tool=str(list(agent.tools) + ["Print", FINAL_OUTPUT]),   # :144 (DEVIATION D7: no "Write File")
+                                  suggestions=with_unavailable(agent), previous=previous,
+                                  completed_steps=completed_steps,
+                                  tool=str(list(agent.tools) + [PRINT, FINAL_OUTPUT]),   # :144 (DEVIATION D7: no "Write File")
                                   format_example=PROMPT.autoagents_custom_action_format)  # its "[{tool}]" stays literal
                     with self.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id,
                                                           "gen_ai.agent.name": agent.name}):
                         _, sec = self._llm_sections(agent, resolve(agent.prompt.system), user, WORKER_SECTIONS, ep)
                         act, inp = sec["Action"], sec["ActionInput"]
-                        if act in agent.tools:               # :207 exact membership; original always calls SerpAPI (D7)
-                            resp = self._tool(agent, act, inp)
-                        else:                                # :213 — Print, Final Output, unknown → echo
-                            resp = f"\n{inp}\n"
-                    if FINAL_OUTPUT in act:                  # :215 substring
+                        resp, gap = self._dispatch(agent, act, inp, step.index, ep)
+                    if gap is not None:                      # D21: the helper answered BLOCKED: X — done for this step
+                        info = f"\n## Step\n{step.text}\n## Response\n{completed_steps}>>>> {BLOCKED}: {gap}\n{resp}\n>>>>"
+                        completed_steps += f">{agent.name} {BLOCKED}: {gap}\n"
+                        consensus[i] = 1
+                        blocked = True
+                    elif FINAL_OUTPUT in act:                # :215 substring
                         info = f"\n## Step\n{step.text}\n## Response\n{completed_steps}>>>> Final Output\n{resp}\n>>>>"  # :216
                         consensus[i] = 1
                         final_inp = inp
@@ -116,12 +128,37 @@ class Interpreter:
             published = response                             # group.py:104-110 — the last agent's last response, final or not
             previous_msgs.append(f"user: {published}")       # Message role defaults to 'user' (schema.py:27)
             last_step_done = sum(consensus) == len(agents)
+            last_step_blocked = blocked and final_inp is None
             answer = final_inp
         # original has no answer object (explorer.py:58). DEVIATION D9: answer = the last step's Final Output
         # ActionInput; if the last step never reached Final Output, the published text with error="max_turns"
-        if last_step_done:
+        if last_step_done and not last_step_blocked:
             return answer, None
-        return published, "max_turns"
+        return published, "blocked" if last_step_blocked else "max_turns"   # D21: a blocked last step is not an answer
+
+    def _dispatch(self, agent: AgentSpec, act: str, inp: str, step: int, ep: Episode) -> tuple[str, str | None]:
+        """Route one "## Action". Returns (response, blocked tool or None). Original: a tool of the agent → SerpAPI,
+        anything else → echo the input (custom_action.py:207-213). D21: BLOCKED and unknown actions are recorded."""
+        if act in agent.tools:                               # :207 exact membership; original always calls SerpAPI (D7)
+            return self._tool(agent, act, inp), None
+        if act.strip().upper().startswith(BLOCKED) or inp.strip().startswith(f"{BLOCKED}:"):
+            text = act if act.strip().upper().startswith(BLOCKED) else inp
+            gap = text.strip()[len(BLOCKED):].lstrip(" :").split("\n")[0].strip() or "unspecified"
+            ep.blocked_steps.append({"step": step, "agent": agent.name, "tool": gap, "text": inp.strip()})
+            self.trace.event("blocked", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name,
+                                         "gen_ai.tool.name": gap, "amoeba.step": step})
+            return f"\n{inp}\n", gap
+        if act in (PRINT, "") or FINAL_OUTPUT in act:        # :213 — Print and Final Output echo the input
+            return f"\n{inp}\n", None
+        registered = act in self.tools                       # D21: not a silent echo — record it, run nothing
+        self.trace.event("unknown_tool", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name,
+                                          "gen_ai.tool.name": act, "amoeba.tool.registered": registered,
+                                          "amoeba.step": step})
+        if not registered and not any(q.name == act and q.for_role == agent.name for q in ep.requested_capabilities):
+            ep.requested_capabilities.append(CapabilityRequest(
+                name=act, kind="tool", for_role=agent.name, source="runtime_unknown_tool", input=inp,
+                what_it_does="chosen as an action during the run; no such tool is registered"))
+        return f"\n[{act!r} is not a tool {agent.name} can use; nothing was run]\n{inp}\n", None
 
     def _tool(self, agent: AgentSpec, name: str, action_input: str) -> str:
         with self.trace.span("execute_tool", {"gen_ai.tool.name": name, "gen_ai.agent.id": agent.agent_id,

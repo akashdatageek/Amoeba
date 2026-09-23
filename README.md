@@ -33,7 +33,7 @@ python -m scripts.run_task --toy --n 5 --llm openai --base-url http://localhost:
 ```
 
 Without `--llm openai` a scripted stand-in model (`amoeba/llm/toy_mock.py`) answers, so everything runs with no
-key. Each run writes `runs/<run_id>/{team.yaml, plan.json, trace.jsonl, result.json}` and the CLI prints mean
+key. Each run writes `runs/<run_id>/{team.yaml, plan.json, trace.jsonl, capability_requests.json, result.json}` and the CLI prints mean
 score, tokens and LLM calls.
 
 ## Layout

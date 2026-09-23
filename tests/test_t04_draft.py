@@ -12,8 +12,9 @@ def test_consensus_round1(task, envelope, trace):
     d = draft_team(task, llm, envelope, trace)
     assert d.rounds_used == 1 and d.consensus
     assert [r.name for r in d.created_roles] == ["Calculator", "Writer"]
-    assert d.created_roles[0].tools == ["calc"]                      # unknown 'web_search' stripped
-    assert any(not r.tools for r in d.created_roles)                 # summariser present
+    assert d.created_roles[0].tools == ["calc"]                      # unknown 'web_search' kept out of the tools…
+    assert d.created_roles[0].missing_tools == ["web_search"]        # …and recorded, not dropped (D19)
+    assert [r.is_summariser for r in d.created_roles] == [False, True]   # the last step's role (D20)
     assert [s.agent_names for s in d.plan] == [["Calculator"], ["Writer"]]   # '[Editor]' step dropped
     assert len(trace.spans("chat")) == 3 and len(llm.calls_of("planner")) == 1
 
@@ -49,10 +50,11 @@ def test_bad_json_blob_skipped(task, envelope, trace):
     assert [r.name for r in d.created_roles] == ["Calculator", "Writer"]
 
 
-def test_summariser_appended_when_missing(task, envelope, trace):
+def test_summariser_is_last_step_role_even_with_tools(task, envelope, trace):
+    # D20: every role has a tool; the old rule appended a Language Expert. Now the last step's role is the summariser.
     d = draft_team(task, mock(planner=[fx("draft_no_summariser")]), envelope, trace)
-    assert d.created_roles[-1].name == "Language Expert" and d.created_roles[-1].tools == []
-    assert len(d.created_roles) == 3
+    assert [r.name for r in d.created_roles] == ["Calculator", "Checker"]
+    assert [r.is_summariser for r in d.created_roles] == [False, True]
 
 
 def test_missing_section_gets_one_repair_call_then_drafterror(task, envelope, trace):
@@ -84,7 +86,7 @@ y
 
 
 def test_roster_too_small_is_drafterror(task, envelope, trace):
-    # a single no-tool role: no summariser is appended, so the roster stays at 1
+    # a single role: nothing is ever appended, so the roster stays at 1
     with pytest.raises(DraftError, match="roster size"):
         draft_team(task, mock(planner=[ONE_ROLE]), envelope, trace)
 

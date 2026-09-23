@@ -44,6 +44,17 @@ class TraceWriter:
             rec["latency_ms"] = int((time.perf_counter() - t0) * 1000)
             self._write(rec)
 
+    def event(self, name: str, attrs: dict | None = None) -> dict:
+        """A point-in-time record (kind "event"), e.g. capability_request, unknown_tool, blocked."""
+        rec = {"ts": datetime.now(timezone.utc).isoformat(), "episode_id": self.episode_id, "kind": "event",
+               "name": name}
+        rec.update({k: v for k, v in (attrs or {}).items() if v is not None})
+        self._write(rec)
+        return rec
+
+    def events(self, name: str | None = None) -> list[dict]:
+        return [r for r in self.records if r.get("kind") == "event" and (name is None or r["name"] == name)]
+
     def _write(self, rec: dict) -> None:
         self.records.append(rec)
         if self._fh:
@@ -51,7 +62,7 @@ class TraceWriter:
             self._fh.flush()
 
     def spans(self, name: str | None = None) -> list[dict]:
-        return [r for r in self.records if name is None or r["name"] == name]
+        return [r for r in self.records if r.get("kind") == "span" and (name is None or r["name"] == name)]
 
     @property
     def total_tokens(self) -> int:

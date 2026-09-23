@@ -1,4 +1,4 @@
-"""T10 — the CLI runs 20 toy tasks per topology offline and writes runs/<id>/ with four files."""
+"""T10 — the CLI runs 20 toy tasks per topology offline and writes runs/<id>/ with five files."""
 import json
 import subprocess
 import sys
@@ -20,7 +20,9 @@ def test_cli_toy_run(tmp_path, topology):
     run_dirs = [d for d in tmp_path.iterdir() if d.is_dir()]
     assert len(run_dirs) == 20
     for d in run_dirs:
-        assert {p.name for p in d.iterdir()} == {"team.yaml", "plan.json", "trace.jsonl", "result.json"}
+        assert {p.name for p in d.iterdir()} == {"team.yaml", "plan.json", "trace.jsonl", "capability_requests.json",
+                                                 "result.json"}
+        assert json.loads((d / "capability_requests.json").read_text()) == []   # the toy team needs nothing it lacks
         result = json.loads((d / "result.json").read_text())
         assert result["topology"] == topology and result["error"] is None, result
         assert result["score"] == 1.0   # the toy mock is a well-behaved model: the pipeline must not lose the answer

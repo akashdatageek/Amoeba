@@ -9,10 +9,11 @@ from amoeba.config.prompts import MANAGER_PREFIX, PROMPT, render
 from amoeba.interp.trace import TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient
 from amoeba.safety.envelope import Envelope
-from amoeba.task.models import Draft, DraftedRole, DraftPlanStep, Task
-from amoeba.task.parsers import MissingSections, parse_plan, parse_role_blobs
+from amoeba.task.models import CapabilityRequest, Draft, DraftedRole, DraftPlanStep, Task
+from amoeba.task.parsers import MissingSections, parse_json_objects, parse_plan, parse_role_blobs
 
 PLANNER_SECTIONS = ["Selected Roles List", "Created Roles List", "Execution Plan", "RoleFeedback", "PlanFeedback"]
+REQUESTS_SECTION = "Capability Requests"   # D19: optional — never required, so a missing one costs no repair call
 MAX_ROUNDS = 3  # manager.py:27 num_steps = 3
 NO_SUGGESTIONS = "No Suggestions"
 
@@ -21,12 +22,44 @@ class DraftError(RuntimeError):
     pass
 
 
-def language_expert() -> DraftedRole:
-    """The summariser plain code guarantees (the original only asks for it in the prompt)."""
-    return DraftedRole(name="Language Expert",
-                       description="A language expert with no tools who summarizes the final results.",
-                       tools=[], suggestions="State the established result exactly; add nothing.",
-                       prompt=PROMPT.language_expert)
+def parse_capability_requests(text: str) -> list[CapabilityRequest]:
+    """The planner's "## Capability Requests" section (D19). 'None', prose or bad JSON yield nothing."""
+    out: list[CapabilityRequest] = []
+    for d in parse_json_objects(text or ""):
+        if str(d.get("name", "")).strip():
+            out.append(CapabilityRequest(**{**d, "name": str(d["name"]).strip(), "source": "planner"}))
+    return out
+
+
+def resolve_tools(roles: list[DraftedRole], envelope: Envelope,
+                  requests: list[CapabilityRequest]) -> list[CapabilityRequest]:
+    """Keep each role's registered tools; a name the registry lacks becomes a recorded request and the role's
+    `missing_tools`, never a silent drop (D19). Returns `requests` plus the new ones, one per (name, role)."""
+    out = list(requests)
+    seen = {(r.name, r.for_role) for r in out}
+    for role in roles:
+        kept, missing = [], []
+        for t in role.tools:
+            (kept if t in envelope.allowed_tool_names else missing).append(t)
+        role.tools, role.missing_tools = kept, missing
+        for t in missing:
+            if (t, role.name) not in seen and (t, "") not in seen:
+                out.append(CapabilityRequest(name=t, kind="tool", for_role=role.name, source="unregistered_tool",
+                                             what_it_does="named in the role's tools; no such tool is registered"))
+                seen.add((t, role.name))
+    return out
+
+
+def pick_summariser(roles: list[DraftedRole], plan: list[DraftPlanStep]) -> DraftedRole:
+    """D20: the role that writes the final answer — the first one the planner marks "is_summariser": true, else
+    the last role named by the plan's last step (the flat runner's exit). Having no tools says nothing about it;
+    the plan is never empty here, so a summariser always exists (replaces the code-appended Language Expert)."""
+    flagged = [r for r in roles if r.is_summariser]
+    last = plan[-1].agent_names[-1]
+    chosen = flagged[0] if flagged else next(r for r in roles if r.name == last)
+    for r in roles:
+        r.is_summariser = r is chosen
+    return chosen
 
 
 def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int) -> tuple[str, dict[str, str]]:
@@ -47,16 +80,18 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     with trace.span("invoke_agent", {"gen_ai.agent.name": "planner"}):
         while not consensus and rounds < MAX_ROUNDS:  # manager.py:27,30
             # state 0 — Planner (CreateRoles)
-            raw, sec = _sections(tl, "planner", render(
-                PROMPT.autoagents_create_roles, context=ctx, existing_roles="[]", tools=tools, history=history,
-                suggestions=suggestions, format_example=PROMPT.autoagents_create_roles_format), PLANNER_SECTIONS, seed)
+            raw, sec = _sections(tl, "planner", render(   # D19 variants: may request missing capabilities
+                PROMPT.autoagents_create_roles_d19, context=ctx, existing_roles="[]", tools=tools, history=history,
+                suggestions=suggestions, format_example=PROMPT.autoagents_create_roles_format_d19),
+                PLANNER_SECTIONS, seed)
+            requests_text = sec.get(REQUESTS_SECTION, "").strip() or "None"
             last = (raw, sec)
             history = raw   # original: str(instruct_content) pydantic repr (manager.py:33). DEVIATION D1: raw text
 
             # state 1 — Agent Observer (CheckRoles). Always runs: the guard at manager.py:34 is dead code.
             hist_roles = f"## Role Suggestions\n{sugg_roles}\n\n## Feedback\n{sec['RoleFeedback']}"   # manager.py:36
             _, s = _sections(tl, "agent_observer", render(
-                PROMPT.autoagents_check_roles,
+                PROMPT.autoagents_check_roles_d19, capability_requests=requests_text,   # D19
                 question=task.prompt,   # original: regex on the planner's raw text (check_roles.py:95); DEVIATION D4
                 existing_roles="[]", selected_roles=sec["Selected Roles List"], created_roles=sec["Created Roles List"],
                 history=hist_roles, tools=tools,   # original TOOLS='None' for observers (check_roles.py:86); DEVIATION D4
@@ -68,7 +103,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             hist_plan = f"## Plan Suggestions\n{sugg_plan}\n\n## Feedback\n{sec['PlanFeedback']}"
             # original passes sugg_roles here (manager.py:41) — a bug; fixed (DEVIATION D3)
             _, s = _sections(tl, "plan_observer", render(
-                PROMPT.autoagents_check_plans, context=task.prompt,
+                PROMPT.autoagents_check_plans_d19, capability_requests=requests_text, context=task.prompt,   # D19
                 roles=sec["Selected Roles List"] + sec["Created Roles List"],   # check_plans.py:72-75
                 plan=sec["Execution Plan"], history=hist_plan, tools=tools,
                 format_example=PROMPT.autoagents_check_plans_format), ["Suggestions"], seed)
@@ -94,12 +129,9 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
         r = DraftedRole(**b)
         if any(x.name == r.name for x in roles):
             continue   # duplicate names would collide in the roster; keep the first
-        r.tools = [t for t in r.tools if t in envelope.allowed_tool_names]
         roles.append(r)
-    if not any(not r.tools for r in roles):
-        roles.append(language_expert())               # summariser guaranteed by code
-    if not 2 <= len(roles) <= envelope.max_agents:
-        raise DraftError(f"roster size {len(roles)} outside 2..{envelope.max_agents}")
+    # D19: unregistered tool names are recorded as capability requests, not dropped silently
+    requests = resolve_tools(roles, envelope, parse_capability_requests(sec.get(REQUESTS_SECTION, "")))
     names = [r.name for r in roles]
     plan: list[DraftPlanStep] = []
     for i, (bracket, text) in enumerate(steps):
@@ -111,5 +143,11 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             plan.append(DraftPlanStep(index=i, agent_names=who, text=text))
     if not plan:
         raise DraftError("empty plan")
+    pick_summariser(roles, plan)                      # D20 (was: "the first role without tools")
+    if not 2 <= len(roles) <= envelope.max_agents:
+        raise DraftError(f"roster size {len(roles)} outside 2..{envelope.max_agents}")
+    for q in requests:
+        trace.event("capability_request", {"capability.name": q.name, "capability.kind": q.kind,
+                                           "capability.for_role": q.for_role, "capability.source": q.source})
     return Draft(created_roles=roles, plan=plan, rounds_used=rounds, consensus=consensus,
-                 role_feedback=sugg_roles, plan_feedback=sugg_plan, raw_draft=raw)
+                 role_feedback=sugg_roles, plan_feedback=sugg_plan, raw_draft=raw, capability_requests=requests)
