@@ -386,6 +386,11 @@ body.guardsonly .boxg:not(.guarded),body.guardsonly .edge{opacity:.22}
 .tabbody td,.tabbody th{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
 .tabbody th{font-size:11px;color:var(--muted);font-weight:600}
 mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
+.ask{border-top:1px solid var(--line);padding:10px 14px;background:var(--bg)}
+.ask label{font-size:12px;font-weight:600;color:var(--p1);text-transform:uppercase;letter-spacing:.05em}
+.ask textarea{width:100%;min-height:64px;font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink);resize:vertical;margin:4px 0 6px}
+.ask .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.ask .st{font-size:12px;color:var(--muted);flex:1 1 200px}
+.ask .ans{white-space:pre-wrap;font-size:13px;line-height:1.5;margin:8px 0 0;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--panel)}
 .lpcd{display:grid;grid-template-columns:1fr;gap:8px;margin:10px 0}
 .lpcd div{border:1px solid var(--line);border-radius:6px;padding:8px 10px}.lpcd .ai{border-color:var(--llm-line);background:var(--llm-fill)}.lpcd .cd{border-color:var(--code-line);background:var(--code-fill)}
 .warnline{color:var(--bad);font-weight:600}
@@ -451,8 +456,9 @@ document.addEventListener('scroll', hide, {passive:true});
 var dr = $('#drawer'), drBox = null, drTab = 'what';
 var TABS = [['what','What it does'],['code','Code'],['prompt','Prompt'],['example','Example'],['tests','Tests'],['plan','Plan vs built']];
 function statusPill(s){ var m = {built:'✓ built', differs:'≠ differs', missing:'✗ missing', extra:'+ extra'}; return '<span class="pill ' + s + '">' + (m[s]||s) + '</span>'; }
-function openDrawer(id, tab){
-  var b = BOX[id]; if(b && b.ref) b = BOX[b.ref]; if(!b) return; drBox = b; drTab = tab || drTab;
+var drEl = null;
+function openDrawer(id, tab, el){
+  drEl = el || document.getElementById('b-' + id) || drEl; var b = BOX[id]; if(b && b.ref) b = BOX[b.ref]; if(!b) return; drBox = b; drTab = tab || drTab;
   if(drTab === 'prompt' && !(b.prompts||[]).length) drTab = 'what';
   $$('.boxg.sel').forEach(function(e){ e.classList.remove('sel'); }); var g = document.getElementById('b-' + b.id); if(g) g.classList.add('sel');
   $('#drt').innerHTML = esc(b.title) + ' ' + statusPill(b.status) + (b.shield ? ' <span class="pill muted">shield: guarded</span>' : '');
@@ -460,6 +466,7 @@ function openDrawer(id, tab){
   var tb = $('#drtabs'); tb.innerHTML = '';
   TABS.forEach(function(t){ if(t[0] === 'prompt' && !(b.prompts||[]).length) return; var bt = document.createElement('button'); bt.type='button'; bt.setAttribute('role','tab'); bt.textContent = t[1]; bt.setAttribute('aria-selected', t[0] === drTab ? 'true' : 'false'); bt.onclick = function(){ drTab = t[0]; openDrawer(b.id, t[0]); }; tb.appendChild(bt); });
   $('#drbody').innerHTML = RENDER[drTab](b); dr.removeAttribute('hidden');
+  if(askFor !== b.id){ askFor = b.id; $('#askans').setAttribute('hidden',''); $('#askans').textContent = ''; } paintAsk();
 }
 function closeDrawer(){ dr.setAttribute('hidden',''); $$('.boxg.sel').forEach(function(e){ e.classList.remove('sel'); }); }
 $('#drx').onclick = closeDrawer;
@@ -531,7 +538,7 @@ var RENDER = {
 // ---------------- box interactions
 $$('.boxg').forEach(function(g){
   var id = g.getAttribute('data-id');
-  var ed = g.querySelector('.edit'); if(ed) ed.addEventListener('click', function(e){ e.stopPropagation(); openEditor(g); });
+  var ed = g.querySelector('.edit'); if(ed) ed.addEventListener('click', function(e){ e.stopPropagation(); openDrawer(id, null, g); $('#asktxt').focus(); });
   var inf = g.querySelector('.info'); if(inf) inf.addEventListener('click', function(e){ e.stopPropagation(); openDrawer(id, 'what'); });
   g.addEventListener('click', function(){ if(g.classList.contains('hit')) go(g.getAttribute('data-view')); else openDrawer(id); });
   g.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); g.click(); } });
@@ -600,6 +607,74 @@ function renderQueue(){ var w = $('#queue'); if(!w){ w = document.createElement(
   c.onclick = function(){ var t = queue.map(function(q){ return JSON.stringify(q); }).join('\n'); if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function(){ c.textContent = 'Copied'; setTimeout(function(){ c.textContent = 'Copy edits'; }, 1200); }); else window.prompt('Copy these lines:', t); };
   var x = document.createElement('button'); x.type = 'button'; x.className = 'btn'; x.textContent = 'Clear'; x.onclick = function(){ queue = []; saveQ(); };
   w.appendChild(c); w.appendChild(x); }
+
+// ---------------- ask / change a box: "Send to Claude Code" posts a comment pinned to the box and sends it to the
+// Claude Code session watching this page; "Ask here" answers in the page from this box's code facts.
+var CL = (window.claude && typeof window.claude.use === 'function') ? window.claude : null, CM = null, SM = null, askCtl = null, askFor = null;
+if(CL){ CL.use('comments').then(function(c){ CM = c; paintAsk(); }, function(){}); CL.use('sample').then(function(x){ SM = x; paintAsk(); }, function(){}); }
+function askSt(t){ $('#askst').textContent = t; }
+function boxRef(b){ return '[Amoeba as-built · box "' + b.title + '" · id ' + b.id + ' · view ' + b.view + ' · ' + b.src + ' · commit ' + A.repo.short + ']'; }
+function paintAsk(){
+  $('#askq').hidden = !SM; $('#asksend').hidden = !CM; $('#asksend').disabled = false;
+  if(!CM && !SM){ askSt(CL ? 'Connecting to Claude…' : 'Open this page on claude.ai to send it to Claude Code; here it can only be queued (then “Copy edits”).'); return; }
+  if(!CM){ askSt('“Ask here” answers from this box’s code facts on your own Claude usage.'); return; }
+  CM.canSendToClaude().then(function(v){
+    var m = {available: 'Send: Claude Code gets it with this box’s reference and replies in the comment thread on the box. Ask: answered here.',
+             writers_only: 'Only editors of this page can send to Claude Code; queue it or ask here.',
+             no_session: 'No Claude Code session is watching this page right now; queue it or ask here.',
+             off: 'Sending to Claude Code is off in this view; queue it or ask here.'};
+    if(v !== 'available') $('#asksend').disabled = true; askSt(m[v] || m.off);
+  }, function(){ $('#asksend').disabled = true; askSt('Sending to Claude Code is not available here; queue it or ask here.'); });
+}
+function queueIt(b, t){ var rec = {view: b.view, box: b.title, box_id: b.id, request: t, ts: new Date().toISOString(), page: document.title, commit: A.repo.short};
+  if(ENDPOINT) fetch(ENDPOINT, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(rec)}).catch(function(){});
+  queue.push(rec); saveQ(); }
+$('#askq2').onclick = function(){ var t = $('#asktxt').value.trim(); if(!t || !drBox){ $('#asktxt').focus(); return; } queueIt(drBox, t); $('#asktxt').value = ''; askSt('Queued in this browser. Use “Copy edits” (top of the page) and paste the lines to Claude Code with “apply pending edits”.'); };
+$('#asksend').onclick = function(){
+  var t = $('#asktxt').value.trim(), b = drBox, btn = this; if(!t || !b || !CM){ $('#asktxt').focus(); return; }
+  var el = drEl && drEl.isConnected ? drEl : document.getElementById('b-' + b.id); var sv = el && el.closest('svg');
+  if(sv && sv.hasAttribute('hidden')) go(sv.id.replace(/^v-/, ''));
+  btn.disabled = true; askSt('Sending…');
+  CM.anchorFor(el).then(function(anchor){ return CM.sendToClaude({anchor: anchor, text: (boxRef(b) + '\n' + t).slice(0, 3900)}); })
+   .then(function(){ $('#asktxt').value = ''; askSt('Sent to Claude Code with this box’s reference. Its reply appears in the comment thread on this box (comments panel).'); btn.disabled = false; },
+         function(e){ var c = e && e.code; btn.disabled = false;
+           if(c === 'consent_required') askSt('Not sent: allow this page to comment when asked, then press Send again. Your text is kept.');
+           else if(c === 'rate_limited') askSt('Not sent: too many sends; wait a moment. Your text is kept.');
+           else if(c === 'invalid') askSt('Not sent: the text was rejected (too long or odd characters).');
+           else { btn.disabled = true; askSt('Not sent (' + (c || 'error') + '). Your text is kept: use “Queue for later”.'); } });
+};
+function factsFor(b){
+  var P = {}; A.prompts.forEach(function(p){ P[p.stem] = p; });
+  var stems = [b.system].concat(b.prompts||[], b.derived_prompts||[]).filter(Boolean);
+  return JSON.stringify({box: b.title, one_line: b.sentence, what_it_does: b.what, ai_may_suggest: b.proposes, code_checks: b.disposes,
+    plan_status: b.status, plan_vs_built: (b.checks||[]).map(function(c){ return c.level + ': ' + c.msg; }),
+    code: b.anchors.map(function(a){ return {kind: a.kind, name: a.name, at: a.path + ':' + a.line, signature: a.signature || null, doc: a.doc,
+      fields: (a.fields||[]).map(function(f){ return f.name + ': ' + f.type + (f.default != null ? ' = ' + f.default : ''); }),
+      called_by: (a.callers||[]).map(shortKey), calls: (a.callees||[]).map(shortKey), covers: a.range_note || null}; }),
+    guards: (b.guards||[]).concat(b.output_guards||[]).map(function(g){ return {when: g.code, then: g.effect, at: g.path + ':' + g.line}; }),
+    deviations_from_sources: (b.deviations||[]).map(function(d){ return d.text + ' (' + d.path + ':' + d.line + ')'; }),
+    tests: (b.tests||[]).map(function(x){ return x.test.split('::').pop() + ' ' + x.outcome + ' (' + x.how + ')'; }),
+    prompts: stems.filter(function(s){ return P[s]; }).map(function(s){ return {file: s, text: P[s].text.slice(0, 2500)}; }),
+    sample_run: A.sample.runs[topo].per_box[b.id] || null}).slice(0, 40000);
+}
+$('#askstop').onclick = function(){ if(askCtl) askCtl.abort(); };
+$('#askq').onclick = function(){
+  var q = $('#asktxt').value.trim(), b = drBox; if(!q || !b || !SM){ $('#asktxt').focus(); return; }
+  var ans = $('#askans'); ans.removeAttribute('hidden'); ans.textContent = 'Thinking…'; askCtl = new AbortController();
+  $('#askq').disabled = true; $('#askstop').hidden = false;
+  var prompt = 'You explain ONE box of the Amoeba Phase 1 system to a researcher who designs the system but does not read code. '
+    + 'Use ONLY the facts below, extracted from the code at commit ' + A.repo.short + '. Answer in plain language first (a few short sentences), '
+    + 'then list the exact functions and file:line the answer rests on. If the facts do not answer the question, say what is unknown and suggest '
+    + 'using "Send to Claude Code". Never invent code, names or numbers.\n\nBOX FACTS (JSON):\n' + factsFor(b) + '\n\nQUESTION:\n' + q;
+  SM(prompt, {signal: askCtl.signal, onText: function(u){ ans.textContent = u.text; }}).then(function(r){
+    if(r.truncated) ans.textContent += '\n\n(cut short — ask something narrower)';
+  }, function(e){ var c = e && e.code; ans.textContent = (e && e.text) || '';
+    var m = {not_granted: 'Asking Claude from this page is not allowed for you here.', rate_limited: 'Too many questions right now; try again shortly.',
+             refused: 'Claude declined this question; rephrase it.', cancelled: ''};
+    var msg = (c in m) ? m[c] : 'Could not get an answer (' + (c || 'error') + ').'; if(msg) ans.textContent += (ans.textContent ? '\n\n' : '') + msg;
+    if(c === 'not_granted' || c === 'sampling_disabled' || c === 'not_declared'){ SM = null; paintAsk(); }
+  }).then(function(){ $('#askq').disabled = false; $('#askstop').hidden = true; askCtl = null; });
+};
 buildTimeline(); show((location.hash || '#overview').slice(1));
 })();
 """
@@ -723,7 +798,7 @@ def render() -> Path:
 <style>{CSS}</style></head><body>
 <div class="wrap">
 <h1>{TITLE}</h1>
-<p class="sub">Task → Plan a new team → Team runs the task, read from the code at the commit below, not from the plan. Every box says in one sentence what it does; click it for the exact code, prompt, example and tests.</p>
+<p class="sub">Task → Plan a new team → Team runs the task, read from the code at the commit below, not from the plan. Every box says in one sentence what it does; click it for the exact code, prompt, example and tests. To ask about a box or change it, press its ✎ (or use “Ask or change this box” at the top of its panel): “Send to Claude Code” delivers it with that box’s reference.</p>
 <div class="summary" id="summary">{summary}</div>
 <div class="legend">
 <span><i class="sw llm"></i>an AI writes text</span><span><i class="sw code"></i>plain code decides</span><span><i class="sw data"></i>a record passed along</span><span><i class="sw plain"></i>input / output</span>
@@ -755,6 +830,10 @@ def render() -> Path:
 </div>
 <div class="tt" id="tt" role="tooltip" aria-hidden="true"></div>
 <aside class="drawer" id="drawer" hidden aria-label="Box details"><header><button type="button" class="btn x" id="drx" aria-label="Close">✕</button><h3 id="drt"></h3><p class="one" id="dro"></p></header>
+<div class="ask" id="ask"><label for="asktxt">Ask or change this box</label>
+<textarea id="asktxt" maxlength="3500" placeholder="e.g. “Why does this retry only once?” or “This cap should be 3”"></textarea>
+<div class="row"><button type="button" class="btn primary" id="asksend" hidden>Send to Claude Code</button><button type="button" class="btn" id="askq" hidden>Ask here</button><button type="button" class="btn" id="askstop" hidden>Stop</button><button type="button" class="btn" id="askq2">Queue for later</button><span class="st" id="askst"></span></div>
+<div class="ans" id="askans" hidden></div></div>
 <div class="tabs" id="drtabs" role="tablist"></div><div class="tabbody" id="drbody"></div></aside>
 <div class="ov" id="ov" hidden><div class="ed" role="dialog" aria-modal="true" aria-labelledby="edh"><h2 id="edh">Request a change</h2><p class="box-id" id="edbox"></p>
 <textarea id="edtxt" placeholder="What should change? e.g. “this cap should be 3”"></textarea>
