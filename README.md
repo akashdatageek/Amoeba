@@ -1,6 +1,6 @@
 # Amoeba
 
-A research system (DTech thesis, Purdue Northwest) in which a team of AI helpers is drafted per task and, in later
+A research system  in which a team of AI helpers is drafted per task and, in later
 phases, reshapes itself under plain-code control. Motto: **first make it, then make it better.** Principle
 everywhere: **LLM proposes, deterministic code disposes.**
 
