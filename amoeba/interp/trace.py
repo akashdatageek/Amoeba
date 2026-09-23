@@ -124,4 +124,8 @@ class TracedLLM:
             return raw, require(parse_sections(raw), keys)
         except MissingSections as e:
             raw2 = self.chat(system, repair_prompt(user, raw, keys, str(e)), seed, **ids).content
-            return raw2, require(parse_sections(raw2), keys)
+            try:
+                return raw2, require(parse_sections(raw2), keys)
+            except MissingSections as e2:
+                e2.raw = raw2   # the repaired reply, so a caller can still use the sections it did write
+                raise

@@ -166,7 +166,11 @@ class DraftRound(BaseModel):
     agent_observer: str = ""                                      # its Suggestions section
     plan_observer_raw: str = ""
     plan_observer: str = ""
-    consensus: bool = False                                       # both said "No Suggestions" this round (D2)
+    consensus: bool = False                                       # both approved this round (D2; D25 / D24 rules)
+    agent_verdict: str | None = None                              # D24: APPROVE | REVISE | OTHER; None for d19
+    plan_verdict: str | None = None
+    agent_suggestions_n: int = 0                                  # numbered suggestions in each observer's reply
+    plan_suggestions_n: int = 0
 
 
 class Draft(BaseModel):

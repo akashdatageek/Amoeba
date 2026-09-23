@@ -10,8 +10,10 @@ from amoeba.interp.trace import TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient
 from amoeba.safety.envelope import Envelope
 from amoeba.task.models import CapabilityRequest, Draft, DraftedRole, DraftPlanStep, DraftRound, Task
+import re
+
 from amoeba.task.parsers import (MissingSections, parse_bullets, parse_json_objects, parse_plan, parse_plan_d24,
-                                 parse_requirements)
+                                 parse_requirements, parse_sections, parse_verdict)
 
 PLANNER_SECTIONS = ["Selected Roles List", "Created Roles List", "Execution Plan", "RoleFeedback", "PlanFeedback"]
 # DEVIATION D24 (spec/BOX2_PROMPT_UPGRADE_D24.md): our prompts, one system message per role, more sections
@@ -104,6 +106,33 @@ def requirements_text(sec: dict[str, str]) -> str:
             f"## Givens and Assumptions\n{sec.get('Givens and Assumptions', '')}")
 
 
+_NUMBERED = re.compile(r"^\s*(?:[-*]\s*)?\**\d+[.)]\**\s+(?!\**No Suggestions)\S", re.M)
+
+
+def n_suggestions(text: str) -> int:
+    """Numbered suggestion lines in an observer's Suggestions ('1. No Suggestions' is not one)."""
+    return len(_NUMBERED.findall(text or ""))
+
+
+def approves(suggestions: str) -> bool:
+    """d19 approval. The original tests the substring "No Suggestions" (manager.py:47). DEVIATION D25: a reply that
+    also lists a numbered suggestion is not an approval — real replies list four fixes and then add
+    "No Suggestions." (the db-choice transcript, attempt 1 round 2)."""
+    return NO_SUGGESTIONS in suggestions and n_suggestions(suggestions) == 0
+
+
+def _observer_sections(llm: TracedLLM, name: str, user: str, seed: int, log: list[DraftRound],
+                       system: str) -> tuple[str, dict[str, str]]:
+    """D24 observers must write '## Verdict'. A missing one costs the usual single repair call; if the repaired
+    reply still has none, its sections are used and the missing verdict counts as REVISE."""
+    try:
+        return llm.chat_sections(system, user, ["Suggestions", "Verdict"], seed, agent_name=name)
+    except MissingSections as e:
+        if e.missing == ["Verdict"] and getattr(e, "raw", None) is not None:
+            return e.raw, parse_sections(e.raw)
+        raise DraftError(f"{name}: {e}", log) from e
+
+
 def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
               log: list[DraftRound], system: str = MANAGER_PREFIX) -> tuple[str, dict[str, str]]:
     try:
@@ -156,12 +185,13 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             # state 1 — Agent Observer (CheckRoles). Always runs: the guard at manager.py:34 is dead code.
             hist_roles = f"## Role Suggestions\n{sugg_roles}\n\n## Feedback\n{sec['RoleFeedback']}"   # manager.py:36
             if d24:
-                rec.agent_observer_raw, s = _sections(tl, "agent_observer", render(
+                rec.agent_observer_raw, s = _observer_sections(tl, "agent_observer", render(
                     PROMPT.d24_review_team, question=task.prompt, requirements=requirements_text(sec),
                     created_roles=sec["Created Roles List"], selected_roles=sec["Selected Roles List"],
                     capability_requests=requests_text, tools=tools, history=hist_roles,
                     max_agents=str(envelope.max_agents)),
-                    ["Suggestions"], seed, log, system=PROMPT.d24_agent_observer_system.strip())
+                    seed, log, system=PROMPT.d24_agent_observer_system.strip())
+                rec.agent_verdict = parse_verdict(s) or "REVISE"
             else:
                 rec.agent_observer_raw, s = _sections(tl, "agent_observer", render(
                     PROMPT.autoagents_check_roles_d19, capability_requests=requests_text,   # D19
@@ -176,11 +206,12 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             hist_plan = f"## Plan Suggestions\n{sugg_plan}\n\n## Feedback\n{sec['PlanFeedback']}"
             # original passes sugg_roles here (manager.py:41) — a bug; fixed (DEVIATION D3)
             if d24:
-                rec.plan_observer_raw, s = _sections(tl, "plan_observer", render(
+                rec.plan_observer_raw, s = _observer_sections(tl, "plan_observer", render(
                     PROMPT.d24_review_plan, context=task.prompt, requirements=requirements_text(sec),
                     roles=sec["Selected Roles List"] + sec["Created Roles List"], plan=sec["Execution Plan"],
                     risks=sec["Risks and Decisions"], capability_requests=requests_text, history=hist_plan),
-                    ["Suggestions"], seed, log, system=PROMPT.d24_plan_observer_system.strip())
+                    seed, log, system=PROMPT.d24_plan_observer_system.strip())
+                rec.plan_verdict = parse_verdict(s) or "REVISE"
             else:
                 rec.plan_observer_raw, s = _sections(tl, "plan_observer", render(
                     PROMPT.autoagents_check_plans_d19, capability_requests=requests_text, context=task.prompt,   # D19
@@ -190,8 +221,9 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             sp = rec.plan_observer = s["Suggestions"]
             sugg_plan += sp                           # manager.py:43
             suggestions = f"## Role Suggestions\n{sr}\n\n## Plan Suggestions\n{sp}"   # manager.py:45
-            if NO_SUGGESTIONS in sr and NO_SUGGESTIONS in sp:
-                consensus = rec.consensus = True
+            rec.agent_suggestions_n, rec.plan_suggestions_n = n_suggestions(sr), n_suggestions(sp)
+            if (rec.agent_verdict == rec.plan_verdict == "APPROVE") if d24 else (approves(sr) and approves(sp)):
+                consensus = rec.consensus = True   # D24: both verdicts exactly APPROVE; d19: D2 + D25
             # original tests the CUMULATIVE strings (manager.py:47): one early "No Suggestions" sticks forever.
             # DEVIATION D2: current-round test (stricter, saner).
             rounds += 1
