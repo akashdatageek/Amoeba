@@ -28,6 +28,7 @@ from amoeba.task.instantiate import instantiate
 from amoeba.task.models import RunResult, Task
 from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
+from amoeba.tools.web import web_registry
 
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
@@ -119,6 +120,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="both observers' reply limit (default $AMOEBA_MAX_TOKENS_OBSERVER or 8192; D27)")
     p.add_argument("--quality-gate", action="store_true",
                    help="send a draft back (within the round cap) when a hard draft_quality check fails (D28)")
+    p.add_argument("--web-tools", action="store_true",
+                   help="give Box 3 web_search and fetch_url (Tavily; needs TAVILY_API_KEY). The plan runner hands "
+                        "them to roles that asked for web search (D32); Box 2 never sees them")
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
@@ -138,7 +142,8 @@ def main(argv: list[str] | None = None) -> int:
         tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
     results = []
     for task in tasks:
-        r = run_one(task, args.topology, llm, envelope, tools, args.runs_dir, args.seed,
+        box3_tools = web_registry() if args.web_tools else tools   # a fresh source list per run (D32)
+        r = run_one(task, args.topology, llm, envelope, box3_tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
                     max_tokens=cli_token_limits(args), quality_gate=args.quality_gate)
         results.append(r)

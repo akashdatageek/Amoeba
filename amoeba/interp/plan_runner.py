@@ -10,10 +10,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
 from amoeba.task.models import Episode, Task
+from amoeba.tools.web import WEB_TOOLS
 
 PLAN_SECTIONS = ["CurrentStep", "Action", "ActionInput"]   # Thought is asked for but not required
 PLAN_MAX_TOKENS = 8192                                     # per helper call (D27 room; flat keeps the client default)
@@ -110,11 +112,31 @@ class PlanRunner:
         self.dir = Path(run_dir) / "artifacts" if run_dir else None
         self.steps = {number(s): s for s in cfg.plan}
         self.artifacts: dict[int, dict] = {}     # step number -> {"text", "meta"}
+        self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
+        self.web = getattr(interp.tools, "web", None)
+
+    def grant_web_tools(self) -> None:
+        """D32: a role whose missing tools or capability requests normalise to web_search gets web_search and
+        fetch_url when this run has them. Recorded as `capability_mapped` events."""
+        asked = self.cfg.meta.get("capability_requests", [])
+        for a in self.agents.values():
+            names = list(a.missing_tools) + [q["name"] for q in asked if q.get("for_role") == a.name]
+            hits = [n for n in names if normalise(n)[0] == "web_search"]
+            if not hits:
+                continue
+            a.tools = list(dict.fromkeys([*a.tools, *WEB_TOOLS]))
+            a.missing_tools = [t for t in a.missing_tools if t not in hits]
+            self.i.trace.event("capability_mapped", {"gen_ai.agent.id": a.agent_id, "gen_ai.agent.name": a.name,
+                                                     "amoeba.requested": hits, "amoeba.canonical": "web_search",
+                                                     "amoeba.granted": list(WEB_TOOLS)})
 
     # ---- the whole plan -------------------------------------------------------------------------------------
     def run(self) -> tuple[str | None, str | None]:
         for e in self.cfg.meta.get("dependency_relinked", []):
             self.i.trace.event("dependency_relinked", e)
+        if self.web is not None:
+            self.grant_web_tools()
+            self.i.trace.event("web_tools", {"amoeba.web.provider": self.web.provider.name, **self.web.limits.as_trace()})
         ws = waves(self.cfg.plan)
         deps = dependencies(self.cfg.plan)
         self.i.trace.event("plan_graph", {"amoeba.waves": ws, "amoeba.depends_on": {str(k): v for k, v in deps.items()},
@@ -129,12 +151,12 @@ class PlanRunner:
 
     def _answer_step(self, ws: list[list[int]]) -> int:
         """The summariser's step if it owns one in the last wave, else the last step of the last wave."""
-        summ = {a.agent_id for a in self.cfg.agents.values() if a.is_summariser}
+        summ = {a.agent_id for a in self.agents.values() if a.is_summariser}
         final = [n for n in ws[-1] if summ & set(self.steps[n].agent_ids)]
         return (final or ws[-1])[-1]
 
     def _max_turns(self) -> int:
-        return next(iter(self.cfg.agents.values())).limits.max_turns
+        return next(iter(self.agents.values())).limits.max_turns
 
     # ---- one step -------------------------------------------------------------------------------------------
     def inputs_text(self, deps: list[int]) -> str:
@@ -149,8 +171,10 @@ class PlanRunner:
 
     def run_step(self, step: PlanStep, wave: int, deps: list[int]) -> dict:
         n = number(step)
-        agents = [self.cfg.agents[a] for a in step.agent_ids]
+        agents = [self.agents[a] for a in step.agent_ids]
         inputs = self.inputs_text(deps)
+        if self.web is not None:
+            self.web.begin_step(n, self.i.trace)
         self.i.trace.event("step_input", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.depends_on": deps,
                                           "amoeba.received": deps, "amoeba.input_chars": len(inputs)})
         max_turns = agents[0].limits.max_turns
@@ -188,7 +212,9 @@ class PlanRunner:
                   "blocked" if blocked and len(done) + len(blocked) == len(agents) else "max_turns")
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents], "covers": step.covers,
                 "depends_on": deps, "received": deps, "output_spec": step.output, "status": status,
-                "turns": turn, "blocked": sorted(set(blocked.values())), "sources": [],
+                "turns": turn, "blocked": sorted(set(blocked.values())),
+                "sources": [{k: s[k] for k in ("id", "url", "title", "kind", "fetched_at")}
+                            for s in (self.web.sources_for(n) if self.web is not None else [])],
                 "contributions": contributions}
         self.artifacts[n] = {"text": text, "meta": meta}
         self.ep.steps.append(meta)

@@ -75,6 +75,8 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
         cfg = TeamConfig(**common, topology="plan", agents=agents, edges=edges,
                          entry=list(dict.fromkeys(a for s in roots for a in s.agent_ids)), exit=exit_id, plan=plan)
         cfg.meta["dependency_relinked"] = relinked
+        # D32: who asked for what, so Box 3 can hand a role the tools that now exist for its request
+        cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role} for q in draft.capability_requests]
     else:
         raise ValueError(f"unknown topology {topology!r}")
 

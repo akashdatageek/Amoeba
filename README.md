@@ -36,6 +36,19 @@ Without `--llm openai` a scripted stand-in model (`amoeba/llm/toy_mock.py`) answ
 key. Each run writes `runs/<run_id>/{team.yaml, plan.json, trace.jsonl, capability_requests.json, result.json}` and the CLI prints mean
 score, tokens and LLM calls.
 
+## Box 3 plan runner and web tools (D31–D32)
+
+```bash
+python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --draft-prompts d24 --topology plan
+python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --draft-prompts d24 --topology plan --web-tools
+python -m scripts.smoke_web "Amazon RDS for PostgreSQL storage price per GB-month"   # one real call per web tool
+```
+
+`--web-tools` gives the plan runner `web_search` and `fetch_url` through Tavily. The key is read from the
+environment variable **`TAVILY_API_KEY`** (never from a file). In the Claude Code cloud environment, add the domain
+**`api.tavily.com`** to the environment's network allowlist (cloud environment menu → Edit → Network access); search
+and page extraction both go through that one domain, so no other site needs to be reachable.
+
 ## Layout
 
 ```
