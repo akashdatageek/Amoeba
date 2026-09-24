@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 
+from amoeba.capabilities import normalise, snake
 from amoeba.task.models import Draft
 from amoeba.task.parsers import parse_json_objects, parse_sections
 
@@ -67,7 +68,7 @@ def draft_quality(d: Draft) -> dict:
                             "tools": (summ.tools + summ.missing_tools) if summ else [], "owns_steps": owns}
 
     # 5. every tool the draft names is installed or requested by the planner itself
-    key = lambda n: "".join(ch for ch in n.lower() if ch.isalnum())   # 'web_search' == 'Web search'
+    key = lambda n: snake(normalise(n)[0])   # 'web_search' == 'Web search' == 'Web Research' (D29)
     asked = {key(q.name) for q in d.capability_requests if q.source == "planner"}
     unasked = sorted({t for x in d.created_roles for t in x.missing_tools if key(t) not in asked})
     checks["tools_accounted"] = {"ok": not unasked, "missing_not_requested_by_planner": unasked}

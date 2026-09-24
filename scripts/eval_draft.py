@@ -16,6 +16,7 @@ Writes runs/draft_eval/<stamp>/{attempts.jsonl, summary.csv, drafts/, traces/, p
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import csv
 import json
 import sys
@@ -85,7 +86,9 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
         row.update(ok=True, error="", rounds=d.rounds_used, consensus=d.consensus, roster=len(d.created_roles),
                    plan_steps=len(d.plan), requests_final=len(d.capability_requests),
                    requests_proposed=d.requests_proposed, requests_dropped=d.requests_dropped_by_observers,
-                   request_names=sorted({q.name for q in d.capability_requests}))
+                   request_names=sorted({q.name for q in d.capability_requests}),
+                   canonical_names=sorted({q.canonical for q in d.capability_requests}),            # D29
+                   unmapped_names=sorted({q.name for q in d.capability_requests if not q.mapped}))
         q = d.quality["checks"]
         row.update(quality_passed=d.quality["passed"], quality_failed=d.quality["failed"],
                    failed_checks=d.quality["failed_checks"], requirements=len(d.requirements),
@@ -164,6 +167,9 @@ def summarise(rows: list[dict]) -> list[dict]:
                 "requests_final": sum(r["requests_final"] for r in rs),
                 "requests_dropped": sum(r["requests_dropped"] for r in rs),
                 "request_names": " ".join(sorted({x for r in rs for x in r["request_names"]})),
+                "canonical_counts": " ".join(f"{k}:{v}" for k, v in sorted(Counter(
+                    x for r in rs for x in r.get("canonical_names", [])).items())),                  # D29
+                "unmapped_names": " | ".join(sorted({x for r in rs for x in r.get("unmapped_names", [])})),
                 "mean_tokens": mean([r["tokens"] for r in rs]), "mean_calls": mean([r["calls"] for r in rs]),
                 # D24 draft_quality (accepted drafts; a d19 draft has no requirement ids, so those are blank)
                 "requirements_covered_rate": rate([r.get("requirements_covered") for r in ok]),

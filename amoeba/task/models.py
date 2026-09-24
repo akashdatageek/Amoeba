@@ -5,7 +5,7 @@ import json
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Task(BaseModel):
@@ -72,6 +72,16 @@ class CapabilityRequest(BaseModel):
     # planner = listed under "## Capability Requests"; unregistered_tool = a role's tools named it and the resolver
     # found no such tool; runtime_unknown_tool = a helper chose it as an action during the run
     source: Literal["planner", "unregistered_tool", "runtime_unknown_tool"] = "planner"
+    # D29: the canonical name from amoeba/capabilities/aliases.yaml; `name` keeps what the model wrote
+    canonical: str = ""
+    mapped: bool = False
+
+    @model_validator(mode="after")
+    def _canonical(self):
+        if not self.canonical:
+            from amoeba.capabilities import normalise
+            self.canonical, self.mapped = normalise(self.name)
+        return self
 
     @field_validator("name", "for_role", "what_it_does", "input", "output", "example_input", "example_output",
                      mode="before")
@@ -213,3 +223,4 @@ class RunResult(BaseModel):
     requests_proposed: int = 0
     requests_dropped_by_observers: int = 0
     draft_quality: dict = Field(default_factory=dict)   # D24 checks on the draft (recorded, not enforced)
+    unmapped_capabilities: list[str] = Field(default_factory=list)   # D29: names aliases.yaml does not know yet

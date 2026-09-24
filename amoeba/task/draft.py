@@ -105,8 +105,8 @@ def section_requests(sec: dict[str, str], envelope: Envelope) -> list[Capability
 def request_survival(first: list[CapabilityRequest], final: list[CapabilityRequest]) -> tuple[int, int]:
     """(requests_proposed, requests_dropped_by_observers): distinct capability names asked for in round 1, and how
     many of them the final draft no longer asks for. Matched by name, case-insensitive (roles may be renamed)."""
-    proposed = {q.name.lower() for q in first}
-    return len(proposed), len(proposed - {q.name.lower() for q in final})
+    proposed = {q.canonical.lower() for q in first}                    # D29: compare canonical names
+    return len(proposed), len(proposed - {q.canonical.lower() for q in final})
 
 
 def pick_summariser(roles: list[DraftedRole], plan: list[DraftPlanStep]) -> DraftedRole:
