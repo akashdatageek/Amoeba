@@ -134,6 +134,12 @@ Issues found:
 
 Your earlier output:
 {previous}"""
+REVERIFY_NOTE = """
+
+RE-CHECK: after your earlier FAIL, step(s) {steps} were reworked. Check their new outputs (in your inputs) against the
+issues you raised and give a new verdict.
+Your earlier issues:
+{issues}"""
 RETRY_NOTE = ("Plain code checked this step's output and it failed: {failed}. Fix that and give the whole step "
               "output again as Final Output.\n")
 
@@ -281,7 +287,8 @@ class PlanRunner:
             parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}\n{a['text']}")
         return "\n\n".join(parts)
 
-    def run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None = None) -> dict:
+    def run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None = None,
+                 reverify: dict | None = None) -> dict:
         n = number(step)
         agents = [self.agents[a] for a in step.agent_ids]
         summarising = self.is_summary_step(step)                                  # D35
@@ -293,6 +300,9 @@ class PlanRunner:
                                           "amoeba.received": deps, "amoeba.input_chars": len(inputs),
                                           "amoeba.verification": verifier, "amoeba.rework": bool(rework)})
         extra = VERIFY_NOTE if verifier else ""
+        if reverify:
+            extra += REVERIFY_NOTE.format(steps=", ".join(map(str, reverify["reworked"])),
+                                          issues=reverify["first_issues"].strip())
         if rework:
             extra += REWORK_NOTE.format(by=rework["by_step"], issues=rework["issues"].strip(),
                                         previous=self.artifacts[n]["text"].strip())
@@ -335,15 +345,23 @@ class PlanRunner:
                 "status_reason": reason, "turns": w.turn, "blocked": gaps,
                 "blocked_canonical": sorted({normalise(g)[0] for g in gaps}), "sources": own,
                 "visible_source_ids": sorted(visible), "provenance": prov, "checks": checks, "retried": retried,
-                "verification": verifier, "rework_of": rework, "contributions": w.contributions}
+                "verification": verifier, "rework_of": rework, "reverify_of": reverify,
+                "contributions": w.contributions}
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
+            # D38: both verdicts are kept; `verdict` is always the latest one
+            meta["verdict_first"] = reverify["first_verdict"] if reverify else meta["verdict"]
+            meta["verdict_after_rework"] = meta["verdict"] if reverify else None
         if summarising:
             text, added = self.enforce_limitations(text)                          # D36
             meta["summary_check"] = {**self.summary_check(n, text), **added}
         self._save(n, wave, text, meta, prov)
-        if verifier and meta["verdict"] == "FAIL":
-            self.rework_producers(n, deps, meta["issues"])
+        if verifier and meta["verdict"] == "FAIL" and not reverify:
+            reworked = self.rework_producers(n, deps, meta["issues"])
+            if reworked:                                   # D38: check once more what the rework produced
+                self.i.trace.event("reverify", {"amoeba.step": n, "amoeba.reworked": reworked})
+                self.run_step(step, wave, deps, reverify={"first_verdict": meta["verdict"],
+                                                          "first_issues": meta["issues"], "reworked": reworked})
         return self.artifacts[n]
 
     def is_summary_step(self, step: PlanStep) -> bool:
@@ -361,6 +379,8 @@ class PlanRunner:
             why = f" ({m['status_reason']})" if m.get("status_reason") else ""
             gaps = f"; lacked: {', '.join(m['blocked'])}" if m.get("blocked") else ""
             verdict = f"; verdict: {m['verdict']}" if m.get("verdict") else ""
+            if m.get("verdict_after_rework"):
+                verdict += f" (after rework; first verdict {m['verdict_first']})"
             parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{why}{gaps}{verdict}; figures: "
                          f"{p['cited']} cited, {p['unverified']} unverified, {p['untagged']} untagged\n{a['text']}")
         return "\n\n".join(parts) or "None."
@@ -421,17 +441,20 @@ class PlanRunner:
             self.i.trace.event("verification_inferred", {"amoeba.step": number(step), "amoeba.text": step.text[:120]})
         return inferred
 
-    def rework_producers(self, n: int, deps: list[int], issues: str) -> None:
-        """D34: on a FAIL verdict each producer step it checked is re-run once with the issues; the run then goes on
-        whatever the result (the verifier is not asked again)."""
+    def rework_producers(self, n: int, deps: list[int], issues: str) -> list[int]:
+        """D34: on a FAIL verdict each producer step it checked is re-run once with the issues. Returns the steps
+        reworked; the verifier then checks once more (D38) and the run goes on whatever the second verdict."""
         all_deps = dependencies(self.cfg.plan)
+        done = []
         for d in deps:
             if d in self.reworked or self.artifacts[d]["meta"].get("verification"):
                 continue
             self.reworked.add(d)
+            done.append(d)
             self.i.trace.event("rework", {"amoeba.step": d, "amoeba.by_step": n, "amoeba.issues_chars": len(issues)})
             self.run_step(self.steps[d], self.artifacts[d]["meta"]["wave"], all_deps[d],
                           rework={"by_step": n, "issues": issues})
+        return done
 
     def _loop(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work",
               template: str = "") -> None:
@@ -478,7 +501,7 @@ class PlanRunner:
                                                                if k != "untagged_examples"}})
         if self.dir:
             self.dir.mkdir(parents=True, exist_ok=True)
-            suffix = f".rework" if meta["rework_of"] else ""
+            suffix = ".rework" if meta["rework_of"] or meta.get("reverify_of") else ""
             if suffix and (self.dir / f"step_{n}.md").exists():      # keep the first version next to the rework
                 (self.dir / f"step_{n}.md").rename(self.dir / f"step_{n}.first.md")
                 (self.dir / f"step_{n}.json").rename(self.dir / f"step_{n}.first.json")

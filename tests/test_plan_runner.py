@@ -182,13 +182,16 @@ def test_a_fail_verdict_reworks_each_producer_once(task, envelope, trace, tools,
     w = scripted(body)
     llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
     ep = Interpreter(llm, tools, trace, run_dir=tmp_path).run(cfg, task, seed=0)
-    assert [(s["step"], bool(s["rework_of"])) for s in ep.steps] == [
-        (1, False), (2, False), (3, False), (1, True), (4, False)]
+    # D38: after the rework the verifier checks once more (it fails again here; no second rework)
+    assert [(s["step"], bool(s["rework_of"]), bool(s.get("reverify_of"))) for s in ep.steps] == [
+        (1, False, False), (2, False, False), (3, False, False), (1, True, False), (3, False, True), (4, False, False)]
     three = next(s for s in ep.steps if s["step"] == 3)
     assert three["verification"] and three["verdict"] == "FAIL" and "no source" in three["issues"]
+    again = [s for s in ep.steps if s["step"] == 3][-1]
+    assert (again["verdict_first"], again["verdict_after_rework"], again["verdict"]) == ("FAIL", "FAIL", "FAIL")
     redo = next(s for s in ep.steps if s["step"] == 1 and s["rework_of"])
     assert redo["rework_of"]["by_step"] == 3
-    assert w.seen == {"1": 2, "2": 1, "3": 2, "4": 1}          # step 3 (two helpers) is not asked again
+    assert w.seen == {"1": 2, "2": 1, "3": 4, "4": 1}          # step 3 (two helpers) checks twice, never a 3rd time
     rework_prompt = [c for c in llm.calls_of("plan_worker") if "(step 1)" in c["messages"][-1]["content"]][1]
     assert "REWORK: verification step 3 found issues" in rework_prompt["messages"][-1]["content"]
     assert "OUT-1.1" in rework_prompt["messages"][-1]["content"]          # it sees its earlier output
@@ -289,3 +292,20 @@ def test_a_short_answer_that_repeats_its_input_passes_the_checks():
     from amoeba.interp.plan_runner import step_checks
     assert all(c["pass"] for c in step_checks(two, "SUSNESNOC\n\n(as computed)", [1], steps_))
     assert not all(c["pass"] for c in step_checks(two, "something else entirely", [1], steps_))
+
+
+def test_a_verdict_that_turns_pass_after_rework_is_what_the_summariser_sees(task, envelope, trace, tools, tmp_path):
+    def body(n, k, prompt):
+        if n == "3":
+            verdict = "PASS\nIssues: none" if "RE-CHECK" in prompt else "FAIL\nIssues:\n1. Step 1: no source."
+            return f"Verdict: {verdict}\n\n{BODY}"
+        return f"OUT-{n}.{k}\n{BODY}"
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=scripted(body))
+    ep = Interpreter(llm, tools, trace, run_dir=tmp_path).run(cfg, task, seed=0)
+    last3 = [s for s in ep.steps if s["step"] == 3][-1]
+    assert (last3["verdict_first"], last3["verdict_after_rework"], last3["verdict"]) == ("FAIL", "PASS", "PASS")
+    [ev] = trace.events("reverify")
+    assert ev["amoeba.reworked"] == [1]
+    summ = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
+    assert "verdict: PASS (after rework; first verdict FAIL)" in summ
+    assert (tmp_path / "artifacts" / "step_3.first.md").exists()
