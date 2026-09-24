@@ -10,7 +10,7 @@ from amoeba.interp.trace import TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient
 from amoeba.safety.envelope import Envelope
 from amoeba.task.models import CapabilityRequest, Draft, DraftedRole, DraftPlanStep, DraftRound, Task
-from amoeba.task.quality import draft_quality
+from amoeba.task.quality import draft_quality, gate_suggestions
 import os
 import re
 
@@ -167,7 +167,7 @@ def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
 
 
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
-               prompts: str = D19, max_tokens: dict | None = None) -> Draft:
+               prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False) -> Draft:
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
     d24 = prompts == D24
@@ -254,14 +254,47 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             sugg_plan += sp                           # manager.py:43
             suggestions = f"## Role Suggestions\n{sr}\n\n## Plan Suggestions\n{sp}"   # manager.py:45
             rec.agent_suggestions_n, rec.plan_suggestions_n = n_suggestions(sr), n_suggestions(sp)
-            if (rec.agent_verdict == rec.plan_verdict == "APPROVE") if d24 else (approves(sr) and approves(sp)):
-                consensus = rec.consensus = True   # D24: both verdicts exactly APPROVE; d19: D2 + D25
+            approved = (rec.agent_verdict == rec.plan_verdict == "APPROVE") if d24 else (approves(sr) and approves(sp))
+            if quality_gate:   # D28: plain code checks this round's draft; a failed hard check sends it back
+                try:
+                    q = draft_quality(assemble(sec, raw, prompts, envelope))
+                except DraftError:
+                    q = None   # no usable team in this reply; publish (or the next round) reports it
+                rec.gate_failed = q["hard_failed"] if q else []
+                if rec.gate_failed:
+                    trace.event("quality_gate", {"amoeba.gate.round": rec.index,
+                                                 "amoeba.gate.failed": ",".join(rec.gate_failed)})
+                    suggestions += f"\n\n## Quality Gate (plain-code checks, must be fixed)\n{gate_suggestions(q)}"
+            if approved and not rec.gate_failed:
+                consensus = rec.consensus = True   # D24: both verdicts exactly APPROVE; d19: D2 + D25 (+ D28 gate)
             # original tests the CUMULATIVE strings (manager.py:47): one early "No Suggestions" sticks forever.
             # DEVIATION D2: current-round test (stricter, saner).
             rounds += 1
 
     # publish: the LAST draft is used whether or not consensus was reached (manager.py:52-59)
     raw, sec = last
+    d = assemble(sec, raw, prompts, envelope, log)
+    proposed, dropped = request_survival(first_requests, d.capability_requests)
+    for q in d.capability_requests:
+        trace.event("capability_request", {"capability.name": q.name, "capability.kind": q.kind,
+                                           "capability.for_role": q.for_role, "capability.source": q.source})
+    d = d.model_copy(update=dict(rounds_used=rounds, consensus=consensus, role_feedback=sugg_roles,
+                                 plan_feedback=sugg_plan, rounds=log, requests_proposed=proposed,
+                                 requests_dropped_by_observers=dropped,
+                                 gate_hits=sum(bool(r.gate_failed) for r in log)))
+    d.quality = draft_quality(d)                      # D24: measured; used only by --quality-gate (D28)
+    trace.event("draft_quality", {"amoeba.quality.passed": d.quality["passed"],
+                                  "amoeba.quality.failed": d.quality["failed"],
+                                  "amoeba.quality.failed_checks": ",".join(d.quality["failed_checks"]) or None})
+    return d
+
+
+def assemble(sec: dict[str, str], raw: str, prompts: str, envelope: Envelope,
+             log: list[DraftRound] | None = None) -> Draft:
+    """One planner reply → a Draft, by the deterministic post-checks. Used on the last round (publish) and, with
+    --quality-gate, on every round (D28). Raises DraftError when no usable team comes out."""
+    d24 = prompts == D24
+    log = log if log is not None else []
     blobs = role_blobs(sec)                           # D22
     steps = parse_plan_d24(sec["Execution Plan"]) if d24 else \
         [(names, text, {}) for names, text in parse_plan(sec["Execution Plan"])]   # D24 keeps the step detail
@@ -291,18 +324,8 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     pick_summariser(roles, plan)                      # D20 (was: "the first role without tools")
     if not 2 <= len(roles) <= envelope.max_agents:
         raise DraftError(f"roster size {len(roles)} outside 2..{envelope.max_agents}", log)
-    proposed, dropped = request_survival(first_requests, requests)
-    for q in requests:
-        trace.event("capability_request", {"capability.name": q.name, "capability.kind": q.kind,
-                                           "capability.for_role": q.for_role, "capability.source": q.source})
-    d = Draft(created_roles=roles, plan=plan, rounds_used=rounds, consensus=consensus,
-                 role_feedback=sugg_roles, plan_feedback=sugg_plan, raw_draft=raw, capability_requests=requests, rounds=log,
-                 requests_proposed=proposed, requests_dropped_by_observers=dropped, prompts=prompts,
+    return Draft(created_roles=roles, plan=plan, rounds_used=0, consensus=False, raw_draft=raw,
+                 capability_requests=requests, rounds=log, prompts=prompts,
                  requirements=parse_requirements(sec.get("Requirements", "")) if d24 else {},
                  givens=parse_bullets(sec.get("Givens and Assumptions", "")) if d24 else [],
                  risks=parse_bullets(sec.get("Risks and Decisions", "")) if d24 else [])
-    d.quality = draft_quality(d)                      # D24: measured, never used to reject (yet)
-    trace.event("draft_quality", {"amoeba.quality.passed": d.quality["passed"],
-                                  "amoeba.quality.failed": d.quality["failed"],
-                                  "amoeba.quality.failed_checks": ",".join(d.quality["failed_checks"]) or None})
-    return d

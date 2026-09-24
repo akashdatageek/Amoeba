@@ -71,7 +71,8 @@ def would_pass(text: str, names: list[str], max_agents: int) -> bool:
 
 
 def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path, seed: int,
-            log_content: bool = True, prompts: str = "d19", max_tokens: dict | None = None) -> dict:
+            log_content: bool = True, prompts: str = "d19", max_tokens: dict | None = None,
+            quality_gate: bool = False) -> dict:
     rec = Recording(llm)
     trace = TraceWriter(out / "traces" / f"{task.id}.{rep}.jsonl", episode_id=f"{task.id}.{rep}",
                         log_content=log_content)
@@ -79,7 +80,8 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
     row = {"task_id": task.id, "family": task.family, "repeat": rep, "prompts": prompts, "model": llm.model}
     saved: dict = {}
     try:
-        d = draft_team(task, rec, envelope, trace, seed, prompts=prompts, max_tokens=max_tokens)
+        d = draft_team(task, rec, envelope, trace, seed, prompts=prompts, max_tokens=max_tokens,
+                       quality_gate=quality_gate)
         row.update(ok=True, error="", rounds=d.rounds_used, consensus=d.consensus, roster=len(d.created_roles),
                    plan_steps=len(d.plan), requests_final=len(d.capability_requests),
                    requests_proposed=d.requests_proposed, requests_dropped=d.requests_dropped_by_observers,
@@ -90,6 +92,8 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
                    requirements_covered=q["requirements_covered"]["ok"],
                    roles_defined_pct=round(100 * q["roles_fully_defined"]["defined"] / max(1, len(d.created_roles))),
                    verification_step=q["verification_step"]["ok"], summariser_ok=q["summariser"]["ok"],
+                   independent_verification=q["independent_verification"]["ok"], gate_hits=d.gate_hits,
+                   hard_failed=d.quality["hard_failed"],
                    last_verdicts=[d.rounds[-1].agent_verdict, d.rounds[-1].plan_verdict] if d.rounds else [])
         saved = d.model_dump(mode="json")
     except DraftError as e:
@@ -166,6 +170,8 @@ def summarise(rows: list[dict]) -> list[dict]:
                 "mean_roles_defined_pct": mean([r["roles_defined_pct"] for r in ok if "roles_defined_pct" in r]),
                 "verification_step_rate": rate([r.get("verification_step") for r in ok]),
                 "summariser_ok_rate": rate([r.get("summariser_ok") for r in ok]),
+                "independent_verification_rate": rate([r.get("independent_verification") for r in ok]),
+                "gate_hits": sum(r.get("gate_hits", 0) for r in ok),
                 "derived_correct_rate": rate([r.get("derived_correct") for r in rs]),
                 "mean_requests_final": mean([r["requests_final"] for r in rs]),
                 "truncated_calls": sum(r.get("truncated", 0) for r in rs),
@@ -195,6 +201,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--out", default=None, help="default: runs/draft_eval/<UTC stamp>")
     p.add_argument("--no-log-content", action="store_true", help="leave prompts and replies out of the traces")
     p.add_argument("--draft-prompts", choices=["d19", "d24"], default="d19", help="Box 2 prompts (D24)")
+    p.add_argument("--quality-gate", action="store_true",
+                   help="send a draft back (within the round cap) when a hard draft_quality check fails (D28)")
     p.add_argument("--planner-max-tokens", type=int, default=None,
                    help="Planner reply limit (default $AMOEBA_MAX_TOKENS_PLANNER or 8192; D27)")
     p.add_argument("--observer-max-tokens", type=int, default=None,
@@ -214,7 +222,8 @@ def main(argv: list[str] | None = None) -> int:
         for task in load_tasks(args.tasks):
             for rep in range(args.repeats):
                 row = attempt(task, rep, llm, envelope, out, args.seed, log_content=not args.no_log_content,
-                              prompts=args.draft_prompts, max_tokens=cli_token_limits(args))
+                              prompts=args.draft_prompts, max_tokens=cli_token_limits(args),
+                              quality_gate=args.quality_gate)
                 rows.append(row)
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
                 fh.flush()

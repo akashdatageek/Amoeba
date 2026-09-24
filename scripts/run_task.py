@@ -32,7 +32,7 @@ from amoeba.tools.registry import ToolRegistry, default_registry
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
-            max_tokens: dict | None = None) -> RunResult:
+            max_tokens: dict | None = None, quality_gate: bool = False) -> RunResult:
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -42,7 +42,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     answer = error = None
     team_id = ""
     try:
-        draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens)
+        draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
+                           quality_gate=quality_gate)
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         dump_yaml(cfg, run_dir / "team.yaml")
@@ -108,6 +109,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="Planner reply limit (default $AMOEBA_MAX_TOKENS_PLANNER or 8192; D27)")
     p.add_argument("--observer-max-tokens", type=int, default=None,
                    help="both observers' reply limit (default $AMOEBA_MAX_TOKENS_OBSERVER or 8192; D27)")
+    p.add_argument("--quality-gate", action="store_true",
+                   help="send a draft back (within the round cap) when a hard draft_quality check fails (D28)")
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
@@ -126,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
     for task in tasks:
         r = run_one(task, args.topology, llm, envelope, tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
-                    max_tokens=cli_token_limits(args))
+                    max_tokens=cli_token_limits(args), quality_gate=args.quality_gate)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

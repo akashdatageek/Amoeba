@@ -168,6 +168,7 @@ class DraftRound(BaseModel):
     plan_observer_raw: str = ""
     plan_observer: str = ""
     consensus: bool = False                                       # both approved this round (D2; D25 / D24 rules)
+    gate_failed: list[str] = Field(default_factory=list)          # D28 --quality-gate: hard checks this round failed
     agent_verdict: str | None = None                              # D24: APPROVE | REVISE | OTHER; None for d19
     plan_verdict: str | None = None
     agent_suggestions_n: int = 0                                  # numbered suggestions in each observer's reply
@@ -189,6 +190,7 @@ class Draft(BaseModel):
     givens: list[str] = Field(default_factory=list)                # D24: givens, derived numbers, assumptions
     risks: list[str] = Field(default_factory=list)                 # D24: risks and decision points
     quality: dict = Field(default_factory=dict)                    # D24 draft_quality checks (recorded, not enforced)
+    gate_hits: int = 0                                             # D28: rounds the --quality-gate sent back
     requests_proposed: int = 0                 # distinct capabilities asked for in round 1
     requests_dropped_by_observers: int = 0     # of those, how many the final draft no longer asks for
 
