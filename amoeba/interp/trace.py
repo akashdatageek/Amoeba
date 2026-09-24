@@ -107,6 +107,9 @@ class TracedLLM:
         attrs = {"gen_ai.agent.id": agent_id, "gen_ai.agent.name": agent_name,
                  "gen_ai.request.model": self.llm.model, "gen_ai.request.max_tokens": max_tokens,
                  "amoeba.retry_of_truncated": True if _retry else None}
+        limits = getattr(self.trace, "limits", None)   # D47: opt-in per-run limits, checked before the call
+        if limits is not None and limits.active():
+            limits.check(self.trace)
         with self.trace.span("chat", attrs) as rec:
             if self.trace.log_content:   # OTel GenAI opt-in content capture: the exact prompt, even if the call fails
                 rec["gen_ai.input.messages"] = [dict(m) for m in messages]

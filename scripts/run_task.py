@@ -31,18 +31,20 @@ from amoeba.tools.registry import ToolRegistry, default_registry
 from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
+from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.tools.web import TavilyProvider, web_registry
 
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
             max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
-            saved_draft=None) -> RunResult:
+            saved_draft=None, limits: RunLimits | None = None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores."""
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id, log_content=log_content)
+    trace.limits = limits          # D47: checked before every LLM call when set
     t0 = time.perf_counter()
     draft = ep = failed = None
     answer = error = None
@@ -62,6 +64,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     except DraftError as e:
         error = f"draft: {e}"
         failed = e
+    except RunLimitReached as e:      # D47: a limit reached while drafting; what exists is saved below
+        error = e.code
     except CacheMiss as e:            # D46: replay mode never falls back to a live call
         error = f"cache_miss: {e}"
         trace.event("cache_miss", {"error.type": str(e)[:300]})
@@ -84,7 +88,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         rubric=graded, provenance=provenance_of(ep), blocked_capabilities=blocked_of(ep),
         answer_assembled_by_code=ep.answer_assembled_by_code if ep else [], figure_ledger=ep.figure_ledger if ep else {},
         summary_check=next((s["summary_check"] for s in reversed(ep.steps) if "summary_check" in s), {}) if ep else {},
-        total_tokens=trace.total_tokens,
+        total_tokens=trace.total_tokens, usage=estimate(trace.spans("chat"), llm.model),
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,
         draft_rounds=draft.rounds_used if draft else sum(bool(r.plan_observer_raw) for r in (failed.rounds if failed else [])), consensus=draft.consensus if draft else False,
         blocked_steps=ep.blocked_steps if ep else [], requested_capabilities=requested,
@@ -201,6 +205,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     add_client_args(p)
+    p.add_argument("--max-tokens-per-run", type=int, default=None,
+                   help="stop a run cleanly (error='budget') before a call once this many billed tokens were used (D47)")
+    p.add_argument("--max-calls-per-run", type=int, default=None,
+                   help="stop a run cleanly (error='budget') before its call number N+1 (D47)")
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
@@ -231,11 +239,13 @@ def main(argv: list[str] | None = None) -> int:
         r = run_one(task, args.topology, llm, envelope, box3_tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
                     max_tokens=cli_token_limits(args), quality_gate=args.quality_gate,
-                    plan_options=cli_plan_options(args), saved_draft=chosen)
+                    plan_options=cli_plan_options(args), saved_draft=chosen,
+                    limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run))
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
               f"rounds={r.draft_rounds} consensus={r.consensus} error={r.error} answer={shown!r}")
+        print(f"    {describe(r.usage)}")                                                    # D47
     unmapped = sorted({n for r in results for n in r.unmapped_capabilities})
     if unmapped:   # D29: extend amoeba/capabilities/aliases.yaml with these
         print("unmapped capability names:", ", ".join(unmapped))
@@ -250,6 +260,9 @@ def main(argv: list[str] | None = None) -> int:
           f"mean_llm_calls={sum(r.n_llm_calls for r in results) / n:.2f}  "
           f"(total tokens {sum(r.total_tokens for r in results)}, total calls {sum(r.n_llm_calls for r in results)}, "
           f"errors {sum(r.error is not None for r in results)})  runs in {Path(args.runs_dir).resolve()}")
+    costs = [r.usage.get("cost_usd") for r in results]
+    print(f"   billed tokens {sum(r.usage.get('tokens', 0) for r in results):,}"
+          + (f", est. cost ${sum(costs):.4f}" if all(c is not None for c in costs) else " (no price for this model)"))
     return 0
 
 

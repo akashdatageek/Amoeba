@@ -260,6 +260,7 @@ class RunResult(BaseModel):
     error: str | None
     score: float | None
     total_tokens: int
+    usage: dict = Field(default_factory=dict)   # D47: billed tokens (cache hits excluded) and estimated cost_usd
     latency_ms: int
     n_llm_calls: int
     draft_rounds: int

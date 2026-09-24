@@ -10,6 +10,7 @@ from amoeba.interp.trace import NoopListener, TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient, Messages
 from amoeba.task.models import AgentResult, CapabilityRequest, Episode, Message, Task
 from amoeba.task.parsers import MissingSections, ParseError, parse_critic
+from amoeba.llm.limits import RunLimitReached
 from amoeba.tools.registry import ToolError, ToolRegistry
 
 WORKER_SECTIONS = ["CurrentStep", "Action", "ActionInput"]           # custom_action.py:79-83
@@ -88,6 +89,8 @@ class Interpreter:
                     ep.answer, ep.error = self.run_boss_reviewers(cfg, task, ep)
             except (ParseError, MissingSections) as e:
                 ep.answer, ep.error = None, f"parse: {e}"
+            except RunLimitReached as e:                     # D47: stop cleanly; what ran so far stays in ep
+                ep.answer, ep.error = None, e.code
         ep.latency_ms = int((time.perf_counter() - t0) * 1000)
         return ep
 
