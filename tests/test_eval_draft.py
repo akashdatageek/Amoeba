@@ -51,5 +51,5 @@ def test_draft_transcript_from_an_eval_folder(tmp_path, task, envelope):
     md = transcript(tmp_path, task.id)
     assert "## Attempt 1: 1 rounds, consensus: yes" in md and "**Agent Observer verdict:** APPROVE" in md
     assert "- R3: prototype and test the event schema in both databases" in md
-    assert "   - *depends_on*: 1, 2" in md and "**draft_quality:** 5 passed, 2 failed" in md
+    assert "   - *depends_on*: 1, 2" in md and "**draft_quality:** 5 passed, 3 failed" in md   # D52: the arith task is not in this draft
     assert md.count("````text") == 3

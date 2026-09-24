@@ -9,12 +9,13 @@ from __future__ import annotations
 import re
 
 from amoeba.capabilities import normalise, snake
+from amoeba.interp.provenance import claim_numbers, numbers_in
 from amoeba.task.models import Draft
 from amoeba.task.parsers import parse_json_objects, parse_sections
 
 ROLE_FIELDS = ("goal", "skills", "outputs", "success_criteria", "prompt")
 # D28: the checks --quality-gate enforces (a failure sends the draft back for another round)
-HARD_CHECKS = ("requirements_covered", "independent_verification", "summariser")
+HARD_CHECKS = ("requirements_covered", "independent_verification", "summariser", "task_coverage")
 VERIFY_WORDS = re.compile(r"\b(verif\w*|check\w*|cross-check\w*|review\w*|validat\w*|audit\w*|reconcil\w*|"
                           r"sanity|double-check\w*|peer review)\b", re.I)
 
@@ -24,7 +25,64 @@ def _role_blobs(raw: str) -> list[dict]:
     return parse_json_objects(sec.get("Created Roles List", "")) + parse_json_objects(sec.get("Selected Roles List", ""))
 
 
-def draft_quality(d: Draft) -> dict:
+# D52: deliverable-like verbs of the task text, each with the word forms that count as the same verb
+DELIVERABLE_VERBS = {
+    "deliver": r"deliver(?:s|ed|ing)?", "estimate": r"estimat(?:e|es|ed|ing|ion|ions)",
+    "assess": r"assess(?:es|ed|ing|ment|ments)?", "prototype": r"prototyp(?:e|es|ed|ing)",
+    "test": r"test(?:s|ed|ing)?", "gather": r"gather(?:s|ed|ing)?", "build": r"(?:build(?:s|ing)?|built)",
+    "plan": r"plan(?:s|ned|ning)?",
+}
+_VERB = re.compile(r"\b(" + "|".join(DELIVERABLE_VERBS.values()) + r")\b", re.I)
+_OBJECT_END = re.compile(r"[.;:!?,\n(]|\b(?:and|then|or|but|so)\b", re.I)
+STOP = set("a an the of to in on at by as for with from into over per and or is are be it its this that these "
+           "those each both all any our your their we you they them which what how".split())
+OBJECT_WORDS = 6
+
+
+def _verb_key(word: str) -> str:
+    return next(k for k, rx in DELIVERABLE_VERBS.items() if re.fullmatch(rx, word, re.I))
+
+
+def _content(text: str) -> set[str]:
+    words = (w.lower().rstrip("s") for w in re.findall(r"[A-Za-z][A-Za-z0-9-]{2,}", text))
+    return {w for w in words if w not in STOP}
+
+
+def deliverable_phrases(task_text: str) -> list[tuple[str, str, str]]:
+    """(verb key, phrase, object) for every deliverable-like verb in the task: the verb and up to six words after
+    it, cut at punctuation or a joining word ("prototype and test the schema" gives "prototype" and "test the
+    schema")."""
+    out = []
+    for m in _VERB.finditer(task_text or ""):
+        rest = task_text[m.end():]
+        cut = _OBJECT_END.search(rest)
+        obj = " ".join((rest[:cut.start()] if cut else rest).split()[:OBJECT_WORDS])
+        out.append((_verb_key(m.group(1)), f"{m.group(1)} {obj}".strip(), obj))
+    return out
+
+
+def task_coverage(task_text: str, requirements: dict[str, str], givens: list[str]) -> dict:
+    """D52: is the task carried into the Planner's Requirements and Givens? Every number the task states must
+    appear in a requirement or a given; every deliverable-like phrase must map to a requirement — one that uses
+    the same verb (any form: "test" is not "estimate") and, when the phrase names an object, shares a word of it."""
+    carried = numbers_in("\n".join([*requirements.values(), *givens]))
+    numbers = sorted(claim_numbers(task_text), key=lambda n: (len(n), n))
+    phrases, missing = [], []
+    for key, phrase, obj in deliverable_phrases(task_text):
+        if phrase in phrases:
+            continue
+        phrases.append(phrase)
+        words = _content(obj)
+        if not any(re.search(r"\b" + DELIVERABLE_VERBS[key] + r"\b", r, re.I) and (not words or words & _content(r))
+                   for r in requirements.values()):
+            missing.append(phrase)
+    miss_n = [n for n in numbers if n not in carried]
+    return {"ok": not miss_n and not missing, "numbers": numbers, "missing_numbers": miss_n,
+            "phrases": phrases, "missing_phrases": missing}
+
+
+def draft_quality(d: Draft, task_text: str = "") -> dict:
+    """task_text: the task as Box 2 saw it; without it (or without requirement ids) task_coverage is n/a."""
     checks: dict[str, dict] = {}
     req = list(d.requirements)
     steps = d.plan
@@ -97,6 +155,13 @@ def draft_quality(d: Draft) -> dict:
     else:
         checks["independent_verification"] = {"ok": None, "detail": "no depends_on lines"}
 
+    # 8. D52 task intake: every number and deliverable-like phrase of the task reaches a requirement or given
+    if req and task_text:
+        checks["task_coverage"] = task_coverage(task_text, d.requirements, d.givens)
+    else:
+        checks["task_coverage"] = {"ok": None, "detail": "no requirement ids (d19 draft or none written)"
+                                   if not req else "no task text given"}
+
     oks = [c["ok"] for c in checks.values()]
     return {"checks": checks, "passed": oks.count(True), "failed": oks.count(False), "na": oks.count(None),
             "failed_checks": [k for k, c in checks.items() if c["ok"] is False],
@@ -118,4 +183,13 @@ def gate_suggestions(q: dict) -> str:
         lines.append(f"Summariser problem: exactly one role must have \"is_summariser\": true, no tools, and own only "
                      f"the last step (declared: {sm['declared_by_planner']}, tools: {sm['tools'] or 'none'}, "
                      f"owns steps: {sm['owns_steps']}).")
+    if "task_coverage" in q["hard_failed"]:
+        tc = c["task_coverage"]
+        if tc["missing_numbers"]:
+            lines.append(f"Numbers in the task that no requirement or given carries: {', '.join(tc['missing_numbers'])}. "
+                         f"Add each to Givens and Assumptions (or to the requirement that uses it).")
+        if tc["missing_phrases"]:
+            lines.append("Task phrases no requirement keeps (same verb, same object): "
+                         + "; ".join(f'"{x}"' for x in tc["missing_phrases"])
+                         + ". Add a requirement for each, keeping the task's own verb.")
     return "\n".join(f"{i}. {x}" for i, x in enumerate(lines, 1))

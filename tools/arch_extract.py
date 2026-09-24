@@ -214,14 +214,17 @@ BOXES: list[dict] = [
                "Matches each step's names to helpers (exact first, then by part of the name) and drops steps that match "
                "nobody; no steps left means drafting failed.",
                "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one "
-               "summariser, and a checking step done by a helper that did not produce what it checks.",
+               "summariser, a checking step done by a helper that did not produce what it checks, and task "
+               "coverage: every number in the task and every deliverable verb (deliver, estimate, assess, prototype, "
+               "test, gather, build, plan) must reach a requirement or a given.",
                "With the quality gate on, a draft failing a must-have check goes back to the planner for one more "
                "round with the failed checks listed, within the round cap."],
          proposes="The final draft text.",
          disposes="Everything listed here; the original project trusted the AI for all of it.",
          anchors=[("amoeba/task/draft.py::draft_team", "# publish", None), "amoeba/task/draft.py::pick_summariser",
                   "amoeba/task/draft.py::assemble", "amoeba/task/quality.py::draft_quality",
-                  "amoeba/task/quality.py::gate_suggestions", "amoeba/task/draft.py::role_blobs",
+                  "amoeba/task/quality.py::gate_suggestions", "amoeba/task/quality.py::task_coverage",
+                  "amoeba/task/draft.py::role_blobs",
                   "amoeba/task/parsers.py::parse_role_blobs", "amoeba/task/parsers.py::parse_plan",
                   "amoeba/task/models.py::DraftedRole"]),
     dict(id="instantiate", view="plan", title="Build the team (instantiate)", kind="code",

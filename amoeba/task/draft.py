@@ -257,7 +257,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             approved = (rec.agent_verdict == rec.plan_verdict == "APPROVE") if d24 else (approves(sr) and approves(sp))
             if quality_gate:   # D28: plain code checks this round's draft; a failed hard check sends it back
                 try:
-                    q = draft_quality(assemble(sec, raw, prompts, envelope))
+                    q = draft_quality(assemble(sec, raw, prompts, envelope), task.prompt)
                 except DraftError:
                     q = None   # no usable team in this reply; publish (or the next round) reports it
                 rec.gate_failed = q["hard_failed"] if q else []
@@ -282,7 +282,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                                  plan_feedback=sugg_plan, rounds=log, requests_proposed=proposed,
                                  requests_dropped_by_observers=dropped,
                                  gate_hits=sum(bool(r.gate_failed) for r in log)))
-    d.quality = draft_quality(d)                      # D24: measured; used only by --quality-gate (D28)
+    d.quality = draft_quality(d, task.prompt)         # D24: measured; used only by --quality-gate (D28)
     trace.event("draft_quality", {"amoeba.quality.passed": d.quality["passed"],
                                   "amoeba.quality.failed": d.quality["failed"],
                                   "amoeba.quality.failed_checks": ",".join(d.quality["failed_checks"]) or None})
