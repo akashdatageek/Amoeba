@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from amoeba.capabilities import normalise
@@ -22,6 +23,13 @@ from amoeba.tools.web import WEB_TOOLS
 
 PLAN_SECTIONS = ["CurrentStep", "Action", "ActionInput"]   # Thought is asked for but not required
 PLAN_MAX_TOKENS = 8192                                     # per helper call (D27 room; flat keeps the client default)
+
+
+@dataclass
+class PlanOptions:
+    """Settings of one plan run (run_task flags); every value is recorded in the `plan_graph` trace event."""
+
+    rerun_stale: bool = False        # D39: re-run once the steps that used a step's output before it was reworked
 
 
 class PlanGraphError(ValueError):
@@ -223,8 +231,11 @@ def parse_verdict_block(text: str) -> tuple[str | None, str]:
 class PlanRunner:
     """Runs one TeamConfig with topology "plan" for an Interpreter (which owns the LLM, tools, trace and dispatch)."""
 
-    def __init__(self, interp, cfg: TeamConfig, task: Task, ep: Episode, run_dir: Path | None = None):
+    def __init__(self, interp, cfg: TeamConfig, task: Task, ep: Episode, run_dir: Path | None = None,
+                 options: PlanOptions | None = None):
         self.i, self.cfg, self.task, self.ep = interp, cfg, task, ep
+        self.opt = options or PlanOptions()
+        self.rerun_done: set[int] = set()        # D39: each stale step is re-run at most once
         self.dir = Path(run_dir) / "artifacts" if run_dir else None
         self.steps = {number(s): s for s in cfg.plan}
         self.artifacts: dict[int, dict] = {}     # step number -> {"text", "meta"}
@@ -259,7 +270,8 @@ class PlanRunner:
         deps = dependencies(self.cfg.plan)
         self.answer_n = self._answer_step(ws)
         self.i.trace.event("plan_graph", {"amoeba.waves": ws, "amoeba.depends_on": {str(k): v for k, v in deps.items()},
-                                          "amoeba.max_turns": self._max_turns(), "amoeba.max_tokens": PLAN_MAX_TOKENS})
+                                          "amoeba.max_turns": self._max_turns(), "amoeba.max_tokens": PLAN_MAX_TOKENS,
+                                          **{f"amoeba.options.{k}": v for k, v in asdict(self.opt).items()}})
         for w, nums in enumerate(ws, 1):
             for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
                 self.run_step(self.steps[n], w, deps[n])
@@ -284,11 +296,13 @@ class PlanRunner:
         for d in deps:
             a = self.artifacts[d]
             m = a["meta"]
-            parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}\n{a['text']}")
+            stale = f", STALE (built on step(s) {', '.join(map(str, m['stale_because']))} before their rework)" \
+                if m.get("stale") else ""
+            parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{stale}\n{a['text']}")
         return "\n\n".join(parts)
 
     def run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None = None,
-                 reverify: dict | None = None) -> dict:
+                 reverify: dict | None = None, rerun: dict | None = None) -> dict:
         n = number(step)
         agents = [self.agents[a] for a in step.agent_ids]
         summarising = self.is_summary_step(step)                                  # D35
@@ -345,7 +359,8 @@ class PlanRunner:
                 "status_reason": reason, "turns": w.turn, "blocked": gaps,
                 "blocked_canonical": sorted({normalise(g)[0] for g in gaps}), "sources": own,
                 "visible_source_ids": sorted(visible), "provenance": prov, "checks": checks, "retried": retried,
-                "verification": verifier, "rework_of": rework, "reverify_of": reverify,
+                "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
+                "stale": False, "stale_because": [],
                 "contributions": w.contributions}
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
@@ -362,7 +377,43 @@ class PlanRunner:
                 self.i.trace.event("reverify", {"amoeba.step": n, "amoeba.reworked": reworked})
                 self.run_step(step, wave, deps, reverify={"first_verdict": meta["verdict"],
                                                           "first_issues": meta["issues"], "reworked": reworked})
+                self.mark_stale(reworked, verifier_step=n)                           # D39
         return self.artifacts[n]
+
+    def mark_stale(self, reworked: list[int], verifier_step: int) -> None:
+        """D39: a step that already ran on the output of a step that was later reworked (directly or through other
+        steps) is stale. It is marked in its metadata and the trace; with --rerun-stale it is re-run once, in plan
+        order. The verifier that asked for the rework is not stale (it checks again, D38)."""
+        deps = dependencies(self.cfg.plan)
+        users: dict[int, set[int]] = {}
+        for s, ds in deps.items():
+            for d in ds:
+                users.setdefault(d, set()).add(s)
+        because: dict[int, set[int]] = {}
+        for r in reworked:
+            todo, seen = list(users.get(r, ())), set()
+            while todo:
+                x = todo.pop()
+                if x in seen:
+                    continue
+                seen.add(x)
+                todo.extend(users.get(x, ()))
+                if x in self.artifacts and x != verifier_step:
+                    because.setdefault(x, set()).add(r)
+        order = [x for w in waves(self.cfg.plan) for x in w]
+        for x in sorted(because, key=order.index):
+            m = self.artifacts[x]["meta"]
+            m["stale"], m["stale_because"] = True, sorted(because[x])
+            self.i.trace.event("stale", {"amoeba.step": x, "amoeba.because_reworked": sorted(because[x]),
+                                         "amoeba.will_rerun": self.opt.rerun_stale and x not in self.rerun_done})
+            self._write(x)
+        if self.opt.rerun_stale:
+            for x in sorted(because, key=order.index):
+                if x in self.rerun_done:
+                    continue
+                self.rerun_done.add(x)
+                self.run_step(self.steps[x], self.artifacts[x]["meta"]["wave"], deps[x],
+                              rerun={"because_reworked": sorted(because[x])})
 
     def is_summary_step(self, step: PlanStep) -> bool:
         """D35: the answer step, when the summariser owns it, only assembles."""
@@ -379,6 +430,8 @@ class PlanRunner:
             why = f" ({m['status_reason']})" if m.get("status_reason") else ""
             gaps = f"; lacked: {', '.join(m['blocked'])}" if m.get("blocked") else ""
             verdict = f"; verdict: {m['verdict']}" if m.get("verdict") else ""
+            if m.get("stale"):
+                verdict += f"; STALE: built on step(s) {', '.join(map(str, m['stale_because']))} before their rework"
             if m.get("verdict_after_rework"):
                 verdict += f" (after rework; first verdict {m['verdict_first']})"
             parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{why}{gaps}{verdict}; figures: "
@@ -501,12 +554,17 @@ class PlanRunner:
                                                                if k != "untagged_examples"}})
         if self.dir:
             self.dir.mkdir(parents=True, exist_ok=True)
-            suffix = ".rework" if meta["rework_of"] or meta.get("reverify_of") else ""
+            suffix = ".rework" if meta["rework_of"] or meta.get("reverify_of") or meta.get("rerun_of_stale") else ""
             if suffix and (self.dir / f"step_{n}.md").exists():      # keep the first version next to the rework
                 (self.dir / f"step_{n}.md").rename(self.dir / f"step_{n}.first.md")
                 (self.dir / f"step_{n}.json").rename(self.dir / f"step_{n}.first.json")
             (self.dir / f"step_{n}.md").write_text(text + "\n", encoding="utf-8")
-            (self.dir / f"step_{n}.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+            self._write(n)
+
+    def _write(self, n: int) -> None:
+        if self.dir:
+            (self.dir / f"step_{n}.json").write_text(json.dumps(self.artifacts[n]["meta"], indent=2, ensure_ascii=False),
+                                                   encoding="utf-8")
 
     def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int,
               extra: str = "", template: str = "") -> tuple[str, str, str, str | None]:

@@ -34,7 +34,7 @@ from amoeba.tools.web import web_registry
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
-            max_tokens: dict | None = None, quality_gate: bool = False) -> RunResult:
+            max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None) -> RunResult:
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -49,7 +49,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         dump_yaml(cfg, run_dir / "team.yaml")
-        ep = Interpreter(llm, tools, trace, run_dir=run_dir).run(cfg, task, seed)
+        ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options).run(cfg, task, seed)
         answer, error = ep.answer, ep.error
     except DraftError as e:
         error = f"draft: {e}"
@@ -102,6 +102,12 @@ def blocked_of(ep) -> dict:
     return dict(sorted(counts.items()))
 
 
+def cli_plan_options(args: argparse.Namespace):
+    """The plan runner's settings from the command line (D39+)."""
+    from amoeba.interp.plan_runner import PlanOptions
+    return PlanOptions(rerun_stale=args.rerun_stale)
+
+
 def cli_token_limits(args: argparse.Namespace) -> dict:
     """D27: --planner-max-tokens / --observer-max-tokens (unset = env or default, see draft.token_limits)."""
     o = args.observer_max_tokens
@@ -145,6 +151,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--web-tools", action="store_true",
                    help="give Box 3 web_search and fetch_url (Tavily; needs TAVILY_API_KEY). The plan runner hands "
                         "them to roles that asked for web search (D32); Box 2 never sees them")
+    p.add_argument("--rerun-stale", action="store_true",
+                   help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
@@ -167,7 +175,8 @@ def main(argv: list[str] | None = None) -> int:
         box3_tools = web_registry() if args.web_tools else tools   # a fresh source list per run (D32)
         r = run_one(task, args.topology, llm, envelope, box3_tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
-                    max_tokens=cli_token_limits(args), quality_gate=args.quality_gate)
+                    max_tokens=cli_token_limits(args), quality_gate=args.quality_gate,
+                    plan_options=cli_plan_options(args))
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

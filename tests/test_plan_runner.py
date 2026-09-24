@@ -309,3 +309,40 @@ def test_a_verdict_that_turns_pass_after_rework_is_what_the_summariser_sees(task
     summ = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
     assert "verdict: PASS (after rework; first verdict FAIL)" in summ
     assert (tmp_path / "artifacts" / "step_3.first.md").exists()
+
+
+# ---- D39: stale inputs after a rework -----------------------------------------------------------------------------
+def fail_then_pass(n, k, prompt):
+    """Step 3 checks step 1: FAIL first, PASS on the re-check."""
+    if n == "3":
+        verdict = "PASS\nIssues: none" if "RE-CHECK" in prompt else "FAIL\nIssues:\n1. Step 1: no source."
+        return f"Verdict: {verdict}\n\n{BODY}"
+    return f"OUT-{n}.{k}\n{BODY}"
+
+
+def test_a_step_built_on_a_reworked_step_is_marked_stale(task, envelope, trace, tools, tmp_path):
+    w = scripted(fail_then_pass)
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
+    ep = Interpreter(llm, tools, trace, run_dir=tmp_path).run(cfg, task, seed=0)
+    two = [s for s in ep.steps if s["step"] == 2][-1]
+    assert (two["stale"], two["stale_because"]) == (True, [1]) and w.seen["2"] == 1       # not re-run by default
+    [ev] = trace.events("stale")
+    assert (ev["amoeba.step"], ev["amoeba.because_reworked"], ev["amoeba.will_rerun"]) == (2, [1], False)
+    assert json.loads((tmp_path / "artifacts" / "step_2.json").read_text())["stale"] is True
+    summ = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
+    assert "STALE: built on step(s) 1 before their rework" in summ
+    assert not [s for s in ep.steps if s["step"] == 3][-1]["stale"]          # the verifier re-checked instead
+
+
+def test_rerun_stale_reruns_each_stale_step_once(task, envelope, trace, tools):
+    from amoeba.interp.plan_runner import PlanOptions
+    w = scripted(fail_then_pass)
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
+    ep = Interpreter(llm, tools, trace, plan_options=PlanOptions(rerun_stale=True)).run(cfg, task, seed=0)
+    two = [s for s in ep.steps if s["step"] == 2]
+    assert len(two) == 2 and two[-1]["rerun_of_stale"] == {"because_reworked": [1]} and two[-1]["stale"] is False
+    assert w.seen["2"] == 2
+    assert "OUT-1.2" in [c for c in llm.calls_of("plan_worker") if "(step 2)" in c["messages"][-1]["content"]][-1][
+        "messages"][-1]["content"]                                               # the re-run sees the reworked step 1
+    assert "STALE" not in llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
+    assert trace.events("plan_graph")[0]["amoeba.options.rerun_stale"] is True
