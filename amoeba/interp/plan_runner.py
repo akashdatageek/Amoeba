@@ -31,6 +31,8 @@ class PlanOptions:
 
     rerun_stale: bool = False        # D39: re-run once the steps that used a step's output before it was reworked
     check_retry_turns: int = 2       # D42: turns a failed-check retry gets on top of the ones already used
+    max_input_chars: int = 6000      # D44: characters of one input artifact a step is shown
+    max_summary_input_chars: int = 30000   # D44: characters of all step outputs the summariser is shown
 
 
 class PlanGraphError(ValueError):
@@ -163,6 +165,7 @@ class _Work:
         self.partial: dict[str, str] = {}       # agent_id -> what it wrote alongside BLOCKED
         self.contributions: list[dict] = []
         self.tool_results: list[str] = []       # what the step's tools returned (D33: their numbers count as derived)
+        self.last_message = ""                  # D44: the last helper message, passed on when no Final Output came
 
 
 NUMERIC_WORDS = re.compile(r"\b(cost|costs|estimate|estimates|price|prices|pricing|number|numbers|figure|figures|"
@@ -368,16 +371,25 @@ class PlanRunner:
         return next(iter(self.agents.values())).limits.max_turns
 
     # ---- one step -------------------------------------------------------------------------------------------
-    def inputs_text(self, deps: list[int]) -> str:
+    def cap(self, text: str, limit: int, step: int, source: int, what: str) -> str:
+        """D44: the first `limit` characters of an input, with a marker saying how much was cut (and a trace event)."""
+        if len(text) <= limit:
+            return text
+        self.i.trace.event("input_truncated", {"amoeba.step": step, "amoeba.from_step": source, "amoeba.limit": limit,
+                                               "amoeba.chars": len(text), "amoeba.what": what})
+        return f"{text[:limit].rstrip()}\n[... cut by plain code: first {limit:,} of {len(text):,} characters shown]"
+
+    def inputs_text(self, deps: list[int], n: int | None = None) -> str:
         if not deps:
             return "None: this step starts from the task alone."
         parts = []
         for d in deps:
             a = self.artifacts[d]
             m = a["meta"]
+            body = self.cap(a["text"], self.opt.max_input_chars, n or 0, d, "input")
             stale = f", STALE (built on step(s) {', '.join(map(str, m['stale_because']))} before their rework)" \
                 if m.get("stale") else ""
-            parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{stale}\n{a['text']}")
+            parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{stale}\n{body}")
         return "\n\n".join(parts)
 
     def run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None = None,
@@ -385,7 +397,7 @@ class PlanRunner:
         n = number(step)
         agents = [self.agents[a] for a in step.agent_ids]
         summarising = self.is_summary_step(step)                                  # D35
-        inputs = self.all_inputs_text(n) if summarising else self.inputs_text(deps)
+        inputs = self.all_inputs_text(n) if summarising else self.inputs_text(deps, n)
         verifier = self.is_verification(step) and not summarising
         if self.web is not None:
             self.web.begin_step(n, self.i.trace)
@@ -509,11 +521,15 @@ class PlanRunner:
         return number(step) == getattr(self, "answer_n", None) and bool(summ & set(step.agent_ids))
 
     def all_inputs_text(self, n: int) -> str:
-        """The summariser sees every step's latest output, its status and where its figures come from."""
+        """The summariser sees every step's latest output, its status and where its figures come from. D44: each
+        output is capped at max_input_chars, and when all of them together would pass max_summary_input_chars each
+        gets an equal share instead."""
         parts = []
-        for d, a in sorted(self.artifacts.items()):
-            if d == n:
-                continue
+        items = [(d, a) for d, a in sorted(self.artifacts.items()) if d != n]
+        total = sum(min(len(a["text"]), self.opt.max_input_chars) for _, a in items)
+        share = self.opt.max_input_chars if total <= self.opt.max_summary_input_chars else \
+            max(500, self.opt.max_summary_input_chars // max(1, len(items)))
+        for d, a in items:
             m, p = a["meta"], a["meta"]["provenance"]
             why = f" ({m['status_reason']})" if m.get("status_reason") else ""
             gaps = f"; lacked: {', '.join(m['blocked'])}" if m.get("blocked") else ""
@@ -522,8 +538,9 @@ class PlanRunner:
                 verdict += f"; STALE: built on step(s) {', '.join(map(str, m['stale_because']))} before their rework"
             if m.get("verdict_after_rework"):
                 verdict += f" (after rework; first verdict {m['verdict_first']})"
+            body = self.cap(a["text"], share, n, d, "summary input")
             parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{why}{gaps}{verdict}; figures: "
-                         f"{p['cited']} cited, {p['unverified']} unverified, {p['untagged']} untagged\n{a['text']}")
+                         f"{p['cited']} cited, {p['unverified']} unverified, {p['untagged']} untagged\n{body}")
         return "\n\n".join(parts) or "None."
 
     def deliverables_text(self) -> str:
@@ -628,6 +645,7 @@ class PlanRunner:
                                                  template)
                 w.contributions.append({"turn": w.turn + 1, "agent": agent.name, "action": act,
                                         "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
+                w.last_message = inp.strip()
                 if gap is not None:
                     w.blocked[agent.agent_id] = gap
                     w.partial[agent.agent_id] = inp.strip()
@@ -646,10 +664,11 @@ class PlanRunner:
     def _text(agents: list[AgentSpec], w: "_Work") -> str:
         written = {a.agent_id: w.done.get(a.agent_id) or w.partial.get(a.agent_id) for a in agents}
         written = {k: v for k, v in written.items() if v}
+        # D44: no Final Output from anyone → only the last helper message goes on, not the whole work log
         if len(agents) == 1:
-            return next(iter(written.values()), "") or w.completed.strip()
+            return next(iter(written.values()), "") or w.last_message
         return "\n\n".join(f"### {a.name}\n{written[a.agent_id]}" for a in agents
-                           if a.agent_id in written) or w.completed.strip()
+                           if a.agent_id in written) or w.last_message
 
     def _save(self, n: int, wave: int, text: str, meta: dict, prov: dict) -> None:
         self.artifacts[n] = {"text": text, "meta": meta}

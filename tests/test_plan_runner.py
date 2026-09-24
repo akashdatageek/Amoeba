@@ -456,3 +456,32 @@ def test_the_ledger_keeps_each_figures_first_status_through_copies(tmp_path, env
     sc = r.summary_check
     assert sc["answer_untagged"] == ["4200", "5100"] and sc["answer_unverified"] == ["900"]
     assert sc["new_numbers"] == ["5100"] and sc["answer_cited"] == 0
+
+
+# ---- D44: size limits -----------------------------------------------------------------------------------------------
+def test_long_inputs_are_cut_and_marked(task, envelope, trace, tools):
+    from amoeba.interp.plan_runner import PlanOptions
+    long = "x " * 6000                                                      # 12,000 characters
+    w = scripted(lambda n, k, p: f"OUT-{n}\n{BODY}\n{long}" if n in ("1", "2", "3") else f"OUT-{n}\n{BODY}")
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
+    opts = PlanOptions(max_input_chars=4000, max_summary_input_chars=6000)
+    Interpreter(llm, tools, trace, plan_options=opts).run(cfg, task, seed=0)
+    two = [c for c in llm.calls_of("plan_worker") if "(step 2)" in c["messages"][-1]["content"]][0]["messages"][-1]["content"]
+    assert "[... cut by plain code: first 4,000 of 12," in two
+    summ = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
+    assert summ.count("[... cut by plain code: first 2,000 of") == 3            # 6,000 shared by three steps
+    evs = trace.events("input_truncated")
+    assert {(e["amoeba.what"], e["amoeba.limit"]) for e in evs} == {("input", 4000), ("summary input", 2000)}
+
+
+def test_a_step_without_final_output_passes_only_its_last_message(task, envelope, trace, tools):
+    n_ = {"k": 0}
+
+    def talk(messages, seed):
+        n_["k"] += 1
+        return f"## Thought\nt\n\n## CurrentStep\nt\n\n## Action\nPrint\n\n## ActionInput\nnote {n_['k']}\n"
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=talk)
+    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    two_prompt = [c for c in llm.calls_of("plan_worker") if "(step 2)" in c["messages"][-1]["content"]][0]
+    inputs = re.search(r"# Inputs: .*?\n(.*?)\n\n# Work done", two_prompt["messages"][-1]["content"], re.S).group(1)
+    assert inputs.endswith("status: incomplete\nnote 5") and "note 4" not in inputs

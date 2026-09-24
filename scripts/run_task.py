@@ -106,7 +106,8 @@ def blocked_of(ep) -> dict:
 def cli_plan_options(args: argparse.Namespace):
     """The plan runner's settings from the command line (D39+)."""
     from amoeba.interp.plan_runner import PlanOptions
-    return PlanOptions(rerun_stale=args.rerun_stale)
+    return PlanOptions(rerun_stale=args.rerun_stale, max_input_chars=args.max_input_chars,
+                       max_summary_input_chars=args.max_summary_input_chars)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -152,6 +153,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--web-tools", action="store_true",
                    help="give Box 3 web_search and fetch_url (Tavily; needs TAVILY_API_KEY). The plan runner hands "
                         "them to roles that asked for web search (D32); Box 2 never sees them")
+    p.add_argument("--max-input-chars", type=int, default=6000,
+                   help="plan: characters of one input artifact shown to a step (D44)")
+    p.add_argument("--max-summary-input-chars", type=int, default=30000,
+                   help="plan: characters of all step outputs shown to the summariser (D44)")
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     p.add_argument("--no-log-content", action="store_true",
