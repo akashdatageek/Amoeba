@@ -31,7 +31,8 @@ from amoeba.tools.registry import ToolRegistry, default_registry
 
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
-            runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19") -> RunResult:
+            runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
+            max_tokens: dict | None = None) -> RunResult:
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -41,7 +42,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     answer = error = None
     team_id = ""
     try:
-        draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts)
+        draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens)
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         dump_yaml(cfg, run_dir / "team.yaml")
@@ -73,6 +74,12 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     return result
 
 
+def cli_token_limits(args: argparse.Namespace) -> dict:
+    """D27: --planner-max-tokens / --observer-max-tokens (unset = env or default, see draft.token_limits)."""
+    o = args.observer_max_tokens
+    return {"planner": args.planner_max_tokens, "agent_observer": o, "plan_observer": o}
+
+
 def build_llm(args: argparse.Namespace) -> LLMClient:
     if args.llm == "mock":
         return toy_mock_client()
@@ -97,6 +104,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--runs-dir", default="runs")
     p.add_argument("--draft-prompts", choices=["d19", "d24"], default="d19",
                    help="Box 2 prompts: d19 = AutoAgents + D19 edits (default), d24 = ours (spec/BOX2_PROMPT_UPGRADE_D24.md)")
+    p.add_argument("--planner-max-tokens", type=int, default=None,
+                   help="Planner reply limit (default $AMOEBA_MAX_TOKENS_PLANNER or 8192; D27)")
+    p.add_argument("--observer-max-tokens", type=int, default=None,
+                   help="both observers' reply limit (default $AMOEBA_MAX_TOKENS_OBSERVER or 8192; D27)")
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
@@ -114,7 +125,8 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for task in tasks:
         r = run_one(task, args.topology, llm, envelope, tools, args.runs_dir, args.seed,
-                    log_content=not args.no_log_content, draft_prompts=args.draft_prompts)
+                    log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
+                    max_tokens=cli_token_limits(args))
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

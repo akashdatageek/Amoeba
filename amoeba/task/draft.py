@@ -11,6 +11,7 @@ from amoeba.llm.client import LLMClient
 from amoeba.safety.envelope import Envelope
 from amoeba.task.models import CapabilityRequest, Draft, DraftedRole, DraftPlanStep, DraftRound, Task
 from amoeba.task.quality import draft_quality
+import os
 import re
 
 from amoeba.task.parsers import (MissingSections, parse_bullets, parse_json_objects, parse_plan, parse_plan_d24,
@@ -25,7 +26,20 @@ D24_PLANNER_SECTIONS = ["Requirements", "Givens and Assumptions", "Selected Role
 REQUESTS_SECTION = "Capability Requests"   # D19: optional — never required, so a missing one costs no repair call
 MAX_ROUNDS = 3  # manager.py:27 num_steps = 3
 PLANNER_MAX_TOKENS = 8192     # D24: a detailed draft does not fit the client default (2048); a cut-off one fails
-OBSERVER_MAX_TOKENS = 2048    # to parse, and the trace flags any reply that stops at its limit
+OBSERVER_MAX_TOKENS = 8192    # D27: was 2048 — a reasoning model's hidden thinking counts against the limit
+MAX_TOKENS_ENV = {"planner": "AMOEBA_MAX_TOKENS_PLANNER", "agent_observer": "AMOEBA_MAX_TOKENS_AGENT_OBSERVER",
+                  "plan_observer": "AMOEBA_MAX_TOKENS_PLAN_OBSERVER"}
+
+
+def token_limits(overrides: dict | None = None) -> dict[str, int]:
+    """Reply limit per drafting role (D27). Precedence: explicit override (CLI) > the role's env var >
+    AMOEBA_MAX_TOKENS_OBSERVER (both observers) > default (8192 each)."""
+    out = {}
+    for role, var in MAX_TOKENS_ENV.items():
+        default = PLANNER_MAX_TOKENS if role == "planner" else OBSERVER_MAX_TOKENS
+        env = os.environ.get(var) or (os.environ.get("AMOEBA_MAX_TOKENS_OBSERVER") if role != "planner" else None)
+        out[role] = int((overrides or {}).get(role) or env or default)
+    return out
 NO_SUGGESTIONS = "No Suggestions"
 
 
@@ -129,12 +143,12 @@ def approves(suggestions: str) -> bool:
 
 
 def _observer_sections(llm: TracedLLM, name: str, user: str, seed: int, log: list[DraftRound],
-                       system: str) -> tuple[str, dict[str, str]]:
+                       system: str, max_tokens: int = OBSERVER_MAX_TOKENS) -> tuple[str, dict[str, str]]:
     """D24 observers must write '## Verdict'. A missing one costs the usual single repair call; if the repaired
     reply still has none, its sections are used and the missing verdict counts as REVISE."""
     try:
         return llm.chat_sections(system, user, ["Suggestions", "Verdict"], seed, agent_name=name,
-                                 max_tokens=OBSERVER_MAX_TOKENS)
+                                 max_tokens=max_tokens)
     except MissingSections as e:
         if e.missing == ["Verdict"] and getattr(e, "raw", None) is not None:
             return e.raw, parse_sections(e.raw)
@@ -142,19 +156,22 @@ def _observer_sections(llm: TracedLLM, name: str, user: str, seed: int, log: lis
 
 
 def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
-              log: list[DraftRound], system: str = MANAGER_PREFIX) -> tuple[str, dict[str, str]]:
+              log: list[DraftRound], system: str = MANAGER_PREFIX, max_tokens: int | None = None
+              ) -> tuple[str, dict[str, str]]:
     try:
         return llm.chat_sections(system, user, keys, seed, agent_name=name,   # action.py:60 system = prefix (d19)
-                                 max_tokens=PLANNER_MAX_TOKENS if name == "planner" else OBSERVER_MAX_TOKENS)
+                                 max_tokens=max_tokens or (PLANNER_MAX_TOKENS if name == "planner"
+                                                           else OBSERVER_MAX_TOKENS))
     except MissingSections as e:
         raise DraftError(f"{name}: {e}", log) from e
 
 
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
-               prompts: str = D19) -> Draft:
+               prompts: str = D19, max_tokens: dict | None = None) -> Draft:
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
     d24 = prompts == D24
+    limits = token_limits(max_tokens)                 # D27: per role, CLI > env > 8192
     tl = TracedLLM(llm, trace)
     tools = envelope.tool_catalog_string()
     ctx = f"[Question/Task: {task.prompt}]"          # manager.py:32 str(important_memory) — keep the bracketed form
@@ -173,12 +190,13 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                     PROMPT.d24_create_team, context=task.prompt, existing_roles="[]", tools=tools, history=history,
                     suggestions=suggestions, max_agents=str(envelope.max_agents),
                     format_example=PROMPT.d24_create_team_format),
-                    D24_PLANNER_SECTIONS, seed, log, system=PROMPT.d24_planner_system.strip())
+                    D24_PLANNER_SECTIONS, seed, log, system=PROMPT.d24_planner_system.strip(),
+                    max_tokens=limits["planner"])
             else:
                 raw, sec = _sections(tl, "planner", render(   # D19 variants: may request missing capabilities
                     PROMPT.autoagents_create_roles_d19, context=ctx, existing_roles="[]", tools=tools, history=history,
                     suggestions=suggestions, format_example=PROMPT.autoagents_create_roles_format_d19),
-                    PLANNER_SECTIONS, seed, log)
+                    PLANNER_SECTIONS, seed, log, max_tokens=limits["planner"])
             sec = parse_sections(raw, all_fences=True)   # D26: roles/requests may span several fenced blocks
             rec.planner_raw = raw
             rec.roles = role_blobs(sec)
@@ -200,7 +218,8 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                     created_roles=sec["Created Roles List"], selected_roles=sec["Selected Roles List"],
                     capability_requests=requests_text, tools=tools, history=hist_roles,
                     max_agents=str(envelope.max_agents)),
-                    seed, log, system=PROMPT.d24_agent_observer_system.strip())
+                    seed, log, system=PROMPT.d24_agent_observer_system.strip(),
+                    max_tokens=limits["agent_observer"])
                 rec.agent_verdict = parse_verdict(s) or "REVISE"
             else:
                 rec.agent_observer_raw, s = _sections(tl, "agent_observer", render(
@@ -208,7 +227,8 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                     question=task.prompt,   # original: regex on the planner's raw text (check_roles.py:95); DEVIATION D4
                     existing_roles="[]", selected_roles=sec["Selected Roles List"], created_roles=sec["Created Roles List"],
                     history=hist_roles, tools=tools,   # original TOOLS='None' for observers (check_roles.py:86); DEVIATION D4
-                    format_example=PROMPT.autoagents_check_roles_format), ["Suggestions"], seed, log)
+                    format_example=PROMPT.autoagents_check_roles_format), ["Suggestions"], seed, log,
+                    max_tokens=limits["agent_observer"])
             sr = rec.agent_observer = s["Suggestions"]
             sugg_roles += sr                          # manager.py:38
 
@@ -220,14 +240,16 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                     PROMPT.d24_review_plan, context=task.prompt, requirements=requirements_text(sec),
                     roles=sec["Selected Roles List"] + sec["Created Roles List"], plan=sec["Execution Plan"],
                     risks=sec["Risks and Decisions"], capability_requests=requests_text, history=hist_plan),
-                    seed, log, system=PROMPT.d24_plan_observer_system.strip())
+                    seed, log, system=PROMPT.d24_plan_observer_system.strip(),
+                    max_tokens=limits["plan_observer"])
                 rec.plan_verdict = parse_verdict(s) or "REVISE"
             else:
                 rec.plan_observer_raw, s = _sections(tl, "plan_observer", render(
                     PROMPT.autoagents_check_plans_d19, capability_requests=requests_text, context=task.prompt,   # D19
                     roles=sec["Selected Roles List"] + sec["Created Roles List"],   # check_plans.py:72-75
                     plan=sec["Execution Plan"], history=hist_plan, tools=tools,
-                    format_example=PROMPT.autoagents_check_plans_format), ["Suggestions"], seed, log)
+                    format_example=PROMPT.autoagents_check_plans_format), ["Suggestions"], seed, log,
+                    max_tokens=limits["plan_observer"])
             sp = rec.plan_observer = s["Suggestions"]
             sugg_plan += sp                           # manager.py:43
             suggestions = f"## Role Suggestions\n{sr}\n\n## Plan Suggestions\n{sp}"   # manager.py:45
