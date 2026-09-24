@@ -147,7 +147,10 @@ BOXES: list[dict] = [
                "Its reply must contain five labelled parts; see Split sections for what happens if one is missing.",
                "It is told to prefer the tools that exist; a tool or skill it needs but we lack goes in an optional "
                "sixth part, Capability Requests, which costs no retry when absent.",
-               "At most three rounds are run."],
+               "At most three rounds are run.",
+               "With our prompts (d24) it may also list Open Questions: each ambiguity in the job and the assumption "
+               "it took. With --interactive the person sees the requirements, assumptions and open questions and "
+               "types continue, or a correction that is added to the job before one more round."],
          proposes="Helpers (name, description, tools, suggestions, instructions), the step plan, and replies to the "
                   "checkers' feedback.",
          disposes="Nothing is accepted yet: the draft goes to the two checkers, and only the last draft is cleaned "
@@ -156,7 +159,8 @@ BOXES: list[dict] = [
          derived_prompts=["autoagents_create_roles_d19", "autoagents_create_roles_format_d19"],
          alt_prompts=["d24_planner_system", "d24_create_team", "d24_create_team_format"],
          output_checks=["amoeba/task/draft.py::_sections", "amoeba/interp/trace.py::TracedLLM.chat_sections", "amoeba/task/parsers.py::require"], ai_entry="amoeba/task/draft.py::_sections",
-         anchors=[("amoeba/task/draft.py::draft_team", None, "# state 1")]),
+         anchors=[("amoeba/task/draft.py::draft_team", None, "# state 1"),
+                  "amoeba/task/parsers.py::parse_open_questions", "scripts/run_task.py::ask_user"]),
     dict(id="split", view="plan", title="Split sections", kind="code", plan="Split sections",
          sentence="Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
          what=["Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts.",

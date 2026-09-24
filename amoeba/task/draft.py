@@ -14,8 +14,8 @@ from amoeba.task.quality import draft_quality, gate_suggestions
 import os
 import re
 
-from amoeba.task.parsers import (MissingSections, parse_bullets, parse_json_objects, parse_plan, parse_plan_d24,
-                                 parse_requirements, parse_sections, parse_verdict)
+from amoeba.task.parsers import (MissingSections, parse_bullets, parse_json_objects, parse_open_questions, parse_plan,
+                                 parse_plan_d24, parse_requirements, parse_sections, parse_verdict)
 
 PLANNER_SECTIONS = ["Selected Roles List", "Created Roles List", "Execution Plan", "RoleFeedback", "PlanFeedback"]
 # DEVIATION D24 (spec/BOX2_PROMPT_UPGRADE_D24.md): our prompts, one system message per role, more sections
@@ -167,7 +167,10 @@ def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
 
 
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
-               prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False) -> Draft:
+               prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False,
+               max_rounds: int = MAX_ROUNDS, history: str = "") -> Draft:
+    """history: the previous draft the Planner revises (manager.py:26 roles_plan; "" at first). D53 --interactive
+    re-drafts once: max_rounds=1, history = the draft the user clarified."""
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
     d24 = prompts == D24
@@ -175,14 +178,13 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     tl = TracedLLM(llm, trace)
     tools = envelope.tool_catalog_string()
     ctx = f"[Question/Task: {task.prompt}]"          # manager.py:32 str(important_memory) — keep the bracketed form
-    history = ""                                      # manager.py:26 roles_plan
     sugg_roles, sugg_plan = "", ""                    # manager.py:26 — cumulative strings
     suggestions = ""                                  # manager.py:27 — what the planner sees: LATEST round only
     consensus, rounds, last = False, 0, None
     first_requests: list[CapabilityRequest] = []
     log: list[DraftRound] = []                        # ours: the full record of every round (Draft.rounds)
     with trace.span("invoke_agent", {"gen_ai.agent.name": "planner"}):
-        while not consensus and rounds < MAX_ROUNDS:  # manager.py:27,30
+        while not consensus and rounds < max_rounds:  # manager.py:27,30
             log.append(rec := DraftRound(index=rounds + 1))
             # state 0 — Planner (CreateRoles)
             if d24:   # D24: plan the ideal first, full role records, detailed steps, requirements and givens
@@ -328,4 +330,5 @@ def assemble(sec: dict[str, str], raw: str, prompts: str, envelope: Envelope,
                  capability_requests=requests, rounds=log, prompts=prompts,
                  requirements=parse_requirements(sec.get("Requirements", "")) if d24 else {},
                  givens=parse_bullets(sec.get("Givens and Assumptions", "")) if d24 else [],
-                 risks=parse_bullets(sec.get("Risks and Decisions", "")) if d24 else [])
+                 risks=parse_bullets(sec.get("Risks and Decisions", "")) if d24 else [],
+                 open_questions=parse_open_questions(sec.get("Open Questions", "")) if d24 else [])

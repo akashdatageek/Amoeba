@@ -159,6 +159,29 @@ def parse_bullets(text: str) -> list[str]:
     return [x for x in items if x and x.lower() not in ("none", "none.", "...")]
 
 
+_ASSUMPTION = re.compile(r"\bassum(?:ption|ed|e)\s*[:=]\s*", re.I)
+_QUESTION = re.compile(r"^(?:question|q)\s*[:=]\s*", re.I)
+
+
+def parse_open_questions(text: str) -> list[dict[str, str]]:
+    """D53 '## Open Questions': one {"question", "assumption"} per item. An item is "- question: ... | assumption:
+    ..." on one line, or a question line followed by its own "assumption: ..." line; an item without an assumption
+    keeps an empty one. 'None' and '...' give nothing."""
+    out: list[dict[str, str]] = []
+    for item in parse_bullets(text):
+        m = _ASSUMPTION.search(item)
+        q, a = (item[:m.start()], item[m.end():]) if m else (item, "")
+        q = _QUESTION.sub("", q.strip()).strip(" |;—-–").strip()
+        a = a.strip()
+        if q and set(q) <= set(". "):
+            continue                           # the format example's "question: ... | assumption: ..." echoed
+        if not q and a and out and not out[-1]["assumption"]:
+            out[-1]["assumption"] = a          # the assumption on its own line under its question
+        elif q:
+            out.append({"question": q, "assumption": a})
+    return out
+
+
 def parse_verdict(sections: dict[str, str]) -> str | None:
     """D24 '## Verdict': "APPROVE" or "REVISE" when that is the whole answer (markdown emphasis and a final full stop
     are ignored); "OTHER" for anything else; None when the section is missing."""
