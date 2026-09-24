@@ -23,7 +23,7 @@ from amoeba.llm.client import LLMClient, OpenAICompatibleClient
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team
-from amoeba.task.evaluate import score
+from amoeba.task.evaluate import rubric_score, score
 from amoeba.task.instantiate import instantiate
 from amoeba.task.models import RunResult, Task
 from amoeba.task.source import ToyTaskSource
@@ -62,9 +62,12 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     requested = (draft.capability_requests if draft else []) + (ep.requested_capabilities if ep else [])
     (run_dir / "capability_requests.json").write_text(
         json.dumps([q.model_dump() for q in requested], indent=2, ensure_ascii=False), encoding="utf-8")
+    # D30: a task with a rubric and no single right answer is scored by the rubric fraction (Box 1, after the run)
+    graded = rubric_score(answer, task.rubric) if task.rubric else None
     result = RunResult(
         run_id=run_id, task_id=task.id, team_id=team_id, topology=topology, answer=answer, error=error,
-        score=score(answer, task.ground_truth), total_tokens=trace.total_tokens,
+        score=score(answer, task.ground_truth) if graded is None or task.ground_truth else graded["score"],
+        rubric=graded, total_tokens=trace.total_tokens,
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,
         draft_rounds=draft.rounds_used if draft else sum(bool(r.plan_observer_raw) for r in (failed.rounds if failed else [])), consensus=draft.consensus if draft else False,
         blocked_steps=ep.blocked_steps if ep else [], requested_capabilities=requested,

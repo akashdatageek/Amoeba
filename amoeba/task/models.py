@@ -2,10 +2,51 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class RubricItem(BaseModel):
+    """A deliverable or constraint: passes when any regex in any_of (case-insensitive) matches the answer."""
+
+    name: str
+    any_of: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _default_pattern(self):
+        if not self.any_of:
+            self.any_of = [re.escape(self.name)]
+        return self
+
+
+class RubricNumber(BaseModel):
+    """A number the answer must contain: value + unit (TB, GiB, USD, EUR, million ...) within a relative tolerance."""
+
+    name: str
+    value: float
+    unit: str
+    tolerance: float = 0.05
+
+
+class RubricMustNot(BaseModel):
+    """Fails when `pattern` matches, unless `unless_nearby` matches within `window` characters (e.g. a cited source)."""
+
+    name: str
+    pattern: str
+    unless_nearby: str = ""
+    window: int = 160
+
+
+class Rubric(BaseModel):
+    """D30: how a task with no single right answer is scored (Box 1, deterministic). Never shown to Box 2 or Box 3."""
+
+    required_deliverables: list[RubricItem] = Field(default_factory=list)
+    expected_numbers: list[RubricNumber] = Field(default_factory=list)
+    constraints_to_respect: list[RubricItem] = Field(default_factory=list)
+    must_not: list[RubricMustNot] = Field(default_factory=list)
 
 
 class Task(BaseModel):
@@ -14,7 +55,7 @@ class Task(BaseModel):
     family: str = "freeform"
     ground_truth: str | None = None  # toy tasks only
     tags: list[str] = Field(default_factory=list)
-    expected: dict = Field(default_factory=dict)   # eval only, e.g. {"derived": [["10 TB", "10,000 GB"]]} (D24)
+    rubric: Rubric | None = None   # D30: scoring for tasks without one right answer; read by evaluate only
 
 
 class Message(BaseModel):
@@ -224,3 +265,4 @@ class RunResult(BaseModel):
     requests_dropped_by_observers: int = 0
     draft_quality: dict = Field(default_factory=dict)   # D24 checks on the draft (recorded, not enforced)
     unmapped_capabilities: list[str] = Field(default_factory=list)   # D29: names aliases.yaml does not know yet
+    rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric

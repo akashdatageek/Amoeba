@@ -28,6 +28,7 @@ from amoeba.interp.trace import TraceWriter
 from amoeba.llm.client import ChatResponse, LLMClient, Messages, MockLLMClient
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team
+from amoeba.task.evaluate import number_found
 from amoeba.task.models import Task
 from amoeba.task.parsers import parse_json_objects, parse_plan, parse_role_blobs, parse_sections
 from amoeba.tools.registry import default_registry
@@ -135,13 +136,13 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
 
 
 def derived_correct(task: Task, reply: str) -> bool | None:
-    """Task-specific arithmetic check (D24 §5): every expected derived number appears in the final Planner reply, in
-    any of its listed spellings (spaces and case ignored). None when the task lists none."""
-    wanted = task.expected.get("derived", [])
-    if not wanted or not reply:
-        return None if not wanted else False
-    flat = "".join(reply.lower().split())
-    return all(any("".join(alt.lower().split()) in flat for alt in alts) for alts in wanted)
+    """Task-specific arithmetic check (D24 §5, D30): every rubric expected_number appears in the final Planner reply,
+    matched as a number with its unit (TB or TiB, $10M or USD 10 million) by evaluate.number_found. None when the task
+    has no expected numbers."""
+    wanted = task.rubric.expected_numbers if task.rubric else []
+    if not wanted:
+        return None
+    return bool(reply) and all(number_found(reply, x.value, x.unit, x.tolerance) for x in wanted)
 
 
 def summarise(rows: list[dict]) -> list[dict]:

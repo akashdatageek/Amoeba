@@ -75,7 +75,10 @@ def test_result_json_carries_it(tmp_path, envelope, tools):
 
 
 def test_derived_correct():
-    t = Task(prompt="p", expected={"derived": [["10 TB", "10,000 GB"], ["83 queries per second", "83 qps"]]})
-    assert derived_correct(t, "storage: 10,000 GB total; about 83 QPS at peak") is True
+    # D30: numbers are matched with their units (evaluate.number_found), no longer by listed spellings
+    t = Task(prompt="p", rubric={"expected_numbers": [{"name": "storage", "value": 10, "unit": "TB"},
+                                                      {"name": "peak", "value": 83, "unit": "qps"}]})
+    assert derived_correct(t, "storage: 10,000 GB total; about 83 qps at peak") is True
+    assert derived_correct(t, "storage: 9.1 TiB total; about 83 qps at peak") is True    # TiB for TB (v1 false negative)
     assert derived_correct(t, "storage: 15TB; 83 qps") is False
     assert derived_correct(Task(prompt="p"), "anything") is None
