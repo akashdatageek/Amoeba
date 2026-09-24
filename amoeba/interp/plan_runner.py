@@ -33,6 +33,10 @@ class PlanOptions:
     check_retry_turns: int = 2       # D42: turns a failed-check retry gets on top of the ones already used
     max_input_chars: int = 6000      # D44: characters of one input artifact a step is shown
     max_summary_input_chars: int = 30000   # D44: characters of all step outputs the summariser is shown
+    # D50: off = only a failed format/input check earns a refine turn (the D42 retry); on-issues = also untagged
+    # figures or citations of unseen sources; always = also a self-review turn when nothing was found. The CLI
+    # default is on-issues; this library default keeps the earlier behaviour for callers that set nothing.
+    self_refine: str = "off"
 
 
 class PlanGraphError(ValueError):
@@ -153,6 +157,32 @@ Your earlier issues:
 {issues}"""
 RETRY_NOTE = ("Plain code checked this step's output and it failed: {failed}. Fix that and give the whole step "
               "output again as Final Output.\n")
+
+
+REFINE_NOTE = ("Plain code checked this step's output and found:\n{findings}\nFix exactly these and give the whole step "
+               "output again as Final Output.\n")
+SELF_REVIEW_NOTE = ("Before this step is passed on, review your output against the step's done_when ({done_when}) and "
+                    "your success criteria ({criteria}). Fix anything that falls short and give the whole step output "
+                    "again as Final Output (the same output if nothing needs changing).\n")
+
+
+def refine_findings(checks: list[dict], prov: dict) -> tuple[list[str], list[str]]:
+    """D50: what plain code found in a step's output, as lines for the helper: failed checks, then provenance."""
+    check_items = [c["detail"] for c in checks if not c["pass"]]
+    prov_items = []
+    if prov.get("untagged"):
+        prov_items.append(f"{prov['untagged']} figure(s) carry no [S#] or [unverified] tag: "
+                          f"{', '.join(prov.get('untagged_examples', [])[:10])}. Tag each: [S#] for a tool result you "
+                          f"have, [unverified] for your own knowledge, or show the calculation.")
+    if prov.get("hallucinated_citations"):
+        prov_items.append(f"these citations name sources you never saw: {', '.join(prov['hallucinated_citations'])}. "
+                          f"Cite only [S#] ids from your tool results or your inputs, or mark the figure [unverified].")
+    return check_items, prov_items
+
+
+def refine_counts(checks: list[dict], prov: dict) -> dict:
+    return {"failed_checks": sum(not c["pass"] for c in checks), "untagged": prov.get("untagged", 0),
+            "hallucinated": len(prov.get("hallucinated_citations", []))}
 
 
 class _Work:
@@ -416,19 +446,21 @@ class PlanRunner:
         self._loop(step, n, agents, inputs, extra, w, template)
         text = self._text(agents, w)
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
-        failed = [c["name"] for c in checks if not c["pass"]]
-        retried = False
-        if failed and w.done:
-            retried = True                              # one retry with the failed checks, with turns of its own (D42)
-            w.max_turns = w.turn + self.opt.check_retry_turns
-            self.i.trace.event("check_retry", {"amoeba.step": n, "amoeba.failed_checks": failed,
-                                               "amoeba.retry_turns": self.opt.check_retry_turns})
-            w.completed += RETRY_NOTE.format(failed="; ".join(c["detail"] for c in checks if not c["pass"]))
-            w.done.clear()
-            self._loop(step, n, agents, inputs, extra, w, template)
+        own, visible = self._sources(n, deps)
+        prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)   # D33
+        refine = self.refine(step, n, agents, inputs, extra, w, template, checks, prov)    # D42 / D50
+        if refine:
             text = self._text(agents, w)
             checks = step_checks(step, text, deps, self.artifacts, verifier)
-            failed = [c["name"] for c in checks if not c["pass"]]
+            own, visible = self._sources(n, deps)
+            prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)
+            refine["after"] = refine_counts(checks, prov)
+            self.i.trace.event("refine", {"amoeba.step": n, "amoeba.reason": refine["reason"],
+                                          "amoeba.findings": len(refine["findings"]),
+                                          **{f"amoeba.before.{k}": v for k, v in refine["before"].items()},
+                                          **{f"amoeba.after.{k}": v for k, v in refine["after"].items()}})
+        failed = [c["name"] for c in checks if not c["pass"]]
+        retried = bool(refine)
         # D36: what the step could not do for lack of a capability — BLOCKED as an action or marked in the output.
         # D40: not for the answer step: its Limitations section names the producers' gaps on purpose
         answer_step = n == getattr(self, "answer_n", None)
@@ -445,11 +477,6 @@ class PlanRunner:
             status, reason = "incomplete", "checks failed: " + ", ".join(failed)
         else:
             status, reason = "done", ""
-        own = [{k: s[k] for k in ("id", "url", "title", "kind", "fetched_at")}
-               for s in (self.web.sources_for(n) if self.web is not None else [])]
-        visible = {s["id"] for s in own}.union(*(self.artifacts[d]["meta"]["visible_source_ids"] for d in deps)) \
-            if deps else {s["id"] for s in own}
-        prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)   # D33
         origins = self.ledger_update(n, prov.pop("figures"))                               # D43
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents], "covers": step.covers,
                 "depends_on": deps, "received": deps, "output_spec": step.output, "status": status,
@@ -458,7 +485,8 @@ class PlanRunner:
                 "blocked_mentions": mentions if answer_step else [],
                 "blocked_canonical": sorted({normalise(g)[0] for g in gaps}), "sources": own,
                 "visible_source_ids": sorted(visible), "provenance": prov, "figure_origins": origins,
-                "checks": checks, "retried": retried,
+                "checks": checks, "retried": retried, "refine": refine,
+                "refine_reason": refine["reason"] if refine else "",
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
                 "stale": False, "stale_because": [],
                 "contributions": w.contributions}
@@ -479,6 +507,47 @@ class PlanRunner:
                                                           "first_issues": meta["issues"], "reworked": reworked})
                 self.mark_stale(reworked, verifier_step=n)                           # D39
         return self.artifacts[n]
+
+    def _sources(self, n: int, deps: list[int]) -> tuple[list[dict], set[str]]:
+        """The step's own sources and every source id it could have seen (its own and its inputs')."""
+        own = [{k: s[k] for k in ("id", "url", "title", "kind", "fetched_at")}
+               for s in (self.web.sources_for(n) if self.web is not None else [])]
+        visible = {s["id"] for s in own}.union(*(self.artifacts[d]["meta"]["visible_source_ids"] for d in deps)) \
+            if deps else {s["id"] for s in own}
+        return own, visible
+
+    def refine(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work",
+               template: str, checks: list[dict], prov: dict) -> dict | None:
+        """D50: one refine turn for the helper(s) of a finished step, with turns of its own (check_retry_turns, not
+        the step's cap). The helper is given exactly what plain code found: failed checks and — unless
+        self_refine is "off" — untagged figures and citations of sources it never saw. With "always" and no
+        finding it gets a self-review against done_when and its success criteria instead. Returns the reason, the
+        findings and the before-counts (the caller adds the after-counts), or None when there is no refine."""
+        mode = self.opt.self_refine
+        check_items, prov_items = refine_findings(checks, prov)
+        if mode == "off":
+            prov_items = []
+        reason = "+".join(k for k, v in (("checks", check_items), ("provenance", prov_items)) if v)
+        if not reason and mode == "always":
+            reason = "self_review"
+        if not reason or not w.done:
+            return None
+        if check_items:
+            self.i.trace.event("check_retry", {"amoeba.step": n, "amoeba.failed_checks": [c["name"] for c in checks
+                                                                                         if not c["pass"]],
+                                               "amoeba.retry_turns": self.opt.check_retry_turns})
+        if reason == "self_review":
+            criteria = "; ".join(c for a in agents for c in a.success_criteria) or "none written"
+            note = SELF_REVIEW_NOTE.format(done_when=step.done_when or "none written", criteria=criteria)
+        elif not prov_items:
+            note = RETRY_NOTE.format(failed="; ".join(check_items))
+        else:
+            note = REFINE_NOTE.format(findings="\n".join(f"{i}. {x}" for i, x in enumerate(check_items + prov_items, 1)))
+        w.max_turns = w.turn + self.opt.check_retry_turns
+        w.completed += note
+        w.done.clear()
+        self._loop(step, n, agents, inputs, extra, w, template)
+        return {"reason": reason, "findings": check_items + prov_items, "before": refine_counts(checks, prov)}
 
     def mark_stale(self, reworked: list[int], verifier_step: int) -> None:
         """D39: a step that already ran on the output of a step that was later reworked (directly or through other

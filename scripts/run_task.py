@@ -87,6 +87,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         score=score(answer, task.ground_truth) if graded is None or task.ground_truth else graded["score"],
         rubric=graded, provenance=provenance_of(ep), blocked_capabilities=blocked_of(ep),
         answer_assembled_by_code=ep.answer_assembled_by_code if ep else [], figure_ledger=ep.figure_ledger if ep else {},
+        refinement=refinement_of(ep, plan_options) if topology == "plan" else {},
         summary_check=next((s["summary_check"] for s in reversed(ep.steps) if "summary_check" in s), {}) if ep else {},
         total_tokens=trace.total_tokens, usage=estimate(trace.spans("chat"), llm.model),
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,
@@ -109,6 +110,29 @@ def provenance_of(ep) -> dict:
             "steps": {str(s["step"]): s["provenance"] for s in steps}}
 
 
+def refinement_of(ep, plan_options) -> dict:
+    """D50/D51: the refinement settings of a plan run and what they did (latest version of each step)."""
+    from dataclasses import asdict
+    from amoeba.interp.plan_runner import PlanOptions
+    opt = asdict(plan_options or PlanOptions())
+    latest = {s["step"]: s for s in (ep.steps if ep else [])}
+    refined = [s["refine"] for s in latest.values() if s.get("refine")]
+    by: dict[str, int] = {}
+    for r in refined:
+        by[r["reason"]] = by.get(r["reason"], 0) + 1
+    tot = lambda key, when: sum(r[when][key] for r in refined if when in r)
+    out = {"self_refine": opt.get("self_refine"), "steps": len(latest), "steps_refined": len(refined),
+           "by_reason": by,
+           "before": {k: tot(k, "before") for k in ("failed_checks", "untagged", "hallucinated")},
+           "after": {k: tot(k, "after") for k in ("failed_checks", "untagged", "hallucinated")}}
+    if "collab" in opt:
+        collab = [s["collab"] for s in latest.values() if s.get("collab")]
+        out.update({"collab": opt["collab"], "collab_steps": len(collab),
+                    "collab_agreed": sum(bool(c.get("agreed")) for c in collab),
+                    "collab_rounds": sum(c.get("rounds", 0) for c in collab)})
+    return out
+
+
 def blocked_of(ep) -> dict:
     """D36: canonical capability -> how many producer steps (latest version of each; not the answer step) lacked it."""
     latest = {s["step"]: s for s in (ep.steps if ep else []) if not s.get("answer_step")}   # D40: producers only
@@ -123,7 +147,7 @@ def cli_plan_options(args: argparse.Namespace):
     """The plan runner's settings from the command line (D39+)."""
     from amoeba.interp.plan_runner import PlanOptions
     return PlanOptions(rerun_stale=args.rerun_stale, max_input_chars=args.max_input_chars,
-                       max_summary_input_chars=args.max_summary_input_chars)
+                       max_summary_input_chars=args.max_summary_input_chars, self_refine=args.self_refine)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -215,6 +239,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         ".json) or a runs folder (<run_id>/plan.json) (D45)")
     p.add_argument("--draft-pick", type=int, default=0,
                    help="with --drafts-from: use each task's k-th saved draft (0-based; e.g. the repeat number)")
+    p.add_argument("--self-refine", choices=["off", "on-issues", "always"], default="on-issues",
+                   help="plan: after a step, one refine turn with what plain code found — off: failed checks only; "
+                        "on-issues: also untagged figures and unseen [S#]; always: also a self-review when nothing "
+                        "was found (D50)")
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     add_client_args(p)
