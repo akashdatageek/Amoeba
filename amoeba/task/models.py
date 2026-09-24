@@ -253,6 +253,7 @@ class Draft(BaseModel):
 class RunResult(BaseModel):
     run_id: str
     task_id: str
+    draft_source: str | None = None   # D45: the saved draft reused (eval_draft file stem or run id); None = drafted
     team_id: str
     topology: str
     answer: str | None

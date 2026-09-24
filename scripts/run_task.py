@@ -29,12 +29,15 @@ from amoeba.task.models import RunResult, Task
 from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
 from amoeba.interp.provenance import total as total_provenance
+from amoeba.task.saved_drafts import load_saved_drafts, pick
 from amoeba.tools.web import web_registry
 
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
-            max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None) -> RunResult:
+            max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
+            saved_draft=None) -> RunResult:
+    """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores."""
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -44,8 +47,12 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     answer = error = None
     team_id = ""
     try:
-        draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
-                           quality_gate=quality_gate)
+        if saved_draft is not None:   # D45: reuse a saved Box 2 draft; no drafting call is made
+            draft = saved_draft.draft
+            trace.event("draft_reused", {"amoeba.draft_source": saved_draft.source, "amoeba.task_id": task.id})
+        else:
+            draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
+                               quality_gate=quality_gate)
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         dump_yaml(cfg, run_dir / "team.yaml")
@@ -68,6 +75,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     graded = rubric_score(answer, task.rubric) if task.rubric else None
     result = RunResult(
         run_id=run_id, task_id=task.id, team_id=team_id, topology=topology, answer=answer, error=error,
+        draft_source=saved_draft.source if saved_draft is not None else None,
         score=score(answer, task.ground_truth) if graded is None or task.ground_truth else graded["score"],
         rubric=graded, provenance=provenance_of(ep), blocked_capabilities=blocked_of(ep),
         answer_assembled_by_code=ep.answer_assembled_by_code if ep else [], figure_ledger=ep.figure_ledger if ep else {},
@@ -157,6 +165,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: characters of one input artifact shown to a step (D44)")
     p.add_argument("--max-summary-input-chars", type=int, default=30000,
                    help="plan: characters of all step outputs shown to the summariser (D44)")
+    p.add_argument("--drafts-from", default=None, metavar="DIR",
+                   help="reuse saved Box 2 drafts instead of drafting: an eval_draft output folder (drafts/<task>.<n>"
+                        ".json) or a runs folder (<run_id>/plan.json) (D45)")
+    p.add_argument("--draft-pick", type=int, default=0,
+                   help="with --drafts-from: use each task's k-th saved draft (0-based; e.g. the repeat number)")
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     p.add_argument("--no-log-content", action="store_true",
@@ -176,13 +189,20 @@ def main(argv: list[str] | None = None) -> int:
         tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding="utf-8").splitlines() if l.strip()]
     else:
         tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
+    saved = load_saved_drafts(args.drafts_from) if args.drafts_from else None
     results = []
     for task in tasks:
+        chosen = None
+        if saved is not None:
+            chosen = pick(saved, task.id, args.draft_pick)
+            if chosen is None:
+                print(f"[{args.topology}] {task.id}: no saved draft #{args.draft_pick} in {args.drafts_from} — skipped")
+                continue
         box3_tools = web_registry() if args.web_tools else tools   # a fresh source list per run (D32)
         r = run_one(task, args.topology, llm, envelope, box3_tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
                     max_tokens=cli_token_limits(args), quality_gate=args.quality_gate,
-                    plan_options=cli_plan_options(args))
+                    plan_options=cli_plan_options(args), saved_draft=chosen)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
@@ -190,6 +210,9 @@ def main(argv: list[str] | None = None) -> int:
     unmapped = sorted({n for r in results for n in r.unmapped_capabilities})
     if unmapped:   # D29: extend amoeba/capabilities/aliases.yaml with these
         print("unmapped capability names:", ", ".join(unmapped))
+    if not results:
+        print("== no runs")
+        return 1
     scored = [r.score for r in results if r.score is not None]
     n = len(results)
     mean_score = sum(scored) / len(scored) if scored else float("nan")
