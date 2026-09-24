@@ -290,6 +290,7 @@ class PlanRunner:
         self.steps = {number(s): s for s in cfg.plan}
         self.artifacts: dict[int, dict] = {}     # step number -> {"text", "meta"}
         self.reworked: set[int] = set()          # D34: at most one rework per step
+        self.ledger: dict[str, dict] = {}        # D43: figure -> its first status and the step that first wrote it
         self.inferred_logged: set[int] = set()   # D37: steps whose verifier status came from the keyword fallback
         self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
         self.web = getattr(interp.tools, "web", None)
@@ -325,6 +326,12 @@ class PlanRunner:
         for w, nums in enumerate(ws, 1):
             for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
                 self.run_step(self.steps[n], w, deps[n])
+        self.ep.figure_ledger = self.ledger
+        counts: dict[str, int] = {}
+        for e in self.ledger.values():
+            counts[e["status"]] = counts.get(e["status"], 0) + 1
+        self.i.trace.event("figure_ledger", {"amoeba.figures": len(self.ledger), **{f"amoeba.first_{k}": v
+                                                                                   for k, v in sorted(counts.items())}})
         if self.answer_n is None:                          # D41: several final steps, none the summariser's
             return self.assemble_by_code(ws[-1])
         art = self.artifacts[self.answer_n]
@@ -431,13 +438,15 @@ class PlanRunner:
         visible = {s["id"] for s in own}.union(*(self.artifacts[d]["meta"]["visible_source_ids"] for d in deps)) \
             if deps else {s["id"] for s in own}
         prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)   # D33
+        origins = self.ledger_update(n, prov.pop("figures"))                               # D43
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents], "covers": step.covers,
                 "depends_on": deps, "received": deps, "output_spec": step.output, "status": status,
                 "status_reason": reason, "turns": w.turn, "blocked": gaps, "answer_step": answer_step,
                 "check_source": checks[0]["source"] if checks else "",
                 "blocked_mentions": mentions if answer_step else [],
                 "blocked_canonical": sorted({normalise(g)[0] for g in gaps}), "sources": own,
-                "visible_source_ids": sorted(visible), "provenance": prov, "checks": checks, "retried": retried,
+                "visible_source_ids": sorted(visible), "provenance": prov, "figure_origins": origins,
+                "checks": checks, "retried": retried,
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
                 "stale": False, "stale_because": [],
                 "contributions": w.contributions}
@@ -522,12 +531,31 @@ class PlanRunner:
         return "\n".join(f"{k}: {v}" for k, v in req.items()) if req else \
             "None listed by the plan; take the deliverables from the task."
 
+    def ledger_update(self, n: int, figures: list[dict]) -> dict[str, int]:
+        """D43: the first status of each figure in the run (cited / unverified / untagged / derived / given, and the
+        step that first wrote it) goes into the ledger; a later step that repeats the figure inherits that first
+        status, so a number that entered untagged stays untagged however often it is copied. Returns this step's
+        figures counted by their ledger status."""
+        origin: dict[str, int] = {}
+        for f in figures:
+            e = self.ledger.get(f["n"])
+            if e is None and f["status"] != "inherited":
+                e = self.ledger[f["n"]] = {"status": f["status"], "step": n, "as": f["as"], "sources": f["sources"]}
+            key = e["status"] if e else "inherited"
+            origin[key] = origin.get(key, 0) + 1
+        return origin
+
     def summary_check(self, n: int, text: str) -> dict:
-        """D35: a figure in the final answer that is in no step output and not in the task is new."""
+        """D35: a figure in the final answer that is in no step output and not in the task is new. D43: the answer's
+        figures are also listed by their ledger status, so untagged and unverified figures in the answer show."""
         known = numbers_in(self.task.prompt).union(*(numbers_in(a["text"]) for d, a in self.artifacts.items() if d != n))
-        new = sorted(claim_numbers(text) - known, key=lambda x: (len(x), x))
+        claims = claim_numbers(text)
+        new = sorted(claims - known, key=lambda x: (len(x), x))
+        by = lambda st: sorted((x for x in claims if self.ledger.get(x, {}).get("status") == st), key=lambda x: (len(x), x))
         out = {"new_number_in_summary": len(new), "new_numbers": new[:30],
-               "limitations_section": bool(re.search(r"^\s*#+\s*limitations", text or "", re.I | re.M))}
+               "limitations_section": bool(re.search(r"^\s*#+\s*limitations", text or "", re.I | re.M)),
+               "answer_figures": len(claims), "answer_cited": len(by("cited")),
+               "answer_unverified": by("unverified")[:30], "answer_untagged": by("untagged")[:30]}
         self.i.trace.event("summary_check", {"amoeba.step": n, "amoeba.new_number_in_summary": len(new),
                                              "amoeba.new_numbers": new[:30],
                                              "amoeba.limitations_section": out["limitations_section"]})

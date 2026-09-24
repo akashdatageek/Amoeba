@@ -434,3 +434,25 @@ def test_a_failed_check_on_the_last_turn_still_gets_its_own_retry_turns(task, en
     one = ep.steps[0]
     assert (one["status"], one["retried"], one["turns"]) == ("done", True, 6)          # 5 turns + 1 of the retry's 2
     assert trace.events("check_retry")[0]["amoeba.retry_turns"] == 2
+
+
+# ---- D43: figure ledger ---------------------------------------------------------------------------------------------
+def test_the_ledger_keeps_each_figures_first_status_through_copies(tmp_path, envelope):
+    def reply(messages, seed):
+        n = step_no(messages)
+        body = {"1": f"Storage costs 4,200 USD per month.\n{BODY}",
+                "2": f"Egress adds 900 USD per month [unverified].\n{BODY}",
+                "3": f"Verdict: PASS\nIssues: none\nStep 1 said 4,200 USD per month.\n{BODY}",
+                "4": "# Memo\n\n## Cost\nStorage 4,200 USD and egress 900 USD per month; total 5,100 USD.\n"}[n]
+        return f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\n{body}"
+    llm = mock(planner=[DIAMOND], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=reply)
+    r = run_one(Task(prompt="Compute 17 * 23 + 5."), "plan", llm, envelope, default_registry(), tmp_path,
+                draft_prompts="d24")
+    assert {k: r.figure_ledger[k]["status"] for k in ("4200", "900", "5100")} == {
+        "4200": "untagged", "900": "unverified", "5100": "untagged"}
+    assert (r.figure_ledger["4200"]["step"], r.figure_ledger["900"]["step"], r.figure_ledger["5100"]["step"]) == (1, 2, 4)
+    three = json.loads((tmp_path / r.run_id / "artifacts" / "step_3.json").read_text())
+    assert three["provenance"]["inherited"] >= 1 and three["figure_origins"]["untagged"] >= 1   # 4,200 stays untagged
+    sc = r.summary_check
+    assert sc["answer_untagged"] == ["4200", "5100"] and sc["answer_unverified"] == ["900"]
+    assert sc["new_numbers"] == ["5100"] and sc["answer_cited"] == 0
