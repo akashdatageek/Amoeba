@@ -368,3 +368,23 @@ def test_the_answer_step_naming_gaps_stays_done_and_is_not_counted(tmp_path, env
     assert four["blocked_mentions"] == ["database_sandbox", "web_search"]
     saved = json.loads((tmp_path / r.run_id / "result.json").read_text())
     assert saved["blocked_capabilities"] == {"database_sandbox": 1} and saved["error"] is None
+
+
+# ---- D41: several final steps and no summariser step -------------------------------------------------------------
+NO_SUMMARY_STEP = re.sub(r"4\. \[Memo Writer\].*?(?=\n\n## Capability Requests)", "", DIAMOND, flags=re.S)
+
+
+def test_final_steps_without_a_summariser_step_are_assembled_by_code(tmp_path, envelope):
+    def reply(messages, seed):
+        n = step_no(messages)
+        extra = "\nBLOCKED: database_sandbox — no load test." if n == "2" else ""
+        return (f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\nOUT-{n}\n{BODY}"
+                f"{extra}")
+    llm = mock(planner=[NO_SUMMARY_STEP], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=reply)
+    r = run_one(Task(prompt="Compute 17 * 23 + 5."), "plan", llm, envelope, default_registry(), tmp_path,
+                draft_prompts="d24")
+    assert llm.calls_of("plan_summariser") == []                       # no step of the summariser's ran
+    assert r.answer_assembled_by_code == [2, 3] and r.error == "partial"
+    assert r.answer.startswith("## Step 2: Prototype and test\n\nOUT-2") and "## Step 3: Cross-check numbers" in r.answer
+    assert r.answer.rstrip().endswith("- BLOCKED: database_sandbox (the team had no such capability; added by plain code)")
+    assert (tmp_path / r.run_id / "artifacts" / "answer.md").read_text().startswith("## Step 2")

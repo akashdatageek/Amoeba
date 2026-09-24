@@ -70,6 +70,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         run_id=run_id, task_id=task.id, team_id=team_id, topology=topology, answer=answer, error=error,
         score=score(answer, task.ground_truth) if graded is None or task.ground_truth else graded["score"],
         rubric=graded, provenance=provenance_of(ep), blocked_capabilities=blocked_of(ep),
+        answer_assembled_by_code=ep.answer_assembled_by_code if ep else [],
         summary_check=next((s["summary_check"] for s in reversed(ep.steps) if "summary_check" in s), {}) if ep else {},
         total_tokens=trace.total_tokens,
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,

@@ -275,15 +275,37 @@ class PlanRunner:
         for w, nums in enumerate(ws, 1):
             for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
                 self.run_step(self.steps[n], w, deps[n])
+        if self.answer_n is None:                          # D41: several final steps, none the summariser's
+            return self.assemble_by_code(ws[-1])
         art = self.artifacts[self.answer_n]
         status = art["meta"]["status"]
         return art["text"], (None if status == "done" else status)
 
-    def _answer_step(self, ws: list[list[int]]) -> int:
-        """The summariser's step if it owns one in the last wave, else the last step of the last wave."""
+    def _answer_step(self, ws: list[list[int]]) -> int | None:
+        """The summariser's step if it owns one in the last wave; else the last wave's only step; else None: the
+        answer is assembled by code from every step of the last wave (D41)."""
         summ = {a.agent_id for a in self.agents.values() if a.is_summariser}
         final = [n for n in ws[-1] if summ & set(self.steps[n].agent_ids)]
-        return (final or ws[-1])[-1]
+        if final:
+            return final[-1]
+        return ws[-1][0] if len(ws[-1]) == 1 else None
+
+    def assemble_by_code(self, last: list[int]) -> tuple[str, str | None]:
+        """D41: no summariser step to write the answer, so plain code puts the last wave's outputs under one heading
+        each, in plan order, then completes the Limitations section (D36). The run's error is the worst status."""
+        parts = []
+        for n in last:
+            title = re.sub(r"^\s*\[.*?\]\s*:\s*", "", self.steps[n].text).strip() or f"Step {n}"
+            parts.append(f"## Step {n}: {title}\n\n{self.artifacts[n]['text'].strip()}")
+        text, added = self.enforce_limitations("\n\n".join(parts))
+        self.ep.answer_assembled_by_code = list(last)
+        statuses = [self.artifacts[n]["meta"]["status"] for n in last]
+        worst = next((s for s in ("incomplete", "partial") if s in statuses), "done")
+        self.i.trace.event("answer_assembled_by_code", {"amoeba.steps": list(last), "amoeba.statuses": statuses,
+                                                        "amoeba.limitations_added": added["limitations_added_by_code"]})
+        if self.dir:
+            (self.dir / "answer.md").write_text(text + "\n", encoding="utf-8")
+        return text, (None if worst == "done" else worst)
 
     def _max_turns(self) -> int:
         return next(iter(self.agents.values())).limits.max_turns
