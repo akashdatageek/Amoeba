@@ -108,22 +108,32 @@ BOXES: list[dict] = [
     dict(id="task_record", view="task", title="Task", kind="data", plan="Task",
          sentence="The single record every later step reads: the job text, its kind and, for practice jobs, the answer.",
          what=["A small record with an id, the job text, its kind, the known answer if any, and tags.",
-               "The planner only ever reads the job text; the answer is used only for scoring."],
+               "Jobs with no single right answer may carry a rubric instead: deliverables, numbers with units, "
+               "constraints and things the answer must not do.",
+               "The planner only ever reads the job text; the answer and the rubric are used only for scoring."],
          proposes="Nothing.", disposes="Plain code; the record's fields are fixed.",
          anchors=["amoeba/task/models.py::Task"]),
     dict(id="handoff", view="task", title="→ Box 2", kind="plain", plan="→ Box 2",
          sentence="Passes the job to the team planner, which reads only the job text.",
-         what=["The job moves to the planning box.", "The planner sees the job text, never the known answer."],
+         what=["The job moves to the planning box.",
+               "The planner sees the job text, never the known answer or the rubric (a test sends a rubric full of "
+               "marker words through every prompt and checks none arrives)."],
          proposes="Nothing.", disposes="Plain code passes the record on.",
          anchors=["amoeba/task/draft.py::draft_team"], guard_anchors=[]),
     dict(id="scoring", view="task", title="Scoring (after Box 3)", kind="code", plan="Scoring (after Box 3)",
-         sentence="Compares the team's answer with the known answer, ignoring case, extra spaces and a final full stop.",
+         sentence="Compares the team's answer with the known answer; a job with no single right answer is scored "
+                  "against its rubric instead.",
          what=["After the run, the team's answer is compared with the known answer.",
                "Both are lower-cased, runs of spaces are squeezed to one, and trailing full stops are dropped.",
-               "An exact match scores 1, anything else 0; jobs without a known answer get no score.",
-               "No AI judges the answer in Phase 1."],
+               "An exact match scores 1, anything else 0.",
+               "A job with a rubric and no known answer gets the fraction of rubric items it passes: each deliverable "
+               "and constraint found by pattern, each number found with its unit within a tolerance (10 TB and "
+               "9.1 TiB are the same amount), and nothing it must not do (such as a price with no source nearby).",
+               "No AI judges the answer in Phase 1; a hook can store a judge's view beside the score, never in it."],
          proposes="The answer text (from the team).", disposes="Plain code decides match or no match.",
-         anchors=["amoeba/task/evaluate.py::normalise", "amoeba/task/evaluate.py::score"]),
+         anchors=["amoeba/task/evaluate.py::normalise", "amoeba/task/evaluate.py::score",
+                  "amoeba/task/evaluate.py::rubric_score", "amoeba/task/evaluate.py::number_found",
+                  "amoeba/task/models.py::Rubric"]),
     # ---------------------------------------------------------------- plan view
     dict(id="planner", view="plan", title="Planner", kind="llm", plan="Planner", ai="planner",
          sentence="An AI writes the list of helpers and a numbered step plan; later rounds see only the latest critique.",
@@ -198,11 +208,16 @@ BOXES: list[dict] = [
                "Flags the summariser: the helper the planner marked, else the last helper of the last step (having "
                "no tools no longer decides it; nothing is appended). Then requires a team size in the allowed range.",
                "Matches each step's names to helpers (exact first, then by part of the name) and drops steps that match "
-               "nobody; no steps left means drafting failed."],
+               "nobody; no steps left means drafting failed.",
+               "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one "
+               "summariser, and a checking step done by a helper that did not produce what it checks.",
+               "With the quality gate on, a draft failing a must-have check goes back to the planner for one more "
+               "round with the failed checks listed, within the round cap."],
          proposes="The final draft text.",
          disposes="Everything listed here; the original project trusted the AI for all of it.",
          anchors=[("amoeba/task/draft.py::draft_team", "# publish", None), "amoeba/task/draft.py::pick_summariser",
-                  "amoeba/task/quality.py::draft_quality", "amoeba/task/draft.py::role_blobs",
+                  "amoeba/task/draft.py::assemble", "amoeba/task/quality.py::draft_quality",
+                  "amoeba/task/quality.py::gate_suggestions", "amoeba/task/draft.py::role_blobs",
                   "amoeba/task/parsers.py::parse_role_blobs", "amoeba/task/parsers.py::parse_plan",
                   "amoeba/task/models.py::DraftedRole"]),
     dict(id="instantiate", view="plan", title="Build the team (instantiate)", kind="code",
@@ -239,9 +254,13 @@ BOXES: list[dict] = [
                "Where it came from: the planner's list, a helper's tool list, or an action during the run.",
                "Also in result.json (with the steps that answered BLOCKED) and as one log line each.",
                "result.json also says how many requests round 1 proposed and how many were gone from the final draft "
-               "(requests_proposed, requests_dropped_by_observers)."],
+               "(requests_proposed, requests_dropped_by_observers).",
+               "Each request keeps the name as written and a standard name from a list of known aliases "
+               "('Web Search' and 'web research' are both web_search); names not on the list are reported as "
+               "unmapped so the list can grow."],
          proposes="Nothing.", disposes="Plain code writes the file, empty when nothing was asked for.",
-         anchors=["amoeba/task/models.py::CapabilityRequest", "scripts/run_task.py::run_one"], guard_anchors=[]),
+         anchors=["amoeba/task/models.py::CapabilityRequest", "amoeba/capabilities/__init__.py::normalise",
+                  "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="teamconfig", view="plan", title="TeamConfig", kind="data", plan="TeamConfig",
          sentence="The finished team written down as data: who exists, what each may use and who hands work to whom.",
          what=["The team as a data record: helpers, connections, where work starts and which helper gives the answer.",
