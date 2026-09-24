@@ -455,7 +455,9 @@ BOXES: list[dict] = [
                "Point events are logged too: capability_request, blocked and unknown_tool.",
                "From the command line each AI line also holds the exact prompt sent and the reply received "
                "(turn off with --no-log-content).",
-               "Token counts are only recorded; no code reads them to stop a run."],
+               "Token counts are only recorded; no code reads them to stop a run.",
+               "Every line names the model profile; each AI line holds the model asked for and the exact model name "
+               "the service returned."],
          proposes="Nothing.", disposes="Plain code writes the log.",
          anchors=["amoeba/interp/trace.py::TraceWriter", "amoeba/interp/trace.py::TraceWriter.event",
                   "amoeba/interp/trace.py::TracedLLM.chat_messages",
@@ -488,13 +490,18 @@ BOXES: list[dict] = [
                "space calls out; can fold the system message into the user message and set the reasoning effort.",
                "With --llm-cache every reply is stored and can be replayed without a call; --max-tokens-per-run / "
                "--max-calls-per-run stop a run cleanly; every run prints its tokens and estimated cost.",
-               "Temperature, reply length and model are set once for the connection, not per helper.",
+               "A named profile (amoeba/config/models.yaml, default gemma-api) sets the service, the model and how to "
+               "call it; each role group (planner, checkers, helpers, reviewers, summariser) may get its own model "
+               "and reply length. Every log line names the profile, and each AI line the exact model the service "
+               "returned.",
+               "Temperature is set once for the connection, not per helper.",
                "Every call from every box goes through here, wrapped so it is logged."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
                   "amoeba/llm/cache.py::CachedLLM", "amoeba/llm/limits.py::RunLimits",
-                  "amoeba/llm/limits.py::estimate"]),
+                  "amoeba/llm/limits.py::estimate", "amoeba/llm/profiles.py::RoleRouter",
+                  "amoeba/llm/profiles.py::build_router", "scripts/run_task.py::build_llm"]),
     dict(id="toymock", view="run", title="Offline stand-in AI", kind="llm", plan=None, ai=None,
          sentence="A scripted pretend AI that answers the practice jobs correctly, so everything runs without a real AI.",
          what=["Recognises which role is being asked from a fixed phrase in the prompt.",

@@ -11,6 +11,7 @@ from amoeba.llm.client import LLMClient, Messages
 from amoeba.task.models import AgentResult, CapabilityRequest, Episode, Message, Task
 from amoeba.task.parsers import MissingSections, ParseError, parse_critic
 from amoeba.llm.limits import RunLimitReached
+from amoeba.llm.profiles import role_group
 from amoeba.tools.registry import ToolError, ToolRegistry
 
 WORKER_SECTIONS = ["CurrentStep", "Action", "ActionInput"]           # custom_action.py:79-83
@@ -103,7 +104,8 @@ class Interpreter:
         ep.n_llm_calls += 1
 
     def _llm_messages(self, agent: AgentSpec, messages: Messages, ep: Episode) -> str:
-        resp = self.llm.chat_messages(messages, ep.seed, agent_id=agent.agent_id, agent_name=agent.name)
+        resp = self.llm.chat_messages(messages, ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
+                                      role=role_group(role=agent.role, is_summariser=agent.is_summariser))   # D54
         self._record(agent, ep, resp.content, resp.input_tokens, resp.output_tokens)
         return resp.content
 
@@ -111,7 +113,8 @@ class Interpreter:
                       ) -> tuple[str, dict[str, str]]:
         before = self.trace.n_llm_calls
         raw, sec = self.llm.chat_sections(system, user, keys, ep.seed, agent_id=agent.agent_id,
-                                          agent_name=agent.name)
+                                          agent_name=agent.name,
+                                          role=role_group(role=agent.role, is_summariser=agent.is_summariser))
         for rec in self.trace.spans("chat")[before:]:   # the repair call, if any, is a call too
             self._record(agent, ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                          rec.get("gen_ai.usage.output_tokens", 0))

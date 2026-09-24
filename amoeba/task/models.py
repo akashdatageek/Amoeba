@@ -278,5 +278,7 @@ class RunResult(BaseModel):
     blocked_capabilities: dict[str, int] = Field(default_factory=dict)   # D36: canonical -> steps that lacked it
     summary_check: dict = Field(default_factory=dict)   # D35 plan runner: new_number_in_summary, limitations_section
     provenance: dict = Field(default_factory=dict)   # D33 plan runner: {"total": counts, "steps": {n: counts}}
+    profile: str | None = None   # D54: the model profile (amoeba/config/models.yaml); None = the mock client
+    models: dict = Field(default_factory=dict)   # D54: {"requested": {role group: model}, "returned": [API model names]}
     clarification: str | None = None   # D53 --interactive: the user's edit appended to the task before one re-draft
     rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric

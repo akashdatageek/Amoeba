@@ -32,7 +32,7 @@ from amoeba.task.evaluate import number_found
 from amoeba.task.models import Task
 from amoeba.task.parsers import parse_json_objects, parse_plan, parse_role_blobs, parse_sections
 from amoeba.tools.registry import default_registry
-from scripts.run_task import add_client_args, build_llm, cli_token_limits
+from scripts.run_task import add_client_args, build_llm, cli_token_limits, models_of
 
 RETRY_STATUS = (500,)   # D48: 429 and 503 are retried (and traced) by the client itself
 
@@ -56,6 +56,15 @@ class Recording(LLMClient):
         self.replies.append((MockLLMClient.classify(messages), resp.content))
         return resp
 
+    def route(self, group: str | None):
+        """D54: a profile's per-role client, still recorded here (the replies list is shared)."""
+        if not hasattr(self.inner, "route"):
+            return self, None
+        inner, cap = self.inner.route(group)
+        rec = Recording(inner, self.waits)
+        rec.replies = self.replies
+        return rec, cap
+
 
 def role_names(text: str, parser) -> list[str]:
     sec = parse_sections(text, all_fences=True)   # D26, as drafting reads it
@@ -77,9 +86,10 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
             quality_gate: bool = False) -> dict:
     rec = Recording(llm)
     trace = TraceWriter(out / "traces" / f"{task.id}.{rep}.jsonl", episode_id=f"{task.id}.{rep}",
-                        log_content=log_content)
+                        log_content=log_content, stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54
     t0 = time.perf_counter()
-    row = {"task_id": task.id, "family": task.family, "repeat": rep, "prompts": prompts, "model": llm.model}
+    row = {"task_id": task.id, "family": task.family, "repeat": rep, "prompts": prompts, "model": llm.model,
+           "profile": getattr(llm, "profile", None)}
     saved: dict = {}
     try:
         d = draft_team(task, rec, envelope, trace, seed, prompts=prompts, max_tokens=max_tokens,
@@ -127,6 +137,7 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
     row["reasoning_tokens"] = trace.total_reasoning_tokens                                                  # D27
     regex = role_names(final, parse_role_blobs)
     balanced = role_names(final, parse_json_objects)
+    row["models_returned"] = models_of(llm, trace)["returned"]                                              # D54
     row.update(tokens=trace.total_tokens, calls=trace.n_llm_calls, latency_ms=int((time.perf_counter() - t0) * 1000),
                repair_calls=max(0, len(planner) - row["rounds"]) if row["ok"] else None,
                roles_regex=regex, roles_balanced=balanced,

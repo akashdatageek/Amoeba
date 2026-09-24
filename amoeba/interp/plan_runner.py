@@ -16,6 +16,7 @@ from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.provenance import check_provenance, claim_numbers, numbers_in
+from amoeba.llm.profiles import role_group
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
 from amoeba.task.models import Episode, Task
 from amoeba.task.parsers import MissingSections
@@ -580,7 +581,8 @@ class PlanRunner:
             before = self.i.trace.n_llm_calls
             try:
                 raw, sec = self.i.llm.chat_sections(system, user, ["Verdict"], self.ep.seed, agent_id=rv.agent_id,
-                                                    agent_name=rv.name, max_tokens=PLAN_MAX_TOKENS)
+                                                    agent_name=rv.name, max_tokens=PLAN_MAX_TOKENS,
+                                                    role=role_group(reviewing=True))   # D54
             except MissingSections as e:
                 raw, sec = getattr(e, "raw", "") or "", {}
             for rec in self.i.trace.spans("chat")[before:]:
@@ -854,8 +856,9 @@ class PlanRunner:
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name,
                                                 "amoeba.step": n}):
             before = self.i.trace.n_llm_calls
+            group = role_group(is_summariser=agent.is_summariser, reviewing=self.is_verification(step))   # D54
             raw, sec = self.i.llm.chat_sections(system, user, PLAN_SECTIONS, self.ep.seed, agent_id=agent.agent_id,
-                                              agent_name=agent.name, max_tokens=PLAN_MAX_TOKENS)
+                                              agent_name=agent.name, max_tokens=PLAN_MAX_TOKENS, role=group)
             for rec in self.i.trace.spans("chat")[before:]:
                 self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                rec.get("gen_ai.usage.output_tokens", 0))
