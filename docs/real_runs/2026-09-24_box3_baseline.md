@@ -1085,12 +1085,12 @@ count the model stated with no source.
 ## The three biggest failure types
 
 1. **Most answers are lost before they are published.**
-   - Two copied mechanisms eat the output. The first is the AutoAgents section parser: it splits on every `##`, so a helper's markdown Final Output is cut at its first `##`/`###` heading. flat on flash-lite wrote memos of 2,000–2,700 characters and published 155 characters on average, usually just the memo's title block. The flat transcript above shows each helper's full text next to what the parser kept.
+   - Two copied mechanisms eat the output. The first is the AutoAgents section parser: it splits on every `##`, so a helper's markdown Final Output is cut at its first `##`/`###` heading. flat on flash-lite wrote final memos of 2,200–3,000 characters and published 155 characters on average, usually just the memo's title block. The flat transcript above shows each helper's full text next to what the parser kept.
    - The second is the 2048-token helper limit. On 3.5-flash, hidden reasoning spends it, and 142 helper replies were cut off (35 flat, 107 boss). The runner retries only when a limit was set explicitly, so none were retried.
    - All 9 flat runs on 3.5-flash died with `parse: missing sections` and no answer. The boss answers on 3.5-flash average 360 characters.
    - The rubric then scores these cells near its floor: flat 0.155 and 0.103, boss on 3.5-flash 0.209.
 2. **No step ever looks anything up, and no helper admits it cannot.**
-   - Every draft asked for web search and several for a database sandbox, but Box 3 had neither.
+   - Box 3 had no web search and no database sandbox. Only 10 of the 36 drafts asked for web search and 11 for a database sandbox; the rest planned research steps with no lookup tool at all.
    - There were 0 BLOCKED steps and 0 unknown_tool events in 36 runs. `calc` was used 11 times, all on 3.5-flash flat.
    - The one cell that publishes full answers, boss_reviewers on flash-lite, states 17.6 unsourced figures per run. They include managed-database prices ("$1,800", "$700/mo", "$118/tenant/month"), tariff law and rates ("25% Section 301", "15% tariff"), competitor prices ("$3,300", "$3,500"), and first-year cost totals ("$5.2M", "$8.75M").
    - The rubric's `must_not: price without a source` fails in 1–3 of 3 runs for every task in that cell.
