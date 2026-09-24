@@ -147,7 +147,8 @@ def cli_plan_options(args: argparse.Namespace):
     """The plan runner's settings from the command line (D39+)."""
     from amoeba.interp.plan_runner import PlanOptions
     return PlanOptions(rerun_stale=args.rerun_stale, max_input_chars=args.max_input_chars,
-                       max_summary_input_chars=args.max_summary_input_chars, self_refine=args.self_refine)
+                       max_summary_input_chars=args.max_summary_input_chars, self_refine=args.self_refine,
+                       collab=args.collab)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -243,6 +244,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: after a step, one refine turn with what plain code found — off: failed checks only; "
                         "on-issues: also untagged figures and unseen [S#]; always: also a self-review when nothing "
                         "was found (D50)")
+    p.add_argument("--collab", choices=["concat", "critique"], default="critique",
+                   help="plan, multi-role steps: concat = each role writes, outputs joined; critique = the first role "
+                        "drafts, the others AGREE or REVISE with numbered issues, it revises (max 2 rounds) (D51)")
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     add_client_args(p)

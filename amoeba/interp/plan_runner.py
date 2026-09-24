@@ -18,6 +18,7 @@ from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.provenance import check_provenance, claim_numbers, numbers_in
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
 from amoeba.task.models import Episode, Task
+from amoeba.task.parsers import MissingSections
 from amoeba.task.quality import VERIFY_WORDS
 from amoeba.tools.web import WEB_TOOLS
 
@@ -37,6 +38,11 @@ class PlanOptions:
     # figures or citations of unseen sources; always = also a self-review turn when nothing was found. The CLI
     # default is on-issues; this library default keeps the earlier behaviour for callers that set nothing.
     self_refine: str = "off"
+    # D51: how the roles of a multi-role step work together — concat: each writes and the outputs are joined (the
+    # earlier behaviour, kept for the ablation); critique: the first role drafts, the others review, it revises.
+    # The CLI default is critique; this library default keeps the earlier behaviour.
+    collab: str = "concat"
+    collab_rounds: int = 2           # D51: review rounds at most
 
 
 class PlanGraphError(ValueError):
@@ -159,6 +165,8 @@ RETRY_NOTE = ("Plain code checked this step's output and it failed: {failed}. Fi
               "output again as Final Output.\n")
 
 
+REVISION_NOTE = ("Your teammates reviewed your draft and asked for changes:\n{issues}\nRevise the draft to address "
+                 "them and give the whole step output again as Final Output.\n")
 REFINE_NOTE = ("Plain code checked this step's output and found:\n{findings}\nFix exactly these and give the whole step "
                "output again as Final Output.\n")
 SELF_REVIEW_NOTE = ("Before this step is passed on, review your output against the step's done_when ({done_when}) and "
@@ -443,7 +451,12 @@ class PlanRunner:
                                         previous=self.artifacts[n]["text"].strip())
         w = _Work(max_turns=agents[0].limits.max_turns)
         template = PROMPT.plan_summarise if summarising else PROMPT.plan_step
-        self._loop(step, n, agents, inputs, extra, w, template)
+        # D51: with critique, the first role drafts and the others review; the step's output is the drafter's
+        writers = agents[:1] if self.opt.collab == "critique" and len(agents) > 1 else agents
+        self._loop(step, n, writers, inputs, extra, w, template)
+        collab = self.critique(step, n, agents[0], agents[1:], inputs, extra, w, template) \
+            if writers is not agents else None
+        agents_all, agents = agents, writers
         text = self._text(agents, w)
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
         own, visible = self._sources(n, deps)
@@ -478,7 +491,8 @@ class PlanRunner:
         else:
             status, reason = "done", ""
         origins = self.ledger_update(n, prov.pop("figures"))                               # D43
-        meta = {"step": n, "wave": wave, "roles": [a.name for a in agents], "covers": step.covers,
+        meta = {"step": n, "wave": wave, "roles": [a.name for a in agents_all], "covers": step.covers,
+                "collab": collab,
                 "depends_on": deps, "received": deps, "output_spec": step.output, "status": status,
                 "status_reason": reason, "turns": w.turn, "blocked": gaps, "answer_step": answer_step,
                 "check_source": checks[0]["source"] if checks else "",
@@ -515,6 +529,72 @@ class PlanRunner:
         visible = {s["id"] for s in own}.union(*(self.artifacts[d]["meta"]["visible_source_ids"] for d in deps)) \
             if deps else {s["id"] for s in own}
         return own, visible
+
+    def critique(self, step: PlanStep, n: int, drafter: AgentSpec, reviewers: list[AgentSpec], inputs: str,
+                 extra: str, w: "_Work", template: str) -> dict:
+        """D51: the reviewers answer AGREE or REVISE (numbered issues against done_when and their own success
+        criteria); on any REVISE the drafter revises with the issues listed, with turns of its own
+        (check_retry_turns). At most collab_rounds review rounds; plain code ends it when everyone agrees or the
+        rounds run out (the last revision is then not reviewed). Nothing to review when the drafter never gave a
+        Final Output."""
+        objections: dict[str, list[int]] = {r.name: [] for r in reviewers}
+        rounds, agreed, revisions = 0, False, 0
+        for rnd in range(1, self.opt.collab_rounds + 1):
+            draft = w.done.get(drafter.agent_id)
+            if not draft:
+                break
+            rounds = rnd
+            asks = []
+            for rv in reviewers:
+                verdict, issues = self._review(rv, step, n, drafter, draft, inputs)
+                objections[rv.name].append(len(issues) if verdict == "REVISE" else 0)
+                w.contributions.append({"turn": w.turn, "agent": rv.name, "action": "review", "verdict": verdict,
+                                        "issues": len(issues), "round": rnd})
+                if verdict == "REVISE":
+                    asks.append((rv.name, issues or ["(no specific issue given)"]))
+            self.i.trace.event("collab_round", {"amoeba.step": n, "amoeba.round": rnd, "amoeba.drafter": drafter.name,
+                                                "amoeba.revise": [a for a, _ in asks],
+                                                "amoeba.objections": sum(len(i) for _, i in asks)})
+            if not asks:
+                agreed = True
+                break
+            lines = "\n".join(f"- {who}: {i}. {x}" for who, items in asks for i, x in enumerate(items, 1))
+            w.completed += REVISION_NOTE.format(issues=lines)
+            w.done.clear()
+            w.max_turns = w.turn + self.opt.check_retry_turns
+            self._loop(step, n, [drafter], inputs, extra, w, template)
+            revisions += 1
+        return {"mode": "critique", "drafter": drafter.name, "reviewers": [r.name for r in reviewers],
+                "rounds": rounds, "revisions": revisions, "objections": objections, "agreed": agreed}
+
+    def _review(self, rv: AgentSpec, step: PlanStep, n: int, drafter: AgentSpec, draft: str, inputs: str
+                ) -> tuple[str, list[str]]:
+        """D51: one reviewer's verdict and numbered issues. An unreadable reply counts as AGREE (recorded)."""
+        criteria = "; ".join(rv.success_criteria) or "none written"
+        user = render(PROMPT.plan_critique, task=self.task.prompt, card=plan_card(rv), number=n,
+                      step=step_detail(step), inputs=inputs, drafter=drafter.name, draft=draft,
+                      done_when=step.done_when or "none written", criteria=criteria)
+        system = render(PROMPT.plan_step_system, name=rv.name)
+        with self.i.trace.span("invoke_agent", {"gen_ai.agent.id": rv.agent_id, "gen_ai.agent.name": rv.name,
+                                                "amoeba.step": n, "amoeba.review": True}):
+            before = self.i.trace.n_llm_calls
+            try:
+                raw, sec = self.i.llm.chat_sections(system, user, ["Verdict"], self.ep.seed, agent_id=rv.agent_id,
+                                                    agent_name=rv.name, max_tokens=PLAN_MAX_TOKENS)
+            except MissingSections as e:
+                raw, sec = getattr(e, "raw", "") or "", {}
+            for rec in self.i.trace.spans("chat")[before:]:
+                self.i._record(rv, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
+                               rec.get("gen_ai.usage.output_tokens", 0))
+        word = (sec.get("Verdict") or "").strip().upper()
+        verdict = "REVISE" if "REVISE" in word else "AGREE" if "AGREE" in word else "UNREADABLE"
+        head = raw.rfind("## Issues")
+        body = raw[head + len("## Issues"):] if head >= 0 else ""
+        issues = [m.group(1).strip() for m in re.finditer(r"^\s*\d+[.)]\s+(.+)$", body, re.M)]
+        if verdict == "UNREADABLE":
+            self.i.trace.event("review_unreadable", {"amoeba.step": n, "gen_ai.agent.name": rv.name})
+            verdict = "AGREE"
+        return verdict, issues if verdict == "REVISE" else []
 
     def refine(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work",
                template: str, checks: list[dict], prov: dict) -> dict | None:

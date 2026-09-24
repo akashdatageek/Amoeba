@@ -201,6 +201,7 @@ class MockLLMClient(LLMClient):
         "plan_observer": ("Review the Execution Plan for clarity",
                           "You are a senior delivery reviewer. You judge whether this plan"),              # D24
         "plan_summariser": "You are assembling the team's final answer",                                   # D35
+        "plan_critic": "You are reviewing a teammate's draft for one step of a team plan",                 # D51
         "plan_worker": "You are carrying out one step of a team plan",                                     # D31
         "worker": "Based on prior agents' results and completed steps",
         "solver": "You are faced with the task",

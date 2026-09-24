@@ -132,6 +132,7 @@ def toy_mock_client() -> MockLLMClient:
         "worker": _worker,
         "plan_worker": _plan_worker,
         "plan_summariser": _plan_summariser,
+        "plan_critic": ["## Verdict\nAGREE\n\n## Issues\nnone\n"],
         "solver": _solver,
         "critic": ["Action: Agree\nAction Input: Agree."],
     }, model="toy-mock")
