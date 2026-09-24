@@ -69,7 +69,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     result = RunResult(
         run_id=run_id, task_id=task.id, team_id=team_id, topology=topology, answer=answer, error=error,
         score=score(answer, task.ground_truth) if graded is None or task.ground_truth else graded["score"],
-        rubric=graded, provenance=provenance_of(ep), total_tokens=trace.total_tokens,
+        rubric=graded, provenance=provenance_of(ep), blocked_capabilities=blocked_of(ep),
+        summary_check=next((s["summary_check"] for s in reversed(ep.steps) if "summary_check" in s), {}) if ep else {},
+        total_tokens=trace.total_tokens,
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,
         draft_rounds=draft.rounds_used if draft else sum(bool(r.plan_observer_raw) for r in (failed.rounds if failed else [])), consensus=draft.consensus if draft else False,
         blocked_steps=ep.blocked_steps if ep else [], requested_capabilities=requested,
@@ -88,6 +90,16 @@ def provenance_of(ep) -> dict:
         return {}
     return {"total": total_provenance([s["provenance"] for s in steps]),
             "steps": {str(s["step"]): s["provenance"] for s in steps}}
+
+
+def blocked_of(ep) -> dict:
+    """D36: canonical capability -> how many plan steps (latest version of each) lacked it."""
+    latest = {s["step"]: s for s in (ep.steps if ep else [])}
+    counts: dict[str, int] = {}
+    for s in latest.values():
+        for c in s.get("blocked_canonical", []):
+            counts[c] = counts.get(c, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
