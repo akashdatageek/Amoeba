@@ -30,7 +30,8 @@ from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
 from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
-from amoeba.tools.web import web_registry
+from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
+from amoeba.tools.web import TavilyProvider, web_registry
 
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
@@ -61,6 +62,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     except DraftError as e:
         error = f"draft: {e}"
         failed = e
+    except CacheMiss as e:            # D46: replay mode never falls back to a live call
+        error = f"cache_miss: {e}"
+        trace.event("cache_miss", {"error.type": str(e)[:300]})
     finally:
         # a failed draft is kept too: the error and every round up to it
         saved = draft.model_dump(mode="json") if draft else \
@@ -124,14 +128,38 @@ def cli_token_limits(args: argparse.Namespace) -> dict:
     return {"planner": args.planner_max_tokens, "agent_observer": o, "plan_observer": o}
 
 
+def add_client_args(p: argparse.ArgumentParser) -> None:
+    """How the model is called — shared by run_task and eval_draft (D46+)."""
+    p.add_argument("--llm-cache", default=None, metavar="DIR",
+                   help="store every LLM reply (and web tool result) in DIR, keyed by a hash of model, messages, "
+                        "max_tokens and temperature (D46)")
+    p.add_argument("--llm-cache-mode", choices=["record", "replay", "off"], default="record",
+                   help="record: use a stored reply, else call and store; replay: stored replies only, a miss is an "
+                        "error (never a live call); off: no cache")
+    p.add_argument("--llm-cache-namespace", default="",
+                   help="part of every cache key, e.g. the repeat number, so repeats of one prompt stay separate")
+
+
 def build_llm(args: argparse.Namespace) -> LLMClient:
     if args.llm == "mock":
-        return toy_mock_client()
+        mock = toy_mock_client()
+        return CachedLLM(mock, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else mock
     # flags win; else the AMOEBA_* env vars; else OPENAI_API_KEY / the SDK default endpoint
     base_url = args.base_url or os.environ.get("AMOEBA_BASE_URL") or None
     api_key = args.api_key or os.environ.get("AMOEBA_API_KEY") or os.environ.get("OPENAI_API_KEY") or "EMPTY"
     model = args.model or os.environ.get("AMOEBA_MODEL") or "gpt-4o-mini"
-    return OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=model)
+    client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=model)
+    return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else client
+
+
+def build_box3_tools(args: argparse.Namespace, tools: ToolRegistry) -> ToolRegistry:
+    """A fresh Box 3 registry per run: with --web-tools, web_search/fetch_url (D32), cached when --llm-cache is
+    set (D46; replay then needs no Tavily key)."""
+    if not args.web_tools:
+        return tools
+    if args.llm_cache:
+        return web_registry(CachedProvider(TavilyProvider, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace))
+    return web_registry()
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -172,6 +200,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="with --drafts-from: use each task's k-th saved draft (0-based; e.g. the repeat number)")
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
+    add_client_args(p)
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
@@ -198,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
             if chosen is None:
                 print(f"[{args.topology}] {task.id}: no saved draft #{args.draft_pick} in {args.drafts_from} — skipped")
                 continue
-        box3_tools = web_registry() if args.web_tools else tools   # a fresh source list per run (D32)
+        box3_tools = build_box3_tools(args, tools)   # a fresh source list per run (D32)
         r = run_one(task, args.topology, llm, envelope, box3_tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
                     max_tokens=cli_token_limits(args), quality_gate=args.quality_gate,

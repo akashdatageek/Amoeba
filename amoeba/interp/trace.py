@@ -118,6 +118,8 @@ class TracedLLM:
             rec["gen_ai.usage.output_tokens"] = resp.output_tokens
             if resp.finish_reason:
                 rec["gen_ai.response.finish_reasons"] = [resp.finish_reason]
+            if resp.cached:
+                rec["amoeba.cache_hit"] = True   # D46: replayed from the response cache; no call was made
             if resp.reasoning_tokens:
                 rec["amoeba.usage.reasoning_tokens"] = resp.reasoning_tokens
                 rec["amoeba.usage.reasoning_source"] = resp.reasoning_source

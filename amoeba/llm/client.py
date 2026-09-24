@@ -24,6 +24,7 @@ class ChatResponse:
     finish_reason: str | None = None   # "stop", "length" (hit max_tokens) ... as the API reported it
     reasoning_tokens: int = 0          # hidden reasoning ("thinking") tokens; they count against max_tokens (D27)
     reasoning_source: str | None = None   # "reported" (completion_tokens_details) | "total_minus_visible" | None
+    cached: bool = False               # D46: served from the response cache, not the model
 
 
 class LLMClient(ABC):
