@@ -281,3 +281,11 @@ def test_a_helper_that_only_answers_blocked_leaves_the_step_incomplete(task, env
     ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
     one = ep.steps[0]
     assert (one["status"], one["blocked"]) == ("incomplete", ["web_search"]) and len(ep.steps) == 4
+
+
+def test_a_short_answer_that_repeats_its_input_passes_the_checks():
+    steps_ = {1: {"text": "SUSNESNOC", "meta": {"visible_source_ids": [], "roles": ["Solver"]}}}
+    two = PlanStep(index=1, agent_ids=["a"], text="[Language Expert]: restate", depends_on=[1])
+    from amoeba.interp.plan_runner import step_checks
+    assert all(c["pass"] for c in step_checks(two, "SUSNESNOC\n\n(as computed)", [1], steps_))
+    assert not all(c["pass"] for c in step_checks(two, "something else entirely", [1], steps_))

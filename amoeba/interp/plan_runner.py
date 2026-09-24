@@ -188,7 +188,8 @@ def step_checks(step: PlanStep, text: str, deps: list[int], artifacts: dict, ver
         dep_text = "\n".join(artifacts[d]["text"] for d in deps)
         ok = (any(re.search(rf"\bstep\s*{d}\b", body, re.I) for d in deps) or any(f"[{i}]" in body for i in ids)
               or any(r in body for r in roles) or bool(numbers_in(body) & dep_nums)
-              or (bool(body.strip()) and body.strip() in dep_text))
+              or (bool(body.strip()) and body.strip() in dep_text)
+              or any(len(x.strip()) >= 3 and x.strip() in dep_text for x in body.splitlines()))
         out.append({"name": "inputs_referenced", "pass": ok, "detail": "the output uses nothing from the steps it "
                                                                         "depends on (no step, role, source or figure)"})
     if verifier:
