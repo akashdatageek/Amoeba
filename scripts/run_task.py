@@ -147,6 +147,11 @@ def add_client_args(p: argparse.ArgumentParser) -> None:
                         "Retry-After; a spending-cap 429 is not retried (D48)")
     p.add_argument("--min-seconds-between-calls", type=float, default=0.0,
                    help="wait at least this long between two model calls, for free tiers (D48)")
+    p.add_argument("--merge-system", action="store_true",
+                   help="put the system message at the top of the user message, for models without a system role "
+                        "such as Gemma (D49)")
+    p.add_argument("--reasoning-effort", choices=["off", "low", "medium", "high"], default=None,
+                   help="sent only when set; 'off' is sent as 'none' (D49)")
 
 
 def build_llm(args: argparse.Namespace) -> LLMClient:
@@ -159,7 +164,8 @@ def build_llm(args: argparse.Namespace) -> LLMClient:
     model = args.model or os.environ.get("AMOEBA_MODEL") or "gpt-4o-mini"
     client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=model,
                                     max_rate_retries=args.max_rate_retries,
-                                    min_seconds_between_calls=args.min_seconds_between_calls)
+                                    min_seconds_between_calls=args.min_seconds_between_calls,
+                                    merge_system=args.merge_system, reasoning_effort=args.reasoning_effort)
     return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else client
 
 

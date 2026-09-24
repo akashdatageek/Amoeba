@@ -64,8 +64,12 @@ class CachedLLM(LLMClient):
         self.store = _Store(folder, "llm", mode, namespace)
 
     def key(self, messages: Messages, max_tokens: int | None) -> str:
-        return cache_key({"model": self.model, "messages": messages, "max_tokens": max_tokens,
-                          "temperature": getattr(self.inner, "temperature", None), "namespace": self.store.namespace})
+        parts = {"model": self.model, "messages": messages, "max_tokens": max_tokens,
+                 "temperature": getattr(self.inner, "temperature", None), "namespace": self.store.namespace}
+        opts = getattr(self.inner, "request_options", None)
+        if opts and any(opts.values()):      # D49: --merge-system / --reasoning-effort change the request
+            parts["options"] = opts
+        return cache_key(parts)
 
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
         if self.store.mode == "off":

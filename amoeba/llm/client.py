@@ -64,7 +64,8 @@ class OpenAICompatibleClient(LLMClient):
 
     def __init__(self, base_url: str | None, api_key: str, model: str,
                  temperature: float = 0.2, max_tokens: int = 2048, max_rate_retries: int = 5,
-                 min_seconds_between_calls: float = 0.0, sleep: Callable[[float], None] = time.sleep):
+                 min_seconds_between_calls: float = 0.0, sleep: Callable[[float], None] = time.sleep,
+                 merge_system: bool = False, reasoning_effort: str | None = None):
         from openai import OpenAI  # imported lazily so tests never need it
 
         # D48: the SDK's own retries are off; rate limits are retried below, where each wait is recorded
@@ -75,6 +76,15 @@ class OpenAICompatibleClient(LLMClient):
         self.sends_seed = True   # False once the endpoint has rejected the field (Gemini's OpenAI layer does)
         self.max_rate_retries, self.min_interval, self._sleep = max_rate_retries, min_seconds_between_calls, sleep
         self._last_call = 0.0
+        # D49: for models without a system role (Gemma) and for models whose thinking can be set
+        if reasoning_effort is not None and reasoning_effort not in REASONING_EFFORTS:
+            raise ValueError(f"reasoning_effort must be one of {sorted(REASONING_EFFORTS)}, not {reasoning_effort!r}")
+        self.merge_system, self.reasoning_effort = merge_system, reasoning_effort
+
+    @property
+    def request_options(self) -> dict:
+        """What changes the request besides the messages (part of the response-cache key, D46)."""
+        return {"merge_system": self.merge_system, "reasoning_effort": self.reasoning_effort}
 
     def _create(self, kw: dict, seed: int):
         try:
@@ -95,8 +105,10 @@ class OpenAICompatibleClient(LLMClient):
 
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
         t0 = time.perf_counter()
-        kw = dict(model=self.model, messages=messages, temperature=self.temperature,
-                  max_tokens=max_tokens or self.max_tokens)
+        kw = dict(model=self.model, messages=merge_system(messages) if self.merge_system else messages,
+                  temperature=self.temperature, max_tokens=max_tokens or self.max_tokens)
+        if self.reasoning_effort is not None:          # sent only when set (D49)
+            kw["reasoning_effort"] = REASONING_EFFORTS[self.reasoning_effort]
         throttled, retries = self._throttle(), []
         while True:
             try:
@@ -125,6 +137,24 @@ class OpenAICompatibleClient(LLMClient):
             latency_ms=int((time.perf_counter() - t0) * 1000),
             retries=retries, throttle_wait_s=round(throttled, 3),
         )
+
+
+# D49: --reasoning-effort values → what the OpenAI-compatible API takes ("none" turns thinking off on Gemini's layer)
+REASONING_EFFORTS = {"off": "none", "low": "low", "medium": "medium", "high": "high"}
+
+
+def merge_system(messages: Messages) -> Messages:
+    """D49: for models without a system role — the system text goes at the top of the first user message
+    (or becomes a user message when there is none), and no system message is sent."""
+    system = "\n\n".join(m["content"] for m in messages if m.get("role") == "system" and m.get("content"))
+    rest = [dict(m) for m in messages if m.get("role") != "system"]
+    if not system:
+        return rest
+    for m in rest:
+        if m.get("role") == "user":
+            m["content"] = f"{system}\n\n{m['content']}"
+            return rest
+    return [{"role": "user", "content": system}, *rest]
 
 
 RATE_STATUS = (429, 503)   # D48: too many requests / service unavailable — worth waiting for
