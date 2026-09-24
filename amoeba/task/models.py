@@ -266,6 +266,7 @@ class RunResult(BaseModel):
     requests_dropped_by_observers: int = 0
     draft_quality: dict = Field(default_factory=dict)   # D24 checks on the draft (recorded, not enforced)
     unmapped_capabilities: list[str] = Field(default_factory=list)   # D29: names aliases.yaml does not know yet
+    blocked_capabilities: dict[str, int] = Field(default_factory=dict)   # D36: canonical -> steps that lacked it
     summary_check: dict = Field(default_factory=dict)   # D35 plan runner: new_number_in_summary, limitations_section
     provenance: dict = Field(default_factory=dict)   # D33 plan runner: {"total": counts, "steps": {n: counts}}
     rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric

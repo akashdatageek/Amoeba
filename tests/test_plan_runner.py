@@ -219,6 +219,65 @@ def test_a_new_number_in_the_summary_is_flagged(tmp_path, envelope):
     r = run_one(Task(prompt="Compute 17 * 23 + 5."), "plan", llm, envelope, default_registry(), tmp_path,
                 draft_prompts="d24")
     saved = json.loads((tmp_path / r.run_id / "result.json").read_text())
-    assert saved["summary_check"] == {"new_number_in_summary": 1, "new_numbers": ["4321"], "limitations_section": True}
+    assert {k: saved["summary_check"][k] for k in ("new_number_in_summary", "new_numbers", "limitations_section")} == \
+        {"new_number_in_summary": 1, "new_numbers": ["4321"], "limitations_section": True}
     prompt = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
     assert "add no new analysis, no new facts and no new numbers" in prompt and '"## Limitations"' in prompt
+
+
+# ---- D36: BLOCKED policy ------------------------------------------------------------------------------------------
+def test_a_blocked_part_makes_the_step_partial_and_reaches_the_limitations(tmp_path, envelope):
+    def reply(messages, seed):
+        n = step_no(messages)
+        if n == "2":
+            body = (f"OUT-2\n{BODY}\nBLOCKED: database_sandbox — the load test at 5,000 queries/min was not run.")
+        elif n == "4":
+            body = "# Memo\n\n## Answer\nStorage 10 TB.\n\n## Limitations\n- step 2 could not load-test."
+        else:
+            body = f"OUT-{n}\n{BODY}"
+        return f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\n{body}"
+    llm = mock(planner=[DIAMOND], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=reply)
+    r = run_one(Task(prompt="Compute 17 * 23 + 5."), "plan", llm, envelope, default_registry(), tmp_path,
+                draft_prompts="d24")
+    two = json.loads((tmp_path / r.run_id / "artifacts" / "step_2.json").read_text())
+    assert (two["status"], two["blocked"], two["blocked_canonical"]) == ("partial", ["database_sandbox"],
+                                                                          ["database_sandbox"])
+    assert two["status_reason"] == "lacked: database_sandbox"
+    saved = json.loads((tmp_path / r.run_id / "result.json").read_text())
+    assert saved["blocked_capabilities"] == {"database_sandbox": 1}
+    assert saved["summary_check"]["limitations_added_by_code"] == ["database_sandbox"]
+    assert saved["answer"].rstrip().endswith("- BLOCKED: database_sandbox (the team had no such capability; added by "
+                                             "plain code)")
+    summ = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
+    assert "## Step 2 (Schema Engineer), status: partial (lacked: database_sandbox); lacked: database_sandbox" in summ
+    assert [s["step"] for s in r_steps(tmp_path, r)] == [1, 2, 3, 4]            # the run went on
+
+
+def r_steps(tmp_path, r):
+    return [json.loads(p.read_text()) for p in sorted((tmp_path / r.run_id / "artifacts").glob("step_*.json"))]
+
+
+def test_limitations_that_name_the_gap_are_left_alone(task, envelope, trace, tools):
+    def reply(messages, seed):
+        n = step_no(messages)
+        body = {"2": f"OUT-2\n{BODY}\nBLOCKED: Database Sandbox — no load test",
+                "4": "# Memo\n\n## Limitations\n- No database sandbox, so the schemas were not load-tested."}.get(
+            n, f"OUT-{n}\n{BODY}")
+        return f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\n{body}"
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=reply)
+    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    four = ep.steps[-1]
+    assert four["summary_check"]["blocked_capabilities"] == ["database_sandbox"]
+    assert four["summary_check"]["limitations_added_by_code"] == [] and "added by plain code" not in ep.answer
+
+
+def test_a_helper_that_only_answers_blocked_leaves_the_step_incomplete(task, envelope, trace, tools):
+    def reply(messages, seed):
+        n = step_no(messages)
+        if n == "1":
+            return "## Thought\nno\n\n## CurrentStep\nw\n\n## Action\nBLOCKED: web_search\n\n## ActionInput\n\n"
+        return f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\nOUT-{n}\n{BODY}"
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=reply)
+    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    one = ep.steps[0]
+    assert (one["status"], one["blocked"]) == ("incomplete", ["web_search"]) and len(ep.steps) == 4

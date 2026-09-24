@@ -197,6 +197,16 @@ def step_checks(step: PlanStep, text: str, deps: list[int], artifacts: dict, ver
     return out
 
 
+def blocked_marks(text: str) -> list[str]:
+    """D36: the capabilities named in 'BLOCKED: <capability> — ...' lines of a step's output."""
+    names = []
+    for m in re.finditer(r"BLOCKED\s*[:：]\s*`?([A-Za-z][\w ./+-]{0,60}?)`?\s*(?:[—–:;,(\n]|-\s|$)", text or ""):
+        name = m.group(1).strip(" .-")
+        if name and name.lower() not in names and name.lower() not in ("none", "n/a"):
+            names.append(name)
+    return names
+
+
 def parse_verdict_block(text: str) -> tuple[str | None, str]:
     m = re.search(r"verdict\s*[:*]*\s*\**\s*(PASS|FAIL)", text or "", re.I)
     issues = re.split(r"issues\s*[:*]*", text or "", maxsplit=1, flags=re.I)
@@ -300,15 +310,17 @@ class PlanRunner:
             text = self._text(agents, w)
             checks = step_checks(step, text, deps, self.artifacts, verifier)
             failed = [c["name"] for c in checks if not c["pass"]]
-        finished = len(w.done) == len(agents)
-        if w.blocked and len(w.done) + len(w.blocked) == len(agents) and not w.done:
-            status, reason = "blocked", "every helper answered BLOCKED"
-        elif not finished and not w.blocked:
+        # D36: what the step could not do for lack of a capability — BLOCKED as an action or marked in the output
+        gaps = sorted(set(w.blocked.values()) | set(blocked_marks(text)))
+        wrote = bool(w.done) or any(v for v in w.partial.values())
+        finished = len(w.done) + len(w.blocked) == len(agents)
+        if gaps:
+            status = "partial" if wrote else "incomplete"
+            reason = "lacked: " + ", ".join(gaps) + ("; checks failed: " + ", ".join(failed) if failed else "")
+        elif not finished:
             status, reason = "incomplete", "max_turns"
         elif failed:
             status, reason = "incomplete", "checks failed: " + ", ".join(failed)
-        elif w.blocked:
-            status, reason = "blocked", "a helper answered BLOCKED"
         else:
             status, reason = "done", ""
         own = [{k: s[k] for k in ("id", "url", "title", "kind", "fetched_at")}
@@ -318,13 +330,15 @@ class PlanRunner:
         prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)   # D33
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents], "covers": step.covers,
                 "depends_on": deps, "received": deps, "output_spec": step.output, "status": status,
-                "status_reason": reason, "turns": w.turn, "blocked": sorted(set(w.blocked.values())), "sources": own,
+                "status_reason": reason, "turns": w.turn, "blocked": gaps,
+                "blocked_canonical": sorted({normalise(g)[0] for g in gaps}), "sources": own,
                 "visible_source_ids": sorted(visible), "provenance": prov, "checks": checks, "retried": retried,
                 "verification": verifier, "rework_of": rework, "contributions": w.contributions}
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
         if summarising:
-            meta["summary_check"] = self.summary_check(n, text)
+            text, added = self.enforce_limitations(text)                          # D36
+            meta["summary_check"] = {**self.summary_check(n, text), **added}
         self._save(n, wave, text, meta, prov)
         if verifier and meta["verdict"] == "FAIL":
             self.rework_producers(n, deps, meta["issues"])
@@ -364,6 +378,31 @@ class PlanRunner:
                                              "amoeba.new_numbers": new[:30],
                                              "amoeba.limitations_section": out["limitations_section"]})
         return out
+
+    def blocked_capabilities(self) -> dict[str, list[str]]:
+        """D36: canonical capability -> the names the steps used for it, over every step's latest output."""
+        out: dict[str, list[str]] = {}
+        for a in self.artifacts.values():
+            for g in a["meta"].get("blocked", []):
+                out.setdefault(normalise(g)[0], [])
+                if g not in out[normalise(g)[0]]:
+                    out[normalise(g)[0]].append(g)
+        return out
+
+    def enforce_limitations(self, text: str) -> tuple[str, dict]:
+        """D36: the final answer's Limitations section must name every capability a step lacked. Names it leaves
+        out are appended by plain code (and recorded), so a gap is never silently dropped."""
+        caps = self.blocked_capabilities()
+        m = re.search(r"^\s*#+\s*limitations\b.*$", text or "", re.I | re.M)
+        section = text[m.end():] if m else ""
+        spell = lambda c, names: {c, c.replace("_", " "), *names}
+        missing = sorted(c for c, names in caps.items()
+                         if not any(x.lower() in section.lower() for x in spell(c, names)))
+        if missing:
+            lines = "\n".join(f"- BLOCKED: {c} (the team had no such capability; added by plain code)" for c in missing)
+            text = f"{text.rstrip()}\n\n{lines}\n" if m else f"{text.rstrip()}\n\n## Limitations\n{lines}\n"
+            self.i.trace.event("limitations_added", {"amoeba.capabilities": missing})
+        return text, {"blocked_capabilities": sorted(caps), "limitations_added_by_code": missing}
 
     def is_verification(self, step: PlanStep) -> bool:
         """The d24 'independent verification' shape (as draft_quality reads it): a step that depends on others and
