@@ -26,6 +26,7 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
             tools=list(r.tools), suggestions=r.suggestions, role_prompt=r.prompt,
             missing_tools=list(r.missing_tools), is_summariser=r.is_summariser,
             goal=r.goal, skills=list(r.skills), outputs=list(r.outputs), success_criteria=list(r.success_criteria),
+            constraints=list(r.constraints),
             description=r.description or r.prompt,   # AgentVerse ${role_description}: description, else prompt
         )
     common = dict(team_id=str(uuid4()), name=f"team-{topology}-{task.id[:8]}",
@@ -55,6 +56,25 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
                 [Edge(src=c, dst=solver_id, type="revise", condition="critic_disagrees") for c in critics]
         cfg = TeamConfig(**common, topology="boss_reviewers", agents=agents, edges=edges,
                          entry=[solver_id], exit=solver_id, max_inner_turns=3)
+    elif topology == "plan":   # D31: the plan runner over depends_on (amoeba/interp/plan_runner.py)
+        from amoeba.interp.plan_runner import PLAN_MAX_TOKENS, number, relink
+        plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text, covers=s.covers,
+                         depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when)
+                for s in draft.plan]
+        written = {i + 1: list(w.get("depends_on") or []) for i, w in enumerate(draft.rounds[-1].plan)} \
+            if draft.rounds else {}
+        plan, relinked = relink(plan, written)
+        for a in agents.values():
+            a.max_tokens = PLAN_MAX_TOKENS
+        steps = {number(s): s for s in plan}
+        edges = list({(a, b): Edge(src=a, dst=b, type="sequential") for s in plan for d in s.depends_on
+                      if d in steps for a in steps[d].agent_ids for b in s.agent_ids if a != b}.values())
+        roots = [s for s in plan if not any(d in steps for d in s.depends_on)] or plan[:1]
+        last = plan[-1]
+        exit_id = next((a for a in last.agent_ids if agents[a].is_summariser), last.agent_ids[-1])
+        cfg = TeamConfig(**common, topology="plan", agents=agents, edges=edges,
+                         entry=list(dict.fromkeys(a for s in roots for a in s.agent_ids)), exit=exit_id, plan=plan)
+        cfg.meta["dependency_relinked"] = relinked
     else:
         raise ValueError(f"unknown topology {topology!r}")
 

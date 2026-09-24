@@ -49,6 +49,7 @@ class AgentSpec(BaseModel):
     skills: list[str] = Field(default_factory=list)
     outputs: list[Any] = Field(default_factory=list)
     success_criteria: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)   # D31: shown on the plan runner's role card
     created_by: Literal["human", "drafter"] = "drafter"
     temperature: float = 0.2
     max_tokens: int = 2048
@@ -79,11 +80,11 @@ class TeamConfig(BaseModel):
     version: int = 1
     parent_version: int | None = None
     name: str
-    topology: Literal["flat", "boss_reviewers"]
+    topology: Literal["flat", "boss_reviewers", "plan"]   # plan: D31 plan runner over depends_on
     agents: dict[str, AgentSpec]
     edges: list[Edge]
     entry: list[str]
     exit: str
-    plan: list[PlanStep] = Field(default_factory=list)  # flat only
+    plan: list[PlanStep] = Field(default_factory=list)  # flat and plan
     max_inner_turns: int = 3  # boss_reviewers only (vertical_solver_first.py:24)
     meta: dict = Field(default_factory=dict)

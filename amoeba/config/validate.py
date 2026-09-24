@@ -61,7 +61,19 @@ def validate(cfg: TeamConfig, envelope: Envelope) -> list[str]:
         errs.append(f"V6 team has {len(cfg.agents)} agents; need 2..{envelope.max_agents}")
 
     # V8  topology-specific shape
-    if cfg.topology == "flat":
+    if cfg.topology == "plan":   # D31: the depends_on graph must have no unknown step and no cycle
+        from amoeba.interp.plan_runner import PlanGraphError, waves
+        if not cfg.plan:
+            errs.append("V8 plan: plan is empty")
+        for s in cfg.plan:
+            if not s.agent_ids or any(a not in ids for a in s.agent_ids):
+                errs.append(f"V8 plan: step {s.index + 1} names no or an unknown agent")
+        try:
+            if cfg.plan:
+                waves(cfg.plan)
+        except PlanGraphError as e:
+            errs.append(f"V8 plan: {e}")
+    elif cfg.topology == "flat":
         if not cfg.plan:
             errs.append("V8 flat: plan is empty")
         for s in cfg.plan:

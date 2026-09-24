@@ -47,7 +47,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         dump_yaml(cfg, run_dir / "team.yaml")
-        ep = Interpreter(llm, tools, trace).run(cfg, task, seed)
+        ep = Interpreter(llm, tools, trace, run_dir=run_dir).run(cfg, task, seed)
         answer, error = ep.answer, ep.error
     except DraftError as e:
         error = f"draft: {e}"
@@ -104,7 +104,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--tasks", default=None,
                    help="a .jsonl file of tasks (id, prompt, optional ground_truth or rubric); a task with a rubric "
                         "and no ground_truth is scored by the rubric fraction (D30)")
-    p.add_argument("--topology", choices=["flat", "boss_reviewers"], default="flat")
+    p.add_argument("--topology", choices=["flat", "boss_reviewers", "plan"], default="flat",
+                   help="plan = the D31 plan runner over depends_on")
     p.add_argument("--llm", choices=["mock", "openai"], default="mock")
     p.add_argument("--base-url", default=None)
     p.add_argument("--model", default=None, help="default: $AMOEBA_MODEL, else gpt-4o-mini")

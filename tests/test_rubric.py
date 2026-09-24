@@ -96,15 +96,15 @@ SCRIPTS = {
 
 
 @pytest.mark.parametrize("prompts", ["d19", "d24"])
-@pytest.mark.parametrize("topology", ["flat", "boss_reviewers"])
+@pytest.mark.parametrize("topology", ["flat", "boss_reviewers", "plan"])
 def test_rubric_never_reaches_box2_or_box3_prompts(prompts, topology, tmp_path, envelope, tools):
     task = Task(prompt="Compute 17 * 23 + 5.", rubric=SECRET)
-    llm = mock(worker=[fx("worker_final_output")], solver=["396"], critic=["Action: Agree\nAction Input: fine."],
+    llm = mock(worker=[fx("worker_final_output")], plan_worker=[fx("worker_final_output")], solver=["396"], critic=["Action: Agree\nAction Input: fine."],
                **SCRIPTS[prompts])
     r = run_one(task, topology, llm, envelope, tools, tmp_path, draft_prompts=prompts, quality_gate=True)
     kinds = {c["kind"] for c in llm.calls}
     assert {"planner", "agent_observer", "plan_observer"} <= kinds and r.error is None
-    assert kinds & ({"worker"} if topology == "flat" else {"solver", "critic"})
+    assert kinds & {"flat": {"worker"}, "plan": {"plan_worker"}}.get(topology, {"solver", "critic"})
     sent = json.dumps([c["messages"] for c in llm.calls])
     assert [s for s in SENTINELS if s in sent] == []
     assert r.rubric["total"] == 4                                   # Box 1 did score it, after the run

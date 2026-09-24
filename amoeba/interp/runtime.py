@@ -63,7 +63,8 @@ def step_context(step: PlanStep) -> str:
 
 class Interpreter:
     def __init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None = None,
-                 listener: NoopListener | None = None):
+                 listener: NoopListener | None = None, run_dir: str | None = None):
+        self.run_dir = run_dir   # D31: the plan runner writes its step artifacts under <run_dir>/artifacts
         self.trace = trace or TraceWriter(None)
         self.listener = listener or NoopListener()   # spec §12: Phase 3's monitor plugs in here; no-op now
         self.llm = TracedLLM(llm, self.trace, self.listener)
@@ -79,6 +80,9 @@ class Interpreter:
             try:
                 if cfg.topology == "flat":
                     ep.answer, ep.error = self.run_flat(cfg, task, ep)
+                elif cfg.topology == "plan":                 # D31
+                    from amoeba.interp.plan_runner import PlanRunner
+                    ep.answer, ep.error = PlanRunner(self, cfg, task, ep, self.run_dir).run()
                 else:
                     ep.answer, ep.error = self.run_boss_reviewers(cfg, task, ep)
             except (ParseError, MissingSections) as e:

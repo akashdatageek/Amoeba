@@ -90,6 +90,7 @@ class Episode(BaseModel):
     latency_ms: int = 0
     blocked_steps: list[dict] = Field(default_factory=list)          # steps a helper answered BLOCKED: X (D21)
     requested_capabilities: list[CapabilityRequest] = Field(default_factory=list)   # unknown tools chosen at run time
+    steps: list[dict] = Field(default_factory=list)   # D31 plan runner: one record per step (wave, inputs, status)
 
 
 class Answer(BaseModel):
