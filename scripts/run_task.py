@@ -101,6 +101,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--toy", action="store_true", help="run generated toy tasks with known answers")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n", type=int, default=20, help="number of toy tasks")
+    p.add_argument("--tasks", default=None,
+                   help="a .jsonl file of tasks (id, prompt, optional ground_truth or rubric); a task with a rubric "
+                        "and no ground_truth is scored by the rubric fraction (D30)")
     p.add_argument("--topology", choices=["flat", "boss_reviewers"], default="flat")
     p.add_argument("--llm", choices=["mock", "openai"], default="mock")
     p.add_argument("--base-url", default=None)
@@ -118,8 +121,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
-    if not args.toy and not args.prompt:
-        p.error("give a prompt or --toy")
+    if not args.toy and not args.prompt and not args.tasks:
+        p.error("give a prompt, --toy or --tasks")
     return args
 
 
@@ -128,7 +131,10 @@ def main(argv: list[str] | None = None) -> int:
     llm = build_llm(args)
     tools = default_registry()
     envelope = Envelope.from_registry(tools, model=llm.model)
-    tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
+    if args.tasks:
+        tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding="utf-8").splitlines() if l.strip()]
+    else:
+        tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
     results = []
     for task in tasks:
         r = run_one(task, args.topology, llm, envelope, tools, args.runs_dir, args.seed,
