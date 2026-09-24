@@ -70,15 +70,19 @@ BOXES: list[dict] = [
          anchors=["amoeba/task/draft.py::draft_team", "amoeba/task/instantiate.py::instantiate"], guard_anchors=[]),
     dict(id="ov_run", view="overview", title="3 · Team runs the task", kind="top", opens="run",
          plan="3 · Team runs the task",
-         sentence="The helpers do the job step by step, or as one writer with reviewers; every AI call is logged.",
-         what=["The team runs in one of two shapes chosen when you start the run, never by an AI.",
+         sentence="The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; "
+                  "every AI call is logged.",
+         what=["The team runs in one of three shapes chosen when you start the run, never by an AI.",
+               "Over the step graph (plan): each step sees only the job and the outputs of the steps it depends on, "
+               "code checks each step's output, and a summariser only assembles.",
                "Step by step: each plan step's helpers work in turns until they give a final answer.",
                "One writer with reviewers: the writer answers, the others review, and the writer revises on objections.",
                "Every AI call and tool call is written to a log with its token counts."],
          proposes="Each helper's action and text, or a review verdict.",
          disposes="Plain code routes every message, runs the tools, caps every loop and picks the final answer.",
          anchors=["amoeba/interp/runtime.py::Interpreter.run", "amoeba/interp/runtime.py::Interpreter.run_flat",
-                  "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers"], guard_anchors=[]),
+                  "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers",
+                  "amoeba/interp/plan_runner.py::PlanRunner.run"], guard_anchors=[]),
     dict(id="ov_leave", view="overview", title="What every run leaves behind", kind="data",
          plan="What every run leaves behind",
          sentence="Every run saves five files: the team, the draft, a log line per AI call, the tools or skills the "
@@ -349,6 +353,74 @@ BOXES: list[dict] = [
          proposes="Nothing.", disposes="Plain code counts the objections and caps the rounds.",
          anchors=[("amoeba/interp/runtime.py::Interpreter.run_boss_reviewers", "plan = solve()", None),
                   "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.broadcast"]),
+    # ---------------------------------------------------------------- run view: the plan runner (D31–D36)
+    dict(id="plan_graph", view="run", title="Step graph (depends_on)", kind="code", plan=None,
+         sentence="Builds the order of work from each step's 'depends on' line and rejects a plan that loops.",
+         what=["Reads which earlier steps each step depends on; a plan with no such lines runs as a simple chain.",
+               "A dependency on a step the planner wrote but Box 2 dropped is pointed at that step's own "
+               "dependencies, and the change is logged.",
+               "An unknown step number or a loop stops the team from being built, before any AI call.",
+               "Steps whose inputs are ready form a wave; waves run one after another (the wave is logged)."],
+         proposes="The depends_on lines (from the planner).",
+         disposes="Plain code builds the graph, the order and what each step may see.",
+         anchors=["amoeba/interp/plan_runner.py::waves", "amoeba/interp/plan_runner.py::dependencies",
+                  "amoeba/interp/plan_runner.py::relink", "amoeba/interp/plan_runner.py::PlanRunner.run"]),
+    dict(id="plan_step", view="run", title="Plan step helper(s)", kind="llm", plan=None, ai="plan_worker",
+         sentence="An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
+         what=["The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with "
+               "its do / output / done-when lines, and only the outputs of the steps it depends on.",
+               "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as "
+               "BLOCKED: <capability>.",
+               "It picks one action per turn: a tool, Print, or Final Output; up to 5 turns per step.",
+               "With --web-tools, a role that asked for web search also gets web_search and fetch_url."],
+         proposes="One action and its input per turn; the step's output.",
+         disposes="Plain code decides what the helper sees, runs the tools, and caps the turns.",
+         prompts=["plan_step", "plan_step_system"],
+         anchors=["amoeba/interp/plan_runner.py::PlanRunner.run_step", "amoeba/interp/plan_runner.py::PlanRunner._loop",
+                  "amoeba/interp/plan_runner.py::PlanRunner._turn", "amoeba/interp/plan_runner.py::plan_card",
+                  "amoeba/interp/plan_runner.py::step_detail", "amoeba/interp/plan_runner.py::full_action_input",
+                  "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools"]),
+    dict(id="step_check", view="run", title="Check the step", kind="code", plan=None,
+         sentence="Checks each step's output against its output and done-when lines, reads verdicts and gaps.",
+         what=["Looks for what the step promised: a table, a list, code, headings, figures, and use of its inputs.",
+               "A failed check with turns left gets one retry with the reasons; otherwise the step is incomplete.",
+               "A checking step must answer PASS or FAIL; a FAIL sends each step it checked back once for rework.",
+               "BLOCKED lines make the step partial, with the missing capability listed."],
+         proposes="The step's output and verdict (from the helper).",
+         disposes="Plain code decides done, partial or incomplete, the retry and the rework.",
+         anchors=["amoeba/interp/plan_runner.py::step_checks", "amoeba/interp/plan_runner.py::parse_verdict_block",
+                  "amoeba/interp/plan_runner.py::blocked_marks", "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
+                  "amoeba/interp/plan_runner.py::PlanRunner.rework_producers"]),
+    dict(id="provenance", view="run", title="Where each figure came from", kind="code", plan=None,
+         sentence="Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
+         what=["A number is cited when its line carries a source id the step could have seen.",
+               "Numbers from the task, from a calculation shown or run, and from the step's inputs are counted apart.",
+               "A source id the step never saw is counted as a made-up citation.",
+               "It only measures; nothing is rejected on these counts."],
+         proposes="Nothing.", disposes="Plain code counts; the totals go to result.json.",
+         anchors=["amoeba/interp/provenance.py::check_provenance", "amoeba/interp/provenance.py::total",
+                  "amoeba/interp/provenance.py::claim_numbers"]),
+    dict(id="artifacts", view="run", title="Step artifacts", kind="data", plan=None,
+         sentence="Each step's output saved as a file, with who wrote it, what it saw, its status and its sources.",
+         what=["runs/<id>/artifacts/step_<n>.md holds the text; step_<n>.json the step, wave, roles, inputs, "
+               "status, checks, verdict, sources and figure counts.",
+               "A reworked step keeps its first version as step_<n>.first.md."],
+         proposes="Nothing.", disposes="Plain code writes them.",
+         anchors=["amoeba/interp/plan_runner.py::PlanRunner._save"]),
+    dict(id="plan_summary", view="run", title="Summariser assembles", kind="llm", plan=None, ai="plan_summariser",
+         sentence="An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
+         what=["Sees every step's latest output with its status, missing capabilities, verdict and figure counts, "
+               "and the deliverables the plan committed to (never the scoring rubric).",
+               "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under "
+               "Limitations when there are any.",
+               "Code counts any number it adds, and appends a line for any missing capability it left out."],
+         proposes="The final answer.",
+         disposes="Plain code counts new numbers and completes the Limitations section.",
+         prompts=["plan_summarise", "plan_step_system"],
+         anchors=["amoeba/interp/plan_runner.py::PlanRunner.all_inputs_text",
+                  "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
+                  "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
+                  "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step"]),
     dict(id="trace", view="run", title="Every AI call → one trace line", kind="data",
          plan="Every AI call → one trace line",
          sentence="Writes one log line per AI call and tool call: who, which model, tokens and time. Nothing enforces a budget.",
@@ -371,14 +443,18 @@ BOXES: list[dict] = [
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,
-         sentence="The only two tools a helper can use: repeat a text back, or do arithmetic safely.",
+         sentence="Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search "
+                  "and page reading.",
          what=["Tools are looked up by name; a name that is not registered is an error, not a web search.",
                "The arithmetic tool accepts numbers and + − × ÷ and powers only, never arbitrary code.",
+               "web_search and fetch_url (Tavily) give every result a source id [S#]; searches and fetches per step, "
+               "page length and time are capped, and a failure comes back as an error line, never a crash.",
                "This is the single place any tool is ever run."],
          proposes="A tool name and its input (from a helper).",
          disposes="Plain code checks the name and the arithmetic before anything runs.",
          anchors=["amoeba/tools/registry.py::ToolRegistry", "amoeba/tools/registry.py::calc",
-                  "amoeba/tools/registry.py::default_registry"]),
+                  "amoeba/tools/registry.py::default_registry", "amoeba/tools/web.py::WebTools",
+                  "amoeba/tools/web.py::TavilyProvider", "amoeba/tools/web.py::web_registry"]),
     dict(id="client", view="run", title="AI connection", kind="code", plan=None,
          sentence="The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
          what=["Sends the messages to the AI service and returns the reply with its token counts.",
@@ -398,7 +474,8 @@ BOXES: list[dict] = [
 
 # boxes where plain code rejects, corrects or caps what an AI produced (shield icon when they have guards)
 SHIELD = {"planner", "agent_obs", "plan_obs", "split", "checks", "instantiate", "interpreter", "each_step", "helper",
-          "read_action", "solver", "critics", "disagree", "tools", "resolver"}
+          "read_action", "solver", "critics", "disagree", "tools", "resolver", "plan_graph", "plan_step", "step_check",
+          "plan_summary"}
 
 GLOSSARY = [
     ("helper", "One AI worker in a team, with its own name, instructions and allowed tools."),
@@ -840,7 +917,13 @@ def trim(s: str, n: int = 400) -> str:
     return s if len(s) <= n else s[:n] + f" … [+{len(s) - n} chars]"
 
 
-EVENT_BOX = {"capability_request": "capreq", "unknown_tool": "resolver", "blocked": "read_action"}
+EVENT_BOX = {"capability_request": "capreq", "unknown_tool": "resolver", "blocked": "read_action",
+             # D31–D36 plan runner events
+             "plan_graph": "plan_graph", "dependency_relinked": "plan_graph", "step_input": "plan_step",
+             "step_done": "step_check", "check_retry": "step_check", "rework": "step_check",
+             "provenance": "provenance", "summary_check": "plan_summary", "limitations_added": "plan_summary",
+             "capability_mapped": "tools", "web_tools": "tools", "web_search": "tools", "fetch_url": "tools",
+             "tool_error": "tools", "tool_limit": "tools"}
 
 
 def capability_example() -> dict:
@@ -885,7 +968,7 @@ def sample_runs() -> dict:
     out = {"free_text_task": free, "task": task.model_dump(), "toy_tasks": [t.model_dump() for t in ToyTaskSource(seed=0, n=3).tasks()],
            "calc_example": {"input": "17 * 23 + 5", "output": calc("17 * 23 + 5")}, "runs": {},
            "capability_example": capability_example()}
-    for topology in ("flat", "boss_reviewers"):
+    for topology in ("flat", "boss_reviewers", "plan"):
         llm = toy_mock_client()
         env = Envelope.from_registry(tools_, model=llm.model)
         r = run_one(task, topology, llm, env, tools_, ROOT / "runs", seed=0)
@@ -910,12 +993,15 @@ def sample_runs() -> dict:
                 box = EVENT_BOX.get(s["name"], "trace")
             elif name in ("planner", "agent_observer", "plan_observer"):
                 box = {"planner": "planner", "agent_observer": "agent_obs", "plan_observer": "plan_obs"}[name]
+            elif topology == "plan":   # D31: plan steps and the summariser, told apart by the prompt's kind
+                kind = calls[chat_i]["kind"] if s["name"] == "chat" and chat_i < len(calls) else "plan_worker"
+                box = "plan_summary" if kind == "plan_summariser" else "plan_step"
             else:
                 box = {"worker": "helper", "solver": "solver", "critic": "critics"}.get(role, "unknown")
             result = ""
             if s["name"] == "chat":
                 result = calls[chat_i]["response"].strip().split("\n")[0] if chat_i < len(calls) else "unknown"
-                if box == "helper":
+                if box in ("helper", "plan_step", "plan_summary"):
                     sec = parse_sections(calls[chat_i]["response"])
                     result = f"Action: {sec.get('Action', '?')} · ActionInput: {sec.get('ActionInput', '?')}"
                 chat_i += 1
@@ -960,6 +1046,8 @@ def sample_runs() -> dict:
                              "raw_draft": trim(plan.get("raw_draft", ""), 600)},
             "trace_lines": [json.dumps(s, ensure_ascii=False) for s in spans[:3]],
             "n_trace_lines": len(spans), "timeline": timeline, "per_box": per_box,
+            "artifacts": [json.loads(p.read_text()) for p in sorted((d / "artifacts").glob("step_*.json"))]
+            if (d / "artifacts").exists() else [],
             "calls": [{"kind": c["kind"], "messages": [{"role": m["role"], "content": m["content"]} for m in c["messages"]],
                        "response": c["response"]} for c in first.values()],
             "examples": {

@@ -27,8 +27,9 @@ VIEWS = {
              "note": "Nothing in this box calls an AI. The known answer is only used for scoring after Box 3."},
     "plan": {"h": 750, "label": "2 · Plan a new team", "heading": "INSIDE BOX 2 · PLAN A NEW TEAM",
              "note": "At most three rounds of three AI calls. Everything after the loop is plain code, and it is what keeps a sloppy draft out."},
-    "run": {"h": 700, "label": "3 · Team runs the task", "heading": "INSIDE BOX 3 · TEAM RUNS THE TASK",
-            "note": "Two runners, chosen when the run starts. Both write the same log and the same result record."},
+    "run": {"h": 1040, "label": "3 · Team runs the task", "heading": "INSIDE BOX 3 · TEAM RUNS THE TASK",
+            "note": "Three runners, chosen when the run starts: flat and boss + reviewers are the AutoAgents / AgentVerse "
+                    "baselines; plan runs the step graph (ours, D31–D36). All write the same log and result record."},
 }
 L = {  # id: (x, y, w, h)
     "ov_task": (30, 60, 250, 150), "ov_plan": (365, 60, 300, 150), "ov_run": (750, 60, 300, 150),
@@ -44,6 +45,8 @@ L = {  # id: (x, y, w, h)
     "solver": (510, 400, 195, 130), "critics": (730, 400, 205, 140), "disagree": (960, 400, 190, 140),
     "trace": (30, 175, 420, 95), "runresult": (30, 290, 420, 90),
     "tools": (30, 400, 420, 80), "client": (30, 530, 205, 128), "toymock": (245, 530, 205, 128),
+    "plan_graph": (510, 705, 180, 130), "plan_step": (715, 705, 215, 130), "step_check": (955, 705, 195, 130),
+    "artifacts": (510, 855, 180, 128), "provenance": (715, 855, 215, 128), "plan_summary": (955, 855, 195, 128),
 }
 DECOR = {  # static enclosures, captions and loop arrows (text filled from data where it states a fact)
     "plan": [("group", 30, 56, 770, 320), ("lbl", 44, 76, "loop_plan"),
@@ -52,7 +55,9 @@ DECOR = {  # static enclosures, captions and loop arrows (text filled from data 
             ("loop", "M1052 250 V290 H822 V250", "loop_flat_cap", 830, 310),
             ("group", 490, 350, 670, 290), ("hd", 505, 372, "ONE WRITER WITH REVIEWERS (boss + reviewers) · AgentVerse"),
             ("loop", "M1055 540 V580 H607 V530", "loop_boss_cap", 830, 600),
-            ("hd", 30, 518, "SHARED PARTS")],
+            ("hd", 30, 518, "SHARED PARTS"),
+            ("group", 490, 660, 670, 348), ("hd", 505, 682, "STEP GRAPH (plan) · ours, D31–D36 · --topology plan"),
+            ("lbl", 505, 1000, "loop_plan_run")],
 }
 EDGES = [  # (view, from, to, path, label, data key, label x, label y)
     ("overview", "ov_task", "ov_plan", "M280 135 H365", "Task", "Task", 322, 127),
@@ -78,6 +83,11 @@ EDGES = [  # (view, from, to, path, label, data key, label x, label y)
     ("run", "helper", "read_action", "M930 180 H955", "", "worker_sections", 0, 0),
     ("run", "solver", "critics", "M705 465 H730", "", "_Msg", 0, 0),
     ("run", "critics", "disagree", "M935 470 H960", "", "reviews", 0, 0),
+    ("run", "interpreter", "plan_graph", "M450 145 H478 V770 H510", "plan", "PlanStep", 482, 762),
+    ("run", "plan_graph", "plan_step", "M690 770 H715", "", "PlanStep", 0, 0),
+    ("run", "plan_step", "step_check", "M930 770 H955", "", "worker_sections", 0, 0),
+    ("run", "step_check", "plan_summary", "M1052 835 V855", "", "worker_sections", 0, 0),
+    ("run", "step_check", "artifacts", "M990 835 V845 H600 V855", "", "worker_sections", 0, 0),
 ]
 KIND_WHO = {"llm": "AI writes text", "code": "Plain code decides", "data": "Record passed along",
             "plain": "Input / output", "top": "See inside"}
@@ -135,7 +145,7 @@ def box_card(b: dict, A: dict) -> str:
     fails = "; ".join(f"{g['code'][:60]} → {g['effect'][:40]}" for g in (b["guards"] + b.get("output_guards", []))
                       if g["kind"] in ("reject", "fallback") and g["effect"] != "choose value")[:260]
     cost = ""
-    for topo in ("flat", "boss_reviewers"):
+    for topo in ("flat", "boss_reviewers", "plan"):
         pb = A["sample"]["runs"][topo]["per_box"].get(b["id"])
         if pb and pb["calls"]:
             cost += f"{topo}: {pb['calls']} call(s), {pb['tokens']} tokens · "
@@ -269,6 +279,8 @@ def decor_svg(view, A) -> str:
         "loop_plan_cap": "the checkers' latest suggestions go back to the planner for the next round",
         "loop_flat_cap": f"up to {mt['default'] if mt else 'unknown'} turns per step (config/schema.py:{mt['line'] if mt else '?'}); "
                          "the last turn adds a 'please synthesize' hint",
+        "loop_plan_run": f"each step: up to {mt['default'] if mt else 'unknown'} turns, one retry when a check fails; "
+                         "a FAIL verdict sends each checked step back once",
         "loop_boss_cap": f"up to {mi['default'] if mi else 'unknown'} review rounds (config/schema.py:{mi['line'] if mi else '?'}); "
                          "unreadable reviews count as agreement",
     }
@@ -519,7 +531,7 @@ var RENDER = {
   if((b.alt_prompts||[]).length){ h += '<h4>With --draft-prompts d24 (DEVIATION D24) these are sent instead</h4><p class="muted">Default is d19 (above). Our prompts, spec/BOX2_PROMPT_UPGRADE_D24.md.</p>';
    b.alt_prompts.forEach(function(s){ var p = P[s]; if(!p){ h += '<p class="warnline">unknown: ' + esc(s) + ' not found</p>'; return; }
     h += '<h4>' + esc(s) + '</h4><p class="muted mono">' + esc(p.header) + '</p><p>Placeholders: ' + (p.placeholders.length ? p.placeholders.map(function(x){ return '<mark class="mono">' + esc(x) + '</mark>'; }).join(' ') : 'none') + '</p><pre>' + esc(p.text) + '</pre>'; }); }
-  var kind = b.ai, call = null; ['flat','boss_reviewers'].forEach(function(tp){ if(!call) (A.sample.runs[tp].calls||[]).forEach(function(c){ if(!call && c.kind === kind) call = c; }); });
+  var kind = b.ai, call = null; ['flat','boss_reviewers','plan'].forEach(function(tp){ if(!call) (A.sample.runs[tp].calls||[]).forEach(function(c){ if(!call && c.kind === kind) call = c; }); });
   h += '<h4>Filled in, as sent in the sample run (first ' + esc(kind) + ' call)</h4>';
   if(call){ call.messages.forEach(function(m){ h += '<p class="muted mono">' + esc(m.role) + '</p><pre>' + esc(j(m.content, 6000)) + '</pre>'; }); h += '<p class="muted mono">reply</p><pre>' + esc(j(call.response, 3000)) + '</pre>'; }
   else h += '<p class="warnline">unknown: this role made no call in the sample run.</p>';
@@ -704,7 +716,7 @@ def examples(A: dict) -> dict:
     def call(tp, kind):
         return next((c for c in R[tp]["calls"] if c["kind"] == kind), None)
 
-    for tp in ("flat", "boss_reviewers"):
+    for tp in ("flat", "boss_reviewers", "plan"):
         r = R[tp]
         ex = r["examples"]
         w = call(tp, "worker")
@@ -746,7 +758,22 @@ def examples(A: dict) -> dict:
                         next((t["raw"] for t in r["timeline"] if t["span"] == "chat"), "unknown"))],
             "toymock": [("roles it answered in this run", sorted({c["kind"] for c in r["calls"]}))],
         }
-        if tp == "flat":
+        if tp == "plan":
+            pw, ps = call(tp, "plan_worker"), call(tp, "plan_summariser")
+            arts = r.get("artifacts", [])
+            E["plan_graph"] = [("steps and their depends_on", [{"index": x["index"], "text": x["text"], "depends_on": x.get("depends_on")}
+                                                               for x in steps])]
+            if pw:
+                E["plan_step"] = [("reply of the first plan-step turn", pw["response"])]
+            if ps:
+                E["plan_summary"] = [("summariser reply", ps["response"]),
+                                     ("summary_check in result.json", r["result"].get("summary_check"))]
+            E["step_check"] = [("each step: status, checks, verdict", [{k: a.get(k) for k in ("step", "status", "status_reason",
+                                                                                            "checks", "verdict", "retried")}
+                                                                          for a in arts])]
+            E["provenance"] = [("provenance in result.json", r["result"].get("provenance"))]
+            E["artifacts"] = [("artifacts/step_<n>.json", arts)]
+        elif tp == "flat":
             E["each_step"] = [("the plan's steps", steps)]
             if w:
                 E["helper"] = [("reply of the first helper turn", w["response"])]
@@ -830,7 +857,7 @@ def render() -> Path:
 <span>✦ changed since last build</span><span><code>task/draft.py:39</code> = where it lives in the code</span></div>
 <div class="tools">
 <button type="button" class="btn" id="replay" aria-pressed="false">▶ Replay sample run</button>
-<label>sample: <select id="topo"><option value="flat">step by step (flat)</option><option value="boss_reviewers">writer + reviewers</option></select></label>
+<label>sample: <select id="topo"><option value="flat">step by step (flat)</option><option value="boss_reviewers">writer + reviewers</option><option value="plan">step graph (plan)</option></select></label>
 <button type="button" class="btn" id="cost" aria-pressed="false">Cost overlay</button>
 <button type="button" class="btn" id="guards" aria-pressed="false">Show only guards</button>
 <input type="search" id="q" placeholder="Search a class, prompt file or word…" aria-label="Search boxes" list="qlist">
