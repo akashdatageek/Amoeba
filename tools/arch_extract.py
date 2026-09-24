@@ -382,13 +382,20 @@ BOXES: list[dict] = [
                   "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools"]),
     dict(id="step_check", view="run", title="Check the step", kind="code", plan=None,
          sentence="Checks each step's output against its output and done-when lines, reads verdicts and gaps.",
-         what=["Looks for what the step promised: a table, a list, code, headings, figures, and use of its inputs.",
-               "A failed check with turns left gets one retry with the reasons; otherwise the step is incomplete.",
-               "A checking step must answer PASS or FAIL; a FAIL sends each step it checked back once for rework.",
-               "BLOCKED lines make the step partial, with the missing capability listed."],
+         what=["Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its "
+               "output line (keywords only when there are none), and a real use of its inputs.",
+               "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is "
+               "incomplete.",
+               "A step the planner marked kind: verify must answer PASS or FAIL; a FAIL sends each step it checked "
+               "back once, then it checks again. Steps that already used the old output are marked stale "
+               "(--rerun-stale redoes them once).",
+               "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is "
+               "never scanned for them."],
          proposes="The step's output and verdict (from the helper).",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework.",
-         anchors=["amoeba/interp/plan_runner.py::step_checks", "amoeba/interp/plan_runner.py::parse_verdict_block",
+         anchors=["amoeba/interp/plan_runner.py::step_checks", "amoeba/interp/plan_runner.py::uses_inputs",
+                  "amoeba/interp/plan_runner.py::output_markers", "amoeba/interp/plan_runner.py::PlanRunner.mark_stale",
+                  "amoeba/interp/plan_runner.py::parse_verdict_block",
                   "amoeba/interp/plan_runner.py::blocked_marks", "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
                   "amoeba/interp/plan_runner.py::PlanRunner.rework_producers"]),
     dict(id="provenance", view="run", title="Where each figure came from", kind="code", plan=None,
@@ -396,6 +403,8 @@ BOXES: list[dict] = [
          what=["A number is cited when its line carries a source id the step could have seen.",
                "Numbers from the task, from a calculation shown or run, and from the step's inputs are counted apart.",
                "A source id the step never saw is counted as a made-up citation.",
+               "A run-wide ledger keeps each figure's first status and step, so a figure that entered untagged stays "
+               "untagged however often later steps or the answer copy it.",
                "It only measures; nothing is rejected on these counts."],
          proposes="Nothing.", disposes="Plain code counts; the totals go to result.json.",
          anchors=["amoeba/interp/provenance.py::check_provenance", "amoeba/interp/provenance.py::total",
@@ -413,14 +422,19 @@ BOXES: list[dict] = [
                "and the deliverables the plan committed to (never the scoring rubric).",
                "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under "
                "Limitations when there are any.",
-               "Code counts any number it adds, and appends a line for any missing capability it left out."],
+               "Code counts any number it adds, lists the answer's untagged and unverified figures, and appends a "
+               "line for any missing capability it left out.",
+               "Each input is cut at 6,000 characters and all of them at 30,000 (marked). When several final steps "
+               "have no summariser step, code puts their outputs together under headings instead."],
          proposes="The final answer.",
          disposes="Plain code counts new numbers and completes the Limitations section.",
          prompts=["plan_summarise", "plan_step_system"],
          anchors=["amoeba/interp/plan_runner.py::PlanRunner.all_inputs_text",
                   "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
                   "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
-                  "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step"]),
+                  "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
+                  "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
+                  "amoeba/interp/plan_runner.py::PlanRunner.ledger_update"]),
     dict(id="trace", view="run", title="Every AI call → one trace line", kind="data",
          plan="Every AI call → one trace line",
          sentence="Writes one log line per AI call and tool call: who, which model, tokens and time. Nothing enforces a budget.",
@@ -458,11 +472,17 @@ BOXES: list[dict] = [
     dict(id="client", view="run", title="AI connection", kind="code", plan=None,
          sentence="The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
          what=["Sends the messages to the AI service and returns the reply with its token counts.",
+               "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged) and can "
+               "space calls out; can fold the system message into the user message and set the reasoning effort.",
+               "With --llm-cache every reply is stored and can be replayed without a call; --max-tokens-per-run / "
+               "--max-calls-per-run stop a run cleanly; every run prints its tokens and estimated cost.",
                "Temperature, reply length and model are set once for the connection, not per helper.",
                "Every call from every box goes through here, wrapped so it is logged."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
-                  "amoeba/llm/client.py::ChatResponse"]),
+                  "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
+                  "amoeba/llm/cache.py::CachedLLM", "amoeba/llm/limits.py::RunLimits",
+                  "amoeba/llm/limits.py::estimate"]),
     dict(id="toymock", view="run", title="Offline stand-in AI", kind="llm", plan=None, ai=None,
          sentence="A scripted pretend AI that answers the practice jobs correctly, so everything runs without a real AI.",
          what=["Recognises which role is being asked from a fixed phrase in the prompt.",
