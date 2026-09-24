@@ -93,8 +93,8 @@ def provenance_of(ep) -> dict:
 
 
 def blocked_of(ep) -> dict:
-    """D36: canonical capability -> how many plan steps (latest version of each) lacked it."""
-    latest = {s["step"]: s for s in (ep.steps if ep else [])}
+    """D36: canonical capability -> how many producer steps (latest version of each; not the answer step) lacked it."""
+    latest = {s["step"]: s for s in (ep.steps if ep else []) if not s.get("answer_step")}   # D40: producers only
     counts: dict[str, int] = {}
     for s in latest.values():
         for c in s.get("blocked_canonical", []):

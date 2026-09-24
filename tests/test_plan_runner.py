@@ -346,3 +346,25 @@ def test_rerun_stale_reruns_each_stale_step_once(task, envelope, trace, tools):
         "messages"][-1]["content"]                                               # the re-run sees the reworked step 1
     assert "STALE" not in llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
     assert trace.events("plan_graph")[0]["amoeba.options.rerun_stale"] is True
+
+
+# ---- D40: the answer step is not scanned for BLOCKED --------------------------------------------------------------
+def test_the_answer_step_naming_gaps_stays_done_and_is_not_counted(tmp_path, envelope):
+    def reply(messages, seed):
+        n = step_no(messages)
+        if n == "2":
+            body = f"OUT-2\n{BODY}\nBLOCKED: database_sandbox — no load test was run."
+        elif n == "4":
+            body = ("# Memo\n\n## Answer\nStorage 10 TB.\n\n## Limitations\n- BLOCKED: database_sandbox — step 2 "
+                    "could not load-test.\n- BLOCKED: web_search — prices are unverified.")
+        else:
+            body = f"OUT-{n}\n{BODY}"
+        return f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\n{body}"
+    llm = mock(planner=[DIAMOND], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=reply)
+    r = run_one(Task(prompt="Compute 17 * 23 + 5."), "plan", llm, envelope, default_registry(), tmp_path,
+                draft_prompts="d24")
+    four = json.loads((tmp_path / r.run_id / "artifacts" / "step_4.json").read_text())
+    assert (four["status"], four["blocked"], four["answer_step"]) == ("done", [], True)
+    assert four["blocked_mentions"] == ["database_sandbox", "web_search"]
+    saved = json.loads((tmp_path / r.run_id / "result.json").read_text())
+    assert saved["blocked_capabilities"] == {"database_sandbox": 1} and saved["error"] is None

@@ -336,8 +336,11 @@ class PlanRunner:
             text = self._text(agents, w)
             checks = step_checks(step, text, deps, self.artifacts, verifier)
             failed = [c["name"] for c in checks if not c["pass"]]
-        # D36: what the step could not do for lack of a capability — BLOCKED as an action or marked in the output
-        gaps = sorted(set(w.blocked.values()) | set(blocked_marks(text)))
+        # D36: what the step could not do for lack of a capability — BLOCKED as an action or marked in the output.
+        # D40: not for the answer step: its Limitations section names the producers' gaps on purpose
+        answer_step = n == getattr(self, "answer_n", None)
+        mentions = blocked_marks(text)
+        gaps = [] if answer_step else sorted(set(w.blocked.values()) | set(mentions))
         wrote = bool(w.done) or any(v for v in w.partial.values())
         finished = len(w.done) + len(w.blocked) == len(agents)
         if gaps:
@@ -356,7 +359,8 @@ class PlanRunner:
         prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)   # D33
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents], "covers": step.covers,
                 "depends_on": deps, "received": deps, "output_spec": step.output, "status": status,
-                "status_reason": reason, "turns": w.turn, "blocked": gaps,
+                "status_reason": reason, "turns": w.turn, "blocked": gaps, "answer_step": answer_step,
+                "blocked_mentions": mentions if answer_step else [],
                 "blocked_canonical": sorted({normalise(g)[0] for g in gaps}), "sources": own,
                 "visible_source_ids": sorted(visible), "provenance": prov, "checks": checks, "retried": retried,
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
@@ -457,7 +461,9 @@ class PlanRunner:
     def blocked_capabilities(self) -> dict[str, list[str]]:
         """D36: canonical capability -> the names the steps used for it, over every step's latest output."""
         out: dict[str, list[str]] = {}
-        for a in self.artifacts.values():
+        for d, a in self.artifacts.items():
+            if d == getattr(self, "answer_n", None):       # D40: producer steps only
+                continue
             for g in a["meta"].get("blocked", []):
                 out.setdefault(normalise(g)[0], [])
                 if g not in out[normalise(g)[0]]:
