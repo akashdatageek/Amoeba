@@ -27,9 +27,14 @@ def step_no(messages) -> str:
     return re.search(r"# Your step \(step (\d+)\)", messages[-1]["content"]).group(1)
 
 
+BODY = ("Verdict: PASS\nIssues: none\n\n## Result\nBuilt on step 1, step 2 and step 3.\n\n## Figures\n"
+        "| item | value |\n|---|---|\n| storage | 10 TB |\n\n- first point\n- second point\n")
+
+
 def finish(messages, seed):
+    """A helper whose output passes the D34 checks: headings, a table, a list, figures, its inputs named."""
     n = step_no(messages)
-    return f"## Thought\nDone.\n\n## CurrentStep\nstep {n}\n\n## Action\nFinal Output\n\n## ActionInput\nOUT-{n}\n"
+    return f"## Thought\nDone.\n\n## CurrentStep\nstep {n}\n\n## Action\nFinal Output\n\n## ActionInput\nOUT-{n}\n{BODY}"
 
 
 def plan_team(task, envelope, trace, text=DIAMOND, **script):
@@ -70,7 +75,7 @@ def test_diamond_runs_in_order_and_steps_see_only_their_inputs(task, envelope, t
     ep = Interpreter(llm, tools, trace, run_dir=tmp_path).run(cfg, task, seed=0)
     assert [(s["step"], s["wave"], s["received"], s["status"]) for s in ep.steps] == [
         (1, 1, [], "done"), (2, 2, [1], "done"), (3, 2, [1], "done"), (4, 3, [2, 3], "done")]
-    assert ep.answer == "OUT-4" and ep.error is None
+    assert ep.answer.startswith("OUT-4\n") and ep.error is None
     seen = {}
     for c in llm.calls_of("plan_worker"):
         seen.setdefault(step_no(c["messages"]), []).append(c["messages"][-1]["content"])
@@ -87,7 +92,7 @@ def test_diamond_runs_in_order_and_steps_see_only_their_inputs(task, envelope, t
     meta = json.loads((tmp_path / "artifacts" / "step_3.json").read_text())
     assert meta["roles"] == ["Cost Analyst", "Schema Engineer"] and meta["covers"] == ["R2", "R3"]
     assert meta["output_spec"] == "reconciled figures" and meta["sources"] == []
-    assert (tmp_path / "artifacts" / "step_4.md").read_text() == "OUT-4\n"
+    assert (tmp_path / "artifacts" / "step_4.md").read_text().startswith("OUT-4\n")
     ev = trace.events("plan_graph")[0]
     assert ev["amoeba.waves"] == [[1], [2, 3], [4]] and ev["amoeba.max_turns"] == 5
 
@@ -104,8 +109,8 @@ def test_step_that_never_finishes_is_max_turns(task, envelope, trace, tools):
     stall = lambda m, s: "## Thought\nhm\n\n## CurrentStep\nthink\n\n## Action\nPrint\n\n## ActionInput\nthinking\n"
     llm, cfg = plan_team(task, envelope, trace, plan_worker=stall)
     ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
-    assert ep.steps[0]["status"] == "max_turns" and ep.steps[0]["turns"] == 5
-    assert ep.error == "max_turns"
+    assert (ep.steps[0]["status"], ep.steps[0]["status_reason"], ep.steps[0]["turns"]) == ("incomplete", "max_turns", 5)
+    assert ep.error == "incomplete"
 
 
 def test_toy_tasks_with_a_d19_draft_run_as_a_chain(tmp_path, envelope, tools):
@@ -122,3 +127,75 @@ def test_a_markdown_answer_is_not_cut_at_its_first_heading(task, envelope, trace
     llm, cfg = plan_team(task, envelope, trace, plan_worker=reply)
     ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
     assert ep.answer == memo                       # flat would publish only "# Memo ... leadership"
+
+
+# ---- D34: done_when checks, one retry, verification and rework ----------------------------------------------------
+def scripted(per_step):
+    """A plan helper whose reply depends on the step and on how often that step was asked before."""
+    seen = {}
+
+    def reply(messages, seed):
+        n = step_no(messages)
+        seen[n] = seen.get(n, 0) + 1
+        body = per_step(n, seen[n], messages[-1]["content"])
+        return f"## Thought\nok\n\n## CurrentStep\nstep {n}\n\n## Action\nFinal Output\n\n## ActionInput\n{body}"
+    reply.seen = seen
+    return reply
+
+
+def test_a_failed_check_gets_one_retry_with_the_reason(task, envelope, trace, tools):
+    # step 1's output line asks for a "cost table"; its first answer has none
+    w = scripted(lambda n, k, p: "Prices: about 10 TB of storage, cost unknown." if (n, k) == ("1", 1) else f"OUT-{n}\n{BODY}")
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
+    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    one = ep.steps[0]
+    assert one["retried"] and one["status"] == "done" and w.seen["1"] == 2
+    [ev] = trace.events("check_retry")
+    assert ev["amoeba.step"] == 1 and ev["amoeba.failed_checks"] == ["format_table"]
+    second = [c for c in llm.calls_of("plan_worker") if "(step 1)" in c["messages"][-1]["content"]][1]
+    assert "Plain code checked this step's output and it failed: the output line asks for a table" in \
+        second["messages"][-1]["content"]
+
+
+def test_a_step_that_still_fails_is_incomplete_and_the_next_step_sees_it(task, envelope, trace, tools):
+    w = scripted(lambda n, k, p: "No table here, only words." if n == "1" else f"OUT-{n}\n{BODY}")
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
+    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    one = ep.steps[0]
+    assert (one["status"], one["retried"], w.seen["1"]) == ("incomplete", True, 2)
+    assert one["status_reason"].startswith("checks failed: format_table")
+    step2 = [c for c in llm.calls_of("plan_worker") if "(step 2)" in c["messages"][-1]["content"]][0]
+    assert "## Step 1 (Cost Analyst), status: incomplete" in step2["messages"][-1]["content"]
+
+
+def test_a_fail_verdict_reworks_each_producer_once(task, envelope, trace, tools, tmp_path):
+    def body(n, k, prompt):
+        if n == "3":
+            return f"Verdict: FAIL\nIssues:\n1. Step 1: the storage price has no source.\n\n{BODY}"
+        return f"OUT-{n}.{k}\n{BODY}"
+    w = scripted(body)
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
+    ep = Interpreter(llm, tools, trace, run_dir=tmp_path).run(cfg, task, seed=0)
+    assert [(s["step"], bool(s["rework_of"])) for s in ep.steps] == [
+        (1, False), (2, False), (3, False), (1, True), (4, False)]
+    three = next(s for s in ep.steps if s["step"] == 3)
+    assert three["verification"] and three["verdict"] == "FAIL" and "no source" in three["issues"]
+    redo = next(s for s in ep.steps if s["step"] == 1 and s["rework_of"])
+    assert redo["rework_of"]["by_step"] == 3
+    assert w.seen == {"1": 2, "2": 1, "3": 2, "4": 1}          # step 3 (two helpers) is not asked again
+    rework_prompt = [c for c in llm.calls_of("plan_worker") if "(step 1)" in c["messages"][-1]["content"]][1]
+    assert "REWORK: verification step 3 found issues" in rework_prompt["messages"][-1]["content"]
+    assert "OUT-1.1" in rework_prompt["messages"][-1]["content"]          # it sees its earlier output
+    step4 = [c for c in llm.calls_of("plan_worker") if "(step 4)" in c["messages"][-1]["content"]][0]
+    assert "OUT-1.2" not in step4["messages"][-1]["content"]              # 4 depends on 2 and 3, not on 1
+    [ev] = trace.events("rework")
+    assert (ev["amoeba.step"], ev["amoeba.by_step"]) == (1, 3)
+    assert (tmp_path / "artifacts" / "step_1.first.md").read_text().startswith("OUT-1.1")
+    assert (tmp_path / "artifacts" / "step_1.md").read_text().startswith("OUT-1.2")
+
+
+def test_verification_prompt_asks_for_a_verdict(task, envelope, trace, tools):
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=finish)
+    Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    prompts = {step_no(c["messages"]): c["messages"][-1]["content"] for c in llm.calls_of("plan_worker")}
+    assert 'You are VERIFYING the outputs' in prompts["3"] and "You are VERIFYING" not in prompts["2"]

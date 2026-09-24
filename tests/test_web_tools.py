@@ -117,7 +117,9 @@ def test_roles_that_asked_for_web_search_get_the_tools(task, envelope, trace, tm
     first = llm.calls_of("plan_worker")[0]["messages"][-1]["content"]
     assert "You can use: ['calc', 'web_search', 'fetch_url', 'Print', 'Final Output']" in first
     assert "Tool web_search is unavailable" not in first
-    assert "Tool database_sandbox is unavailable" in llm.calls_of("plan_worker")[2]["messages"][-1]["content"]
+    schema = [c["messages"][-1]["content"] for c in llm.calls_of("plan_worker")
+              if "Name: Schema Engineer" in c["messages"][-1]["content"]]
+    assert schema and all("Tool database_sandbox is unavailable" in p for p in schema)
     one = ep.steps[0]
     assert [s["id"] for s in one["sources"]][:1] == ["S1"] and one["sources"][0]["url"] == "https://ex.com/1"
     assert trace.events("web_tools")[0]["amoeba.web.max_searches_per_step"] == 4

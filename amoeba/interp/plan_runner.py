@@ -14,9 +14,10 @@ from pathlib import Path
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
-from amoeba.interp.provenance import check_provenance
+from amoeba.interp.provenance import check_provenance, numbers_in
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
 from amoeba.task.models import Episode, Task
+from amoeba.task.quality import VERIFY_WORDS
 from amoeba.tools.web import WEB_TOOLS
 
 PLAN_SECTIONS = ["CurrentStep", "Action", "ActionInput"]   # Thought is asked for but not required
@@ -118,6 +119,90 @@ def full_action_input(raw: str, parsed: str) -> str:
     return rest if len(rest) >= len(parsed.strip()) else parsed
 
 
+VERIFY_NOTE = """
+
+You are VERIFYING the outputs of the steps you depend on: re-check their numbers, sources and test results.
+Your Final Output MUST start with a line "Verdict: PASS" or "Verdict: FAIL", then a line "Issues:" and one numbered
+issue per line (which step, what is wrong, how to fix it). Answer FAIL if any issue would change a number or a
+conclusion; PASS otherwise (then write "Issues: none")."""
+REWORK_NOTE = """
+
+REWORK: verification step {by} found issues with this step's earlier output. Fix them and give the whole corrected
+output as Final Output.
+Issues found:
+{issues}
+
+Your earlier output:
+{previous}"""
+RETRY_NOTE = ("Plain code checked this step's output and it failed: {failed}. Fix that and give the whole step "
+              "output again as Final Output.\n")
+
+
+class _Work:
+    """The state of one step's turn loop, kept across a retry."""
+
+    def __init__(self, max_turns: int):
+        self.max_turns, self.turn, self.completed = max_turns, 0, ""
+        self.done: dict[str, str] = {}          # agent_id -> its Final Output text
+        self.blocked: dict[str, str] = {}       # agent_id -> the capability it answered BLOCKED on
+        self.partial: dict[str, str] = {}       # agent_id -> what it wrote alongside BLOCKED
+        self.contributions: list[dict] = []
+        self.tool_results: list[str] = []       # what the step's tools returned (D33: their numbers count as derived)
+
+
+NUMERIC_WORDS = re.compile(r"\b(cost|costs|estimate|estimates|price|prices|pricing|number|numbers|figure|figures|"
+                           r"metric|metrics|latency|revenue|size|sizing|storage|volume|tb|gb|usd|eur|percent|rate|rates|"
+                           r"tariff|tariffs|benchmark|benchmarks|p95|throughput)\b|%|\$", re.I)
+
+
+def step_checks(step: PlanStep, text: str, deps: list[int], artifacts: dict, verifier: bool = False) -> list[dict]:
+    """D34: deterministic checks of a step's output against its `output` / `done_when` lines. Only checks that
+    apply are listed; each is {name, pass, detail}."""
+    spec = f"{step.output}\n{step.done_when}".lower()
+    body = text or ""
+    out = [{"name": "output_present", "pass": bool(body.strip()), "detail": "the step output is empty"}]
+    if "table" in spec:
+        ok = bool(re.search(r"^\s*\|.*\|\s*$", body, re.M)) and bool(re.search(r"^\s*\|?\s*:?-{3,}", body, re.M))
+        out.append({"name": "format_table", "pass": ok, "detail": "the output line asks for a table; there is no "
+                                                                   "markdown table (| a | b | with a |---| row)"})
+    if re.search(r"\b(list|bullets?|checklist)\b", spec):
+        ok = len(re.findall(r"^\s*(?:[-*]|\d+[.)])\s+\S", body, re.M)) >= 2
+        out.append({"name": "format_list", "pass": ok, "detail": "the output line asks for a list; there are fewer "
+                                                                  "than 2 list items"})
+    if re.search(r"\b(code|script|sql|query|queries|schema|ddl)\b", spec):
+        ok = "```" in body or bool(re.search(r"\b(SELECT|CREATE TABLE|def |INSERT INTO)\b", body))
+        out.append({"name": "format_code", "pass": ok, "detail": "the output line asks for code; there is no code "
+                                                                  "block or statement"})
+    if re.search(r"\b(memo|report|runbook|plan|document)\b", spec):
+        ok = len(re.findall(r"^\s*#{1,4}\s+\S|^\s*\*\*[^*]+\*\*\s*$", body, re.M)) >= 2
+        out.append({"name": "format_headings", "pass": ok, "detail": "the output line asks for a document; it has "
+                                                                      "fewer than 2 headings"})
+    if NUMERIC_WORDS.search(spec):
+        ok = bool(re.search(r"\d", re.sub(r"\[S\d+\]", "", body)))
+        out.append({"name": "numbers_present", "pass": ok, "detail": "the output line asks for figures; the output "
+                                                                      "has no number"})
+    if deps:
+        ids = set().union(*(set(artifacts[d]["meta"]["visible_source_ids"]) for d in deps))
+        roles = {r for d in deps for r in artifacts[d]["meta"]["roles"]}
+        dep_nums = set().union(*(numbers_in(artifacts[d]["text"]) for d in deps))
+        dep_text = "\n".join(artifacts[d]["text"] for d in deps)
+        ok = (any(re.search(rf"\bstep\s*{d}\b", body, re.I) for d in deps) or any(f"[{i}]" in body for i in ids)
+              or any(r in body for r in roles) or bool(numbers_in(body) & dep_nums)
+              or (bool(body.strip()) and body.strip() in dep_text))
+        out.append({"name": "inputs_referenced", "pass": ok, "detail": "the output uses nothing from the steps it "
+                                                                        "depends on (no step, role, source or figure)"})
+    if verifier:
+        out.append({"name": "verdict", "pass": parse_verdict_block(body)[0] is not None,
+                    "detail": 'a verification step must start with "Verdict: PASS" or "Verdict: FAIL"'})
+    return out
+
+
+def parse_verdict_block(text: str) -> tuple[str | None, str]:
+    m = re.search(r"verdict\s*[:*]*\s*\**\s*(PASS|FAIL)", text or "", re.I)
+    issues = re.split(r"issues\s*[:*]*", text or "", maxsplit=1, flags=re.I)
+    return (m.group(1).upper() if m else None), (issues[1].strip() if len(issues) > 1 else "")
+
+
 class PlanRunner:
     """Runs one TeamConfig with topology "plan" for an Interpreter (which owns the LLM, tools, trace and dispatch)."""
 
@@ -126,6 +211,7 @@ class PlanRunner:
         self.dir = Path(run_dir) / "artifacts" if run_dir else None
         self.steps = {number(s): s for s in cfg.plan}
         self.artifacts: dict[int, dict] = {}     # step number -> {"text", "meta"}
+        self.reworked: set[int] = set()          # D34: at most one rework per step
         self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
         self.web = getattr(interp.tools, "web", None)
 
@@ -183,78 +269,137 @@ class PlanRunner:
             parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}\n{a['text']}")
         return "\n\n".join(parts)
 
-    def run_step(self, step: PlanStep, wave: int, deps: list[int]) -> dict:
+    def run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None = None) -> dict:
         n = number(step)
         agents = [self.agents[a] for a in step.agent_ids]
         inputs = self.inputs_text(deps)
+        verifier = self.is_verification(step)
         if self.web is not None:
             self.web.begin_step(n, self.i.trace)
         self.i.trace.event("step_input", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.depends_on": deps,
-                                          "amoeba.received": deps, "amoeba.input_chars": len(inputs)})
-        max_turns = agents[0].limits.max_turns
-        completed = ""
-        done: dict[str, str] = {}          # agent_id -> its Final Output text
-        blocked: dict[str, str] = {}       # agent_id -> the capability it answered BLOCKED on
-        partial: dict[str, str] = {}       # agent_id -> what it wrote alongside BLOCKED
-        contributions: list[dict] = []
-        tool_results: list[str] = []       # what the step's tools returned (D33: their numbers count as derived)
-        turn = 0
-        while len(done) + len(blocked) < len(agents) and turn < max_turns:
-            for agent in agents:           # the roles take turns; one that has finished is not asked again
-                if agent.agent_id in done or agent.agent_id in blocked:
-                    continue
-                act, inp, resp, gap = self._turn(agent, step, n, inputs, completed, max_turns - turn)
-                contributions.append({"turn": turn + 1, "agent": agent.name, "action": act,
-                                      "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
-                if gap is not None:
-                    blocked[agent.agent_id] = gap
-                    partial[agent.agent_id] = inp.strip()
-                    completed += f">{agent.name} {BLOCKED}: {gap}\n{inp.strip()}\n"
-                elif act in agent.tools:
-                    tool_results.append(resp)
-                    completed += f">{agent.name} ({act}):\n{inp.strip()}\n>Result:\n{resp.strip()}\n"
-                elif FINAL_OUTPUT in act:
-                    done[agent.agent_id] = inp.strip()
-                    completed += f">{agent.name} Final Output:\n{inp.strip()}\n"
-                else:
-                    completed += f">{agent.name} ({act or 'no action'}):\n{inp.strip()}\n>Result:\n{resp.strip()}\n"
-            turn += 1
-        written = {a.agent_id: done.get(a.agent_id) or partial.get(a.agent_id) for a in agents}
-        written = {k: v for k, v in written.items() if v}
-        if len(agents) == 1:
-            text = next(iter(written.values()), "") or completed.strip()
+                                          "amoeba.received": deps, "amoeba.input_chars": len(inputs),
+                                          "amoeba.verification": verifier, "amoeba.rework": bool(rework)})
+        extra = VERIFY_NOTE if verifier else ""
+        if rework:
+            extra += REWORK_NOTE.format(by=rework["by_step"], issues=rework["issues"].strip(),
+                                        previous=self.artifacts[n]["text"].strip())
+        w = _Work(max_turns=agents[0].limits.max_turns)
+        self._loop(step, n, agents, inputs, extra, w)
+        text = self._text(agents, w)
+        checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
+        failed = [c["name"] for c in checks if not c["pass"]]
+        retried = False
+        if failed and w.turn < w.max_turns and w.done:
+            retried = True                                                          # one retry with the failed checks
+            self.i.trace.event("check_retry", {"amoeba.step": n, "amoeba.failed_checks": failed})
+            w.completed += RETRY_NOTE.format(failed="; ".join(c["detail"] for c in checks if not c["pass"]))
+            w.done.clear()
+            self._loop(step, n, agents, inputs, extra, w)
+            text = self._text(agents, w)
+            checks = step_checks(step, text, deps, self.artifacts, verifier)
+            failed = [c["name"] for c in checks if not c["pass"]]
+        finished = len(w.done) == len(agents)
+        if w.blocked and len(w.done) + len(w.blocked) == len(agents) and not w.done:
+            status, reason = "blocked", "every helper answered BLOCKED"
+        elif not finished and not w.blocked:
+            status, reason = "incomplete", "max_turns"
+        elif failed:
+            status, reason = "incomplete", "checks failed: " + ", ".join(failed)
+        elif w.blocked:
+            status, reason = "blocked", "a helper answered BLOCKED"
         else:
-            text = "\n\n".join(f"### {a.name}\n{written[a.agent_id]}" for a in agents
-                               if a.agent_id in written) or completed.strip()
-        status = ("done" if len(done) == len(agents) else
-                  "blocked" if blocked and len(done) + len(blocked) == len(agents) else "max_turns")
+            status, reason = "done", ""
         own = [{k: s[k] for k in ("id", "url", "title", "kind", "fetched_at")}
                for s in (self.web.sources_for(n) if self.web is not None else [])]
         visible = {s["id"] for s in own}.union(*(self.artifacts[d]["meta"]["visible_source_ids"] for d in deps)) \
             if deps else {s["id"] for s in own}
-        prov = check_provenance(text, visible, self.task.prompt, inputs, tool_results)   # D33
+        prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)   # D33
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents], "covers": step.covers,
                 "depends_on": deps, "received": deps, "output_spec": step.output, "status": status,
-                "turns": turn, "blocked": sorted(set(blocked.values())), "sources": own,
-                "visible_source_ids": sorted(visible), "provenance": prov,
-                "contributions": contributions}
+                "status_reason": reason, "turns": w.turn, "blocked": sorted(set(w.blocked.values())), "sources": own,
+                "visible_source_ids": sorted(visible), "provenance": prov, "checks": checks, "retried": retried,
+                "verification": verifier, "rework_of": rework, "contributions": w.contributions}
+        if verifier:
+            meta["verdict"], meta["issues"] = parse_verdict_block(text)
+        self._save(n, wave, text, meta, prov)
+        if verifier and meta["verdict"] == "FAIL":
+            self.rework_producers(n, deps, meta["issues"])
+        return self.artifacts[n]
+
+    def is_verification(self, step: PlanStep) -> bool:
+        """The d24 'independent verification' shape (as draft_quality reads it): a step that depends on others and
+        says it verifies, checks, reviews, validates or reconciles them; the summariser's own step is not one."""
+        summ = {a.agent_id for a in self.agents.values() if a.is_summariser}
+        text = f"{step.text}\n{step.do}\n{step.done_when}"
+        return bool(step.depends_on) and bool(VERIFY_WORDS.search(text)) and not set(step.agent_ids) <= summ
+
+    def rework_producers(self, n: int, deps: list[int], issues: str) -> None:
+        """D34: on a FAIL verdict each producer step it checked is re-run once with the issues; the run then goes on
+        whatever the result (the verifier is not asked again)."""
+        all_deps = dependencies(self.cfg.plan)
+        for d in deps:
+            if d in self.reworked or self.artifacts[d]["meta"].get("verification"):
+                continue
+            self.reworked.add(d)
+            self.i.trace.event("rework", {"amoeba.step": d, "amoeba.by_step": n, "amoeba.issues_chars": len(issues)})
+            self.run_step(self.steps[d], self.artifacts[d]["meta"]["wave"], all_deps[d],
+                          rework={"by_step": n, "issues": issues})
+
+    def _loop(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work") -> None:
+        while len(w.done) + len(w.blocked) < len(agents) and w.turn < w.max_turns:
+            for agent in agents:           # the roles take turns; one that has finished is not asked again
+                if agent.agent_id in w.done or agent.agent_id in w.blocked:
+                    continue
+                act, inp, resp, gap = self._turn(agent, step, n, inputs, w.completed, w.max_turns - w.turn, extra)
+                w.contributions.append({"turn": w.turn + 1, "agent": agent.name, "action": act,
+                                        "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
+                if gap is not None:
+                    w.blocked[agent.agent_id] = gap
+                    w.partial[agent.agent_id] = inp.strip()
+                    w.completed += f">{agent.name} {BLOCKED}: {gap}\n{inp.strip()}\n"
+                elif act in agent.tools:
+                    w.tool_results.append(resp)
+                    w.completed += f">{agent.name} ({act}):\n{inp.strip()}\n>Result:\n{resp.strip()}\n"
+                elif FINAL_OUTPUT in act:
+                    w.done[agent.agent_id] = inp.strip()
+                    w.completed += f">{agent.name} Final Output:\n{inp.strip()}\n"
+                else:
+                    w.completed += f">{agent.name} ({act or 'no action'}):\n{inp.strip()}\n>Result:\n{resp.strip()}\n"
+            w.turn += 1
+
+    @staticmethod
+    def _text(agents: list[AgentSpec], w: "_Work") -> str:
+        written = {a.agent_id: w.done.get(a.agent_id) or w.partial.get(a.agent_id) for a in agents}
+        written = {k: v for k, v in written.items() if v}
+        if len(agents) == 1:
+            return next(iter(written.values()), "") or w.completed.strip()
+        return "\n\n".join(f"### {a.name}\n{written[a.agent_id]}" for a in agents
+                           if a.agent_id in written) or w.completed.strip()
+
+    def _save(self, n: int, wave: int, text: str, meta: dict, prov: dict) -> None:
         self.artifacts[n] = {"text": text, "meta": meta}
         self.ep.steps.append(meta)
-        self.i.trace.event("step_done", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.status": status,
-                                         "amoeba.turns": turn, "amoeba.output_chars": len(text)})
+        self.i.trace.event("step_done", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.status": meta["status"],
+                                         "amoeba.status_reason": meta["status_reason"], "amoeba.turns": meta["turns"],
+                                         "amoeba.output_chars": len(text), "amoeba.rework": bool(meta["rework_of"]),
+                                         "amoeba.checks_failed": [c["name"] for c in meta["checks"] if not c["pass"]],
+                                         "amoeba.verdict": meta.get("verdict")})
         self.i.trace.event("provenance", {"amoeba.step": n, **{f"amoeba.provenance.{k}": v for k, v in prov.items()
                                                                if k != "untagged_examples"}})
         if self.dir:
             self.dir.mkdir(parents=True, exist_ok=True)
+            suffix = f".rework" if meta["rework_of"] else ""
+            if suffix and (self.dir / f"step_{n}.md").exists():      # keep the first version next to the rework
+                (self.dir / f"step_{n}.md").rename(self.dir / f"step_{n}.first.md")
+                (self.dir / f"step_{n}.json").rename(self.dir / f"step_{n}.first.json")
             (self.dir / f"step_{n}.md").write_text(text + "\n", encoding="utf-8")
             (self.dir / f"step_{n}.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-        return self.artifacts[n]
 
-    def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int
-              ) -> tuple[str, str, str, str | None]:
+    def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int,
+              extra: str = "") -> tuple[str, str, str, str | None]:
         tools = list(agent.tools) + [PRINT, FINAL_OUTPUT]
         user = render(PROMPT.plan_step, task=self.task.prompt, card=plan_card(agent), number=n,
-                      step=step_detail(step), inputs=inputs, completed=completed.strip() or "Nothing yet.",
+                      step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
                       tools=str(tools), turns_left=turns_left,
                       unavailable="\n".join(UNAVAILABLE.format(name=t) for t in agent.missing_tools))
         system = render(PROMPT.plan_step_system, name=agent.name)
