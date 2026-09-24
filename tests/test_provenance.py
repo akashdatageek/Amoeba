@@ -38,7 +38,7 @@ def test_total_sums_steps():
 def worker(messages, seed):
     user = messages[-1]["content"]
     n = re.search(r"# Your step \(step (\d+)\)", user).group(1)
-    tools = re.search(r"You can use: (.*)", user).group(1)
+    tools = (re.search(r"You can use: (.*)", user) or re.search(r"(.*)", "")).group(1)
     if n == "1" and "web_search" in tools and "[S1]" not in user:
         return "## Thought\ns\n\n## CurrentStep\ns\n\n## Action\nweb_search\n\n## ActionInput\nRDS price\n"
     body = {"1": "Storage is $0.115 per GB-month [S1]",

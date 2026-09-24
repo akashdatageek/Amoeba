@@ -43,4 +43,6 @@ def mock(**script) -> MockLLMClient:
     """MockLLMClient with per-kind scripts; observers default to 'No Suggestions'."""
     script.setdefault("agent_observer", [fx("observer_no_suggestions")])
     script.setdefault("plan_observer", [fx("observer_no_suggestions")])
+    if "plan_worker" in script:                     # the plan summariser's step (D35) answers like any plan step
+        script.setdefault("plan_summariser", script["plan_worker"])
     return MockLLMClient(script=script)

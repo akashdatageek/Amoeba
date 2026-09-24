@@ -86,5 +86,6 @@ class TeamConfig(BaseModel):
     entry: list[str]
     exit: str
     plan: list[PlanStep] = Field(default_factory=list)  # flat and plan
+    requirements: dict[str, str] = Field(default_factory=dict)   # plan: Box 2 requirement id -> text (D35 deliverables)
     max_inner_turns: int = 3  # boss_reviewers only (vertical_solver_first.py:24)
     meta: dict = Field(default_factory=dict)

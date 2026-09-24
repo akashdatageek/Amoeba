@@ -14,7 +14,7 @@ from pathlib import Path
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
-from amoeba.interp.provenance import check_provenance, numbers_in
+from amoeba.interp.provenance import check_provenance, claim_numbers, numbers_in
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
 from amoeba.task.models import Episode, Task
 from amoeba.task.quality import VERIFY_WORDS
@@ -239,13 +239,13 @@ class PlanRunner:
             self.i.trace.event("web_tools", {"amoeba.web.provider": self.web.provider.name, **self.web.limits.as_trace()})
         ws = waves(self.cfg.plan)
         deps = dependencies(self.cfg.plan)
+        self.answer_n = self._answer_step(ws)
         self.i.trace.event("plan_graph", {"amoeba.waves": ws, "amoeba.depends_on": {str(k): v for k, v in deps.items()},
                                           "amoeba.max_turns": self._max_turns(), "amoeba.max_tokens": PLAN_MAX_TOKENS})
         for w, nums in enumerate(ws, 1):
             for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
                 self.run_step(self.steps[n], w, deps[n])
-        last = self._answer_step(ws)
-        art = self.artifacts[last]
+        art = self.artifacts[self.answer_n]
         status = art["meta"]["status"]
         return art["text"], (None if status == "done" else status)
 
@@ -272,8 +272,9 @@ class PlanRunner:
     def run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None = None) -> dict:
         n = number(step)
         agents = [self.agents[a] for a in step.agent_ids]
-        inputs = self.inputs_text(deps)
-        verifier = self.is_verification(step)
+        summarising = self.is_summary_step(step)                                  # D35
+        inputs = self.all_inputs_text(n) if summarising else self.inputs_text(deps)
+        verifier = self.is_verification(step) and not summarising
         if self.web is not None:
             self.web.begin_step(n, self.i.trace)
         self.i.trace.event("step_input", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.depends_on": deps,
@@ -284,7 +285,8 @@ class PlanRunner:
             extra += REWORK_NOTE.format(by=rework["by_step"], issues=rework["issues"].strip(),
                                         previous=self.artifacts[n]["text"].strip())
         w = _Work(max_turns=agents[0].limits.max_turns)
-        self._loop(step, n, agents, inputs, extra, w)
+        template = PROMPT.plan_summarise if summarising else PROMPT.plan_step
+        self._loop(step, n, agents, inputs, extra, w, template)
         text = self._text(agents, w)
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
         failed = [c["name"] for c in checks if not c["pass"]]
@@ -294,7 +296,7 @@ class PlanRunner:
             self.i.trace.event("check_retry", {"amoeba.step": n, "amoeba.failed_checks": failed})
             w.completed += RETRY_NOTE.format(failed="; ".join(c["detail"] for c in checks if not c["pass"]))
             w.done.clear()
-            self._loop(step, n, agents, inputs, extra, w)
+            self._loop(step, n, agents, inputs, extra, w, template)
             text = self._text(agents, w)
             checks = step_checks(step, text, deps, self.artifacts, verifier)
             failed = [c["name"] for c in checks if not c["pass"]]
@@ -321,10 +323,47 @@ class PlanRunner:
                 "verification": verifier, "rework_of": rework, "contributions": w.contributions}
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
+        if summarising:
+            meta["summary_check"] = self.summary_check(n, text)
         self._save(n, wave, text, meta, prov)
         if verifier and meta["verdict"] == "FAIL":
             self.rework_producers(n, deps, meta["issues"])
         return self.artifacts[n]
+
+    def is_summary_step(self, step: PlanStep) -> bool:
+        """D35: the answer step, when the summariser owns it, only assembles."""
+        summ = {a.agent_id for a in self.agents.values() if a.is_summariser}
+        return number(step) == getattr(self, "answer_n", None) and bool(summ & set(step.agent_ids))
+
+    def all_inputs_text(self, n: int) -> str:
+        """The summariser sees every step's latest output, its status and where its figures come from."""
+        parts = []
+        for d, a in sorted(self.artifacts.items()):
+            if d == n:
+                continue
+            m, p = a["meta"], a["meta"]["provenance"]
+            why = f" ({m['status_reason']})" if m.get("status_reason") else ""
+            gaps = f"; lacked: {', '.join(m['blocked'])}" if m.get("blocked") else ""
+            verdict = f"; verdict: {m['verdict']}" if m.get("verdict") else ""
+            parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{why}{gaps}{verdict}; figures: "
+                         f"{p['cited']} cited, {p['unverified']} unverified, {p['untagged']} untagged\n{a['text']}")
+        return "\n\n".join(parts) or "None."
+
+    def deliverables_text(self) -> str:
+        req = self.cfg.requirements
+        return "\n".join(f"{k}: {v}" for k, v in req.items()) if req else \
+            "None listed by the plan; take the deliverables from the task."
+
+    def summary_check(self, n: int, text: str) -> dict:
+        """D35: a figure in the final answer that is in no step output and not in the task is new."""
+        known = numbers_in(self.task.prompt).union(*(numbers_in(a["text"]) for d, a in self.artifacts.items() if d != n))
+        new = sorted(claim_numbers(text) - known, key=lambda x: (len(x), x))
+        out = {"new_number_in_summary": len(new), "new_numbers": new[:30],
+               "limitations_section": bool(re.search(r"^\s*#+\s*limitations", text or "", re.I | re.M))}
+        self.i.trace.event("summary_check", {"amoeba.step": n, "amoeba.new_number_in_summary": len(new),
+                                             "amoeba.new_numbers": new[:30],
+                                             "amoeba.limitations_section": out["limitations_section"]})
+        return out
 
     def is_verification(self, step: PlanStep) -> bool:
         """The d24 'independent verification' shape (as draft_quality reads it): a step that depends on others and
@@ -345,12 +384,14 @@ class PlanRunner:
             self.run_step(self.steps[d], self.artifacts[d]["meta"]["wave"], all_deps[d],
                           rework={"by_step": n, "issues": issues})
 
-    def _loop(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work") -> None:
+    def _loop(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work",
+              template: str = "") -> None:
         while len(w.done) + len(w.blocked) < len(agents) and w.turn < w.max_turns:
             for agent in agents:           # the roles take turns; one that has finished is not asked again
                 if agent.agent_id in w.done or agent.agent_id in w.blocked:
                     continue
-                act, inp, resp, gap = self._turn(agent, step, n, inputs, w.completed, w.max_turns - w.turn, extra)
+                act, inp, resp, gap = self._turn(agent, step, n, inputs, w.completed, w.max_turns - w.turn, extra,
+                                                 template)
                 w.contributions.append({"turn": w.turn + 1, "agent": agent.name, "action": act,
                                         "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
                 if gap is not None:
@@ -396,9 +437,9 @@ class PlanRunner:
             (self.dir / f"step_{n}.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int,
-              extra: str = "") -> tuple[str, str, str, str | None]:
+              extra: str = "", template: str = "") -> tuple[str, str, str, str | None]:
         tools = list(agent.tools) + [PRINT, FINAL_OUTPUT]
-        user = render(PROMPT.plan_step, task=self.task.prompt, card=plan_card(agent), number=n,
+        user = render(template or PROMPT.plan_step, task=self.task.prompt, deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
                       step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
                       tools=str(tools), turns_left=turns_left,
                       unavailable="\n".join(UNAVAILABLE.format(name=t) for t in agent.missing_tools))

@@ -73,7 +73,8 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
         last = plan[-1]
         exit_id = next((a for a in last.agent_ids if agents[a].is_summariser), last.agent_ids[-1])
         cfg = TeamConfig(**common, topology="plan", agents=agents, edges=edges,
-                         entry=list(dict.fromkeys(a for s in roots for a in s.agent_ids)), exit=exit_id, plan=plan)
+                         entry=list(dict.fromkeys(a for s in roots for a in s.agent_ids)), exit=exit_id, plan=plan,
+                         requirements=dict(draft.requirements))   # D35: the summariser's deliverable list
         cfg.meta["dependency_relinked"] = relinked
         # D32: who asked for what, so Box 3 can hand a role the tools that now exist for its request
         cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role} for q in draft.capability_requests]

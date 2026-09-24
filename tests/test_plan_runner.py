@@ -12,6 +12,7 @@ from amoeba.task.draft import DraftError, draft_team
 from amoeba.task.instantiate import instantiate
 from amoeba.task.models import Task
 from amoeba.task.source import ToyTaskSource
+from amoeba.tools.registry import default_registry
 from scripts.run_task import run_one
 from tests.conftest import fx, mock
 
@@ -82,9 +83,14 @@ def test_diamond_runs_in_order_and_steps_see_only_their_inputs(task, envelope, t
     inputs = {n: re.search(r"# Inputs: .*?\n(.*?)\n\n# Work done", ps[0], re.S).group(1) for n, ps in seen.items()}
     assert "None: this step starts from the task alone." in inputs["1"]
     assert "OUT-1" in inputs["3"] and "OUT-2" not in inputs["3"]          # 3 depends on 1 only
-    assert "OUT-2" in inputs["4"] and "OUT-3" in inputs["4"] and "OUT-1" not in inputs["4"]
-    assert "Compute 17 * 23 + 5" in seen["4"][0] and "Constraints: 12-person team" in seen["1"][0]
-    assert all(c["max_tokens"] == PLAN_MAX_TOKENS for c in llm.calls_of("plan_worker"))
+    assert "OUT-1" in inputs["2"] and "OUT-3" not in inputs["2"]
+    # step 4 is the summariser's: it assembles from every step's output (D35), with the plan's deliverables
+    [summ] = llm.calls_of("plan_summariser")
+    sp = summ["messages"][-1]["content"]
+    assert all(f"OUT-{k}" in sp for k in (1, 2, 3)) and "R4: deliver a recommendation memo with a risk table" in sp
+    assert "## Step 1 (Cost Analyst), status: done; figures:" in sp and "Compute 17 * 23 + 5" in sp
+    assert "Constraints: 12-person team" in seen["1"][0]
+    assert all(c["max_tokens"] == PLAN_MAX_TOKENS for c in llm.calls if c["kind"].startswith("plan_"))
     # the multi-role step records both helpers, in turn order
     three = ep.steps[2]
     assert [c["agent"] for c in three["contributions"]] == ["Cost Analyst", "Schema Engineer"]   # roster order
@@ -186,8 +192,9 @@ def test_a_fail_verdict_reworks_each_producer_once(task, envelope, trace, tools,
     rework_prompt = [c for c in llm.calls_of("plan_worker") if "(step 1)" in c["messages"][-1]["content"]][1]
     assert "REWORK: verification step 3 found issues" in rework_prompt["messages"][-1]["content"]
     assert "OUT-1.1" in rework_prompt["messages"][-1]["content"]          # it sees its earlier output
-    step4 = [c for c in llm.calls_of("plan_worker") if "(step 4)" in c["messages"][-1]["content"]][0]
-    assert "OUT-1.2" not in step4["messages"][-1]["content"]              # 4 depends on 2 and 3, not on 1
+    [step4] = llm.calls_of("plan_summariser")
+    assert "OUT-1.2" in step4["messages"][-1]["content"]                  # the summariser sees the reworked version
+    assert "OUT-1.1" not in step4["messages"][-1]["content"]
     [ev] = trace.events("rework")
     assert (ev["amoeba.step"], ev["amoeba.by_step"]) == (1, 3)
     assert (tmp_path / "artifacts" / "step_1.first.md").read_text().startswith("OUT-1.1")
@@ -199,3 +206,19 @@ def test_verification_prompt_asks_for_a_verdict(task, envelope, trace, tools):
     Interpreter(llm, tools, trace).run(cfg, task, seed=0)
     prompts = {step_no(c["messages"]): c["messages"][-1]["content"] for c in llm.calls_of("plan_worker")}
     assert 'You are VERIFYING the outputs' in prompts["3"] and "You are VERIFYING" not in prompts["2"]
+
+
+# ---- D35: the summariser only assembles -----------------------------------------------------------------------
+def test_a_new_number_in_the_summary_is_flagged(tmp_path, envelope):
+    def reply(messages, seed):
+        n = step_no(messages)
+        body = (f"# Memo\n\n## Answer\nStorage 10 TB; total cost 4,321 USD per month.\n\n## Limitations\n- step 2 is blocked"
+                if n == "4" else f"OUT-{n}\n{BODY}")
+        return f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\n{body}"
+    llm = mock(planner=[DIAMOND], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=reply)
+    r = run_one(Task(prompt="Compute 17 * 23 + 5."), "plan", llm, envelope, default_registry(), tmp_path,
+                draft_prompts="d24")
+    saved = json.loads((tmp_path / r.run_id / "result.json").read_text())
+    assert saved["summary_check"] == {"new_number_in_summary": 1, "new_numbers": ["4321"], "limitations_section": True}
+    prompt = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
+    assert "add no new analysis, no new facts and no new numbers" in prompt and '"## Limitations"' in prompt

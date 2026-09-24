@@ -38,6 +38,11 @@ def _line_numbers(line: str) -> list[str]:
     return [m.group(0) for m in NUM.finditer(body)]
 
 
+def claim_numbers(text: str) -> set[str]:
+    """The numbers a text states as figures: list markers, [S#] tags and labels (step 3, R2, p95) left out."""
+    return {_norm(t) for line in (text or "").splitlines() for t in _line_numbers(line)}
+
+
 def _derived(line: str, tok: str) -> bool:
     """The number is the result of a calculation shown on the line: '... = 10,000 GB' or '≈ 10 TB'."""
     return bool(re.search(r"[=≈]\s*~?\s*" + re.escape(tok), line))
