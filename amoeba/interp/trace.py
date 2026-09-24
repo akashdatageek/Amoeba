@@ -71,6 +71,11 @@ class TraceWriter:
                    for r in self.spans("chat"))
 
     @property
+    def total_reasoning_tokens(self) -> int:
+        """Hidden reasoning tokens (D27), kept apart from total_tokens (visible input + output)."""
+        return sum(r.get("amoeba.usage.reasoning_tokens", 0) for r in self.spans("chat"))
+
+    @property
     def n_llm_calls(self) -> int:
         return len(self.spans("chat"))
 
@@ -97,9 +102,11 @@ class TracedLLM:
         self.llm, self.trace, self.listener = llm, trace, listener or NoopListener()
 
     def chat_messages(self, messages: Messages, seed: int = 0, *, agent_id: str | None = None,
-                      agent_name: str | None = None, max_tokens: int | None = None) -> ChatResponse:
+                      agent_name: str | None = None, max_tokens: int | None = None,
+                      _retry: bool = False) -> ChatResponse:
         attrs = {"gen_ai.agent.id": agent_id, "gen_ai.agent.name": agent_name,
-                 "gen_ai.request.model": self.llm.model, "gen_ai.request.max_tokens": max_tokens}
+                 "gen_ai.request.model": self.llm.model, "gen_ai.request.max_tokens": max_tokens,
+                 "amoeba.retry_of_truncated": True if _retry else None}
         with self.trace.span("chat", attrs) as rec:
             if self.trace.log_content:   # OTel GenAI opt-in content capture: the exact prompt, even if the call fails
                 rec["gen_ai.input.messages"] = [dict(m) for m in messages]
@@ -111,12 +118,21 @@ class TracedLLM:
             rec["gen_ai.usage.output_tokens"] = resp.output_tokens
             if resp.finish_reason:
                 rec["gen_ai.response.finish_reasons"] = [resp.finish_reason]
+            if resp.reasoning_tokens:
+                rec["amoeba.usage.reasoning_tokens"] = resp.reasoning_tokens
+                rec["amoeba.usage.reasoning_source"] = resp.reasoning_source
             if resp.finish_reason == "length":   # D24: the reply was cut off at max_tokens — flag it
                 rec["amoeba.truncated"] = True
                 self.trace.event("truncated", {"gen_ai.agent.name": agent_name, "gen_ai.agent.id": agent_id,
                                                "gen_ai.request.max_tokens": max_tokens,
-                                               "gen_ai.usage.output_tokens": resp.output_tokens})
+                                               "gen_ai.usage.output_tokens": resp.output_tokens,
+                                               "amoeba.usage.reasoning_tokens": resp.reasoning_tokens or None,
+                                               "amoeba.retry": bool(max_tokens) and not _retry})
         self.listener.on_llm_call(agent_id, resp)
+        if resp.finish_reason == "length" and max_tokens and not _retry:
+            # D27: hidden reasoning can use up the limit; ask once more with double room, then accept whatever comes
+            return self.chat_messages(messages, seed, agent_id=agent_id, agent_name=agent_name,
+                                      max_tokens=2 * max_tokens, _retry=True)
         return resp
 
     def chat(self, system: str, user: str, seed: int = 0, **ids) -> ChatResponse:

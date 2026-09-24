@@ -2,10 +2,51 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class RubricItem(BaseModel):
+    """A deliverable or constraint: passes when any regex in any_of (case-insensitive) matches the answer."""
+
+    name: str
+    any_of: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _default_pattern(self):
+        if not self.any_of:
+            self.any_of = [re.escape(self.name)]
+        return self
+
+
+class RubricNumber(BaseModel):
+    """A number the answer must contain: value + unit (TB, GiB, USD, EUR, million ...) within a relative tolerance."""
+
+    name: str
+    value: float
+    unit: str
+    tolerance: float = 0.05
+
+
+class RubricMustNot(BaseModel):
+    """Fails when `pattern` matches, unless `unless_nearby` matches within `window` characters (e.g. a cited source)."""
+
+    name: str
+    pattern: str
+    unless_nearby: str = ""
+    window: int = 160
+
+
+class Rubric(BaseModel):
+    """D30: how a task with no single right answer is scored (Box 1, deterministic). Never shown to Box 2 or Box 3."""
+
+    required_deliverables: list[RubricItem] = Field(default_factory=list)
+    expected_numbers: list[RubricNumber] = Field(default_factory=list)
+    constraints_to_respect: list[RubricItem] = Field(default_factory=list)
+    must_not: list[RubricMustNot] = Field(default_factory=list)
 
 
 class Task(BaseModel):
@@ -14,7 +55,7 @@ class Task(BaseModel):
     family: str = "freeform"
     ground_truth: str | None = None  # toy tasks only
     tags: list[str] = Field(default_factory=list)
-    expected: dict = Field(default_factory=dict)   # eval only, e.g. {"derived": [["10 TB", "10,000 GB"]]} (D24)
+    rubric: Rubric | None = None   # D30: scoring for tasks without one right answer; read by evaluate only
 
 
 class Message(BaseModel):
@@ -72,6 +113,16 @@ class CapabilityRequest(BaseModel):
     # planner = listed under "## Capability Requests"; unregistered_tool = a role's tools named it and the resolver
     # found no such tool; runtime_unknown_tool = a helper chose it as an action during the run
     source: Literal["planner", "unregistered_tool", "runtime_unknown_tool"] = "planner"
+    # D29: the canonical name from amoeba/capabilities/aliases.yaml; `name` keeps what the model wrote
+    canonical: str = ""
+    mapped: bool = False
+
+    @model_validator(mode="after")
+    def _canonical(self):
+        if not self.canonical:
+            from amoeba.capabilities import normalise
+            self.canonical, self.mapped = normalise(self.name)
+        return self
 
     @field_validator("name", "for_role", "what_it_does", "input", "output", "example_input", "example_output",
                      mode="before")
@@ -168,6 +219,7 @@ class DraftRound(BaseModel):
     plan_observer_raw: str = ""
     plan_observer: str = ""
     consensus: bool = False                                       # both approved this round (D2; D25 / D24 rules)
+    gate_failed: list[str] = Field(default_factory=list)          # D28 --quality-gate: hard checks this round failed
     agent_verdict: str | None = None                              # D24: APPROVE | REVISE | OTHER; None for d19
     plan_verdict: str | None = None
     agent_suggestions_n: int = 0                                  # numbered suggestions in each observer's reply
@@ -189,6 +241,7 @@ class Draft(BaseModel):
     givens: list[str] = Field(default_factory=list)                # D24: givens, derived numbers, assumptions
     risks: list[str] = Field(default_factory=list)                 # D24: risks and decision points
     quality: dict = Field(default_factory=dict)                    # D24 draft_quality checks (recorded, not enforced)
+    gate_hits: int = 0                                             # D28: rounds the --quality-gate sent back
     requests_proposed: int = 0                 # distinct capabilities asked for in round 1
     requests_dropped_by_observers: int = 0     # of those, how many the final draft no longer asks for
 
@@ -211,3 +264,5 @@ class RunResult(BaseModel):
     requests_proposed: int = 0
     requests_dropped_by_observers: int = 0
     draft_quality: dict = Field(default_factory=dict)   # D24 checks on the draft (recorded, not enforced)
+    unmapped_capabilities: list[str] = Field(default_factory=list)   # D29: names aliases.yaml does not know yet
+    rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric

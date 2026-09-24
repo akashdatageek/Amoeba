@@ -23,7 +23,7 @@ from amoeba.llm.client import LLMClient, OpenAICompatibleClient
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team
-from amoeba.task.evaluate import score
+from amoeba.task.evaluate import rubric_score, score
 from amoeba.task.instantiate import instantiate
 from amoeba.task.models import RunResult, Task
 from amoeba.task.source import ToyTaskSource
@@ -31,7 +31,8 @@ from amoeba.tools.registry import ToolRegistry, default_registry
 
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
-            runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19") -> RunResult:
+            runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
+            max_tokens: dict | None = None, quality_gate: bool = False) -> RunResult:
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -41,7 +42,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     answer = error = None
     team_id = ""
     try:
-        draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts)
+        draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
+                           quality_gate=quality_gate)
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         dump_yaml(cfg, run_dir / "team.yaml")
@@ -60,17 +62,27 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     requested = (draft.capability_requests if draft else []) + (ep.requested_capabilities if ep else [])
     (run_dir / "capability_requests.json").write_text(
         json.dumps([q.model_dump() for q in requested], indent=2, ensure_ascii=False), encoding="utf-8")
+    # D30: a task with a rubric and no single right answer is scored by the rubric fraction (Box 1, after the run)
+    graded = rubric_score(answer, task.rubric) if task.rubric else None
     result = RunResult(
         run_id=run_id, task_id=task.id, team_id=team_id, topology=topology, answer=answer, error=error,
-        score=score(answer, task.ground_truth), total_tokens=trace.total_tokens,
+        score=score(answer, task.ground_truth) if graded is None or task.ground_truth else graded["score"],
+        rubric=graded, total_tokens=trace.total_tokens,
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,
         draft_rounds=draft.rounds_used if draft else sum(bool(r.plan_observer_raw) for r in (failed.rounds if failed else [])), consensus=draft.consensus if draft else False,
         blocked_steps=ep.blocked_steps if ep else [], requested_capabilities=requested,
         draft_quality=draft.quality if draft else {},
+        unmapped_capabilities=sorted({q.name for q in requested if not q.mapped}),
         requests_proposed=draft.requests_proposed if draft else 0,
         requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0)
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
     return result
+
+
+def cli_token_limits(args: argparse.Namespace) -> dict:
+    """D27: --planner-max-tokens / --observer-max-tokens (unset = env or default, see draft.token_limits)."""
+    o = args.observer_max_tokens
+    return {"planner": args.planner_max_tokens, "agent_observer": o, "plan_observer": o}
 
 
 def build_llm(args: argparse.Namespace) -> LLMClient:
@@ -97,6 +109,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--runs-dir", default="runs")
     p.add_argument("--draft-prompts", choices=["d19", "d24"], default="d19",
                    help="Box 2 prompts: d19 = AutoAgents + D19 edits (default), d24 = ours (spec/BOX2_PROMPT_UPGRADE_D24.md)")
+    p.add_argument("--planner-max-tokens", type=int, default=None,
+                   help="Planner reply limit (default $AMOEBA_MAX_TOKENS_PLANNER or 8192; D27)")
+    p.add_argument("--observer-max-tokens", type=int, default=None,
+                   help="both observers' reply limit (default $AMOEBA_MAX_TOKENS_OBSERVER or 8192; D27)")
+    p.add_argument("--quality-gate", action="store_true",
+                   help="send a draft back (within the round cap) when a hard draft_quality check fails (D28)")
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
@@ -114,11 +132,15 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     for task in tasks:
         r = run_one(task, args.topology, llm, envelope, tools, args.runs_dir, args.seed,
-                    log_content=not args.no_log_content, draft_prompts=args.draft_prompts)
+                    log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
+                    max_tokens=cli_token_limits(args), quality_gate=args.quality_gate)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
               f"rounds={r.draft_rounds} consensus={r.consensus} error={r.error} answer={shown!r}")
+    unmapped = sorted({n for r in results for n in r.unmapped_capabilities})
+    if unmapped:   # D29: extend amoeba/capabilities/aliases.yaml with these
+        print("unmapped capability names:", ", ".join(unmapped))
     scored = [r.score for r in results if r.score is not None]
     n = len(results)
     mean_score = sum(scored) / len(scored) if scored else float("nan")

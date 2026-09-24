@@ -16,6 +16,7 @@ Writes runs/draft_eval/<stamp>/{attempts.jsonl, summary.csv, drafts/, traces/, p
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import csv
 import json
 import sys
@@ -27,10 +28,11 @@ from amoeba.interp.trace import TraceWriter
 from amoeba.llm.client import ChatResponse, LLMClient, Messages, MockLLMClient
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team
+from amoeba.task.evaluate import number_found
 from amoeba.task.models import Task
 from amoeba.task.parsers import parse_json_objects, parse_plan, parse_role_blobs, parse_sections
 from amoeba.tools.registry import default_registry
-from scripts.run_task import build_llm
+from scripts.run_task import build_llm, cli_token_limits
 
 RETRY_STATUS = (429, 500, 503)
 
@@ -56,7 +58,7 @@ class Recording(LLMClient):
 
 
 def role_names(text: str, parser) -> list[str]:
-    sec = parse_sections(text)
+    sec = parse_sections(text, all_fences=True)   # D26, as drafting reads it
     blobs = parser(sec.get("Created Roles List", "")) + parser(sec.get("Selected Roles List", ""))
     return list(dict.fromkeys(str(b.get("name", "")).strip() for b in blobs if str(b.get("name", "")).strip()))
 
@@ -71,7 +73,8 @@ def would_pass(text: str, names: list[str], max_agents: int) -> bool:
 
 
 def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path, seed: int,
-            log_content: bool = True, prompts: str = "d19") -> dict:
+            log_content: bool = True, prompts: str = "d19", max_tokens: dict | None = None,
+            quality_gate: bool = False) -> dict:
     rec = Recording(llm)
     trace = TraceWriter(out / "traces" / f"{task.id}.{rep}.jsonl", episode_id=f"{task.id}.{rep}",
                         log_content=log_content)
@@ -79,17 +82,22 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
     row = {"task_id": task.id, "family": task.family, "repeat": rep, "prompts": prompts, "model": llm.model}
     saved: dict = {}
     try:
-        d = draft_team(task, rec, envelope, trace, seed, prompts=prompts)
+        d = draft_team(task, rec, envelope, trace, seed, prompts=prompts, max_tokens=max_tokens,
+                       quality_gate=quality_gate)
         row.update(ok=True, error="", rounds=d.rounds_used, consensus=d.consensus, roster=len(d.created_roles),
                    plan_steps=len(d.plan), requests_final=len(d.capability_requests),
                    requests_proposed=d.requests_proposed, requests_dropped=d.requests_dropped_by_observers,
-                   request_names=sorted({q.name for q in d.capability_requests}))
+                   request_names=sorted({q.name for q in d.capability_requests}),
+                   canonical_names=sorted({q.canonical for q in d.capability_requests}),            # D29
+                   unmapped_names=sorted({q.name for q in d.capability_requests if not q.mapped}))
         q = d.quality["checks"]
         row.update(quality_passed=d.quality["passed"], quality_failed=d.quality["failed"],
                    failed_checks=d.quality["failed_checks"], requirements=len(d.requirements),
                    requirements_covered=q["requirements_covered"]["ok"],
                    roles_defined_pct=round(100 * q["roles_fully_defined"]["defined"] / max(1, len(d.created_roles))),
                    verification_step=q["verification_step"]["ok"], summariser_ok=q["summariser"]["ok"],
+                   independent_verification=q["independent_verification"]["ok"], gate_hits=d.gate_hits,
+                   hard_failed=d.quality["hard_failed"],
                    last_verdicts=[d.rounds[-1].agent_verdict, d.rounds[-1].plan_verdict] if d.rounds else [])
         saved = d.model_dump(mode="json")
     except DraftError as e:
@@ -115,6 +123,8 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
         (out / "planner" / f"{task.id}.{rep}.txt").write_text(final, encoding="utf-8")
     row["derived_correct"] = derived_correct(task, final)
     row["truncated"] = len(trace.events("truncated"))   # D24: replies cut off at max_tokens
+    row["truncation_retries"] = sum(1 for s in trace.spans("chat") if s.get("amoeba.retry_of_truncated"))   # D27
+    row["reasoning_tokens"] = trace.total_reasoning_tokens                                                  # D27
     regex = role_names(final, parse_role_blobs)
     balanced = role_names(final, parse_json_objects)
     row.update(tokens=trace.total_tokens, calls=trace.n_llm_calls, latency_ms=int((time.perf_counter() - t0) * 1000),
@@ -126,13 +136,13 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
 
 
 def derived_correct(task: Task, reply: str) -> bool | None:
-    """Task-specific arithmetic check (D24 §5): every expected derived number appears in the final Planner reply, in
-    any of its listed spellings (spaces and case ignored). None when the task lists none."""
-    wanted = task.expected.get("derived", [])
-    if not wanted or not reply:
-        return None if not wanted else False
-    flat = "".join(reply.lower().split())
-    return all(any("".join(alt.lower().split()) in flat for alt in alts) for alts in wanted)
+    """Task-specific arithmetic check (D24 §5, D30): every rubric expected_number appears in the final Planner reply,
+    matched as a number with its unit (TB or TiB, $10M or USD 10 million) by evaluate.number_found. None when the task
+    has no expected numbers."""
+    wanted = task.rubric.expected_numbers if task.rubric else []
+    if not wanted:
+        return None
+    return bool(reply) and all(number_found(reply, x.value, x.unit, x.tolerance) for x in wanted)
 
 
 def summarise(rows: list[dict]) -> list[dict]:
@@ -158,15 +168,22 @@ def summarise(rows: list[dict]) -> list[dict]:
                 "requests_final": sum(r["requests_final"] for r in rs),
                 "requests_dropped": sum(r["requests_dropped"] for r in rs),
                 "request_names": " ".join(sorted({x for r in rs for x in r["request_names"]})),
+                "canonical_counts": " ".join(f"{k}:{v}" for k, v in sorted(Counter(
+                    x for r in rs for x in r.get("canonical_names", [])).items())),                  # D29
+                "unmapped_names": " | ".join(sorted({x for r in rs for x in r.get("unmapped_names", [])})),
                 "mean_tokens": mean([r["tokens"] for r in rs]), "mean_calls": mean([r["calls"] for r in rs]),
                 # D24 draft_quality (accepted drafts; a d19 draft has no requirement ids, so those are blank)
                 "requirements_covered_rate": rate([r.get("requirements_covered") for r in ok]),
                 "mean_roles_defined_pct": mean([r["roles_defined_pct"] for r in ok if "roles_defined_pct" in r]),
                 "verification_step_rate": rate([r.get("verification_step") for r in ok]),
                 "summariser_ok_rate": rate([r.get("summariser_ok") for r in ok]),
+                "independent_verification_rate": rate([r.get("independent_verification") for r in ok]),
+                "gate_hits": sum(r.get("gate_hits", 0) for r in ok),
                 "derived_correct_rate": rate([r.get("derived_correct") for r in rs]),
                 "mean_requests_final": mean([r["requests_final"] for r in rs]),
                 "truncated_calls": sum(r.get("truncated", 0) for r in rs),
+                "truncation_retries": sum(r.get("truncation_retries", 0) for r in rs),
+                "mean_reasoning_tokens": mean([r.get("reasoning_tokens", 0) for r in rs]),
                 "errors": "; ".join(f"{k} x{v}" for k, v in sorted(errors.items()))}
 
     order = list(dict.fromkeys(r["task_id"] for r in rows))
@@ -191,6 +208,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--out", default=None, help="default: runs/draft_eval/<UTC stamp>")
     p.add_argument("--no-log-content", action="store_true", help="leave prompts and replies out of the traces")
     p.add_argument("--draft-prompts", choices=["d19", "d24"], default="d19", help="Box 2 prompts (D24)")
+    p.add_argument("--quality-gate", action="store_true",
+                   help="send a draft back (within the round cap) when a hard draft_quality check fails (D28)")
+    p.add_argument("--planner-max-tokens", type=int, default=None,
+                   help="Planner reply limit (default $AMOEBA_MAX_TOKENS_PLANNER or 8192; D27)")
+    p.add_argument("--observer-max-tokens", type=int, default=None,
+                   help="both observers' reply limit (default $AMOEBA_MAX_TOKENS_OBSERVER or 8192; D27)")
     return p.parse_args(argv)
 
 
@@ -206,7 +229,8 @@ def main(argv: list[str] | None = None) -> int:
         for task in load_tasks(args.tasks):
             for rep in range(args.repeats):
                 row = attempt(task, rep, llm, envelope, out, args.seed, log_content=not args.no_log_content,
-                              prompts=args.draft_prompts)
+                              prompts=args.draft_prompts, max_tokens=cli_token_limits(args),
+                              quality_gate=args.quality_gate)
                 rows.append(row)
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
                 fh.flush()

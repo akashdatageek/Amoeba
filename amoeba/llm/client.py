@@ -22,6 +22,8 @@ class ChatResponse:
     model: str = ""
     latency_ms: int = 0
     finish_reason: str | None = None   # "stop", "length" (hit max_tokens) ... as the API reported it
+    reasoning_tokens: int = 0          # hidden reasoning ("thinking") tokens; they count against max_tokens (D27)
+    reasoning_source: str | None = None   # "reported" (completion_tokens_details) | "total_minus_visible" | None
 
 
 class LLMClient(ABC):
@@ -35,6 +37,22 @@ class LLMClient(ABC):
     @abstractmethod
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
         """max_tokens: this call's reply limit; None = the client's default (D24: the Planner asks for more)."""
+
+
+def _reasoning_tokens(usage) -> tuple[int, str | None]:
+    """D27: hidden reasoning tokens. OpenAI reports completion_tokens_details.reasoning_tokens; Gemini's
+    OpenAI-compatible endpoint leaves that null but its total_tokens exceeds prompt + completion by the reasoning
+    (checked 2026-09-24: 11 + 15 visible, 407 total at max_tokens=400)."""
+    if usage is None:
+        return 0, None
+    details = getattr(usage, "completion_tokens_details", None)
+    reported = getattr(details, "reasoning_tokens", None) if details is not None else None
+    if reported is not None:
+        return int(reported), "reported"
+    total, p, c = (getattr(usage, k, None) for k in ("total_tokens", "prompt_tokens", "completion_tokens"))
+    if isinstance(total, int) and isinstance(p, int) and isinstance(c, int) and total > p + c:
+        return total - p - c, "total_minus_visible"
+    return 0, None
 
 
 class OpenAICompatibleClient(LLMClient):
@@ -62,9 +80,11 @@ class OpenAICompatibleClient(LLMClient):
             self.sends_seed = False   # the run is then not seed-reproducible on this endpoint
             resp = self._client.chat.completions.create(**kw)
         usage = getattr(resp, "usage", None)
+        reasoning, source = _reasoning_tokens(usage)
         return ChatResponse(
             content=resp.choices[0].message.content or "",
             finish_reason=getattr(resp.choices[0], "finish_reason", None),
+            reasoning_tokens=reasoning, reasoning_source=source,
             input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
             output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
             model=getattr(resp, "model", None) or self.model,
