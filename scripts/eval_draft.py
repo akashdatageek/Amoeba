@@ -34,7 +34,7 @@ from amoeba.task.parsers import parse_json_objects, parse_plan, parse_role_blobs
 from amoeba.tools.registry import default_registry
 from scripts.run_task import add_client_args, build_llm, cli_token_limits
 
-RETRY_STATUS = (429, 500, 503)
+RETRY_STATUS = (500,)   # D48: 429 and 503 are retried (and traced) by the client itself
 
 
 class Recording(LLMClient):

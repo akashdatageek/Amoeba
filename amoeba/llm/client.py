@@ -6,9 +6,10 @@ Phase 1 only records those counts in the trace; nothing enforces them.
 """
 from __future__ import annotations
 
+import re
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 Messages = list[dict[str, str]]
@@ -25,6 +26,8 @@ class ChatResponse:
     reasoning_tokens: int = 0          # hidden reasoning ("thinking") tokens; they count against max_tokens (D27)
     reasoning_source: str | None = None   # "reported" (completion_tokens_details) | "total_minus_visible" | None
     cached: bool = False               # D46: served from the response cache, not the model
+    retries: list = field(default_factory=list)   # D48: [{status, wait_s, attempt, retry_after}] before this reply
+    throttle_wait_s: float = 0.0       # D48: time waited for --min-seconds-between-calls
 
 
 class LLMClient(ABC):
@@ -60,26 +63,56 @@ class OpenAICompatibleClient(LLMClient):
     """Any OpenAI-compatible endpoint (vLLM, Ollama, OpenAI, DeepSeek ...)."""
 
     def __init__(self, base_url: str | None, api_key: str, model: str,
-                 temperature: float = 0.2, max_tokens: int = 2048):
+                 temperature: float = 0.2, max_tokens: int = 2048, max_rate_retries: int = 5,
+                 min_seconds_between_calls: float = 0.0, sleep: Callable[[float], None] = time.sleep):
         from openai import OpenAI  # imported lazily so tests never need it
 
-        self._client = OpenAI(api_key=api_key, base_url=base_url)
+        # D48: the SDK's own retries are off; rate limits are retried below, where each wait is recorded
+        self._client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.sends_seed = True   # False once the endpoint has rejected the field (Gemini's OpenAI layer does)
+        self.max_rate_retries, self.min_interval, self._sleep = max_rate_retries, min_seconds_between_calls, sleep
+        self._last_call = 0.0
+
+    def _create(self, kw: dict, seed: int):
+        try:
+            return self._client.chat.completions.create(**kw, **({"seed": seed} if self.sends_seed else {}))
+        except Exception as e:   # openai.BadRequestError; matched by status so the SDK's error classes don't matter
+            if not (self.sends_seed and getattr(e, "status_code", None) == 400 and "seed" in str(e)):
+                raise
+            self.sends_seed = False   # the run is then not seed-reproducible on this endpoint
+            return self._client.chat.completions.create(**kw)
+
+    def _throttle(self) -> float:
+        """D48: --min-seconds-between-calls (for free tiers): wait until that long after the previous call."""
+        wait = self.min_interval - (time.monotonic() - self._last_call) if self._last_call else 0.0
+        if wait > 0:
+            self._sleep(wait)
+        self._last_call = time.monotonic()
+        return max(0.0, wait)
 
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
         t0 = time.perf_counter()
         kw = dict(model=self.model, messages=messages, temperature=self.temperature,
                   max_tokens=max_tokens or self.max_tokens)
-        try:
-            resp = self._client.chat.completions.create(**kw, **({"seed": seed} if self.sends_seed else {}))
-        except Exception as e:   # openai.BadRequestError; matched by status so the SDK's error classes don't matter
-            if not (self.sends_seed and getattr(e, "status_code", None) == 400 and "seed" in str(e)):
-                raise
-            self.sends_seed = False   # the run is then not seed-reproducible on this endpoint
-            resp = self._client.chat.completions.create(**kw)
+        throttled, retries = self._throttle(), []
+        while True:
+            try:
+                resp = self._create(kw, seed)
+                break
+            except Exception as e:
+                status = getattr(e, "status_code", None)
+                if status not in RATE_STATUS or len(retries) >= self.max_rate_retries or spend_cap(e):
+                    e.amoeba_retries = retries   # the trace records the waits even when the call finally fails
+                    raise
+                after = retry_after(e)
+                wait = after if after is not None else min(60.0, 2.0 * 2 ** len(retries))
+                retries.append({"status": status, "wait_s": wait, "attempt": len(retries) + 1,
+                                "retry_after": after})
+                self._sleep(wait)
+                self._last_call = time.monotonic()
         usage = getattr(resp, "usage", None)
         reasoning, source = _reasoning_tokens(usage)
         return ChatResponse(
@@ -90,7 +123,26 @@ class OpenAICompatibleClient(LLMClient):
             output_tokens=int(getattr(usage, "completion_tokens", 0) or 0),
             model=getattr(resp, "model", None) or self.model,
             latency_ms=int((time.perf_counter() - t0) * 1000),
+            retries=retries, throttle_wait_s=round(throttled, 3),
         )
+
+
+RATE_STATUS = (429, 503)   # D48: too many requests / service unavailable — worth waiting for
+
+
+def spend_cap(e: Exception) -> bool:
+    """A 429 that says a spending cap was reached will not clear in seconds: it is not retried."""
+    return bool(re.search(r"spend(ing)? cap", str(e), re.I))
+
+
+def retry_after(e: Exception) -> float | None:
+    """The Retry-After header (seconds) of an API error, when the service sent one."""
+    headers = getattr(getattr(e, "response", None), "headers", None) or {}
+    value = headers.get("retry-after") or headers.get("Retry-After") if hasattr(headers, "get") else None
+    try:
+        return max(0.0, float(value)) if value is not None else None
+    except (TypeError, ValueError):
+        return None   # an HTTP date: fall back to the exponential wait
 
 
 Responder = Callable[[Messages, int], str]

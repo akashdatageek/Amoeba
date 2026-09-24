@@ -113,7 +113,16 @@ class TracedLLM:
         with self.trace.span("chat", attrs) as rec:
             if self.trace.log_content:   # OTel GenAI opt-in content capture: the exact prompt, even if the call fails
                 rec["gen_ai.input.messages"] = [dict(m) for m in messages]
-            resp = self.llm.chat_messages(messages, seed, max_tokens=max_tokens)
+            try:
+                resp = self.llm.chat_messages(messages, seed, max_tokens=max_tokens)
+            except Exception as e:     # D48: the rate-limit waits before a call that still failed are logged too
+                self._log_retries(getattr(e, "amoeba_retries", []), agent_name, failed=True)
+                raise
+            self._log_retries(resp.retries, agent_name)
+            if resp.retries:
+                rec["amoeba.rate_limit_retries"] = len(resp.retries)
+            if resp.throttle_wait_s:
+                rec["amoeba.throttle_wait_s"] = resp.throttle_wait_s
             if self.trace.log_content:
                 rec["gen_ai.output.messages"] = [{"role": "assistant", "content": resp.content}]
             rec["gen_ai.request.model"] = resp.model or self.llm.model
@@ -139,6 +148,12 @@ class TracedLLM:
             return self.chat_messages(messages, seed, agent_id=agent_id, agent_name=agent_name,
                                       max_tokens=2 * max_tokens, _retry=True)
         return resp
+
+    def _log_retries(self, retries: list, agent_name: str | None, failed: bool = False) -> None:
+        for r in retries:
+            self.trace.event("rate_limited", {"gen_ai.agent.name": agent_name, "http.status_code": r["status"],
+                                              "amoeba.wait_s": r["wait_s"], "amoeba.attempt": r["attempt"],
+                                              "amoeba.retry_after": r["retry_after"], "amoeba.gave_up": failed})
 
     def chat(self, system: str, user: str, seed: int = 0, **ids) -> ChatResponse:
         return self.chat_messages([{"role": "system", "content": system}, {"role": "user", "content": user}],

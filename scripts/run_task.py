@@ -142,6 +142,11 @@ def add_client_args(p: argparse.ArgumentParser) -> None:
                         "error (never a live call); off: no cache")
     p.add_argument("--llm-cache-namespace", default="",
                    help="part of every cache key, e.g. the repeat number, so repeats of one prompt stay separate")
+    p.add_argument("--max-rate-retries", type=int, default=5,
+                   help="retries after HTTP 429/503, with exponential waits (2, 4, 8 … s) or the server's "
+                        "Retry-After; a spending-cap 429 is not retried (D48)")
+    p.add_argument("--min-seconds-between-calls", type=float, default=0.0,
+                   help="wait at least this long between two model calls, for free tiers (D48)")
 
 
 def build_llm(args: argparse.Namespace) -> LLMClient:
@@ -152,7 +157,9 @@ def build_llm(args: argparse.Namespace) -> LLMClient:
     base_url = args.base_url or os.environ.get("AMOEBA_BASE_URL") or None
     api_key = args.api_key or os.environ.get("AMOEBA_API_KEY") or os.environ.get("OPENAI_API_KEY") or "EMPTY"
     model = args.model or os.environ.get("AMOEBA_MODEL") or "gpt-4o-mini"
-    client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=model)
+    client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=model,
+                                    max_rate_retries=args.max_rate_retries,
+                                    min_seconds_between_calls=args.min_seconds_between_calls)
     return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else client
 
 
