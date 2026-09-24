@@ -28,6 +28,8 @@ from amoeba.task.instantiate import instantiate
 from amoeba.task.models import RunResult, Task
 from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
+from amoeba.interp.provenance import total as total_provenance
+from amoeba.tools.web import web_registry
 
 
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
@@ -47,7 +49,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         dump_yaml(cfg, run_dir / "team.yaml")
-        ep = Interpreter(llm, tools, trace).run(cfg, task, seed)
+        ep = Interpreter(llm, tools, trace, run_dir=run_dir).run(cfg, task, seed)
         answer, error = ep.answer, ep.error
     except DraftError as e:
         error = f"draft: {e}"
@@ -67,7 +69,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     result = RunResult(
         run_id=run_id, task_id=task.id, team_id=team_id, topology=topology, answer=answer, error=error,
         score=score(answer, task.ground_truth) if graded is None or task.ground_truth else graded["score"],
-        rubric=graded, total_tokens=trace.total_tokens,
+        rubric=graded, provenance=provenance_of(ep), blocked_capabilities=blocked_of(ep),
+        summary_check=next((s["summary_check"] for s in reversed(ep.steps) if "summary_check" in s), {}) if ep else {},
+        total_tokens=trace.total_tokens,
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,
         draft_rounds=draft.rounds_used if draft else sum(bool(r.plan_observer_raw) for r in (failed.rounds if failed else [])), consensus=draft.consensus if draft else False,
         blocked_steps=ep.blocked_steps if ep else [], requested_capabilities=requested,
@@ -77,6 +81,25 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0)
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
     return result
+
+
+def provenance_of(ep) -> dict:
+    """D33: the plan runner's per-step provenance counts and their sum; empty for flat and boss_reviewers."""
+    steps = [s for s in (ep.steps if ep else []) if "provenance" in s]
+    if not steps:
+        return {}
+    return {"total": total_provenance([s["provenance"] for s in steps]),
+            "steps": {str(s["step"]): s["provenance"] for s in steps}}
+
+
+def blocked_of(ep) -> dict:
+    """D36: canonical capability -> how many plan steps (latest version of each) lacked it."""
+    latest = {s["step"]: s for s in (ep.steps if ep else [])}
+    counts: dict[str, int] = {}
+    for s in latest.values():
+        for c in s.get("blocked_canonical", []):
+            counts[c] = counts.get(c, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -101,7 +124,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--toy", action="store_true", help="run generated toy tasks with known answers")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n", type=int, default=20, help="number of toy tasks")
-    p.add_argument("--topology", choices=["flat", "boss_reviewers"], default="flat")
+    p.add_argument("--tasks", default=None,
+                   help="a .jsonl file of tasks (id, prompt, optional ground_truth or rubric); a task with a rubric "
+                        "and no ground_truth is scored by the rubric fraction (D30)")
+    p.add_argument("--topology", choices=["flat", "boss_reviewers", "plan"], default="flat",
+                   help="plan = the D31 plan runner over depends_on")
     p.add_argument("--llm", choices=["mock", "openai"], default="mock")
     p.add_argument("--base-url", default=None)
     p.add_argument("--model", default=None, help="default: $AMOEBA_MODEL, else gpt-4o-mini")
@@ -115,11 +142,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="both observers' reply limit (default $AMOEBA_MAX_TOKENS_OBSERVER or 8192; D27)")
     p.add_argument("--quality-gate", action="store_true",
                    help="send a draft back (within the round cap) when a hard draft_quality check fails (D28)")
+    p.add_argument("--web-tools", action="store_true",
+                   help="give Box 3 web_search and fetch_url (Tavily; needs TAVILY_API_KEY). The plan runner hands "
+                        "them to roles that asked for web search (D32); Box 2 never sees them")
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
-    if not args.toy and not args.prompt:
-        p.error("give a prompt or --toy")
+    if not args.toy and not args.prompt and not args.tasks:
+        p.error("give a prompt, --toy or --tasks")
     return args
 
 
@@ -128,10 +158,14 @@ def main(argv: list[str] | None = None) -> int:
     llm = build_llm(args)
     tools = default_registry()
     envelope = Envelope.from_registry(tools, model=llm.model)
-    tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
+    if args.tasks:
+        tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding="utf-8").splitlines() if l.strip()]
+    else:
+        tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
     results = []
     for task in tasks:
-        r = run_one(task, args.topology, llm, envelope, tools, args.runs_dir, args.seed,
+        box3_tools = web_registry() if args.web_tools else tools   # a fresh source list per run (D32)
+        r = run_one(task, args.topology, llm, envelope, box3_tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
                     max_tokens=cli_token_limits(args), quality_gate=args.quality_gate)
         results.append(r)

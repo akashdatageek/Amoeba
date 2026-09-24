@@ -87,6 +87,38 @@ def _worker(messages: Messages, seed: int) -> str:
                          action="Final Output", inp=solve_toy(task) or OFFLINE)
 
 
+def _plan_worker(messages: Messages, seed: int) -> str:
+    """D31: a plan step. The Solver computes (calc, then Final Output); the Language Expert restates its input."""
+    user = messages[-1]["content"]
+    task = re.search(r"# Task\n(.*?)\n\n# Your role card", user, re.S)
+    task = task.group(1).strip() if task else ""
+    inputs = re.search(r"# Inputs: outputs of the steps this step depends on\n(.*?)\n\n# Work done so far", user, re.S)
+    inputs = inputs.group(1) if inputs else ""
+    if "Name: Language Expert" in user:
+        given = re.search(r"status: \w+\n(.*)", inputs, re.S)
+        answer = given.group(1).strip() if given else (solve_toy(task) or OFFLINE)
+        return WORKER.format(thought="Restate the result I was given.", task=task, step="State the final answer.",
+                             action="Final Output", inp=answer)
+    expr = re.search(r"Compute (.+?)\. Reply", task)
+    result = re.search(r">Result:\n(.*?)\n", user)
+    if expr and not result:
+        return WORKER.format(thought="Arithmetic — use the calculator.", task=task, step="Evaluate the expression.",
+                             action="calc", inp=expr.group(1))
+    return WORKER.format(thought="Report the result.", task=task, step="Report the result.", action="Final Output",
+                         inp=result.group(1).strip() if result else (solve_toy(task) or OFFLINE))
+
+
+def _plan_summariser(messages: Messages, seed: int) -> str:
+    """D35: restate the last step output it was given, and name no limitation beyond it."""
+    user = messages[-1]["content"]
+    task = re.search(r"# Task\n(.*?)\n\n# Your role card", user, re.S)
+    task = task.group(1).strip() if task else ""
+    outs = re.findall(r"status: [^\n]*\n(.*?)(?=\n\n## Step |\n\n# Work done so far)", user, re.S)
+    answer = outs[-1].strip() if outs else (solve_toy(task) or OFFLINE)
+    return WORKER.format(thought="Assemble the result.", task=task, step="State the final answer.",
+                         action="Final Output", inp=answer)
+
+
 def _solver(messages: Messages, seed: int) -> str:
     m = re.search(r"You are faced with the task:\n(.*?)\n\nBelow", messages[0]["content"], re.S)
     return solve_toy(m.group(1) if m else "") or OFFLINE
@@ -98,6 +130,8 @@ def toy_mock_client() -> MockLLMClient:
         "agent_observer": [NO_SUGGESTIONS],
         "plan_observer": [NO_SUGGESTIONS],
         "worker": _worker,
+        "plan_worker": _plan_worker,
+        "plan_summariser": _plan_summariser,
         "solver": _solver,
         "critic": ["Action: Agree\nAction Input: Agree."],
     }, model="toy-mock")
