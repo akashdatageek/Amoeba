@@ -290,7 +290,9 @@ def test_a_short_answer_that_repeats_its_input_passes_the_checks():
     steps_ = {1: {"text": "SUSNESNOC", "meta": {"visible_source_ids": [], "roles": ["Solver"]}}}
     two = PlanStep(index=1, agent_ids=["a"], text="[Language Expert]: restate", depends_on=[1])
     from amoeba.interp.plan_runner import step_checks
-    assert all(c["pass"] for c in step_checks(two, "SUSNESNOC\n\n(as computed)", [1], steps_))
+    assert all(c["pass"] for c in step_checks(two, "SUSNESNOC", [1], steps_))
+    # D42: a copied line inside other text is no longer a match on its own; a whole short copy is
+    assert not all(c["pass"] for c in step_checks(two, "SUSNESNOC\n\n(as computed)", [1], steps_))
     assert not all(c["pass"] for c in step_checks(two, "something else entirely", [1], steps_))
 
 
@@ -388,3 +390,47 @@ def test_final_steps_without_a_summariser_step_are_assembled_by_code(tmp_path, e
     assert r.answer.startswith("## Step 2: Prototype and test\n\nOUT-2") and "## Step 3: Cross-check numbers" in r.answer
     assert r.answer.rstrip().endswith("- BLOCKED: database_sandbox (the team had no such capability; added by plain code)")
     assert (tmp_path / r.run_id / "artifacts" / "answer.md").read_text().startswith("## Step 2")
+
+
+# ---- D42: checks from the planner's format markers; real input matches; retry turns ------------------------------
+def _art(text, roles=("Cost Analyst",), ids=()):
+    return {"text": text, "meta": {"visible_source_ids": list(ids), "roles": list(roles)}}
+
+
+def test_markers_in_output_decide_the_format_checks():
+    from amoeba.interp.plan_runner import step_checks
+    s = PlanStep(index=0, agent_ids=["a"], text="[A]: price", output="table: provider x db x USD; memo: summary")
+    names = [c["name"] for c in step_checks(s, "| a | b |\n|---|---|\n# H1\n# H2", [], {})]
+    assert names == ["output_present", "format_table", "format_headings"]      # no keyword numbers_present check
+    kw = PlanStep(index=0, agent_ids=["a"], text="[A]: price", output="cost table (markdown)")
+    checks = step_checks(kw, "no table", [], {})
+    assert {c["name"] for c in checks} == {"output_present", "format_table", "numbers_present"}
+    assert {c["source"] for c in checks} == {"keywords"}
+
+
+def test_inputs_referenced_needs_a_real_match():
+    from amoeba.interp.plan_runner import uses_inputs
+    arts = {1: _art("Managed PostgreSQL on AWS in eu-central-1 costs about 3,120 USD per month [S2]", ids=["S2"])}
+    assert uses_inputs("Storage totals 3,120 USD.", [1], arts)                      # a figure
+    assert uses_inputs("As sourced in [S2], the price holds.", [1], arts)          # a source id
+    assert uses_inputs("The Cost Analyst's estimate stands.", [1], arts)            # a role name
+    assert uses_inputs("Per step 1 the database is fine.", [1], arts)               # a step number
+    assert uses_inputs("we note managed postgresql on aws in eu central 1 costs about the same", [1], arts)  # 8 words
+    assert not uses_inputs("The database should be PostgreSQL on AWS.", [1], arts)  # a few shared words only
+    assert not uses_inputs("Choose 1 option.", [1], {1: _art("Option 1 is best", roles=())})   # single digit
+
+
+def test_a_failed_check_on_the_last_turn_still_gets_its_own_retry_turns(task, envelope, trace, tools):
+    def slow(messages, seed):
+        user = messages[-1]["content"]
+        n = step_no(messages)
+        left = int(re.search(r"You have (\d+) turn", user).group(1))
+        if n == "1" and "Plain code checked" not in user and left > 1:       # dawdle until the last turn
+            return "## Thought\nt\n\n## CurrentStep\nt\n\n## Action\nPrint\n\n## ActionInput\nthinking\n"
+        body = "no table yet" if n == "1" and "Plain code checked" not in user else f"OUT-{n}\n{BODY}"
+        return f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\n{body}"
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=slow)
+    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    one = ep.steps[0]
+    assert (one["status"], one["retried"], one["turns"]) == ("done", True, 6)          # 5 turns + 1 of the retry's 2
+    assert trace.events("check_retry")[0]["amoeba.retry_turns"] == 2

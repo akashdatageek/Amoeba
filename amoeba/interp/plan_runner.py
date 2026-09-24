@@ -30,6 +30,7 @@ class PlanOptions:
     """Settings of one plan run (run_task flags); every value is recorded in the `plan_graph` trace event."""
 
     rerun_stale: bool = False        # D39: re-run once the steps that used a step's output before it was reworked
+    check_retry_turns: int = 2       # D42: turns a failed-check retry gets on top of the ones already used
 
 
 class PlanGraphError(ValueError):
@@ -169,46 +170,95 @@ NUMERIC_WORDS = re.compile(r"\b(cost|costs|estimate|estimates|price|prices|prici
                            r"tariff|tariffs|benchmark|benchmarks|p95|throughput)\b|%|\$", re.I)
 
 
+MARKERS = {"table": "format_table", "list": "format_list", "code": "format_code", "memo": "format_headings"}
+
+
+def output_markers(output: str) -> list[str]:
+    """D42: the format markers the planner put in a step's `output` line (table:, list:, code:, memo:)."""
+    return list(dict.fromkeys(m.lower() for m in re.findall(r"\b(table|list|code|memo)\s*:", output or "", re.I)))
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", (text or "").lower())
+
+
+def shares_words(a: str, b: str, n: int = 8) -> bool:
+    """D42: `a` and `b` share a run of n consecutive words (case and punctuation ignored)."""
+    wa, wb = _words(a), _words(b)
+    grams = {tuple(wb[i:i + n]) for i in range(len(wb) - n + 1)}
+    return any(tuple(wa[i:i + n]) in grams for i in range(len(wa) - n + 1))
+
+
+def uses_inputs(body: str, deps: list[int], artifacts: dict) -> bool:
+    """D42: a real match with an input — a figure it contains (not a single digit), one of its source ids, a
+    dependency's step number or role name, or 8+ consecutive shared words. A whole output under 8 words that
+    appears verbatim in an input (a copied value) also counts."""
+    ids = set().union(*(set(artifacts[d]["meta"]["visible_source_ids"]) for d in deps))
+    roles = {r for d in deps for r in artifacts[d]["meta"]["roles"]}
+    dep_text = "\n".join(artifacts[d]["text"] for d in deps)
+    figures = {x for x in numbers_in(dep_text) if len(x.replace(".", "")) > 1}
+    short = body.strip()
+    return (any(re.search(rf"\bstep\s*{d}\b", body, re.I) for d in deps) or any(f"[{i}]" in body for i in ids)
+            or any(r and r in body for r in roles) or bool(numbers_in(body) & figures)
+            or shares_words(body, dep_text)
+            or (bool(short) and len(_words(short)) < 8 and short in dep_text))
+
+
 def step_checks(step: PlanStep, text: str, deps: list[int], artifacts: dict, verifier: bool = False) -> list[dict]:
-    """D34: deterministic checks of a step's output against its `output` / `done_when` lines. Only checks that
-    apply are listed; each is {name, pass, detail}."""
+    """D34: deterministic checks of a step's output. D42: the format checks come from the markers the planner
+    wrote in `output` (table:, list:, code:, memo:); only when there are none are keywords in `output` /
+    `done_when` used (check_source "keywords"). Only checks that apply are listed; each is {name, pass, detail}."""
     spec = f"{step.output}\n{step.done_when}".lower()
     body = text or ""
     out = [{"name": "output_present", "pass": bool(body.strip()), "detail": "the step output is empty"}]
+    markers = output_markers(step.output)
+    if markers:
+        out += [_format_check(MARKERS[m], body) for m in markers]
+    else:
+        out += _keyword_checks(spec, body)
+    if deps:
+        out.append({"name": "inputs_referenced", "pass": uses_inputs(body, deps, artifacts),
+                    "detail": "the output uses nothing from the steps it depends on (no figure, source id, step or "
+                              "role name, or 8 words in a row from them)"})
+    if verifier:
+        out.append({"name": "verdict", "pass": parse_verdict_block(body)[0] is not None,
+                    "detail": 'a verification step must start with "Verdict: PASS" or "Verdict: FAIL"'})
+    for c in out:
+        c["source"] = "markers" if markers else "keywords"
+    return out
+
+
+FORMAT_DETAIL = {"format_table": "the output line asks for a table; there is no markdown table (| a | b | with a "
+                                 "|---| row)",
+                 "format_list": "the output line asks for a list; there are fewer than 2 list items",
+                 "format_code": "the output line asks for code; there is no code block or statement",
+                 "format_headings": "the output line asks for a document; it has fewer than 2 headings"}
+
+
+def _format_check(name: str, body: str) -> dict:
+    ok = {"format_table": lambda: bool(re.search(r"^\s*\|.*\|\s*$", body, re.M))
+          and bool(re.search(r"^\s*\|?\s*:?-{3,}", body, re.M)),
+          "format_list": lambda: len(re.findall(r"^\s*(?:[-*]|\d+[.)])\s+\S", body, re.M)) >= 2,
+          "format_code": lambda: "```" in body or bool(re.search(r"\b(SELECT|CREATE TABLE|def |INSERT INTO)\b", body)),
+          "format_headings": lambda: len(re.findall(r"^\s*#{1,4}\s+\S|^\s*\*\*[^*]+\*\*\s*$", body, re.M)) >= 2}[name]()
+    return {"name": name, "pass": ok, "detail": FORMAT_DETAIL[name]}
+
+
+def _keyword_checks(spec: str, body: str) -> list[dict]:
+    """The D34 rules, kept as the fallback for output lines without markers."""
+    out = []
     if "table" in spec:
-        ok = bool(re.search(r"^\s*\|.*\|\s*$", body, re.M)) and bool(re.search(r"^\s*\|?\s*:?-{3,}", body, re.M))
-        out.append({"name": "format_table", "pass": ok, "detail": "the output line asks for a table; there is no "
-                                                                   "markdown table (| a | b | with a |---| row)"})
+        out.append(_format_check("format_table", body))
     if re.search(r"\b(list|bullets?|checklist)\b", spec):
-        ok = len(re.findall(r"^\s*(?:[-*]|\d+[.)])\s+\S", body, re.M)) >= 2
-        out.append({"name": "format_list", "pass": ok, "detail": "the output line asks for a list; there are fewer "
-                                                                  "than 2 list items"})
+        out.append(_format_check("format_list", body))
     if re.search(r"\b(code|script|sql|query|queries|schema|ddl)\b", spec):
-        ok = "```" in body or bool(re.search(r"\b(SELECT|CREATE TABLE|def |INSERT INTO)\b", body))
-        out.append({"name": "format_code", "pass": ok, "detail": "the output line asks for code; there is no code "
-                                                                  "block or statement"})
+        out.append(_format_check("format_code", body))
     if re.search(r"\b(memo|report|runbook|plan|document)\b", spec):
-        ok = len(re.findall(r"^\s*#{1,4}\s+\S|^\s*\*\*[^*]+\*\*\s*$", body, re.M)) >= 2
-        out.append({"name": "format_headings", "pass": ok, "detail": "the output line asks for a document; it has "
-                                                                      "fewer than 2 headings"})
+        out.append(_format_check("format_headings", body))
     if NUMERIC_WORDS.search(spec):
         ok = bool(re.search(r"\d", re.sub(r"\[S\d+\]", "", body)))
         out.append({"name": "numbers_present", "pass": ok, "detail": "the output line asks for figures; the output "
                                                                       "has no number"})
-    if deps:
-        ids = set().union(*(set(artifacts[d]["meta"]["visible_source_ids"]) for d in deps))
-        roles = {r for d in deps for r in artifacts[d]["meta"]["roles"]}
-        dep_nums = set().union(*(numbers_in(artifacts[d]["text"]) for d in deps))
-        dep_text = "\n".join(artifacts[d]["text"] for d in deps)
-        ok = (any(re.search(rf"\bstep\s*{d}\b", body, re.I) for d in deps) or any(f"[{i}]" in body for i in ids)
-              or any(r in body for r in roles) or bool(numbers_in(body) & dep_nums)
-              or (bool(body.strip()) and body.strip() in dep_text)
-              or any(len(x.strip()) >= 3 and x.strip() in dep_text for x in body.splitlines()))
-        out.append({"name": "inputs_referenced", "pass": ok, "detail": "the output uses nothing from the steps it "
-                                                                        "depends on (no step, role, source or figure)"})
-    if verifier:
-        out.append({"name": "verdict", "pass": parse_verdict_block(body)[0] is not None,
-                    "detail": 'a verification step must start with "Verdict: PASS" or "Verdict: FAIL"'})
     return out
 
 
@@ -349,9 +399,11 @@ class PlanRunner:
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
         failed = [c["name"] for c in checks if not c["pass"]]
         retried = False
-        if failed and w.turn < w.max_turns and w.done:
-            retried = True                                                          # one retry with the failed checks
-            self.i.trace.event("check_retry", {"amoeba.step": n, "amoeba.failed_checks": failed})
+        if failed and w.done:
+            retried = True                              # one retry with the failed checks, with turns of its own (D42)
+            w.max_turns = w.turn + self.opt.check_retry_turns
+            self.i.trace.event("check_retry", {"amoeba.step": n, "amoeba.failed_checks": failed,
+                                               "amoeba.retry_turns": self.opt.check_retry_turns})
             w.completed += RETRY_NOTE.format(failed="; ".join(c["detail"] for c in checks if not c["pass"]))
             w.done.clear()
             self._loop(step, n, agents, inputs, extra, w, template)
@@ -382,6 +434,7 @@ class PlanRunner:
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents], "covers": step.covers,
                 "depends_on": deps, "received": deps, "output_spec": step.output, "status": status,
                 "status_reason": reason, "turns": w.turn, "blocked": gaps, "answer_step": answer_step,
+                "check_source": checks[0]["source"] if checks else "",
                 "blocked_mentions": mentions if answer_step else [],
                 "blocked_canonical": sorted({normalise(g)[0] for g in gaps}), "sources": own,
                 "visible_source_ids": sorted(visible), "provenance": prov, "checks": checks, "retried": retried,
