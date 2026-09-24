@@ -23,8 +23,12 @@ def test_chat_spans_carry_usage_and_result_sums_them(tmp_path, envelope, tools):
 
 
 def test_nothing_in_the_code_path_reads_a_budget():
+    # D47: the one exception is the opt-in module behind --max-tokens-per-run / --max-calls-per-run; it is checked
+    # below that it does nothing unless a limit is set
     offenders = []
     for path in (ROOT / "amoeba").rglob("*.py"):
+        if path.relative_to(ROOT).as_posix() == "amoeba/llm/limits.py":
+            continue
         for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             code = line.split("#", 1)[0]
             if re.search(r"budget", code, re.I):
@@ -56,3 +60,10 @@ def test_openai_client_drops_seed_when_the_endpoint_rejects_it():
     r2 = c.chat("s", "u", seed=0)
     assert (r1.content, r1.input_tokens, r1.output_tokens) == ("ok", 3, 1) and r2.content == "ok"
     assert ["seed" in k for k in sent] == [True, False, False] and c.sends_seed is False
+
+
+def test_without_limits_a_run_is_never_stopped_on_tokens(tmp_path, envelope, tools):
+    task = ToyTaskSource(seed=1, n=1).tasks()[0]
+    r = run_one(task, "flat", toy_mock_client(), envelope, tools, tmp_path)      # no limits passed
+    lines = [json.loads(l) for l in (tmp_path / r.run_id / "trace.jsonl").read_text().splitlines()]
+    assert r.error is None and not [l for l in lines if l["name"] == "budget_stop"]

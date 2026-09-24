@@ -49,6 +49,56 @@ environment variable **`TAVILY_API_KEY`** (never from a file). In the Claude Cod
 **`api.tavily.com`** to the environment's network allowlist (cloud environment menu → Edit → Network access); search
 and page extraction both go through that one domain, so no other site needs to be reachable.
 
+## Cost controls (D45–D48)
+
+```bash
+# reuse the Box 2 drafts an eval_draft run already paid for (repeat k = --draft-pick k); no drafting calls
+python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --topology plan \
+    --drafts-from runs/draft_eval/cmp2-gemini-3.1-flash-lite-d24 --draft-pick 0 \
+    --llm-cache runs/cache --llm-cache-mode record --llm-cache-namespace rep0 \
+    --max-tokens-per-run 200000 --min-seconds-between-calls 1
+```
+
+- `--drafts-from DIR --draft-pick K`: reuse saved drafts (an eval_draft folder or a runs folder); result.json names
+  the `draft_source`.
+- `--llm-cache DIR --llm-cache-mode record|replay|off [--llm-cache-namespace NAME]`: every model reply and web result
+  is stored; `replay` never calls anything (a miss ends the run with `error="cache_miss"`).
+- `--max-tokens-per-run N`, `--max-calls-per-run N`: the run stops cleanly with `error="budget"`; what ran is saved.
+  Every run prints its billed tokens and an estimated cost from `amoeba/config/prices.yaml` (fill in the prices;
+  a model without one gets tokens only).
+- HTTP 429/503 are retried up to `--max-rate-retries` (5) with exponential waits or the server's Retry-After;
+  `--min-seconds-between-calls` spaces calls out for free tiers.
+
+## Running with Gemma 4 (D49)
+
+Gemma models take no system message on some endpoints, so use `--merge-system` (the system text goes to the top of
+the user message). `--reasoning-effort off|low|medium|high` is sent only when you set it; leave it out if the
+endpoint rejects it. The model name below is a placeholder: check the exact id in the provider's model list.
+
+Through the **Gemini API** (key from Google AI Studio; in the cloud environment, allow
+`generativelanguage.googleapis.com`):
+
+```bash
+export AMOEBA_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+export AMOEBA_API_KEY=<your Gemini API key>
+python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --model gemma-4-31b-it \
+    --merge-system --draft-prompts d24 --topology plan --max-calls-per-run 60
+```
+
+Through **OpenRouter** (key from openrouter.ai; allow `openrouter.ai`; OpenRouter model ids carry the provider
+prefix, e.g. `google/gemma-4-31b-it`, and a `:free` suffix for the free variant where one exists):
+
+```bash
+export AMOEBA_BASE_URL=https://openrouter.ai/api/v1
+export AMOEBA_API_KEY=<your OpenRouter key>
+python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --model google/gemma-4-31b-it \
+    --merge-system --draft-prompts d24 --topology plan --min-seconds-between-calls 4
+```
+
+**Free tiers may use your prompts and replies to improve their products** (Google's free Gemini API tier and many
+free OpenRouter models say so in their terms). Do not send anything confidential through a free tier; use a paid
+key for private data.
+
 ## Layout
 
 ```

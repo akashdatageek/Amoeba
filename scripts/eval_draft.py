@@ -32,9 +32,9 @@ from amoeba.task.evaluate import number_found
 from amoeba.task.models import Task
 from amoeba.task.parsers import parse_json_objects, parse_plan, parse_role_blobs, parse_sections
 from amoeba.tools.registry import default_registry
-from scripts.run_task import build_llm, cli_token_limits
+from scripts.run_task import add_client_args, build_llm, cli_token_limits
 
-RETRY_STATUS = (429, 500, 503)
+RETRY_STATUS = (500,)   # D48: 429 and 503 are retried (and traced) by the client itself
 
 
 class Recording(LLMClient):
@@ -207,6 +207,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--api-key", default=None)
     p.add_argument("--out", default=None, help="default: runs/draft_eval/<UTC stamp>")
     p.add_argument("--no-log-content", action="store_true", help="leave prompts and replies out of the traces")
+    add_client_args(p)
     p.add_argument("--draft-prompts", choices=["d19", "d24"], default="d19", help="Box 2 prompts (D24)")
     p.add_argument("--quality-gate", action="store_true",
                    help="send a draft back (within the round cap) when a hard draft_quality check fails (D28)")

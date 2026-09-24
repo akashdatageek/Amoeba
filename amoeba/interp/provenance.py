@@ -53,7 +53,7 @@ def check_provenance(text: str, allowed_ids: set[str], task_text: str = "", inpu
     given, inherited = numbers_in(task_text), numbers_in(inputs_text)
     computed = set().union(*(numbers_in(r) for r in (tool_results or []))) if tool_results else set()
     counts = {"cited": 0, "unverified": 0, "given": 0, "derived": 0, "inherited": 0, "untagged": 0}
-    untagged, hallucinated = [], []
+    untagged, hallucinated, figures = [], [], []
     for line in (text or "").splitlines():
         tags = [m.group(0) for m in TAG.finditer(line)]
         ids = [i.strip().upper() for t in tags if t.lower() != "[unverified]" for i in t.strip("[]").split(",")]
@@ -63,20 +63,22 @@ def check_provenance(text: str, allowed_ids: set[str], task_text: str = "", inpu
         for tok in _line_numbers(line):
             n = _norm(tok)
             if good:
-                counts["cited"] += 1
+                st = "cited"
             elif "[unverified]" in line.lower():
-                counts["unverified"] += 1
+                st = "unverified"
             elif n in given:
-                counts["given"] += 1
+                st = "given"
             elif n in computed or _derived(line, tok):
-                counts["derived"] += 1
+                st = "derived"
             elif n in inherited:
-                counts["inherited"] += 1
+                st = "inherited"
             else:
-                counts["untagged"] += 1
+                st = "untagged"
                 untagged.append(tok)
+            counts[st] += 1
+            figures.append({"n": n, "as": tok, "status": st, "sources": good})
     return {**counts, "numbers": sum(counts.values()), "hallucinated_citations": sorted(set(hallucinated)),
-            "untagged_examples": untagged[:20]}
+            "untagged_examples": untagged[:20], "figures": figures}   # D43: figures feed the run's ledger
 
 
 def total(per_step: list[dict]) -> dict:

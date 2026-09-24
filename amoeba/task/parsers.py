@@ -113,7 +113,7 @@ def parse_json_objects(text: str) -> list[dict]:
     return out
 
 
-STEP_FIELDS = ("covers", "depends_on", "do", "output", "done_when")
+STEP_FIELDS = ("kind", "covers", "depends_on", "do", "output", "done_when")
 
 
 def parse_plan_d24(text: str) -> list[tuple[list[str], str, dict]]:
@@ -128,13 +128,15 @@ def parse_plan_d24(text: str) -> list[tuple[list[str], str, dict]]:
         fields: dict = {"title": (m.group(2) if m else first).strip()}
         key = None
         for line in rest:
-            f = re.match(r"^\s*[-*]?\s*(covers|depends_on|do|output|done_when)\s*:\s*(.*)$", line, re.I)
+            f = re.match(r"^\s*[-*]?\s*(kind|covers|depends_on|do|output|done_when)\s*:\s*(.*)$", line, re.I)
             if f:
                 key = f.group(1).lower()
                 fields[key] = f.group(2).strip()
             elif key and line.strip():
                 fields[key] += "\n" + line.strip()
         fields["covers"] = re.findall(r"R\d+", fields.get("covers", ""))
+        kind = fields.get("kind", "").strip().lower()                      # D37: work | verify; "" = not written
+        fields["kind"] = "verify" if kind.startswith("verif") else "work" if kind.startswith("work") else ""
         dep = fields.get("depends_on", "")
         fields["depends_on"] = [] if re.match(r"\s*(none|-|n/a)?\s*$", dep, re.I) else [int(x) for x in re.findall(r"\d+", dep)]
         out.append((names, first, fields))

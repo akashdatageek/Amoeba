@@ -10,6 +10,7 @@ from amoeba.interp.trace import NoopListener, TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient, Messages
 from amoeba.task.models import AgentResult, CapabilityRequest, Episode, Message, Task
 from amoeba.task.parsers import MissingSections, ParseError, parse_critic
+from amoeba.llm.limits import RunLimitReached
 from amoeba.tools.registry import ToolError, ToolRegistry
 
 WORKER_SECTIONS = ["CurrentStep", "Action", "ActionInput"]           # custom_action.py:79-83
@@ -63,8 +64,9 @@ def step_context(step: PlanStep) -> str:
 
 class Interpreter:
     def __init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None = None,
-                 listener: NoopListener | None = None, run_dir: str | None = None):
+                 listener: NoopListener | None = None, run_dir: str | None = None, plan_options=None):
         self.run_dir = run_dir   # D31: the plan runner writes its step artifacts under <run_dir>/artifacts
+        self.plan_options = plan_options   # D39+: PlanOptions for --topology plan (None = defaults)
         self.trace = trace or TraceWriter(None)
         self.listener = listener or NoopListener()   # spec §12: Phase 3's monitor plugs in here; no-op now
         self.llm = TracedLLM(llm, self.trace, self.listener)
@@ -82,11 +84,13 @@ class Interpreter:
                     ep.answer, ep.error = self.run_flat(cfg, task, ep)
                 elif cfg.topology == "plan":                 # D31
                     from amoeba.interp.plan_runner import PlanRunner
-                    ep.answer, ep.error = PlanRunner(self, cfg, task, ep, self.run_dir).run()
+                    ep.answer, ep.error = PlanRunner(self, cfg, task, ep, self.run_dir, self.plan_options).run()
                 else:
                     ep.answer, ep.error = self.run_boss_reviewers(cfg, task, ep)
             except (ParseError, MissingSections) as e:
                 ep.answer, ep.error = None, f"parse: {e}"
+            except RunLimitReached as e:                     # D47: stop cleanly; what ran so far stays in ep
+                ep.answer, ep.error = None, e.code
         ep.latency_ms = int((time.perf_counter() - t0) * 1000)
         return ep
 

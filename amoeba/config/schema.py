@@ -68,6 +68,7 @@ class PlanStep(BaseModel):
     agent_ids: list[str]
     text: str  # the raw "[Role A, Role B]: STEP TEXT" line
     # D24 step detail, shown to the step's helpers (step_context); empty for d19 teams
+    kind: str = ""   # D37: "work" | "verify" as the planner declared it; "" = not declared (keyword fallback)
     covers: list[str] = Field(default_factory=list)
     depends_on: list[int] = Field(default_factory=list)
     do: str = ""

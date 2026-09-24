@@ -91,6 +91,8 @@ class Episode(BaseModel):
     blocked_steps: list[dict] = Field(default_factory=list)          # steps a helper answered BLOCKED: X (D21)
     requested_capabilities: list[CapabilityRequest] = Field(default_factory=list)   # unknown tools chosen at run time
     steps: list[dict] = Field(default_factory=list)   # D31 plan runner: one record per step (wave, inputs, status)
+    answer_assembled_by_code: list[int] = Field(default_factory=list)   # D41: the final steps code put together
+    figure_ledger: dict[str, dict] = Field(default_factory=dict)        # D43: figure -> first status and step
 
 
 class Answer(BaseModel):
@@ -200,6 +202,7 @@ class DraftPlanStep(BaseModel):
     text: str  # the raw "[Role A, Role B]: STEP TEXT" line
     # D24 step detail, from the indented lines under the first line (empty for d19 drafts)
     title: str = ""
+    kind: str = ""                                             # D37: "work" | "verify"; "" when the planner wrote none
     covers: list[str] = Field(default_factory=list)
     depends_on: list[int] = Field(default_factory=list)       # step numbers as written (1-based)
     do: str = ""
@@ -250,12 +253,14 @@ class Draft(BaseModel):
 class RunResult(BaseModel):
     run_id: str
     task_id: str
+    draft_source: str | None = None   # D45: the saved draft reused (eval_draft file stem or run id); None = drafted
     team_id: str
     topology: str
     answer: str | None
     error: str | None
     score: float | None
     total_tokens: int
+    usage: dict = Field(default_factory=dict)   # D47: billed tokens (cache hits excluded) and estimated cost_usd
     latency_ms: int
     n_llm_calls: int
     draft_rounds: int
@@ -266,6 +271,8 @@ class RunResult(BaseModel):
     requests_dropped_by_observers: int = 0
     draft_quality: dict = Field(default_factory=dict)   # D24 checks on the draft (recorded, not enforced)
     unmapped_capabilities: list[str] = Field(default_factory=list)   # D29: names aliases.yaml does not know yet
+    answer_assembled_by_code: list[int] = Field(default_factory=list)   # D41: final steps assembled by code
+    figure_ledger: dict[str, dict] = Field(default_factory=dict)        # D43: figure -> first status and step
     blocked_capabilities: dict[str, int] = Field(default_factory=dict)   # D36: canonical -> steps that lacked it
     summary_check: dict = Field(default_factory=dict)   # D35 plan runner: new_number_in_summary, limitations_section
     provenance: dict = Field(default_factory=dict)   # D33 plan runner: {"total": counts, "steps": {n: counts}}

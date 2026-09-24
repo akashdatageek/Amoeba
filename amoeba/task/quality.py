@@ -84,8 +84,9 @@ def draft_quality(d: Draft) -> dict:
     # 7. D28 independent verification: a step that verifies (checks, reviews, validates, reconciles ...) numbers,
     # sources or test results, depends on the steps that produced them, and shares no role with those producers
     summ_name = summ.name if summ else None
-    candidates = [s for s in steps if s.depends_on and VERIFY_WORDS.search(f"{s.text}\n{s.do}\n{s.done_when}")
-                  and s.agent_names != [summ_name]]
+    declared = any(s.kind for s in steps)          # D37: the planner's kind: verify wins; keywords only as fallback
+    candidates = [s for s in steps if s.depends_on and s.agent_names != [summ_name]
+                  and (s.kind == "verify" if declared else VERIFY_WORDS.search(f"{s.text}\n{s.do}\n{s.done_when}"))]
     if any(s.depends_on for s in steps):
         found = []
         for s in candidates:

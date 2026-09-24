@@ -182,13 +182,16 @@ def test_a_fail_verdict_reworks_each_producer_once(task, envelope, trace, tools,
     w = scripted(body)
     llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
     ep = Interpreter(llm, tools, trace, run_dir=tmp_path).run(cfg, task, seed=0)
-    assert [(s["step"], bool(s["rework_of"])) for s in ep.steps] == [
-        (1, False), (2, False), (3, False), (1, True), (4, False)]
+    # D38: after the rework the verifier checks once more (it fails again here; no second rework)
+    assert [(s["step"], bool(s["rework_of"]), bool(s.get("reverify_of"))) for s in ep.steps] == [
+        (1, False, False), (2, False, False), (3, False, False), (1, True, False), (3, False, True), (4, False, False)]
     three = next(s for s in ep.steps if s["step"] == 3)
     assert three["verification"] and three["verdict"] == "FAIL" and "no source" in three["issues"]
+    again = [s for s in ep.steps if s["step"] == 3][-1]
+    assert (again["verdict_first"], again["verdict_after_rework"], again["verdict"]) == ("FAIL", "FAIL", "FAIL")
     redo = next(s for s in ep.steps if s["step"] == 1 and s["rework_of"])
     assert redo["rework_of"]["by_step"] == 3
-    assert w.seen == {"1": 2, "2": 1, "3": 2, "4": 1}          # step 3 (two helpers) is not asked again
+    assert w.seen == {"1": 2, "2": 1, "3": 4, "4": 1}          # step 3 (two helpers) checks twice, never a 3rd time
     rework_prompt = [c for c in llm.calls_of("plan_worker") if "(step 1)" in c["messages"][-1]["content"]][1]
     assert "REWORK: verification step 3 found issues" in rework_prompt["messages"][-1]["content"]
     assert "OUT-1.1" in rework_prompt["messages"][-1]["content"]          # it sees its earlier output
@@ -287,5 +290,198 @@ def test_a_short_answer_that_repeats_its_input_passes_the_checks():
     steps_ = {1: {"text": "SUSNESNOC", "meta": {"visible_source_ids": [], "roles": ["Solver"]}}}
     two = PlanStep(index=1, agent_ids=["a"], text="[Language Expert]: restate", depends_on=[1])
     from amoeba.interp.plan_runner import step_checks
-    assert all(c["pass"] for c in step_checks(two, "SUSNESNOC\n\n(as computed)", [1], steps_))
+    assert all(c["pass"] for c in step_checks(two, "SUSNESNOC", [1], steps_))
+    # D42: a copied line inside other text is no longer a match on its own; a whole short copy is
+    assert not all(c["pass"] for c in step_checks(two, "SUSNESNOC\n\n(as computed)", [1], steps_))
     assert not all(c["pass"] for c in step_checks(two, "something else entirely", [1], steps_))
+
+
+def test_a_verdict_that_turns_pass_after_rework_is_what_the_summariser_sees(task, envelope, trace, tools, tmp_path):
+    def body(n, k, prompt):
+        if n == "3":
+            verdict = "PASS\nIssues: none" if "RE-CHECK" in prompt else "FAIL\nIssues:\n1. Step 1: no source."
+            return f"Verdict: {verdict}\n\n{BODY}"
+        return f"OUT-{n}.{k}\n{BODY}"
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=scripted(body))
+    ep = Interpreter(llm, tools, trace, run_dir=tmp_path).run(cfg, task, seed=0)
+    last3 = [s for s in ep.steps if s["step"] == 3][-1]
+    assert (last3["verdict_first"], last3["verdict_after_rework"], last3["verdict"]) == ("FAIL", "PASS", "PASS")
+    [ev] = trace.events("reverify")
+    assert ev["amoeba.reworked"] == [1]
+    summ = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
+    assert "verdict: PASS (after rework; first verdict FAIL)" in summ
+    assert (tmp_path / "artifacts" / "step_3.first.md").exists()
+
+
+# ---- D39: stale inputs after a rework -----------------------------------------------------------------------------
+def fail_then_pass(n, k, prompt):
+    """Step 3 checks step 1: FAIL first, PASS on the re-check."""
+    if n == "3":
+        verdict = "PASS\nIssues: none" if "RE-CHECK" in prompt else "FAIL\nIssues:\n1. Step 1: no source."
+        return f"Verdict: {verdict}\n\n{BODY}"
+    return f"OUT-{n}.{k}\n{BODY}"
+
+
+def test_a_step_built_on_a_reworked_step_is_marked_stale(task, envelope, trace, tools, tmp_path):
+    w = scripted(fail_then_pass)
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
+    ep = Interpreter(llm, tools, trace, run_dir=tmp_path).run(cfg, task, seed=0)
+    two = [s for s in ep.steps if s["step"] == 2][-1]
+    assert (two["stale"], two["stale_because"]) == (True, [1]) and w.seen["2"] == 1       # not re-run by default
+    [ev] = trace.events("stale")
+    assert (ev["amoeba.step"], ev["amoeba.because_reworked"], ev["amoeba.will_rerun"]) == (2, [1], False)
+    assert json.loads((tmp_path / "artifacts" / "step_2.json").read_text())["stale"] is True
+    summ = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
+    assert "STALE: built on step(s) 1 before their rework" in summ
+    assert not [s for s in ep.steps if s["step"] == 3][-1]["stale"]          # the verifier re-checked instead
+
+
+def test_rerun_stale_reruns_each_stale_step_once(task, envelope, trace, tools):
+    from amoeba.interp.plan_runner import PlanOptions
+    w = scripted(fail_then_pass)
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
+    ep = Interpreter(llm, tools, trace, plan_options=PlanOptions(rerun_stale=True)).run(cfg, task, seed=0)
+    two = [s for s in ep.steps if s["step"] == 2]
+    assert len(two) == 2 and two[-1]["rerun_of_stale"] == {"because_reworked": [1]} and two[-1]["stale"] is False
+    assert w.seen["2"] == 2
+    assert "OUT-1.2" in [c for c in llm.calls_of("plan_worker") if "(step 2)" in c["messages"][-1]["content"]][-1][
+        "messages"][-1]["content"]                                               # the re-run sees the reworked step 1
+    assert "STALE" not in llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
+    assert trace.events("plan_graph")[0]["amoeba.options.rerun_stale"] is True
+
+
+# ---- D40: the answer step is not scanned for BLOCKED --------------------------------------------------------------
+def test_the_answer_step_naming_gaps_stays_done_and_is_not_counted(tmp_path, envelope):
+    def reply(messages, seed):
+        n = step_no(messages)
+        if n == "2":
+            body = f"OUT-2\n{BODY}\nBLOCKED: database_sandbox — no load test was run."
+        elif n == "4":
+            body = ("# Memo\n\n## Answer\nStorage 10 TB.\n\n## Limitations\n- BLOCKED: database_sandbox — step 2 "
+                    "could not load-test.\n- BLOCKED: web_search — prices are unverified.")
+        else:
+            body = f"OUT-{n}\n{BODY}"
+        return f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\n{body}"
+    llm = mock(planner=[DIAMOND], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=reply)
+    r = run_one(Task(prompt="Compute 17 * 23 + 5."), "plan", llm, envelope, default_registry(), tmp_path,
+                draft_prompts="d24")
+    four = json.loads((tmp_path / r.run_id / "artifacts" / "step_4.json").read_text())
+    assert (four["status"], four["blocked"], four["answer_step"]) == ("done", [], True)
+    assert four["blocked_mentions"] == ["database_sandbox", "web_search"]
+    saved = json.loads((tmp_path / r.run_id / "result.json").read_text())
+    assert saved["blocked_capabilities"] == {"database_sandbox": 1} and saved["error"] is None
+
+
+# ---- D41: several final steps and no summariser step -------------------------------------------------------------
+NO_SUMMARY_STEP = re.sub(r"4\. \[Memo Writer\].*?(?=\n\n## Capability Requests)", "", DIAMOND, flags=re.S)
+
+
+def test_final_steps_without_a_summariser_step_are_assembled_by_code(tmp_path, envelope):
+    def reply(messages, seed):
+        n = step_no(messages)
+        extra = "\nBLOCKED: database_sandbox — no load test." if n == "2" else ""
+        return (f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\nOUT-{n}\n{BODY}"
+                f"{extra}")
+    llm = mock(planner=[NO_SUMMARY_STEP], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=reply)
+    r = run_one(Task(prompt="Compute 17 * 23 + 5."), "plan", llm, envelope, default_registry(), tmp_path,
+                draft_prompts="d24")
+    assert llm.calls_of("plan_summariser") == []                       # no step of the summariser's ran
+    assert r.answer_assembled_by_code == [2, 3] and r.error == "partial"
+    assert r.answer.startswith("## Step 2: Prototype and test\n\nOUT-2") and "## Step 3: Cross-check numbers" in r.answer
+    assert r.answer.rstrip().endswith("- BLOCKED: database_sandbox (the team had no such capability; added by plain code)")
+    assert (tmp_path / r.run_id / "artifacts" / "answer.md").read_text().startswith("## Step 2")
+
+
+# ---- D42: checks from the planner's format markers; real input matches; retry turns ------------------------------
+def _art(text, roles=("Cost Analyst",), ids=()):
+    return {"text": text, "meta": {"visible_source_ids": list(ids), "roles": list(roles)}}
+
+
+def test_markers_in_output_decide_the_format_checks():
+    from amoeba.interp.plan_runner import step_checks
+    s = PlanStep(index=0, agent_ids=["a"], text="[A]: price", output="table: provider x db x USD; memo: summary")
+    names = [c["name"] for c in step_checks(s, "| a | b |\n|---|---|\n# H1\n# H2", [], {})]
+    assert names == ["output_present", "format_table", "format_headings"]      # no keyword numbers_present check
+    kw = PlanStep(index=0, agent_ids=["a"], text="[A]: price", output="cost table (markdown)")
+    checks = step_checks(kw, "no table", [], {})
+    assert {c["name"] for c in checks} == {"output_present", "format_table", "numbers_present"}
+    assert {c["source"] for c in checks} == {"keywords"}
+
+
+def test_inputs_referenced_needs_a_real_match():
+    from amoeba.interp.plan_runner import uses_inputs
+    arts = {1: _art("Managed PostgreSQL on AWS in eu-central-1 costs about 3,120 USD per month [S2]", ids=["S2"])}
+    assert uses_inputs("Storage totals 3,120 USD.", [1], arts)                      # a figure
+    assert uses_inputs("As sourced in [S2], the price holds.", [1], arts)          # a source id
+    assert uses_inputs("The Cost Analyst's estimate stands.", [1], arts)            # a role name
+    assert uses_inputs("Per step 1 the database is fine.", [1], arts)               # a step number
+    assert uses_inputs("we note managed postgresql on aws in eu central 1 costs about the same", [1], arts)  # 8 words
+    assert not uses_inputs("The database should be PostgreSQL on AWS.", [1], arts)  # a few shared words only
+    assert not uses_inputs("Choose 1 option.", [1], {1: _art("Option 1 is best", roles=())})   # single digit
+
+
+def test_a_failed_check_on_the_last_turn_still_gets_its_own_retry_turns(task, envelope, trace, tools):
+    def slow(messages, seed):
+        user = messages[-1]["content"]
+        n = step_no(messages)
+        left = int(re.search(r"You have (\d+) turn", user).group(1))
+        if n == "1" and "Plain code checked" not in user and left > 1:       # dawdle until the last turn
+            return "## Thought\nt\n\n## CurrentStep\nt\n\n## Action\nPrint\n\n## ActionInput\nthinking\n"
+        body = "no table yet" if n == "1" and "Plain code checked" not in user else f"OUT-{n}\n{BODY}"
+        return f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\n{body}"
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=slow)
+    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    one = ep.steps[0]
+    assert (one["status"], one["retried"], one["turns"]) == ("done", True, 6)          # 5 turns + 1 of the retry's 2
+    assert trace.events("check_retry")[0]["amoeba.retry_turns"] == 2
+
+
+# ---- D43: figure ledger ---------------------------------------------------------------------------------------------
+def test_the_ledger_keeps_each_figures_first_status_through_copies(tmp_path, envelope):
+    def reply(messages, seed):
+        n = step_no(messages)
+        body = {"1": f"Storage costs 4,200 USD per month.\n{BODY}",
+                "2": f"Egress adds 900 USD per month [unverified].\n{BODY}",
+                "3": f"Verdict: PASS\nIssues: none\nStep 1 said 4,200 USD per month.\n{BODY}",
+                "4": "# Memo\n\n## Cost\nStorage 4,200 USD and egress 900 USD per month; total 5,100 USD.\n"}[n]
+        return f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\n{body}"
+    llm = mock(planner=[DIAMOND], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=reply)
+    r = run_one(Task(prompt="Compute 17 * 23 + 5."), "plan", llm, envelope, default_registry(), tmp_path,
+                draft_prompts="d24")
+    assert {k: r.figure_ledger[k]["status"] for k in ("4200", "900", "5100")} == {
+        "4200": "untagged", "900": "unverified", "5100": "untagged"}
+    assert (r.figure_ledger["4200"]["step"], r.figure_ledger["900"]["step"], r.figure_ledger["5100"]["step"]) == (1, 2, 4)
+    three = json.loads((tmp_path / r.run_id / "artifacts" / "step_3.json").read_text())
+    assert three["provenance"]["inherited"] >= 1 and three["figure_origins"]["untagged"] >= 1   # 4,200 stays untagged
+    sc = r.summary_check
+    assert sc["answer_untagged"] == ["4200", "5100"] and sc["answer_unverified"] == ["900"]
+    assert sc["new_numbers"] == ["5100"] and sc["answer_cited"] == 0
+
+
+# ---- D44: size limits -----------------------------------------------------------------------------------------------
+def test_long_inputs_are_cut_and_marked(task, envelope, trace, tools):
+    from amoeba.interp.plan_runner import PlanOptions
+    long = "x " * 6000                                                      # 12,000 characters
+    w = scripted(lambda n, k, p: f"OUT-{n}\n{BODY}\n{long}" if n in ("1", "2", "3") else f"OUT-{n}\n{BODY}")
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=w)
+    opts = PlanOptions(max_input_chars=4000, max_summary_input_chars=6000)
+    Interpreter(llm, tools, trace, plan_options=opts).run(cfg, task, seed=0)
+    two = [c for c in llm.calls_of("plan_worker") if "(step 2)" in c["messages"][-1]["content"]][0]["messages"][-1]["content"]
+    assert "[... cut by plain code: first 4,000 of 12," in two
+    summ = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
+    assert summ.count("[... cut by plain code: first 2,000 of") == 3            # 6,000 shared by three steps
+    evs = trace.events("input_truncated")
+    assert {(e["amoeba.what"], e["amoeba.limit"]) for e in evs} == {("input", 4000), ("summary input", 2000)}
+
+
+def test_a_step_without_final_output_passes_only_its_last_message(task, envelope, trace, tools):
+    n_ = {"k": 0}
+
+    def talk(messages, seed):
+        n_["k"] += 1
+        return f"## Thought\nt\n\n## CurrentStep\nt\n\n## Action\nPrint\n\n## ActionInput\nnote {n_['k']}\n"
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=talk)
+    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    two_prompt = [c for c in llm.calls_of("plan_worker") if "(step 2)" in c["messages"][-1]["content"]][0]
+    inputs = re.search(r"# Inputs: .*?\n(.*?)\n\n# Work done", two_prompt["messages"][-1]["content"], re.S).group(1)
+    assert inputs.endswith("status: incomplete\nnote 5") and "note 4" not in inputs
