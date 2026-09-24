@@ -200,6 +200,7 @@ class DraftPlanStep(BaseModel):
     text: str  # the raw "[Role A, Role B]: STEP TEXT" line
     # D24 step detail, from the indented lines under the first line (empty for d19 drafts)
     title: str = ""
+    kind: str = ""                                             # D37: "work" | "verify"; "" when the planner wrote none
     covers: list[str] = Field(default_factory=list)
     depends_on: list[int] = Field(default_factory=list)       # step numbers as written (1-based)
     do: str = ""

@@ -33,7 +33,7 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
                   meta={"task_id": task.id, "draft_rounds": draft.rounds_used, "consensus": draft.consensus})
 
     if topology == "flat":
-        plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text, covers=s.covers,
+        plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text, kind=s.kind, covers=s.covers,
                          depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when)   # D24 detail
                 for s in draft.plan]
         edges = [Edge(src=a, dst=b, type="sequential")
@@ -58,7 +58,7 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
                          entry=[solver_id], exit=solver_id, max_inner_turns=3)
     elif topology == "plan":   # D31: the plan runner over depends_on (amoeba/interp/plan_runner.py)
         from amoeba.interp.plan_runner import PLAN_MAX_TOKENS, number, relink
-        plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text, covers=s.covers,
+        plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text, kind=s.kind, covers=s.covers,
                          depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when)
                 for s in draft.plan]
         written = {i + 1: list(w.get("depends_on") or []) for i, w in enumerate(draft.rounds[-1].plan)} \

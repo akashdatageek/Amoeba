@@ -223,6 +223,7 @@ class PlanRunner:
         self.steps = {number(s): s for s in cfg.plan}
         self.artifacts: dict[int, dict] = {}     # step number -> {"text", "meta"}
         self.reworked: set[int] = set()          # D34: at most one rework per step
+        self.inferred_logged: set[int] = set()   # D37: steps whose verifier status came from the keyword fallback
         self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
         self.web = getattr(interp.tools, "web", None)
 
@@ -406,11 +407,19 @@ class PlanRunner:
         return text, {"blocked_capabilities": sorted(caps), "limitations_added_by_code": missing}
 
     def is_verification(self, step: PlanStep) -> bool:
-        """The d24 'independent verification' shape (as draft_quality reads it): a step that depends on others and
-        says it verifies, checks, reviews, validates or reconciles them; the summariser's own step is not one."""
+        """D37: a step the planner declared `kind: verify` that depends on the steps it checks. Only when the step
+        plan declares no kind at all (an older draft) is the keyword rule used — verify, check, review, validate, reconcile … in its
+        text — and then a `verification_inferred` event is logged. The summariser's own step is never one."""
         summ = {a.agent_id for a in self.agents.values() if a.is_summariser}
-        text = f"{step.text}\n{step.do}\n{step.done_when}"
-        return bool(step.depends_on) and bool(VERIFY_WORDS.search(text)) and not set(step.agent_ids) <= summ
+        if set(step.agent_ids) <= summ or not step.depends_on:
+            return False
+        if any(s.kind for s in self.cfg.plan):          # the planner declared kinds: an undeclared step is work
+            return step.kind == "verify"
+        inferred = bool(VERIFY_WORDS.search(f"{step.text}\n{step.do}\n{step.done_when}"))
+        if inferred and number(step) not in self.inferred_logged:
+            self.inferred_logged.add(number(step))
+            self.i.trace.event("verification_inferred", {"amoeba.step": number(step), "amoeba.text": step.text[:120]})
+        return inferred
 
     def rework_producers(self, n: int, deps: list[int], issues: str) -> None:
         """D34: on a FAIL verdict each producer step it checked is re-run once with the issues; the run then goes on
