@@ -45,4 +45,5 @@ def mock(**script) -> MockLLMClient:
     script.setdefault("plan_observer", [fx("observer_no_suggestions")])
     if "plan_worker" in script:                     # the plan summariser's step (D35) answers like any plan step
         script.setdefault("plan_summariser", script["plan_worker"])
+        script.setdefault("plan_critic", ["## Verdict\nAGREE\n\n## Issues\nnone\n"])   # D51 reviewers agree
     return MockLLMClient(script=script)

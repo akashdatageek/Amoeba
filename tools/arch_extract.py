@@ -372,14 +372,19 @@ BOXES: list[dict] = [
                "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as "
                "BLOCKED: <capability>.",
                "It picks one action per turn: a tool, Print, or Final Output; up to 5 turns per step.",
-               "With --web-tools, a role that asked for web search also gets web_search and fetch_url."],
+               "With --web-tools, a role that asked for web search also gets web_search and fetch_url.",
+               "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In "
+               "a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at "
+               "most 2 rounds (--collab critique); the step keeps one output."],
          proposes="One action and its input per turn; the step's output.",
          disposes="Plain code decides what the helper sees, runs the tools, and caps the turns.",
-         prompts=["plan_step", "plan_step_system"],
+         prompts=["plan_step", "plan_step_system", "plan_critique"],
          anchors=["amoeba/interp/plan_runner.py::PlanRunner.run_step", "amoeba/interp/plan_runner.py::PlanRunner._loop",
                   "amoeba/interp/plan_runner.py::PlanRunner._turn", "amoeba/interp/plan_runner.py::plan_card",
                   "amoeba/interp/plan_runner.py::step_detail", "amoeba/interp/plan_runner.py::full_action_input",
-                  "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools"]),
+                  "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+                  "amoeba/interp/plan_runner.py::PlanRunner.refine", "amoeba/interp/plan_runner.py::PlanRunner.critique",
+                  "amoeba/interp/plan_runner.py::PlanRunner._review"]),
     dict(id="step_check", view="run", title="Check the step", kind="code", plan=None,
          sentence="Checks each step's output against its output and done-when lines, reads verdicts and gaps.",
          what=["Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its "
