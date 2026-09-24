@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 
 TAG = re.compile(r"\[(S\d+(?:\s*,\s*S\d+)*)\]|\[unverified\]", re.I)
-NUM = re.compile(r"(?<![\w.])(?:[$€£])?\d[\d,]*(?:\.\d+)?%?(?![\w])")
+NUM = re.compile(r"(?<![\w.])[$€£]?\d(?:[\d,]*\d)?(?:\.\d+)?%?")   # "$1.45M" -> $1.45, "10TB" -> 10
 LIST_MARKER = re.compile(r"^\s*(?:[-*]\s*)?\d+[.)]\s")
 IDS = re.compile(r"\b(?:S|R|Q|P|p|v|V|step|Step|phase|Phase|week|Week|day|Day|month|Month|wave|Wave)\s?\d+\b")
 

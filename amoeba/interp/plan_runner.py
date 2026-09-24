@@ -8,6 +8,7 @@ step_<n>.md plus step_<n>.json metadata). Plain code owns the graph, the order, 
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from amoeba.capabilities import normalise
@@ -103,6 +104,18 @@ def plan_card(agent: AgentSpec) -> str:
 def step_detail(step: PlanStep) -> str:
     extra = [f"{k}: {getattr(step, k)}" for k in ("do", "output", "done_when") if getattr(step, k)]
     return "\n".join([step.text, *extra])
+
+
+def full_action_input(raw: str, parsed: str) -> str:
+    """ActionInput is the last section, so it runs to the end of the reply. The AutoAgents parser splits on every
+    '##', which cuts a markdown answer at its first '##'/'###' heading (the flat baseline loses its answers
+    this way); the plan runner keeps the whole text."""
+    head = raw.rfind("## ActionInput")
+    if head < 0:
+        return parsed
+    rest = raw[head + len("## ActionInput"):].lstrip(":").strip()
+    rest = re.sub(r"\n-{3,}\s*$", "", rest).strip()        # a closing '---' fence of the format example
+    return rest if len(rest) >= len(parsed.strip()) else parsed
 
 
 class PlanRunner:
@@ -253,6 +266,6 @@ class PlanRunner:
             for rec in self.i.trace.spans("chat")[before:]:
                 self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                rec.get("gen_ai.usage.output_tokens", 0))
-            act, inp = sec["Action"].strip(), sec["ActionInput"]
+            act, inp = sec["Action"].strip(), full_action_input(raw, sec["ActionInput"])
             resp, gap = self.i._dispatch(agent, act, inp, step.index, self.ep)
         return act, inp, resp, gap

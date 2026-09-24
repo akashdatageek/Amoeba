@@ -114,3 +114,11 @@ def test_toy_tasks_with_a_d19_draft_run_as_a_chain(tmp_path, envelope, tools):
         assert r.score == 1.0 and r.error is None
         saved = json.loads((tmp_path / r.run_id / "artifacts" / "step_2.json").read_text())
         assert saved["received"] == [1] and saved["status"] == "done"
+
+
+def test_a_markdown_answer_is_not_cut_at_its_first_heading(task, envelope, trace, tools):
+    memo = "# Memo\n\n**To:** leadership\n\n### 1. Summary\nPostgreSQL.\n\n### 2. Risks\n| risk | owner |"
+    reply = lambda m, s: f"## Thought\nok\n\n## CurrentStep\nw\n\n## Action\nFinal Output\n\n## ActionInput\n{memo}\n"
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=reply)
+    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    assert ep.answer == memo                       # flat would publish only "# Memo ... leadership"
