@@ -13,6 +13,7 @@ from pathlib import Path
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
+from amoeba.interp.provenance import check_provenance
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
 from amoeba.task.models import Episode, Task
 from amoeba.tools.web import WEB_TOOLS
@@ -183,6 +184,7 @@ class PlanRunner:
         blocked: dict[str, str] = {}       # agent_id -> the capability it answered BLOCKED on
         partial: dict[str, str] = {}       # agent_id -> what it wrote alongside BLOCKED
         contributions: list[dict] = []
+        tool_results: list[str] = []       # what the step's tools returned (D33: their numbers count as derived)
         turn = 0
         while len(done) + len(blocked) < len(agents) and turn < max_turns:
             for agent in agents:           # the roles take turns; one that has finished is not asked again
@@ -195,6 +197,9 @@ class PlanRunner:
                     blocked[agent.agent_id] = gap
                     partial[agent.agent_id] = inp.strip()
                     completed += f">{agent.name} {BLOCKED}: {gap}\n{inp.strip()}\n"
+                elif act in agent.tools:
+                    tool_results.append(resp)
+                    completed += f">{agent.name} ({act}):\n{inp.strip()}\n>Result:\n{resp.strip()}\n"
                 elif FINAL_OUTPUT in act:
                     done[agent.agent_id] = inp.strip()
                     completed += f">{agent.name} Final Output:\n{inp.strip()}\n"
@@ -210,16 +215,22 @@ class PlanRunner:
                                if a.agent_id in written) or completed.strip()
         status = ("done" if len(done) == len(agents) else
                   "blocked" if blocked and len(done) + len(blocked) == len(agents) else "max_turns")
+        own = [{k: s[k] for k in ("id", "url", "title", "kind", "fetched_at")}
+               for s in (self.web.sources_for(n) if self.web is not None else [])]
+        visible = {s["id"] for s in own}.union(*(self.artifacts[d]["meta"]["visible_source_ids"] for d in deps)) \
+            if deps else {s["id"] for s in own}
+        prov = check_provenance(text, visible, self.task.prompt, inputs, tool_results)   # D33
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents], "covers": step.covers,
                 "depends_on": deps, "received": deps, "output_spec": step.output, "status": status,
-                "turns": turn, "blocked": sorted(set(blocked.values())),
-                "sources": [{k: s[k] for k in ("id", "url", "title", "kind", "fetched_at")}
-                            for s in (self.web.sources_for(n) if self.web is not None else [])],
+                "turns": turn, "blocked": sorted(set(blocked.values())), "sources": own,
+                "visible_source_ids": sorted(visible), "provenance": prov,
                 "contributions": contributions}
         self.artifacts[n] = {"text": text, "meta": meta}
         self.ep.steps.append(meta)
         self.i.trace.event("step_done", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.status": status,
                                          "amoeba.turns": turn, "amoeba.output_chars": len(text)})
+        self.i.trace.event("provenance", {"amoeba.step": n, **{f"amoeba.provenance.{k}": v for k, v in prov.items()
+                                                               if k != "untagged_examples"}})
         if self.dir:
             self.dir.mkdir(parents=True, exist_ok=True)
             (self.dir / f"step_{n}.md").write_text(text + "\n", encoding="utf-8")

@@ -28,6 +28,7 @@ from amoeba.task.instantiate import instantiate
 from amoeba.task.models import RunResult, Task
 from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
+from amoeba.interp.provenance import total as total_provenance
 from amoeba.tools.web import web_registry
 
 
@@ -68,7 +69,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     result = RunResult(
         run_id=run_id, task_id=task.id, team_id=team_id, topology=topology, answer=answer, error=error,
         score=score(answer, task.ground_truth) if graded is None or task.ground_truth else graded["score"],
-        rubric=graded, total_tokens=trace.total_tokens,
+        rubric=graded, provenance=provenance_of(ep), total_tokens=trace.total_tokens,
         latency_ms=int((time.perf_counter() - t0) * 1000), n_llm_calls=trace.n_llm_calls,
         draft_rounds=draft.rounds_used if draft else sum(bool(r.plan_observer_raw) for r in (failed.rounds if failed else [])), consensus=draft.consensus if draft else False,
         blocked_steps=ep.blocked_steps if ep else [], requested_capabilities=requested,
@@ -78,6 +79,15 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0)
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
     return result
+
+
+def provenance_of(ep) -> dict:
+    """D33: the plan runner's per-step provenance counts and their sum; empty for flat and boss_reviewers."""
+    steps = [s for s in (ep.steps if ep else []) if "provenance" in s]
+    if not steps:
+        return {}
+    return {"total": total_provenance([s["provenance"] for s in steps]),
+            "steps": {str(s["step"]): s["provenance"] for s in steps}}
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
