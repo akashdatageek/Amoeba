@@ -15,8 +15,10 @@ class MissingSections(ParseError):
         self.missing, self.found = missing, found
 
 
-def parse_sections(text: str) -> dict[str, str]:
-    """AutoAgents OutputParser.parse_blocks + parse_code (system/utils/common.py:31-59)."""
+def parse_sections(text: str, all_fences: bool = False) -> dict[str, str]:
+    """AutoAgents OutputParser.parse_blocks + parse_code (system/utils/common.py:31-59).
+    all_fences: DEVIATION D26 — join every fenced block of a section, in order, instead of keeping only the first
+    (a model that puts each role in its own ```json block otherwise loses roles 2..n)."""
     out: dict[str, str] = {}
     for block in text.split("##"):                                  # common.py:33
         if not block.strip() or re.fullmatch(r"\s*-{3,}\s*", block):
@@ -28,9 +30,14 @@ def parse_sections(text: str) -> dict[str, str]:
         if title.endswith(":"):                                     # common.py:45-46 (checked before .strip())
             title = title[:-1]
         body = re.sub(r"(?:\n\s*-{3,}\s*)+$", "", body.strip())   # DEVIATION D23: drop a closing '---' fence
-        m = re.search(r"```.*?\s+(.*?)```", body, re.DOTALL)        # common.py:53 — first fenced block, tag dropped
-        if m:
-            body = m.group(1)
+        if all_fences:
+            blocks = re.findall(r"```.*?\s+(.*?)```", body, re.DOTALL)   # D26: every fenced block, tags dropped
+            if blocks:
+                body = "\n".join(blocks)
+        else:
+            m = re.search(r"```.*?\s+(.*?)```", body, re.DOTALL)    # common.py:53 — first fenced block, tag dropped
+            if m:
+                body = m.group(1)
         out[title.strip()] = body
     return out
 

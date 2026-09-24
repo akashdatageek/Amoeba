@@ -56,7 +56,7 @@ class Recording(LLMClient):
 
 
 def role_names(text: str, parser) -> list[str]:
-    sec = parse_sections(text)
+    sec = parse_sections(text, all_fences=True)   # D26, as drafting reads it
     blobs = parser(sec.get("Created Roles List", "")) + parser(sec.get("Selected Roles List", ""))
     return list(dict.fromkeys(str(b.get("name", "")).strip() for b in blobs if str(b.get("name", "")).strip()))
 

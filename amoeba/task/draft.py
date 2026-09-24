@@ -179,6 +179,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                     PROMPT.autoagents_create_roles_d19, context=ctx, existing_roles="[]", tools=tools, history=history,
                     suggestions=suggestions, format_example=PROMPT.autoagents_create_roles_format_d19),
                     PLANNER_SECTIONS, seed, log)
+            sec = parse_sections(raw, all_fences=True)   # D26: roles/requests may span several fenced blocks
             rec.planner_raw = raw
             rec.roles = role_blobs(sec)
             rec.plan = ([{"agents": names, "text": text, **fields}
