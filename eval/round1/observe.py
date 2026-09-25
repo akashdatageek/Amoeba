@@ -83,8 +83,9 @@ def observe(run: Path) -> dict:
     t0, t1 = trace[0]["ts"] if trace else None, trace[-1]["ts"] if trace else None
     return {
         "run_id": run.name, "task_id": result.get("task_id"), "error": result.get("error"),
-        "box1": {"intake": (plan.get("quality") or {}).get("task_coverage"),
-                 "draft_quality": {k: v.get("ok") for k, v in (plan.get("quality") or {}).items() if isinstance(v, dict)}},
+        "box1": {"intake": ((plan.get("quality") or {}).get("checks") or {}).get("task_coverage"),
+                 "draft_quality": {k: v.get("ok") for k, v in ((plan.get("quality") or {}).get("checks") or {}).items()},
+                 "draft_quality_failed": (plan.get("quality") or {}).get("failed_checks")},
         "box2": {"rounds_used": plan.get("rounds_used"), "consensus": plan.get("consensus"), "rounds": rounds,
                  "requirements": plan.get("requirements"), "givens": plan.get("givens"),
                  "open_questions": plan.get("open_questions"),
