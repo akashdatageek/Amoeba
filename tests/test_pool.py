@@ -9,7 +9,7 @@ from amoeba.interp.runtime import UNAVAILABLE, role_card
 from amoeba.interp.trace import TraceWriter
 from amoeba.llm.cache import CachedLLM
 from amoeba.llm.profiles import Profile, build_router
-from amoeba.pool.index import load_index, refresh, sha256, split_skill
+from amoeba.pool.index import load_index, refresh, split_skill, text_sha256 as sha256
 from amoeba.pool.match import rank
 from amoeba.pool.mcp import PoolLimits, PoolTools, SdkConnector, SourceBook, data_block
 from amoeba.pool.stock import PoolSetup, stock_toolbox, vet
@@ -357,7 +357,7 @@ def test_plan_run_counts_a_pool_result_as_a_cited_source(cache, tmp_path, envelo
 def test_pool_tool_limits_errors_and_data_blocks():
     server = FakeServer(reply="x" * 50)
     pool = PoolTools(server, PoolLimits(max_calls_per_step=2, max_result_chars=10), SourceBook(), TraceWriter(None))
-    pool.add("pool:s", tool(SEARCH, "web search"), {}, LISTING)
+    pool.add_server("pool:s", tool(SEARCH, "web search"), {}, LISTING)
     pool.begin_step(1)
     out = pool.call("pool:s", "q1")
     assert out.startswith("[S1] pool:s · search, first 10 of 50 characters") and "<<<END POOL DATA>>>" in out

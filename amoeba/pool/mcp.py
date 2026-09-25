@@ -174,7 +174,7 @@ class PoolTools:
         if isinstance(self.book, SourceBook):          # WebTools is stepped by its own runner call
             self.book.begin_step(step, trace)
 
-    def add(self, name: str, entry: dict, headers: dict, listing: list[dict]) -> None:
+    def add_server(self, name: str, entry: dict, headers: dict, listing: list[dict]) -> None:
         self.items[name] = {"entry": entry, "headers": headers, "listing": listing, "pins": listing_digest(listing)}
 
     def description(self, name: str) -> str:

@@ -24,7 +24,7 @@ from typing import Any, Mapping
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, TeamConfig
 from amoeba.interp.trace import NoopListener, TracedLLM, TraceWriter
-from amoeba.pool.index import load_index, load_pool_config, sha256, skill_body
+from amoeba.pool.index import load_index, load_pool_config, skill_body, text_sha256
 from amoeba.pool.match import rank
 from amoeba.pool.mcp import PoolLimits, PoolTools, SdkConnector, SourceBook, data_block, listing_digest
 from amoeba.tools.registry import ToolRegistry
@@ -93,7 +93,7 @@ def vet(e: dict, setup: PoolSetup) -> tuple[str | None, dict, str | None]:
         if not key or not a.get("header") or re.search(r"\{\w+\}", e["remote_url"]):
             return "auth_missing", {}, None
         headers[a["header"]] = str(a.get("format", "{key}")).replace("{key}", key)
-    if sha256(e.get("description", "")) != e.get("description_sha256"):
+    if text_sha256(e.get("description", "")) != e.get("description_sha256"):
         return "description_changed", {}, None
     return None, headers, None
 
@@ -202,7 +202,7 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                                     pins_changed = True
                                     trace.event("pool_pinned", {"amoeba.pool.id": entry["id"],
                                                                 "amoeba.pool.tools": sorted(digest)})
-                                pool.add(name, entry, headers, listing)
+                                pool.add_server(name, entry, headers, listing)
                                 reg.register(name, f"pool tool {entry['name']} (MCP, D56)",
                                              lambda text, _n=name: pool.call(_n, text))
                     if reason is None:

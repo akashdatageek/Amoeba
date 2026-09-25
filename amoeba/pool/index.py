@@ -32,7 +32,7 @@ class PoolSourceError(RuntimeError):
 
 
 # box: pool_index
-def sha256(text: str) -> str:
+def text_sha256(text: str) -> str:
     return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
 
@@ -103,7 +103,7 @@ def tool_entry(server: dict, now: str) -> dict:
             "transport": remote.get("type") or ("package" if server.get("packages") else ""),
             "auth_required": any(h.get("isRequired") or h.get("isSecret") for h in headers) or bool(url_vars),
             "auth_headers": [h.get("name") for h in headers if h.get("name")] + url_vars,
-            "description_sha256": sha256(desc), "refreshed_at": now}
+            "description_sha256": text_sha256(desc), "refreshed_at": now}
 
 
 # ---- skills: a GitHub repository ---------------------------------------------------------------------------------
@@ -155,7 +155,7 @@ def skill_entry(repo: str, commit: str, s: dict, now: str) -> dict:
             "kind": "skill", "source": "repo", "source_repo": f"https://github.com/{repo}", "repo": repo,
             "version": commit, "commit": commit, "has_scripts": s["has_scripts"], "body_length": len(s["body"]),
             "body_file": f"skills/{safe_name(repo)}__{safe_name(s['dir'])}.md",
-            "description_sha256": sha256(s["description"]), "refreshed_at": now}
+            "description_sha256": text_sha256(s["description"]), "refreshed_at": now}
 
 
 # box: pool_index
