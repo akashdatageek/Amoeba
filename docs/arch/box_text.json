@@ -122,7 +122,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "7126cfe",
+  "checked_at": "88d51dc",
   "facts": {
    "anchors": [
     {
@@ -172,6 +172,22 @@
       [
        "mapped",
        "bool"
+      ],
+      [
+       "status",
+       "Literal['filled', 'unfilled'] | None"
+      ],
+      [
+       "pool_id",
+       "str"
+      ],
+      [
+       "candidates",
+       "list[str]"
+      ],
+      [
+       "reason",
+       "str"
       ]
      ],
      "key": "amoeba/task/models.py::CapabilityRequest",
@@ -199,6 +215,7 @@
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.spans",
       "amoeba/llm/limits.py::estimate",
+      "amoeba/pool/stock.py::stock_toolbox",
       "amoeba/task/draft.py::draft_team",
       "amoeba/task/evaluate.py::rubric_score",
       "amoeba/task/evaluate.py::score",
@@ -213,7 +230,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None) -> RunResult"
     }
    ],
    "checks": [],
@@ -235,8 +252,8 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "198d5e6c4e26b4b5",
-  "seed_hash": "b334e2ca877416cf",
+  "facts_hash": "c51f077a84f5da28",
+  "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
   "source": "hand",
   "what": [
@@ -244,7 +261,8 @@
    "Where it came from: the planner's list, a helper's tool list, or an action during the run.",
    "Also in result.json (with the steps that answered BLOCKED) and as one log line each.",
    "result.json also says how many requests round 1 proposed and how many were gone from the final draft (requests_proposed, requests_dropped_by_observers).",
-   "Each request keeps the name as written and a standard name from a list of known aliases ('Web Search' and 'web research' are both web_search); names not on the list are reported as unmapped so the list can grow."
+   "Each request keeps the name as written and a standard name from a list of known aliases ('Web Search' and 'web research' are both web_search); names not on the list are reported as unmapped so the list can grow.",
+   "D56: each request also says what Box 3's toolbox step did with it: status filled or unfilled, the pool id picked, the candidates shown and the reason code when it stayed unfilled."
   ]
  },
  "checks": {
@@ -1150,6 +1168,7 @@
   "seed_hash": "5c303e1325c2e5fb",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
    "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged) and can space calls out; can fold the system message into the user message and set the reasoning effort.",
@@ -1242,6 +1261,7 @@
   "seed_hash": "7d6586e2c55f4a4e",
   "sentence": "Every other helper reviews the answer and must reply Agree or Disagree; unreadable replies count as agreement.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "Each reviewer sees the job, its own role and the recent chat history (answers and objections).",
    "Its first line must be exactly 'Action: Agree' or 'Action: Disagree'; a disagreement carries a reason.",
@@ -1311,6 +1331,7 @@
   "seed_hash": "5cd085c314ad94ee",
   "sentence": "Counts the objections: none ends the run; otherwise everyone sees them and the writer revises, up to three rounds.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "After each review round, plain code keeps only the disagreeing reviews that carry a reason.",
    "None left: the run ends and the current answer is the result.",
@@ -1377,6 +1398,7 @@
   "seed_hash": "1ddbd3b677e803eb",
   "sentence": "Walks through the plan's steps in order, giving each step everything the earlier steps produced.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "Takes the plan's steps one at a time, in order.",
    "Each step sees the job plus the published result of every earlier step.",
@@ -1554,6 +1576,7 @@
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "When you give a sentence instead of asking for practice jobs, it becomes a single job.",
    "It has no known answer, so its score stays empty.",
@@ -1681,6 +1704,7 @@
   "seed_hash": "2abe057f94628663",
   "sentence": "The AI helper for a step reads the step, the earlier results and a shared scratchpad, then picks one action.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "Each helper named in the step gets its own drafted instructions plus the step, earlier results and a scratchpad shared with the other helpers of that step.",
    "If its role named a tool we lack, one line per such tool says it is unavailable this run and that it may answer BLOCKED.",
@@ -2038,6 +2062,7 @@
   "seed_hash": "788599a768833711",
   "sentence": "Every run saves five files: the team, the draft, a log line per AI call, the tools or skills the team asked for, and a result summary.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "Each run gets its own folder named by a random run id.",
    "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), and a one-line result.",
@@ -2240,6 +2265,7 @@
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call is logged.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "The team runs in one of three shapes chosen when you start the run, never by an AI.",
    "Over the step graph (plan): each step sees only the job and the outputs of the steps it depends on, code checks each step's output, and a summariser only assembles.",
@@ -3027,6 +3053,7 @@
   "seed_hash": "bf908ddbf6af5ba0",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
   "source": "hand (model: still true)",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
@@ -3360,6 +3387,158 @@
    "With our prompts (d24) it may also list Open Questions: each ambiguity in the job and the assumption it took. With --interactive the person sees the requirements, assumptions and open questions and types continue, or a correction that is added to the job before one more round."
   ]
  },
+ "pool_index": {
+  "checked_at": "88d51dc",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/index.py::PoolSourceError",
+      "amoeba/pool/index.py::load_pool_config",
+      "amoeba/pool/index.py::registry_servers",
+      "amoeba/pool/index.py::repo_skills",
+      "amoeba/pool/index.py::skill_entry",
+      "amoeba/pool/index.py::tool_entry"
+     ],
+     "doc": "Build the cache from every source in pool.yaml (no model call). Returns {entries, sources, errors}. A source",
+     "key": "amoeba/pool/index.py::refresh",
+     "signature": "refresh(config: dict | None=None, cache_dir: str | Path | None=None, get: Callable[[str], bytes]=http_get, only: str | None=None, log: Callable[[str], None]=print) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "The cached index, or None when there is none (the run then logs pool_unavailable and goes on as before).",
+     "key": "amoeba/pool/index.py::load_index",
+     "signature": "load_index(cache_dir: str | Path) -> dict | None"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "pool.yaml with its defaults filled in.",
+     "key": "amoeba/pool/index.py::load_pool_config",
+     "signature": "load_pool_config(path: str | Path=POOL_YAML) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/pool/index.py::load_index",
+      "amoeba/pool/index.py::load_pool_config",
+      "amoeba/pool/index.py::refresh",
+      "scripts/eval_draft.py::parse_args",
+      "scripts/run_task.py::parse_args"
+     ],
+     "doc": "",
+     "key": "amoeba/cli.py::main",
+     "signature": "main(argv: list[str] | None=None) -> int"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [],
+     "key": "amoeba/pool/index.py::PoolSourceError",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "",
+     "key": "amoeba/pool/index.py::_official",
+     "signature": "_official(item: dict) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "",
+     "key": "amoeba/pool/index.py::http_get",
+     "signature": "http_get(url: str, timeout: float=30.0) -> bytes"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/index.py::_official"
+     ],
+     "doc": "Every server.json of the registry, one per server name: the one marked isLatest, else the newest published.",
+     "key": "amoeba/pool/index.py::registry_servers",
+     "signature": "registry_servers(url: str, get: Callable[[str], bytes]=http_get, max_pages: int=10000) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/index.py::PoolSourceError",
+      "amoeba/pool/index.py::split_skill"
+     ],
+     "doc": "({repo, commit}, [{dir, name, description, body, has_scripts}]) for every <path>/<name>/SKILL.md at the",
+     "key": "amoeba/pool/index.py::repo_skills",
+     "signature": "repo_skills(repo: str, path: str='skills', get: Callable[[str], bytes]=http_get) -> tuple[dict, list[dict]]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/pool/index.py::safe_name",
+     "signature": "safe_name(s: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "",
+     "key": "amoeba/pool/index.py::skill_body",
+     "signature": "skill_body(cache_dir: str | Path, entry: dict) -> str | None"
+    },
+    {
+     "callees": [
+      "amoeba/pool/index.py::safe_name",
+      "amoeba/pool/index.py::text_sha256"
+     ],
+     "doc": "",
+     "key": "amoeba/pool/index.py::skill_entry",
+     "signature": "skill_entry(repo: str, commit: str, s: dict, now: str) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "(frontmatter, body) of a SKILL.md; no frontmatter gives ({}, text).",
+     "key": "amoeba/pool/index.py::split_skill",
+     "signature": "split_skill(text: str) -> tuple[dict, str]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/pool/index.py::text_sha256",
+     "signature": "text_sha256(text: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/index.py::text_sha256"
+     ],
+     "doc": "One index entry from a server.json. The first HTTPS remote wins; a server with only packages has none.",
+     "key": "amoeba/pool/index.py::tool_entry",
+     "signature": "tool_entry(server: dict, now: str) -> dict"
+    }
+   ],
+   "checks": [],
+   "guards": [],
+   "kind": "data",
+   "numbers": [
+    "http_get.timeout",
+    "registry_servers.max_pages"
+   ],
+   "prompts": {},
+   "title": "Pool index (cache)"
+  },
+  "facts_hash": "3095404d7e95b8a9",
+  "seed_hash": "8eba33ff05c493b5",
+  "sentence": "The tools and skills Box 3 may draw on, fetched ahead of time by `amoeba pool refresh`; a run only reads it.",
+  "source": "hand",
+  "what": [
+   "Tools: the official MCP Registry, the latest version of each server (remote, repository, version, whether a key is needed).",
+   "Skills: SKILL.md files of github.com/anthropics/skills (never a fork), with whether the skill ships scripts and the length of its text.",
+   "Sources are listed in amoeba/config/pool.yaml, one line each; the cache is data/pool/."
+  ]
+ },
  "provenance": {
   "checked_at": "7126cfe",
   "facts": {
@@ -3582,6 +3761,7 @@
   "seed_hash": "0bc95896d46d5143",
   "sentence": "Reads the helper's chosen action: runs a tool and loops, or accepts a final answer; gives up after five turns.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "If the chosen action is one of the helper's tools, the tool runs and its result goes on the scratchpad.",
    "'Final Output' marks that helper done; the step ends when every helper of it is done.",
@@ -3592,7 +3772,7 @@
   ]
  },
  "resolver": {
-  "checked_at": "7126cfe",
+  "checked_at": "88d51dc",
   "facts": {
    "anchors": [
     {
@@ -3624,8 +3804,10 @@
      "signature": "_dispatch(self, agent: AgentSpec, act: str, inp: str, step: int, ep: Episode) -> tuple[str, str | None]"
     },
     {
-     "callees": [],
-     "doc": "The agent's suggestions plus one line per tool its role named that is not registered (D21).",
+     "callees": [
+      "amoeba/pool/stock.py::pool_tool_notes"
+     ],
+     "doc": "The agent's suggestions plus one line per tool its role named that is not registered (D21), and how to use",
      "key": "amoeba/interp/runtime.py::with_unavailable",
      "signature": "with_unavailable(agent: AgentSpec) -> str"
     }
@@ -3693,8 +3875,8 @@
    "prompts": {},
    "title": "Tool resolver"
   },
-  "facts_hash": "63657cbb3e9025af",
-  "seed_hash": "c3479029142aaf35",
+  "facts_hash": "92c41ab4883c3f1c",
+  "seed_hash": "4f1dc3213f08fd80",
   "sentence": "Keeps the tools that exist; a tool we lack is recorded as a request, never used and never silently dropped.",
   "source": "hand",
   "what": [
@@ -3702,7 +3884,7 @@
    "The planner's own Capability Requests part is read as JSON; entries without a name are ignored.",
    "During the run: a helper with missing tools is told 'Tool X is unavailable this run; proceed without it or answer BLOCKED: X'. BLOCKED ends that helper's step and is logged.",
    "A helper that names a tool it does not have gets a notice instead of an echo; the log gets an 'unknown_tool' line and, if no such tool exists at all, a request is recorded.",
-   "Nothing is fetched or built: that is a later phase."
+   "Nothing is built here. From D56 Box 3 starts by trying to fill each request from the tool/skill pool (see Stock the toolbox); a request it cannot fill keeps the behaviour above."
   ]
  },
  "runresult": {
@@ -3894,6 +4076,7 @@
   "seed_hash": "bef6a71b78aeb520",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
@@ -4098,6 +4281,7 @@
   "seed_hash": "64c34b6ba3d51870",
   "sentence": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply triggers an immediate retry.",
   "source": "model: rewritten",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
    "It writes a full new answer each time it is asked.",
@@ -4675,13 +4859,732 @@
   "seed_hash": "53dfb3b38116dee8",
   "sentence": "The finished team written down as data: who exists, what each may use and who hands work to whom.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "The team as a data record: helpers, connections, where work starts and which helper gives the answer.",
    "It is saved as team.yaml in the run folder and can be fingerprinted to spot identical teams."
   ]
  },
+ "toolbox": {
+  "checked_at": "88d51dc",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/trace.py::NoopListener",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/index.py::load_index",
+      "amoeba/pool/match.py::rank",
+      "amoeba/pool/mcp.py::Connector.tools",
+      "amoeba/pool/mcp.py::PoolLimits",
+      "amoeba/pool/mcp.py::PoolTools",
+      "amoeba/pool/mcp.py::PoolTools.add_server",
+      "amoeba/pool/mcp.py::SdkConnector",
+      "amoeba/pool/mcp.py::SdkConnector.tools",
+      "amoeba/pool/mcp.py::SourceBook",
+      "amoeba/pool/mcp.py::listing_digest",
+      "amoeba/pool/stock.py::_pins",
+      "amoeba/pool/stock.py::attach",
+      "amoeba/pool/stock.py::helpers_for",
+      "amoeba/pool/stock.py::pick",
+      "amoeba/pool/stock.py::steps_of",
+      "amoeba/pool/stock.py::vet",
+      "amoeba/task/saved_drafts.py::pick",
+      "amoeba/tools/registry.py::ToolRegistry.copy",
+      "amoeba/tools/registry.py::ToolRegistry.register"
+     ],
+     "doc": "Fill what it can of `requests` (Box 2's capability requests) from the cached pool. Changes cfg's helpers",
+     "key": "amoeba/pool/stock.py::stock_toolbox",
+     "signature": "stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, trace: TraceWriter, setup: PoolSetup, seed: int=0) -> tuple[ToolRegistry, dict]"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/cache.py::CachedLLM.chat_messages",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/client.py::LLMClient.chat_messages",
+      "amoeba/llm/client.py::MockLLMClient.chat_messages",
+      "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
+      "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/pool/mcp.py::data_block",
+      "scripts/eval_draft.py::Recording.chat_messages"
+     ],
+     "doc": "The one AI call: the request and its candidates in, one listed id (or None) out. Parsed strictly.",
+     "key": "amoeba/pool/stock.py::pick",
+     "signature": "pick(llm: TracedLLM, q, helper: str, steps: str, candidates: list[dict], seed: int=0) -> str | None"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/index.py::skill_body",
+      "amoeba/pool/index.py::text_sha256",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "(reason it is refused or None, auth headers for a tool, skill body). The first failing rule wins.",
+     "key": "amoeba/pool/stock.py::vet",
+     "signature": "vet(e: dict, setup: PoolSetup) -> tuple[str | None, dict, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/match.py::request_words",
+      "amoeba/pool/match.py::words"
+     ],
+     "doc": "The best `top` entries of the request's kind as (score, entry), best first; only scores above zero. A word",
+     "key": "amoeba/pool/match.py::rank",
+     "signature": "rank(q, entries: list[dict], top: int=5) -> list[tuple[int, dict]]"
+    },
+    {
+     "callees": [],
+     "doc": "The pool tools attached to one run: their servers, pinned descriptions, per-step counters and sources.",
+     "fields": [
+      [
+       "connector",
+       "Connector"
+      ],
+      [
+       "limits",
+       "PoolLimits"
+      ],
+      [
+       "book",
+       "Any"
+      ],
+      [
+       "trace",
+       "Any"
+      ],
+      [
+       "items",
+       "dict"
+      ],
+      [
+       "step",
+       "int | None"
+      ],
+      [
+       "_used",
+       "dict"
+      ]
+     ],
+     "key": "amoeba/pool/mcp.py::PoolTools",
+     "methods": [
+      "begin_step(self, step: int, trace=None) -> None",
+      "add_server(self, name: str, entry: dict, headers: dict, listing: list[dict]) -> None",
+      "description(self, name: str) -> str",
+      "arguments(listing: list[dict], text: str) -> tuple[str, dict]",
+      "call(self, name: str, text: str) -> str"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "The official MCP Python SDK over HTTPS (streamable HTTP or SSE), one short connection per listing or call.",
+     "fields": [],
+     "key": "amoeba/pool/mcp.py::SdkConnector",
+     "methods": [
+      "__init__(self, timeout_s: float=20.0, target: Callable[[dict, dict], Any] | None=None)",
+      "tools(self, entry: dict, headers: dict) -> list[dict]",
+      "call(self, entry: dict, headers: dict, tool: str, arguments: dict, check: Callable[[list[dict]], None]) -> tuple[str, bool]"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/capabilities/__init__.py::snake"
+     ],
+     "doc": "The alias list of a standard name (amoeba/capabilities/aliases.yaml); [] when it has none.",
+     "key": "amoeba/pool/match.py::aliases_of",
+     "signature": "aliases_of(canonical: str) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/pool/match.py::aliases_of",
+      "amoeba/pool/match.py::words"
+     ],
+     "doc": "What a request says it needs: its standard name and aliases, raw name, what it does, input and output.",
+     "key": "amoeba/pool/match.py::request_words",
+     "signature": "request_words(q) -> set[str]"
+    },
+    {
+     "callees": [],
+     "doc": "Lower-case content words of 3+ characters; a plural 's' is dropped so 'prices' meets 'price'.",
+     "key": "amoeba/pool/match.py::words",
+     "signature": "words(text: str) -> set[str]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [],
+     "key": "amoeba/pool/mcp.py::Connector",
+     "methods": [
+      "tools(self, entry: dict, headers: dict) -> list[dict]",
+      "call(self, entry: dict, headers: dict, tool: str, arguments: dict, check: Callable[[list[dict]], None]) -> tuple[str, bool]"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "max_calls_per_step",
+       "int"
+      ],
+      [
+       "timeout_s",
+       "float"
+      ],
+      [
+       "max_result_chars",
+       "int"
+      ]
+     ],
+     "key": "amoeba/pool/mcp.py::PoolLimits",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [],
+     "key": "amoeba/pool/mcp.py::PoolToolError",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "The run's [S#] source list when it has no web tools (the same interface as WebTools).",
+     "fields": [],
+     "key": "amoeba/pool/mcp.py::SourceBook",
+     "methods": [
+      "__init__(self)",
+      "begin_step(self, step: int, trace=None) -> None",
+      "sources_for(self, step: int) -> list[dict]"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "Outside text, marked as data. The end marker cannot be forged from inside.",
+     "key": "amoeba/pool/mcp.py::data_block",
+     "signature": "data_block(label: str, text: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "tool name -> sha256 of its description: what a server's tools/list must still say at every connection.",
+     "key": "amoeba/pool/mcp.py::listing_digest",
+     "signature": "listing_digest(listing: list[dict]) -> dict[str, str]"
+    },
+    {
+     "callees": [],
+     "doc": "What a run needs to stock its toolbox: pool.yaml, where the cache is, how to reach a server, the env.",
+     "fields": [
+      [
+       "config",
+       "dict"
+      ],
+      [
+       "cache_dir",
+       "str | Path | None"
+      ],
+      [
+       "connector",
+       "Any"
+      ],
+      [
+       "env",
+       "Mapping[str, str]"
+      ]
+     ],
+     "key": "amoeba/pool/stock.py::PoolSetup",
+     "methods": [
+      "dir(self) -> Path",
+      "limits(self) -> dict"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/pool/stock.py::_pins",
+     "signature": "_pins(setup: PoolSetup) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/mcp.py::PoolTools.description",
+      "amoeba/pool/mcp.py::data_block"
+     ],
+     "doc": "Give one helper the item: a tool joins its tools (and is described on its prompt), a skill joins its card.",
+     "key": "amoeba/pool/stock.py::attach",
+     "signature": "attach(a: AgentSpec, entry: dict, name: str, body: str | None, pool: PoolTools | None, q) -> None"
+    },
+    {
+     "callees": [],
+     "doc": "The helper(s) a request is for: its for_role, else every helper whose missing tools name it.",
+     "key": "amoeba/pool/stock.py::helpers_for",
+     "signature": "helpers_for(q, cfg: TeamConfig) -> list[AgentSpec]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/pool/stock.py::pool_skill_notes",
+     "signature": "pool_skill_notes(agent: AgentSpec) -> list[str]"
+    },
+    {
+     "callees": [],
+     "doc": "Lines for a helper's prompt: how to use each pool tool it was given (as data).",
+     "key": "amoeba/pool/stock.py::pool_tool_notes",
+     "signature": "pool_tool_notes(agent: AgentSpec) -> list[str]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/pool/stock.py::steps_of",
+     "signature": "steps_of(cfg: TeamConfig, agents: list[AgentSpec]) -> str"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if entry['kind'] == 'tool'",
+     "add {'kind': 'tool', 'id': entry['id'], 'name': name, 'text': data_block(f'tool {name}', pool.description(name))}"
+    ],
+    [
+     "correct",
+     "if name not in a.tools",
+     "add name"
+    ],
+    [
+     "correct",
+     "if score > 0",
+     "add (score, e)"
+    ],
+    [
+     "correct",
+     "if self.step is not None and self.step not in s['steps']",
+     "add self.step"
+    ],
+    [
+     "decide",
+     "if e.get('auth_required')",
+     "set a = (setup.config.get('auth_env') or {}).get(e['name']) or {}"
+    ],
+    [
+     "decide",
+     "if e['kind'] == 'skill'",
+     "set body = skill_body(setup.dir, e)"
+    ],
+    [
+     "decide",
+     "if entry['id'] in pins and pins[entry['id']].get('tools') != digest",
+     "set reason = 'description_changed'"
+    ],
+    [
+     "decide",
+     "if entry['id'] not in pins",
+     "set pins[entry['id']] = {'version': entry.get('version'), 'tools': digest}"
+    ],
+    [
+     "decide",
+     "if len(listing) != 1",
+     "set args = obj.get('arguments') or {}"
+    ],
+    [
+     "decide",
+     "if not any((p.strip() for p in parts)) and structured is not None",
+     "set parts = [json.dumps(structured, ensure_ascii=False)]"
+    ],
+    [
+     "decide",
+     "if not helpers",
+     "set out['reason'] = 'no_helper'"
+    ],
+    [
+     "decide",
+     "if not listing",
+     "set reason = 'no_tools'"
+    ],
+    [
+     "decide",
+     "if not ranked",
+     "set out['reason'] = 'no_candidates'"
+    ],
+    [
+     "decide",
+     "if out['reason']",
+     "set summary['reasons'][out['reason']] = summary['reasons'].get(out['reason'], 0) + len(group)"
+    ],
+    [
+     "decide",
+     "if pool is None",
+     "set reg = tools.copy()"
+    ],
+    [
+     "decide",
+     "if q.kind == 'tool' and (q.canonical in tools or q.name in tools)",
+     "set out['reason'] = 'registered_tool'"
+    ],
+    [
+     "decide",
+     "if reason is None",
+     "set out['status'] = 'filled'"
+    ],
+    [
+     "decide",
+     "if reason is None and (not takers or (chosen not in attached and len(attached) >= int(lim['max_per_run'])))",
+     "set reason = 'cap_reached'"
+    ],
+    [
+     "decide",
+     "if trace is not None",
+     "set self.trace = trace"
+    ],
+    [
+     "fallback",
+     "\"ActionInput: a JSON object of the tool's arguments, or plain text for its one text argument\" if len(it['listing']) == 1 else 'ActionInput: {\"tool\": \"<one of the tools below>\", \"arguments\": {...}}'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "' returned an error' if is_error else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'description_changed' if str(e) == 'description_changed' else 'call_failed'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'filled' if out['status'] == 'filled' else 'unfilled'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[self.step] if self.step is not None else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "answer if answer in ids else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "await client.list_tools(cursor=cursor) if cursor else await client.list_tools()",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "b.text if getattr(b, 'type', '') == 'text' else f\"[{getattr(b, 'type', 'other')} content omitted]\"",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except (OSError, ValueError)",
+     "return {}"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "return self._fail(name, f'{type(e).__name__}: {e}')"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "set reason = 'connect_failed'"
+    ],
+    [
+     "fallback",
+     "except OSError",
+     "trace.event('pool_pinned', {'amoeba.box': 'toolbox', 'error.type': f'pins.json n"
+    ],
+    [
+     "fallback",
+     "except PoolToolError",
+     "return f'error: {name}: {e}'"
+    ],
+    [
+     "fallback",
+     "except PoolToolError",
+     "return self._fail(name, str(e), 'description_changed' if str(e) == 'description_changed' else 'call_failed')"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "set obj = None"
+    ],
+    [
+     "fallback",
+     "f\"pool:{entry['name']}\" if entry else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f', first {len(cut)} of {len(out)} characters' if len(out) > len(cut) else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "json.loads(text) if text.startswith('{') else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "name if entry['kind'] == 'tool' else entry['name']",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "obj['arguments'] if isinstance(obj.get('arguments'), dict) and obj.get('tool') == t['name'] else obj",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "setup.env.get(a.get('env', '')) if a.get('env') else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "vet(entry, setup) if entry else ('pick_none', {}, None)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "w[:-1] if len(w) > 4 and w.endswith('s') and (not w.endswith('ss')) else w",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'pool_unavailable': len(requests)} if requests else {}",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if (v or {}).get('type') == 'string'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if e['id'] == chosen",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if ids & set(s.agent_ids)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k != 'attached'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k in strings",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if len(per_helper.get(a.agent_id, set()) - {chosen}) < int(lim['max_per_helper'])",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if p['kind'] == 'skill'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if p['kind'] == 'tool'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if q.for_role and a.name == q.for_role",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if q.name in a.missing_tools",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if step in s['steps']",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t not in (q.name, q.canonical)",
+     "drop the rest"
+    ],
+    [
+     "loop cap",
+     "for _ in range(20)",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if e.get('kind') != q.kind",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if len(w) < 3 or w in STOP or w.isdigit()",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if listing_digest(listing) != it['pins']",
+     "raise PoolToolError"
+    ],
+    [
+     "reject",
+     "if not (isinstance(obj, dict) and obj.get('tool') in names)",
+     "raise PoolToolError"
+    ],
+    [
+     "reject",
+     "if not isinstance(args, dict)",
+     "raise PoolToolError"
+    ],
+    [
+     "reject",
+     "if not url.startswith('https://')",
+     "raise PoolToolError"
+    ],
+    [
+     "reject",
+     "if props",
+     "raise PoolToolError"
+    ],
+    [
+     "stop",
+     "if body is None",
+     "return ('body_missing', {}, None)"
+    ],
+    [
+     "stop",
+     "if e.get('has_scripts')",
+     "return ('has_scripts', {}, None)"
+    ],
+    [
+     "stop",
+     "if entry.get('transport') == 'sse'",
+     "return sse_client(url, headers=headers or None, timeout=self.timeout_s)"
+    ],
+    [
+     "stop",
+     "if index is None",
+     "return (tools, {**summary, 'status': 'unavailable', 'unfilled': len(requests), 'reasons': {'pool_unavailable': len(requests)} if requests else {}})"
+    ],
+    [
+     "stop",
+     "if isinstance(obj, dict)",
+     "return (t['name'], obj['arguments'] if isinstance(obj.get('arguments'), dict) and obj.get('tool') == t['name'] else obj)"
+    ],
+    [
+     "stop",
+     "if it is None",
+     "return f'error: {name} is not attached to this run'"
+    ],
+    [
+     "stop",
+     "if key is None",
+     "return (t['name'], {})"
+    ],
+    [
+     "stop",
+     "if len(body) > int(lim['max_skill_chars']) or int(e.get('body_length', 0)) > int(lim['max_skill_chars'])",
+     "return ('too_long', {}, None)"
+    ],
+    [
+     "stop",
+     "if n >= self.limits.max_calls_per_step",
+     "return f'error: {name} limit reached ({self.limits.max_calls_per_step} per step); work with what you have'"
+    ],
+    [
+     "stop",
+     "if not VERSION.match(e.get('version') or '')",
+     "return ('no_version', {}, None)"
+    ],
+    [
+     "stop",
+     "if not cursor",
+     "stop (break)"
+    ],
+    [
+     "stop",
+     "if not e.get('remote_url', '').startswith('https://') or e.get('transport') not in ('streamable-http', 'sse')",
+     "return ('not_remote', {}, None)"
+    ],
+    [
+     "stop",
+     "if not e.get('source_repo')",
+     "return ('no_source', {}, None)"
+    ],
+    [
+     "stop",
+     "if not key or not a.get('header') or re.search('\\\\{\\\\w+\\\\}', e['remote_url'])",
+     "return ('auth_missing', {}, None)"
+    ],
+    [
+     "stop",
+     "if s['url'] == url",
+     "return s"
+    ],
+    [
+     "stop",
+     "if snake(name) == snake(canonical)",
+     "return list(aliases or [])"
+    ],
+    [
+     "stop",
+     "if text_sha256(e.get('description', '')) != e.get('description_sha256')",
+     "return ('description_changed', {}, None)"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "Episode.n_llm_calls",
+    "Episode.seed",
+    "PoolLimits.max_calls_per_step",
+    "PoolLimits.max_result_chars",
+    "PoolLimits.timeout_s",
+    "WebLimits.timeout_s",
+    "pick.seed",
+    "rank.top",
+    "stock_toolbox.seed"
+   ],
+   "prompts": {},
+   "title": "Stock the toolbox"
+  },
+  "facts_hash": "bee9719e06f3db53",
+  "seed_hash": "52bd91ee3da95599",
+  "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
+  "source": "hand",
+  "what": [
+   "Match: the cached pool entries of the same kind are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
+   "Pick: one short AI call shows the request and those candidates and must answer exactly one listed id or NONE; any other reply counts as NONE.",
+   "Vet: a tool needs an HTTPS remote, a source repository, a pinned version, no key or its key in the environment, and an unchanged description (also re-checked against the server's tools/list at every connection); a skill must be instruction-only and at most 5,000 characters. At most {PoolLimits.max_calls_per_step} items per helper and 8 per run (pool.yaml).",
+   "Attach: a tool becomes pool:<name> for the asking helper only; a skill's text goes on that helper's card. All pool text is shown inside marked data blocks, and the 'unavailable' line goes away.",
+   "Every request's outcome and reason code is written to capability_requests.json and result.json; without a pool cache the run logs pool_unavailable and goes on as before."
+  ]
+ },
  "tools": {
-  "checked_at": "7126cfe",
+  "checked_at": "88d51dc",
   "facts": {
    "anchors": [
     {
@@ -4694,6 +5597,7 @@
       "register(self, name: str, description: str, fn: Callable[[str], str]) -> None",
       "names(self) -> list[str]",
       "descriptions(self) -> dict[str, str]",
+      "copy(self) -> 'ToolRegistry'",
       "execute(self, name: str, action_input: str, agent=None) -> str"
      ],
      "signature": null
@@ -4785,6 +5689,11 @@
      "correct",
      "if self.step is not None and self.step not in s['steps']",
      "add self.step"
+    ],
+    [
+     "decide",
+     "if hasattr(self, 'web')",
+     "set new.web = self.web"
     ],
     [
      "decide",
@@ -4929,6 +5838,7 @@
    ],
    "kind": "code",
    "numbers": [
+    "PoolLimits.timeout_s",
     "WebLimits.max_fetch_chars",
     "WebLimits.max_fetches_per_step",
     "WebLimits.max_results",
@@ -4939,14 +5849,15 @@
    "prompts": {},
    "title": "Tool box"
   },
-  "facts_hash": "e0f9d73897bda505",
-  "seed_hash": "1fa3840bd048c24d",
+  "facts_hash": "280371dcc905e2b8",
+  "seed_hash": "e40d467b502b090d",
   "sentence": "Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search and page reading.",
   "source": "hand",
   "what": [
    "Tools are looked up by name; a name that is not registered is an error, not a web search.",
    "The arithmetic tool accepts numbers and + − × ÷ and powers only, never arbitrary code.",
    "web_search and fetch_url (Tavily) give every result a source id [S#]; searches and fetches per step, page length and time are capped, and a failure comes back as an error line, never a crash.",
+   "Pool tools (D56) are remote MCP servers registered as pool:<name> for the helper that asked; they run here too, with the same caps, [S#] source ids and error lines.",
    "This is the single place any tool is ever run."
   ]
  },
@@ -5205,6 +6116,7 @@
   "seed_hash": "0f5f3df261f75ad2",
   "sentence": "Writes one log line per AI call and tool call: who, which model, tokens and time. Nothing enforces a budget.",
   "source": "hand (model: still true)",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "Every AI call becomes one log line with the helper, model, tokens in and out, and time taken.",
    "Tool calls, each helper's turn and the whole run get their own lines too.",
