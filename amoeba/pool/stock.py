@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from urllib.parse import urlparse
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -33,6 +34,27 @@ from amoeba.tools.registry import ToolRegistry
 PICKER = "pool_picker"
 NONE = "NONE"
 VERSION = re.compile(r"^v?\d+(\.\d+)*([-+][0-9A-Za-z.-]+)?$")
+# D58: read-only tools only for now — a tool that says it acts outside (sends, posts, pays, deletes …) is refused
+SIDE_EFFECT = re.compile(r"\b(send|sends|sending|sent|e-?mails?|e-?mailing|mails?|mailing|mailer|post|posts|posting|"
+                         r"publish\w*|pay|pays|paying|payments?|purchas\w*|delet\w*|write to)\b", re.I)
+
+
+# box: toolbox
+def side_effect(*texts: str) -> str | None:
+    """The first outside-action word in a tool's name or description (names are split at - _ . /), or None."""
+    for t in texts:
+        m = SIDE_EFFECT.search(re.sub(r"[-_./]", " ", t or ""))
+        if m:
+            return m.group(0)
+    return None
+
+
+# box: toolbox
+def paid_host(url: str, setup: "PoolSetup") -> bool:
+    """D58: a host under a domain pool.yaml lists as pay-per-call (e.g. *.klymax402.com, x402 endpoints)."""
+    host = (urlparse(url).hostname or "").lower()
+    domains = [d.lower().lstrip("*.") for d in setup.config.get("paid_hosts") or []]
+    return any(host == d or host.endswith("." + d) for d in domains)
 
 
 # box: toolbox
@@ -83,6 +105,10 @@ def vet(e: dict, setup: PoolSetup) -> tuple[str | None, dict, str | None]:
         return None, {}, body
     if not e.get("remote_url", "").startswith("https://") or e.get("transport") not in ("streamable-http", "sse"):
         return "not_remote", {}, None
+    if paid_host(e["remote_url"], setup):
+        return "paid_endpoint", {}, None
+    if side_effect(e.get("name", ""), e.get("title", ""), e.get("description", "")):
+        return "side_effect", {}, None
     if not e.get("source_repo"):
         return "no_source", {}, None
     if not VERSION.match(e.get("version") or ""):
@@ -198,6 +224,8 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                                 reason = "description_changed"
                             elif not listing:
                                 reason = "no_tools"
+                            elif any(side_effect(t["name"], t.get("description", "")) for t in listing):
+                                reason = "side_effect"      # D58: a server that also offers an acting tool
                             else:
                                 if entry["id"] not in pins:  # first use: pin what the server says now
                                     pins[entry["id"]] = {"version": entry.get("version"), "tools": digest}

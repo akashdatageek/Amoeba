@@ -261,6 +261,38 @@ def test_tool_vetting_rules(cache, change, reason):
     assert vet({**tool(SEARCH, "web search"), **change}, setup(cache))[0] == reason
 
 
+@pytest.mark.parametrize("name,desc,hit", [
+    ("io.example/email-send", "Sends transactional email", True), ("io.example/x", "Post a message to Slack", True),
+    ("io.example/pay", "Make a payment with a card", True), ("io.example/files", "Delete files in your Drive", True),
+    ("io.example/crm", "Write to your CRM account", True), ("io.example/pub", "Publishes articles", True),
+    ("io.example/search", "Searches the web; returns snippets", False),
+    ("io.example/pg", "Read-only PostgreSQL queries on your database", False),
+    ("io.example/gmail-read", "Read your Gmail inbox", False)])
+def test_side_effect_tools_are_refused(cache, name, desc, hit):
+    assert (vet(tool(name, desc), setup(cache))[0] == "side_effect") is hit
+
+
+def test_a_server_that_also_offers_an_acting_tool_is_refused_after_connecting(cache, task, envelope, trace):
+    server = FakeServer()
+    server.listing.append({"name": "send_email", "description": "Sends an email", "input_schema": {}})
+    llm = mock(planner=[fx(CAP)], pool_picker=picker)
+    cfg = instantiate(draft_team(task, llm, envelope, trace), "flat", task, envelope)
+    q = req("web_search", what="search the web")
+    reg, _ = stock_toolbox([q], cfg, default_registry(), llm, trace, setup(cache, server))
+    assert (q.status, q.reason) == ("unfilled", "side_effect") and "pool:io.example/search" not in reg
+
+
+def test_paid_endpoints_are_refused(cache):
+    s = setup(cache)
+    s.config["paid_hosts"] = ["*.klymax402.com"]
+    assert vet(tool("io.github.x/code-sandbox", "Runs Python code",
+                    remote_url="https://code-sandbox.api.klymax402.com/mcp"), s)[0] == "paid_endpoint"
+    assert vet(tool("io.github.x/y", "Runs Python code", remote_url="https://klymax402.com/mcp"), s)[0] == "paid_endpoint"
+    assert vet(tool("io.github.x/z", "Runs Python code", remote_url="https://notklymax402.com/mcp"), s)[0] is None
+    from amoeba.pool.index import load_pool_config
+    assert load_pool_config()["paid_hosts"] == ["*.klymax402.com"]              # shipped in pool.yaml
+
+
 def test_a_key_in_the_environment_passes_auth_and_goes_in_its_header(cache):
     s = setup(cache, auth_env={SEARCH: {"env": "SEARCH_KEY", "header": "Authorization", "format": "Bearer {key}"}})
     e = {**tool(SEARCH, "web search"), "auth_required": True}

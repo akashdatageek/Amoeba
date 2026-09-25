@@ -499,7 +499,9 @@ BOXES: list[dict] = [
                "(pool.yaml) are kept. None above zero: unfilled, no AI call.",
                "Pick: one short AI call shows the request and those candidates and must answer exactly one listed id "
                "or NONE; any other reply counts as NONE.",
-               "Vet: a tool needs an HTTPS remote, a source repository, a pinned version, no key or its key in the "
+               "Vet: a tool must be read-only (nothing in its name or description that sends, posts, pays or deletes) "
+               "and not a pay-per-call host; it needs an HTTPS remote, a source repository, a pinned version, no key or "
+               "its key in the "
                "environment, and an unchanged description (also re-checked against the server's tools/list at every "
                "connection); a skill must be instruction-only and at most 5,000 characters. At most 3 items per "
                "helper and 8 per run (pool.yaml).",

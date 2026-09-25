@@ -60,8 +60,10 @@ python -m scripts.run_task ... --no-pool                 # the step off (e.g. to
 
 Before the runner is chosen, every capability request Box 2 recorded is matched against the cached pool by keywords
 (plain code, the top 5, tools and skills alike: the requested kind is only the planner's guess, D58), one short AI call (role group `pool`, default the workers' model) picks one candidate or
-NONE, and plain code vets and attaches it. A tool needs an HTTPS remote, a source repository, a pinned version, no key
-or its key in the environment variable named in `amoeba/config/pool.yaml` (`auth_env`), and a description unchanged
+NONE, and plain code vets and attaches it. A tool must be read-only (no send / email / post / publish / pay / purchase /
+delete / "write to" in its name or description, nor in any tool the server lists) and not on a pay-per-call host
+(`paid_hosts` in pool.yaml), and needs an HTTPS remote, a source repository, a pinned version, no key or its key in
+the environment variable named in `amoeba/config/pool.yaml` (`auth_env`), and a description unchanged
 since the refresh and since it was first attached (`data/pool/pins.json`). It becomes `pool:<name>` for the asking
 helper only and runs through `ToolRegistry.execute` with the MCP Python SDK, capped like web_search, every result an
 [S#] source. A skill must be instruction-only and at most 5,000 characters; its SKILL.md text goes on the helper's

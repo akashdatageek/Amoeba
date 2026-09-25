@@ -46,7 +46,8 @@ def load_pool_config(path: str | Path = POOL_YAML) -> dict:
     limits = {"max_candidates": 5, "max_per_helper": 3, "max_per_run": 8, "max_skill_chars": 5000,
               "max_calls_per_step": 3, "timeout_s": 20.0, "max_result_chars": 6000, **(data.get("limits") or {})}
     return {"sources": list(data.get("sources") or []), "cache_dir": data.get("cache_dir") or "data/pool",
-            "auth_env": dict(data.get("auth_env") or {}), "limits": limits}
+            "auth_env": dict(data.get("auth_env") or {}), "paid_hosts": list(data.get("paid_hosts") or []),
+            "limits": limits}
 
 
 # box: pool_index
