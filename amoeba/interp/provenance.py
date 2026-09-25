@@ -38,6 +38,7 @@ def _line_numbers(line: str) -> list[str]:
     return [m.group(0) for m in NUM.finditer(body)]
 
 
+# box: provenance
 def claim_numbers(text: str) -> set[str]:
     """The numbers a text states as figures: list markers, [S#] tags and labels (step 3, R2, p95) left out."""
     return {_norm(t) for line in (text or "").splitlines() for t in _line_numbers(line)}
@@ -48,6 +49,7 @@ def _derived(line: str, tok: str) -> bool:
     return bool(re.search(r"[=≈]\s*~?\s*" + re.escape(tok), line))
 
 
+# box: provenance
 def check_provenance(text: str, allowed_ids: set[str], task_text: str = "", inputs_text: str = "",
                      tool_results: list[str] | None = None) -> dict:
     given, inherited = numbers_in(task_text), numbers_in(inputs_text)
@@ -81,6 +83,7 @@ def check_provenance(text: str, allowed_ids: set[str], task_text: str = "", inpu
             "untagged_examples": untagged[:20], "figures": figures}   # D43: figures feed the run's ledger
 
 
+# box: provenance
 def total(per_step: list[dict]) -> dict:
     """The run's provenance: the per-step counts summed; hallucinated citations listed with their step."""
     keys = ("cited", "unverified", "given", "derived", "inherited", "untagged", "numbers")

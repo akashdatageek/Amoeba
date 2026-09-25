@@ -29,6 +29,7 @@ class PromptRef(BaseModel):
     # "history+append": AgentVerse — system=prepend, then chat-history messages, then user=append
 
 
+# box: teamconfig
 class AgentSpec(BaseModel):
     agent_id: str  # str(uuid4()); durable
     name: str
@@ -76,6 +77,7 @@ class PlanStep(BaseModel):
     done_when: str = ""
 
 
+# box: teamconfig
 class TeamConfig(BaseModel):
     team_id: str
     version: int = 1

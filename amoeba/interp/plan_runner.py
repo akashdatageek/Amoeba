@@ -16,6 +16,7 @@ from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.provenance import check_provenance, claim_numbers, numbers_in
+from amoeba.llm.profiles import role_group
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
 from amoeba.task.models import Episode, Task
 from amoeba.task.parsers import MissingSections
@@ -54,6 +55,7 @@ def number(step: PlanStep) -> int:
     return step.index + 1
 
 
+# box: plan_graph
 def dependencies(plan: list[PlanStep]) -> dict[int, list[int]]:
     """step number -> the step numbers it depends on. A plan with no depends_on at all (a d19 draft) is a chain."""
     if not any(s.depends_on for s in plan):
@@ -62,6 +64,7 @@ def dependencies(plan: list[PlanStep]) -> dict[int, list[int]]:
     return {number(s): list(dict.fromkeys(s.depends_on)) for s in plan}
 
 
+# box: plan_graph
 def waves(plan: list[PlanStep]) -> list[list[int]]:
     """Topological waves: each wave holds the steps whose dependencies are all in earlier waves (Kahn's
     algorithm, steps in plan order within a wave). Unknown step numbers and cycles raise PlanGraphError."""
@@ -82,6 +85,7 @@ def waves(plan: list[PlanStep]) -> list[list[int]]:
     return out
 
 
+# box: plan_graph
 def relink(plan: list[PlanStep], written: dict[int, list[int]]) -> tuple[list[PlanStep], list[dict]]:
     """Box 2 drops a step that names no known role but keeps the others' numbers, so depends_on can point at a
     dropped step. Such a dependency is replaced by the dropped step's own dependencies (as the planner wrote
@@ -110,6 +114,7 @@ def relink(plan: list[PlanStep], written: dict[int, list[int]]) -> tuple[list[Pl
     return out, events
 
 
+# box: plan_step
 def plan_card(agent: AgentSpec) -> str:
     """The role card a plan step's helper sees: the D24 role record, prompt last."""
     lines = [f"Name: {agent.name}",
@@ -123,11 +128,13 @@ def plan_card(agent: AgentSpec) -> str:
     return "\n".join(x for x in lines if x)
 
 
+# box: plan_step
 def step_detail(step: PlanStep) -> str:
     extra = [f"{k}: {getattr(step, k)}" for k in ("do", "output", "done_when") if getattr(step, k)]
     return "\n".join([step.text, *extra])
 
 
+# box: plan_step
 def full_action_input(raw: str, parsed: str) -> str:
     """ActionInput is the last section, so it runs to the end of the reply. The AutoAgents parser splits on every
     '##', which cuts a markdown answer at its first '##'/'###' heading (the flat baseline loses its answers
@@ -214,6 +221,7 @@ NUMERIC_WORDS = re.compile(r"\b(cost|costs|estimate|estimates|price|prices|prici
 MARKERS = {"table": "format_table", "list": "format_list", "code": "format_code", "memo": "format_headings"}
 
 
+# box: step_check
 def output_markers(output: str) -> list[str]:
     """D42: the format markers the planner put in a step's `output` line (table:, list:, code:, memo:)."""
     return list(dict.fromkeys(m.lower() for m in re.findall(r"\b(table|list|code|memo)\s*:", output or "", re.I)))
@@ -230,6 +238,7 @@ def shares_words(a: str, b: str, n: int = 8) -> bool:
     return any(tuple(wa[i:i + n]) in grams for i in range(len(wa) - n + 1))
 
 
+# box: step_check
 def uses_inputs(body: str, deps: list[int], artifacts: dict) -> bool:
     """D42: a real match with an input — a figure it contains (not a single digit), one of its source ids, a
     dependency's step number or role name, or 8+ consecutive shared words. A whole output under 8 words that
@@ -245,6 +254,7 @@ def uses_inputs(body: str, deps: list[int], artifacts: dict) -> bool:
             or (bool(short) and len(_words(short)) < 8 and short in dep_text))
 
 
+# box: step_check
 def step_checks(step: PlanStep, text: str, deps: list[int], artifacts: dict, verifier: bool = False) -> list[dict]:
     """D34: deterministic checks of a step's output. D42: the format checks come from the markers the planner
     wrote in `output` (table:, list:, code:, memo:); only when there are none are keywords in `output` /
@@ -303,6 +313,7 @@ def _keyword_checks(spec: str, body: str) -> list[dict]:
     return out
 
 
+# box: step_check
 def blocked_marks(text: str) -> list[str]:
     """D36: the capabilities named in 'BLOCKED: <capability> — ...' lines of a step's output."""
     names = []
@@ -313,6 +324,7 @@ def blocked_marks(text: str) -> list[str]:
     return names
 
 
+# box: step_check
 def parse_verdict_block(text: str) -> tuple[str | None, str]:
     m = re.search(r"verdict\s*[:*]*\s*\**\s*(PASS|FAIL)", text or "", re.I)
     issues = re.split(r"issues\s*[:*]*", text or "", maxsplit=1, flags=re.I)
@@ -336,6 +348,7 @@ class PlanRunner:
         self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
         self.web = getattr(interp.tools, "web", None)
 
+    # box: plan_step
     def grant_web_tools(self) -> None:
         """D32: a role whose missing tools or capability requests normalise to web_search gets web_search and
         fetch_url when this run has them. Recorded as `capability_mapped` events."""
@@ -352,6 +365,7 @@ class PlanRunner:
                                                      "amoeba.granted": list(WEB_TOOLS)})
 
     # ---- the whole plan -------------------------------------------------------------------------------------
+    # box: ov_run, plan_graph
     def run(self) -> tuple[str | None, str | None]:
         for e in self.cfg.meta.get("dependency_relinked", []):
             self.i.trace.event("dependency_relinked", e)
@@ -388,6 +402,7 @@ class PlanRunner:
             return final[-1]
         return ws[-1][0] if len(ws[-1]) == 1 else None
 
+    # box: plan_summary
     def assemble_by_code(self, last: list[int]) -> tuple[str, str | None]:
         """D41: no summariser step to write the answer, so plain code puts the last wave's outputs under one heading
         each, in plan order, then completes the Limitations section (D36). The run's error is the worst status."""
@@ -430,6 +445,7 @@ class PlanRunner:
             parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{stale}\n{body}")
         return "\n\n".join(parts)
 
+    # box: plan_step
     def run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None = None,
                  reverify: dict | None = None, rerun: dict | None = None) -> dict:
         n = number(step)
@@ -530,6 +546,7 @@ class PlanRunner:
             if deps else {s["id"] for s in own}
         return own, visible
 
+    # box: plan_step
     def critique(self, step: PlanStep, n: int, drafter: AgentSpec, reviewers: list[AgentSpec], inputs: str,
                  extra: str, w: "_Work", template: str) -> dict:
         """D51: the reviewers answer AGREE or REVISE (numbered issues against done_when and their own success
@@ -567,6 +584,7 @@ class PlanRunner:
         return {"mode": "critique", "drafter": drafter.name, "reviewers": [r.name for r in reviewers],
                 "rounds": rounds, "revisions": revisions, "objections": objections, "agreed": agreed}
 
+    # box: plan_step
     def _review(self, rv: AgentSpec, step: PlanStep, n: int, drafter: AgentSpec, draft: str, inputs: str
                 ) -> tuple[str, list[str]]:
         """D51: one reviewer's verdict and numbered issues. An unreadable reply counts as AGREE (recorded)."""
@@ -576,11 +594,13 @@ class PlanRunner:
                       done_when=step.done_when or "none written", criteria=criteria)
         system = render(PROMPT.plan_step_system, name=rv.name)
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.id": rv.agent_id, "gen_ai.agent.name": rv.name,
+                                                "amoeba.box": "plan_step",
                                                 "amoeba.step": n, "amoeba.review": True}):
             before = self.i.trace.n_llm_calls
             try:
                 raw, sec = self.i.llm.chat_sections(system, user, ["Verdict"], self.ep.seed, agent_id=rv.agent_id,
-                                                    agent_name=rv.name, max_tokens=PLAN_MAX_TOKENS)
+                                                    agent_name=rv.name, max_tokens=PLAN_MAX_TOKENS,
+                                                    role=role_group(reviewing=True))   # D54
             except MissingSections as e:
                 raw, sec = getattr(e, "raw", "") or "", {}
             for rec in self.i.trace.spans("chat")[before:]:
@@ -596,6 +616,7 @@ class PlanRunner:
             verdict = "AGREE"
         return verdict, issues if verdict == "REVISE" else []
 
+    # box: plan_step
     def refine(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work",
                template: str, checks: list[dict], prov: dict) -> dict | None:
         """D50: one refine turn for the helper(s) of a finished step, with turns of its own (check_retry_turns, not
@@ -629,6 +650,7 @@ class PlanRunner:
         self._loop(step, n, agents, inputs, extra, w, template)
         return {"reason": reason, "findings": check_items + prov_items, "before": refine_counts(checks, prov)}
 
+    # box: step_check
     def mark_stale(self, reworked: list[int], verifier_step: int) -> None:
         """D39: a step that already ran on the output of a step that was later reworked (directly or through other
         steps) is stale. It is marked in its metadata and the trace; with --rerun-stale it is re-run once, in plan
@@ -664,11 +686,13 @@ class PlanRunner:
                 self.run_step(self.steps[x], self.artifacts[x]["meta"]["wave"], deps[x],
                               rerun={"because_reworked": sorted(because[x])})
 
+    # box: plan_summary
     def is_summary_step(self, step: PlanStep) -> bool:
         """D35: the answer step, when the summariser owns it, only assembles."""
         summ = {a.agent_id for a in self.agents.values() if a.is_summariser}
         return number(step) == getattr(self, "answer_n", None) and bool(summ & set(step.agent_ids))
 
+    # box: plan_summary
     def all_inputs_text(self, n: int) -> str:
         """The summariser sees every step's latest output, its status and where its figures come from. D44: each
         output is capped at max_input_chars, and when all of them together would pass max_summary_input_chars each
@@ -697,6 +721,7 @@ class PlanRunner:
         return "\n".join(f"{k}: {v}" for k, v in req.items()) if req else \
             "None listed by the plan; take the deliverables from the task."
 
+    # box: plan_summary
     def ledger_update(self, n: int, figures: list[dict]) -> dict[str, int]:
         """D43: the first status of each figure in the run (cited / unverified / untagged / derived / given, and the
         step that first wrote it) goes into the ledger; a later step that repeats the figure inherits that first
@@ -711,6 +736,7 @@ class PlanRunner:
             origin[key] = origin.get(key, 0) + 1
         return origin
 
+    # box: plan_summary
     def summary_check(self, n: int, text: str) -> dict:
         """D35: a figure in the final answer that is in no step output and not in the task is new. D43: the answer's
         figures are also listed by their ledger status, so untagged and unverified figures in the answer show."""
@@ -739,6 +765,7 @@ class PlanRunner:
                     out[normalise(g)[0]].append(g)
         return out
 
+    # box: plan_summary
     def enforce_limitations(self, text: str) -> tuple[str, dict]:
         """D36: the final answer's Limitations section must name every capability a step lacked. Names it leaves
         out are appended by plain code (and recorded), so a gap is never silently dropped."""
@@ -754,6 +781,7 @@ class PlanRunner:
             self.i.trace.event("limitations_added", {"amoeba.capabilities": missing})
         return text, {"blocked_capabilities": sorted(caps), "limitations_added_by_code": missing}
 
+    # box: step_check
     def is_verification(self, step: PlanStep) -> bool:
         """D37: a step the planner declared `kind: verify` that depends on the steps it checks. Only when the step
         plan declares no kind at all (an older draft) is the keyword rule used — verify, check, review, validate, reconcile … in its
@@ -769,6 +797,7 @@ class PlanRunner:
             self.i.trace.event("verification_inferred", {"amoeba.step": number(step), "amoeba.text": step.text[:120]})
         return inferred
 
+    # box: step_check
     def rework_producers(self, n: int, deps: list[int], issues: str) -> list[int]:
         """D34: on a FAIL verdict each producer step it checked is re-run once with the issues. Returns the steps
         reworked; the verifier then checks once more (D38) and the run goes on whatever the second verdict."""
@@ -784,6 +813,7 @@ class PlanRunner:
                           rework={"by_step": n, "issues": issues})
         return done
 
+    # box: plan_step
     def _loop(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work",
               template: str = "") -> None:
         while len(w.done) + len(w.blocked) < len(agents) and w.turn < w.max_turns:
@@ -819,6 +849,7 @@ class PlanRunner:
         return "\n\n".join(f"### {a.name}\n{written[a.agent_id]}" for a in agents
                            if a.agent_id in written) or w.last_message
 
+    # box: artifacts
     def _save(self, n: int, wave: int, text: str, meta: dict, prov: dict) -> None:
         self.artifacts[n] = {"text": text, "meta": meta}
         self.ep.steps.append(meta)
@@ -843,6 +874,7 @@ class PlanRunner:
             (self.dir / f"step_{n}.json").write_text(json.dumps(self.artifacts[n]["meta"], indent=2, ensure_ascii=False),
                                                    encoding="utf-8")
 
+    # box: plan_step
     def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int,
               extra: str = "", template: str = "") -> tuple[str, str, str, str | None]:
         tools = list(agent.tools) + [PRINT, FINAL_OUTPUT]
@@ -852,10 +884,12 @@ class PlanRunner:
                       unavailable="\n".join(UNAVAILABLE.format(name=t) for t in agent.missing_tools))
         system = render(PROMPT.plan_step_system, name=agent.name)
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name,
+                                                "amoeba.box": "plan_summary" if self.is_summary_step(step) else "plan_step",
                                                 "amoeba.step": n}):
             before = self.i.trace.n_llm_calls
+            group = role_group(is_summariser=agent.is_summariser, reviewing=self.is_verification(step))   # D54
             raw, sec = self.i.llm.chat_sections(system, user, PLAN_SECTIONS, self.ep.seed, agent_id=agent.agent_id,
-                                              agent_name=agent.name, max_tokens=PLAN_MAX_TOKENS)
+                                              agent_name=agent.name, max_tokens=PLAN_MAX_TOKENS, role=group)
             for rec in self.i.trace.spans("chat")[before:]:
                 self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                rec.get("gen_ai.usage.output_tokens", 0))

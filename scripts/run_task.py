@@ -5,12 +5,14 @@ capability_requests.json, result.json}.
     python -m scripts.run_task --toy --seed 0 --n 20 --topology boss_reviewers
     python -m scripts.run_task ... --llm openai --base-url http://localhost:8000/v1 --model qwen2.5
     AMOEBA_BASE_URL=... AMOEBA_API_KEY=... AMOEBA_MODEL=... python -m scripts.run_task --toy --llm openai
+    python -m scripts.run_task --toy --llm openai --profile gemini-flash-lite     # D54: amoeba/config/models.yaml
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -32,21 +34,25 @@ from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
+from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
 from amoeba.tools.web import TavilyProvider, web_registry
 
 
+# box: ov_leave, capreq, runresult
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
             max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
-            saved_draft=None, limits: RunLimits | None = None) -> RunResult:
-    """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores."""
+            saved_draft=None, limits: RunLimits | None = None, ask=None) -> RunResult:
+    """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
+    ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once."""
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id, log_content=log_content)
+    trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id, log_content=log_content,
+                        stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
     t0 = time.perf_counter()
-    draft = ep = failed = None
+    draft = ep = failed = clarification = None
     answer = error = None
     team_id = ""
     try:
@@ -56,6 +62,15 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         else:
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                quality_gate=quality_gate)
+            if ask is not None:       # D53: the user reads the draft's intake before Box 3 runs
+                print(intake_text(draft))
+                clarification = ask_user(ask)
+                trace.event("intake_review", {"amoeba.clarification": clarification, "amoeba.redraft": bool(clarification)})
+                if clarification:     # appended to the task; one re-draft round revising the draft just shown
+                    (run_dir / "plan.first.json").write_text(draft.model_dump_json(indent=2), encoding="utf-8")
+                    task = task.model_copy(update={"prompt": f"{task.prompt}\n\nUser clarification: {clarification}"})
+                    draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
+                                       quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft)
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         dump_yaml(cfg, run_dir / "team.yaml")
@@ -96,9 +111,47 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         draft_quality=draft.quality if draft else {},
         unmapped_capabilities=sorted({q.name for q in requested if not q.mapped}),
         requests_proposed=draft.requests_proposed if draft else 0,
-        requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0)
+        requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0,
+        clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace))
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
     return result
+
+
+def models_of(llm, trace) -> dict:
+    """D54: the model each role group was asked for, and the exact model names the API returned."""
+    requested = getattr(llm, "models", None) or {"default": llm.model}
+    returned = sorted({s["gen_ai.response.model"] for s in trace.spans("chat") if s.get("gen_ai.response.model")})
+    return {"requested": requested, "returned": returned}
+
+
+CONTINUE = "continue"
+
+
+def intake_text(d) -> str:
+    """D53: what --interactive shows after Box 2 — the requirements, the assumptions and the open questions."""
+    assumptions = [g for g in d.givens if re.match(r"\W*assum", g, re.I)]
+    out = ["", "== Box 2 draft — check it before the team runs (D53)", "Requirements:"]
+    out += [f"  {k}: {v}" for k, v in d.requirements.items()] or ["  (none written)"]
+    out += ["Assumptions:"] + ([f"  - {a}" for a in assumptions] or ["  (none written)"])
+    out += ["Open questions (settled by assumption):"]
+    out += [f"  Q{i}. {q['question']}\n      assumed: {q['assumption'] or '(none given)'}"
+            for i, q in enumerate(d.open_questions, 1)] or ["  (none)"]
+    return "\n".join(out)
+
+
+# box: planner
+def ask_user(ask) -> str | None:
+    """Wait for "continue" (None) or an edited assumption (returned). An empty line asks again; end of input is
+    "continue"."""
+    while True:
+        try:
+            reply = ask(f"Type '{CONTINUE}' to run the team, or an edited assumption to re-draft once: ").strip()
+        except EOFError:
+            return None
+        if reply.lower() == CONTINUE:
+            return None
+        if reply:
+            return reply
 
 
 def provenance_of(ep) -> dict:
@@ -159,6 +212,9 @@ def cli_token_limits(args: argparse.Namespace) -> dict:
 
 def add_client_args(p: argparse.ArgumentParser) -> None:
     """How the model is called — shared by run_task and eval_draft (D46+)."""
+    p.add_argument("--profile", default=None,
+                   help="with --llm openai: a named profile in amoeba/config/models.yaml (default: its 'default', "
+                        "gemma-api); AMOEBA_BASE_URL / AMOEBA_MODEL and --base-url / --model still override (D54)")
     p.add_argument("--llm-cache", default=None, metavar="DIR",
                    help="store every LLM reply (and web tool result) in DIR, keyed by a hash of model, messages, "
                         "max_tokens and temperature (D46)")
@@ -172,26 +228,47 @@ def add_client_args(p: argparse.ArgumentParser) -> None:
                         "Retry-After; a spending-cap 429 is not retried (D48)")
     p.add_argument("--min-seconds-between-calls", type=float, default=0.0,
                    help="wait at least this long between two model calls, for free tiers (D48)")
-    p.add_argument("--merge-system", action="store_true",
+    p.add_argument("--merge-system", action=argparse.BooleanOptionalAction, default=None,
                    help="put the system message at the top of the user message, for models without a system role "
-                        "such as Gemma (D49)")
-    p.add_argument("--reasoning-effort", choices=["off", "low", "medium", "high"], default=None,
-                   help="sent only when set; 'off' is sent as 'none' (D49)")
+                        "such as Gemma (D49); default: the profile's setting")
+    p.add_argument("--reasoning-effort", choices=["off", "low", "medium", "high", "unset"], default=None,
+                   help="sent only when set; 'off' is sent as 'none' (D49); default: the profile's setting; 'unset' "
+                        "sends nothing even when the profile sets it")
 
 
+def endpoint(args: argparse.Namespace, profile) -> tuple[str, str]:
+    """D54: (base_url, api key). --base-url > AMOEBA_BASE_URL > the profile; --api-key > AMOEBA_API_KEY > the
+    profile's api_key_env variable > OPENAI_API_KEY. The key is never printed or written anywhere."""
+    base_url = args.base_url or os.environ.get("AMOEBA_BASE_URL") or profile.base_url
+    api_key = (args.api_key or os.environ.get("AMOEBA_API_KEY")
+               or (os.environ.get(profile.api_key_env) if profile.api_key_env else None)
+               or os.environ.get("OPENAI_API_KEY") or "EMPTY")
+    return base_url, api_key
+
+
+# box: client
 def build_llm(args: argparse.Namespace) -> LLMClient:
     if args.llm == "mock":
         mock = toy_mock_client()
         return CachedLLM(mock, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else mock
-    # flags win; else the AMOEBA_* env vars; else OPENAI_API_KEY / the SDK default endpoint
-    base_url = args.base_url or os.environ.get("AMOEBA_BASE_URL") or None
-    api_key = args.api_key or os.environ.get("AMOEBA_API_KEY") or os.environ.get("OPENAI_API_KEY") or "EMPTY"
-    model = args.model or os.environ.get("AMOEBA_MODEL") or "gpt-4o-mini"
-    client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=model,
-                                    max_rate_retries=args.max_rate_retries,
-                                    min_seconds_between_calls=args.min_seconds_between_calls,
-                                    merge_system=args.merge_system, reasoning_effort=args.reasoning_effort)
-    return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else client
+    # D54: flags win; else the AMOEBA_* env vars; else the profile (amoeba/config/models.yaml)
+    profile = get_profile(args.profile)
+    base_url, api_key = endpoint(args, profile)
+    model = args.model or os.environ.get("AMOEBA_MODEL") or None          # None: the profile's model
+    merge = profile.merge_system if args.merge_system is None else args.merge_system
+    effort = None if args.reasoning_effort == "unset" else args.reasoning_effort or profile.reasoning_effort
+
+    def make(m: str) -> LLMClient:
+        client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=m,
+                                        max_tokens=profile.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
+                                        min_seconds_between_calls=args.min_seconds_between_calls,
+                                        merge_system=merge, reasoning_effort=effort)
+        return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
+            else client
+    # a reply limit given on the command line wins over the profile's for that group (D27 flags)
+    keep = set(ROLE_GROUPS) - ({"planner"} if getattr(args, "planner_max_tokens", None) else set()) \
+        - ({"observers"} if getattr(args, "observer_max_tokens", None) else set())
+    return build_router(profile, make, model, keep)
 
 
 def build_box3_tools(args: argparse.Namespace, tools: ToolRegistry) -> ToolRegistry:
@@ -204,6 +281,7 @@ def build_box3_tools(args: argparse.Namespace, tools: ToolRegistry) -> ToolRegis
     return web_registry()
 
 
+# box: free_text
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("prompt", nargs="?", help="a free-text task (cannot be scored)")
@@ -217,7 +295,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan = the D31 plan runner over depends_on")
     p.add_argument("--llm", choices=["mock", "openai"], default="mock")
     p.add_argument("--base-url", default=None)
-    p.add_argument("--model", default=None, help="default: $AMOEBA_MODEL, else gpt-4o-mini")
+    p.add_argument("--model", default=None, help="default: $AMOEBA_MODEL, else the profile's model (D54)")
     p.add_argument("--api-key", default=None)
     p.add_argument("--runs-dir", default="runs")
     p.add_argument("--draft-prompts", choices=["d19", "d24"], default="d19",
@@ -247,6 +325,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--collab", choices=["concat", "critique"], default="critique",
                    help="plan, multi-role steps: concat = each role writes, outputs joined; critique = the first role "
                         "drafts, the others AGREE or REVISE with numbered issues, it revises (max 2 rounds) (D51)")
+    p.add_argument("--interactive", action="store_true",
+                   help="after Box 2, print the requirements, assumptions and open questions and wait for 'continue' "
+                        "or an edited assumption (appended to the task as 'User clarification: ...', then one "
+                        "re-draft round) (D53). Never in eval scripts")
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     add_client_args(p)
@@ -259,9 +341,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     args = p.parse_args(argv)
     if not args.toy and not args.prompt and not args.tasks:
         p.error("give a prompt, --toy or --tasks")
+    if args.interactive and args.drafts_from:
+        p.error("--interactive reviews a fresh draft; it cannot be combined with --drafts-from")
     return args
 
 
+# box: free_text
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     llm = build_llm(args)
@@ -285,7 +370,8 @@ def main(argv: list[str] | None = None) -> int:
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
                     max_tokens=cli_token_limits(args), quality_gate=args.quality_gate,
                     plan_options=cli_plan_options(args), saved_draft=chosen,
-                    limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run))
+                    limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
+                    ask=input if args.interactive else None)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

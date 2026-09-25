@@ -20,6 +20,7 @@ class RunLimitReached(RuntimeError):
     code = "budget"          # the run's error field
 
 
+# box: client
 @dataclass
 class RunLimits:
     max_tokens: int | None = None      # billed tokens: input + output + reasoning of live (not cached) calls
@@ -34,7 +35,7 @@ class RunLimits:
         over = (self.max_calls and used["calls"] >= self.max_calls) or \
                (self.max_tokens and used["tokens"] >= self.max_tokens)
         if over:
-            trace.event("budget_stop", {"amoeba.limit.max_tokens": self.max_tokens,
+            trace.event("budget_stop", {"amoeba.box": "client", "amoeba.limit.max_tokens": self.max_tokens,
                                         "amoeba.limit.max_calls": self.max_calls,
                                         "amoeba.used.tokens": used["tokens"], "amoeba.used.calls": used["calls"]})
             raise RunLimitReached(f"run limit reached after {used['calls']} calls and {used['tokens']} tokens "
@@ -56,14 +57,28 @@ def load_prices(path: str | Path = PRICES) -> dict:
     return (yaml.safe_load(p.read_text(encoding="utf-8")) or {}) if p.exists() else {}
 
 
+# box: client
 def estimate(chat_spans: list[dict], model: str, prices: dict | None = None) -> dict:
-    """Billed tokens and, when the model has prices, the estimated cost in USD (else cost_usd is None)."""
+    """Billed tokens and, when every model used has prices, the estimated cost in USD (else cost_usd is None).
+    Each call is priced by the model it asked for (D54: a profile may give role groups their own models)."""
     use = billed(chat_spans)
-    price = (load_prices() if prices is None else prices).get(model) or {}
-    pin, pout = price.get("input"), price.get("output")
-    cost = None if pin is None or pout is None else \
-        round(use["input"] / 1e6 * pin + (use["output"] + use["reasoning"]) / 1e6 * pout, 6)
-    return {**use, "model": model, "cost_usd": cost}
+    table = load_prices() if prices is None else prices
+    by_model: dict[str, list[dict]] = {}
+    for s in chat_spans:
+        by_model.setdefault(s.get("gen_ai.request.model") or model, []).append(s)
+    cost = 0.0
+    for m, spans in (by_model or {model: []}).items():
+        price = table.get(m) or {}
+        pin, pout = price.get("input"), price.get("output")
+        if pin is None or pout is None:
+            cost = None
+            break
+        u = billed(spans)
+        cost += u["input"] / 1e6 * pin + (u["output"] + u["reasoning"]) / 1e6 * pout
+    out = {**use, "model": model, "cost_usd": None if cost is None else round(cost, 6)}
+    if len(by_model) > 1:
+        out["models"] = sorted(by_model)
+    return out
 
 
 def describe(u: dict) -> str:

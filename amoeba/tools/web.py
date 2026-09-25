@@ -38,6 +38,7 @@ class SearchProvider(Protocol):
         """{url, title, text}: the page as clean text."""
 
 
+# box: tools
 class TavilyProvider:
     """Tavily search (/search) and page extraction (/extract); both on api.tavily.com."""
 
@@ -83,6 +84,7 @@ class WebLimits:
         return {f"amoeba.web.{k}": v for k, v in self.__dict__.items()}
 
 
+# box: tools
 @dataclass
 class WebTools:
     """The two tools for one run: the provider, the limits, the run's source list and per-step counters."""
@@ -180,6 +182,7 @@ class WebTools:
         return f"[{s['id']}] {s['title']} ({s['url']}), fetched {s['fetched_at']}{more}:\n{cut}"
 
 
+# box: tools
 def web_registry(provider: SearchProvider | None = None, limits: WebLimits | None = None):
     """A fresh Box 3 registry for one run: echo, calc, web_search and fetch_url (Tavily unless a provider is given)."""
     from amoeba.tools.registry import default_registry

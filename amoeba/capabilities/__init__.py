@@ -25,6 +25,7 @@ def _table() -> dict[str, str]:
     return table
 
 
+# box: capreq
 def normalise(name: str) -> tuple[str, bool]:
     """(canonical name, mapped?). An unknown name is kept as written (not snake-cased) and reported as unmapped."""
     canonical = _table().get(snake(name))

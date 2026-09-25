@@ -4,10 +4,12 @@ from __future__ import annotations
 import re
 
 
+# box: scoring
 def normalise(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip().lower()).rstrip(".").strip()
 
 
+# box: ov_task, scoring
 def score(answer: str | None, ground_truth: str | None) -> float | None:
     """1.0 / 0.0 after trimming spaces and case; None when there is no known answer."""
     if ground_truth is None or answer is None:
@@ -50,6 +52,7 @@ def quantities(text: str) -> list[dict]:
     return out
 
 
+# box: scoring
 def number_found(text: str, value: float, unit: str, tolerance: float = 0.05) -> str | None:
     """The first quantity in `text` equal to value+unit within the relative tolerance (either reading of a byte
     unit), as written; None if there is none. Money may also be written without a currency sign."""
@@ -72,6 +75,7 @@ def _any(text: str, patterns: list[str]) -> str | None:
     return None
 
 
+# box: scoring
 def rubric_score(answer: str | None, rubric, judge=None) -> dict:
     """Per-item pass/fail and the overall fraction, by string/regex/number match only. `judge`, if given, is called
     as judge(answer, rubric) and its result is stored under "judge" as a separate signal that never changes the score

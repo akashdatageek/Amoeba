@@ -69,35 +69,66 @@ python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai -
 - HTTP 429/503 are retried up to `--max-rate-retries` (5) with exponential waits or the server's Retry-After;
   `--min-seconds-between-calls` spaces calls out for free tiers.
 
-## Running with Gemma 4 (D49)
+## Model profiles and Gemma 4 (D49, D54)
 
-Gemma models take no system message on some endpoints, so use `--merge-system` (the system text goes to the top of
-the user message). `--reasoning-effort off|low|medium|high` is sent only when you set it; leave it out if the
-endpoint rejects it. The model name below is a placeholder: check the exact id in the provider's model list.
+With `--llm openai` the model is chosen by a **profile** in `amoeba/config/models.yaml`. The default profile is
+**`gemma-api`**. Without `--llm openai` (the default, and in every test) the offline stand-in model answers.
 
-Through the **Gemini API** (key from Google AI Studio; in the cloud environment, allow
-`generativelanguage.googleapis.com`):
+| profile | endpoint | model | settings |
+|---|---|---|---|
+| `gemma-api` (default) | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemma-4-31b-it` | merge_system, reasoning_effort low; key in `GEMINI_API_KEY` |
+| `gemma-openrouter` | `https://openrouter.ai/api/v1` | `google/gemma-4-31b-it:free` | merge_system; key in `OPENROUTER_API_KEY` |
+| `gemini-flash-lite` | Gemini API | `gemini-3.1-flash-lite` | as in the 2026-09-24 baseline; key in `GEMINI_API_KEY` |
+| `gemini-flash` | Gemini API | `gemini-3.5-flash` | as in the 2026-09-24 baseline; key in `GEMINI_API_KEY` |
 
-```bash
-export AMOEBA_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
-export AMOEBA_API_KEY=<your Gemini API key>
-python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --model gemma-4-31b-it \
-    --merge-system --draft-prompts d24 --topology plan --max-calls-per-run 60
-```
-
-Through **OpenRouter** (key from openrouter.ai; allow `openrouter.ai`; OpenRouter model ids carry the provider
-prefix, e.g. `google/gemma-4-31b-it`, and a `:free` suffix for the free variant where one exists):
+To switch, pass `--profile NAME` to `run_task` or `eval_draft`, or change `default:` in the file:
 
 ```bash
-export AMOEBA_BASE_URL=https://openrouter.ai/api/v1
-export AMOEBA_API_KEY=<your OpenRouter key>
-python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --model google/gemma-4-31b-it \
-    --merge-system --draft-prompts d24 --topology plan --min-seconds-between-calls 4
+export GEMINI_API_KEY=<your Gemini API key>        # never commit it; AMOEBA_API_KEY, when set, is used first
+python -m scripts.list_models --profile gemma-api   # check the model names this endpoint really offers
+python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --profile gemma-api \
+    --draft-prompts d24 --topology plan --max-calls-per-run 60
+python -m scripts.run_task ... --llm openai --profile gemini-flash-lite
 ```
+
+**Model names must be checked against the provider.** Model names in the file are what the provider called its
+models when the file was written. Providers rename and retire them, so run `scripts/list_models.py` first; it
+marks the profile's models with `*` and names any it cannot find. OpenRouter ids carry the provider prefix and a
+`:free` suffix for the free variant.
+
+A profile can set:
+- `base_url` and `model`;
+- `api_key_env`: the variable that holds the key;
+- `merge_system`: Gemma takes no system message on some endpoints, so the system text goes into the user message;
+- `reasoning_effort`: `off | low | medium | high`, sent only when set;
+- `max_tokens`: the reply limit of calls that set none;
+- `roles`: a `model` and `max_tokens` per role group. The groups are `planner`, `observers` (both Box 2 checkers),
+  `workers`, `reviewers` (boss_reviewers critics, the plan runner's verify steps and critique reviews) and
+  `summariser`.
+
+What overrides the profile:
+- `--base-url` / `--model` flags, then `AMOEBA_BASE_URL` / `AMOEBA_MODEL`, replace the profile's endpoint and
+  default model. Per-role models still apply.
+- `--merge-system` / `--no-merge-system` and `--reasoning-effort` (`unset` sends nothing) replace the profile's
+  settings.
+- `--planner-max-tokens` / `--observer-max-tokens` replace the profile's per-role limits.
+
+Every trace line carries `amoeba.profile`. Each AI line holds `gen_ai.request.model` (asked for) and
+`gen_ai.response.model` (the exact name the API returned). result.json has `profile` and `models`
+(`requested` per role group, `returned`).
 
 **Free tiers may use your prompts and replies to improve their products** (Google's free Gemini API tier and many
 free OpenRouter models say so in their terms). Do not send anything confidential through a free tier; use a paid
 key for private data.
+
+## The as-built page keeps itself up to date (D55)
+
+`docs/arch/phase1.html` is rebuilt from the code by `python tools/arch_update.py`. That script does nothing when no input
+changed. After `git config core.hooksPath tools/hooks` it runs after every commit, and the Claude Code Stop hook
+(`.claude/settings.json`) runs it when Claude Code stops. Code joins a box with a `# box: <id>` line above its def or
+class. Box text is re-checked by a cheap model (`arch-text` profile) only for boxes whose extracted facts changed, and
+the tokens are logged in `docs/arch/text_log.jsonl`. Numbers in the text come from the code. Set `ARCH_TEXT_LLM=off` to
+never call a model; changed boxes are then marked stale.
 
 ## Layout
 
@@ -105,6 +136,7 @@ key for private data.
 amoeba/
   llm/client.py            OpenAICompatibleClient, MockLLMClient
   llm/toy_mock.py          scripted stand-in model for the toy tasks
+  llm/profiles.py          D54: model profiles (config/models.yaml), per-role routing
   config/schema.py         TeamConfig, AgentSpec, Edge, PlanStep, Limits, PromptRef
   config/validate.py       V1 V3 V5 V6 V7 V8
   config/io.py             load_yaml, dump_yaml, config_hash
@@ -120,6 +152,7 @@ amoeba/
   tools/registry.py        echo, calc
   safety/envelope.py       allowed_tools per role, max_agents
 scripts/run_task.py        CLI
+scripts/list_models.py     D54: the models an endpoint offers (check a profile's names)
 scripts/extract_prompts.py copies the prompts out of repos/
 tests/                     T1–T11 with fixtures
 spec/                      BUILD_SPEC_PHASE1.md (the spec), VERIFICATION_PHASE1.md, full spec for reference

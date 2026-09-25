@@ -14,8 +14,8 @@ from amoeba.task.quality import draft_quality, gate_suggestions
 import os
 import re
 
-from amoeba.task.parsers import (MissingSections, parse_bullets, parse_json_objects, parse_plan, parse_plan_d24,
-                                 parse_requirements, parse_sections, parse_verdict)
+from amoeba.task.parsers import (MissingSections, parse_bullets, parse_json_objects, parse_open_questions, parse_plan,
+                                 parse_plan_d24, parse_requirements, parse_sections, parse_verdict)
 
 PLANNER_SECTIONS = ["Selected Roles List", "Created Roles List", "Execution Plan", "RoleFeedback", "PlanFeedback"]
 # DEVIATION D24 (spec/BOX2_PROMPT_UPGRADE_D24.md): our prompts, one system message per role, more sections
@@ -51,6 +51,7 @@ class DraftError(RuntimeError):
         self.rounds = rounds if rounds is not None else []
 
 
+# box: resolver
 def parse_capability_requests(text: str) -> list[CapabilityRequest]:
     """The planner's "## Capability Requests" section (D19). 'None', prose or bad JSON yield nothing."""
     out: list[CapabilityRequest] = []
@@ -64,6 +65,7 @@ def parse_capability_requests(text: str) -> list[CapabilityRequest]:
     return out
 
 
+# box: resolver
 def resolve_tools(roles: list[DraftedRole], envelope: Envelope,
                   requests: list[CapabilityRequest]) -> list[CapabilityRequest]:
     """Keep each role's registered tools; a name the registry lacks becomes a recorded request and the role's
@@ -83,6 +85,7 @@ def resolve_tools(roles: list[DraftedRole], envelope: Envelope,
     return out
 
 
+# box: checks
 def role_blobs(sec: dict[str, str]) -> list[dict]:
     """Role JSON blobs of one planner reply, Created then Selected. DEVIATION D22: brace-balanced parsing
     (parse_json_objects) instead of AutoAgents' non-greedy regex (environment.py:62, kept as parse_role_blobs for T3),
@@ -109,6 +112,7 @@ def request_survival(first: list[CapabilityRequest], final: list[CapabilityReque
     return len(proposed), len(proposed - {q.canonical.lower() for q in final})
 
 
+# box: checks
 def pick_summariser(roles: list[DraftedRole], plan: list[DraftPlanStep]) -> DraftedRole:
     """D20: the role that writes the final answer — the first one the planner marks "is_summariser": true, else
     the last role named by the plan's last step (the flat runner's exit). Having no tools says nothing about it;
@@ -155,6 +159,7 @@ def _observer_sections(llm: TracedLLM, name: str, user: str, seed: int, log: lis
         raise DraftError(f"{name}: {e}", log) from e
 
 
+# box: split
 def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
               log: list[DraftRound], system: str = MANAGER_PREFIX, max_tokens: int | None = None
               ) -> tuple[str, dict[str, str]]:
@@ -166,8 +171,12 @@ def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
         raise DraftError(f"{name}: {e}", log) from e
 
 
+# box: ov_plan, handoff, planner, agent_obs, plan_obs, checks
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
-               prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False) -> Draft:
+               prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False,
+               max_rounds: int = MAX_ROUNDS, history: str = "") -> Draft:
+    """history: the previous draft the Planner revises (manager.py:26 roles_plan; "" at first). D53 --interactive
+    re-drafts once: max_rounds=1, history = the draft the user clarified."""
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
     d24 = prompts == D24
@@ -175,14 +184,13 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     tl = TracedLLM(llm, trace)
     tools = envelope.tool_catalog_string()
     ctx = f"[Question/Task: {task.prompt}]"          # manager.py:32 str(important_memory) — keep the bracketed form
-    history = ""                                      # manager.py:26 roles_plan
     sugg_roles, sugg_plan = "", ""                    # manager.py:26 — cumulative strings
     suggestions = ""                                  # manager.py:27 — what the planner sees: LATEST round only
     consensus, rounds, last = False, 0, None
     first_requests: list[CapabilityRequest] = []
     log: list[DraftRound] = []                        # ours: the full record of every round (Draft.rounds)
-    with trace.span("invoke_agent", {"gen_ai.agent.name": "planner"}):
-        while not consensus and rounds < MAX_ROUNDS:  # manager.py:27,30
+    with trace.span("invoke_agent", {"gen_ai.agent.name": "planner", "amoeba.box": "planner"}):
+        while not consensus and rounds < max_rounds:  # manager.py:27,30
             log.append(rec := DraftRound(index=rounds + 1))
             # state 0 — Planner (CreateRoles)
             if d24:   # D24: plan the ideal first, full role records, detailed steps, requirements and givens
@@ -257,7 +265,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             approved = (rec.agent_verdict == rec.plan_verdict == "APPROVE") if d24 else (approves(sr) and approves(sp))
             if quality_gate:   # D28: plain code checks this round's draft; a failed hard check sends it back
                 try:
-                    q = draft_quality(assemble(sec, raw, prompts, envelope))
+                    q = draft_quality(assemble(sec, raw, prompts, envelope), task.prompt)
                 except DraftError:
                     q = None   # no usable team in this reply; publish (or the next round) reports it
                 rec.gate_failed = q["hard_failed"] if q else []
@@ -282,13 +290,14 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                                  plan_feedback=sugg_plan, rounds=log, requests_proposed=proposed,
                                  requests_dropped_by_observers=dropped,
                                  gate_hits=sum(bool(r.gate_failed) for r in log)))
-    d.quality = draft_quality(d)                      # D24: measured; used only by --quality-gate (D28)
+    d.quality = draft_quality(d, task.prompt)         # D24: measured; used only by --quality-gate (D28)
     trace.event("draft_quality", {"amoeba.quality.passed": d.quality["passed"],
                                   "amoeba.quality.failed": d.quality["failed"],
                                   "amoeba.quality.failed_checks": ",".join(d.quality["failed_checks"]) or None})
     return d
 
 
+# box: checks
 def assemble(sec: dict[str, str], raw: str, prompts: str, envelope: Envelope,
              log: list[DraftRound] | None = None) -> Draft:
     """One planner reply → a Draft, by the deterministic post-checks. Used on the last round (publish) and, with
@@ -328,4 +337,5 @@ def assemble(sec: dict[str, str], raw: str, prompts: str, envelope: Envelope,
                  capability_requests=requests, rounds=log, prompts=prompts,
                  requirements=parse_requirements(sec.get("Requirements", "")) if d24 else {},
                  givens=parse_bullets(sec.get("Givens and Assumptions", "")) if d24 else [],
-                 risks=parse_bullets(sec.get("Risks and Decisions", "")) if d24 else [])
+                 risks=parse_bullets(sec.get("Risks and Decisions", "")) if d24 else [],
+                 open_questions=parse_open_questions(sec.get("Open Questions", "")) if d24 else [])

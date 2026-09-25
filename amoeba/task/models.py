@@ -40,6 +40,7 @@ class RubricMustNot(BaseModel):
     window: int = 160
 
 
+# box: scoring
 class Rubric(BaseModel):
     """D30: how a task with no single right answer is scored (Box 1, deterministic). Never shown to Box 2 or Box 3."""
 
@@ -49,6 +50,7 @@ class Rubric(BaseModel):
     must_not: list[RubricMustNot] = Field(default_factory=list)
 
 
+# box: ov_task, task_record
 class Task(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     prompt: str
@@ -100,6 +102,7 @@ class Answer(BaseModel):
     error: str | None = None
 
 
+# box: capreq
 class CapabilityRequest(BaseModel):
     """A tool or skill the team asked for that the registry does not have (D19). Recorded, never acted on."""
 
@@ -141,6 +144,7 @@ class CapabilityRequest(BaseModel):
         return "skill" if str(v or "").strip().lower() == "skill" else "tool"
 
 
+# box: checks
 class DraftedRole(BaseModel):
     """One JSON blob from the planner (AutoAgents keys: name, description, tools, suggestions, prompt)."""
 
@@ -244,12 +248,14 @@ class Draft(BaseModel):
     requirements: dict[str, str] = Field(default_factory=dict)     # D24: {"R1": "...", ...} in order
     givens: list[str] = Field(default_factory=list)                # D24: givens, derived numbers, assumptions
     risks: list[str] = Field(default_factory=list)                 # D24: risks and decision points
+    open_questions: list[dict[str, str]] = Field(default_factory=list)   # D53: {question, assumption} the planner settled
     quality: dict = Field(default_factory=dict)                    # D24 draft_quality checks (recorded, not enforced)
     gate_hits: int = 0                                             # D28: rounds the --quality-gate sent back
     requests_proposed: int = 0                 # distinct capabilities asked for in round 1
     requests_dropped_by_observers: int = 0     # of those, how many the final draft no longer asks for
 
 
+# box: runresult
 class RunResult(BaseModel):
     run_id: str
     task_id: str
@@ -277,4 +283,7 @@ class RunResult(BaseModel):
     blocked_capabilities: dict[str, int] = Field(default_factory=dict)   # D36: canonical -> steps that lacked it
     summary_check: dict = Field(default_factory=dict)   # D35 plan runner: new_number_in_summary, limitations_section
     provenance: dict = Field(default_factory=dict)   # D33 plan runner: {"total": counts, "steps": {n: counts}}
+    profile: str | None = None   # D54: the model profile (amoeba/config/models.yaml); None = the mock client
+    models: dict = Field(default_factory=dict)   # D54: {"requested": {role group: model}, "returned": [API model names]}
+    clarification: str | None = None   # D53 --interactive: the user's edit appended to the task before one re-draft
     rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric

@@ -124,6 +124,7 @@ def _solver(messages: Messages, seed: int) -> str:
     return solve_toy(m.group(1) if m else "") or OFFLINE
 
 
+# box: toymock
 def toy_mock_client() -> MockLLMClient:
     return MockLLMClient(script={
         "planner": _planner,

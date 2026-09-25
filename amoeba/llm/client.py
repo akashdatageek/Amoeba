@@ -15,6 +15,7 @@ from typing import Callable
 Messages = list[dict[str, str]]
 
 
+# box: client
 @dataclass
 class ChatResponse:
     content: str
@@ -30,6 +31,7 @@ class ChatResponse:
     throttle_wait_s: float = 0.0       # D48: time waited for --min-seconds-between-calls
 
 
+# box: client
 class LLMClient(ABC):
     model: str = ""
 
@@ -59,6 +61,7 @@ def _reasoning_tokens(usage) -> tuple[int, str | None]:
     return 0, None
 
 
+# box: client
 class OpenAICompatibleClient(LLMClient):
     """Any OpenAI-compatible endpoint (vLLM, Ollama, OpenAI, DeepSeek ...)."""
 
@@ -143,6 +146,7 @@ class OpenAICompatibleClient(LLMClient):
 REASONING_EFFORTS = {"off": "none", "low": "low", "medium": "medium", "high": "high"}
 
 
+# box: client
 def merge_system(messages: Messages) -> Messages:
     """D49: for models without a system role — the system text goes at the top of the first user message
     (or becomes a user message when there is none), and no system message is sent."""
@@ -178,6 +182,7 @@ def retry_after(e: Exception) -> float | None:
 Responder = Callable[[Messages, int], str]
 
 
+# box: toymock
 class MockLLMClient(LLMClient):
     """Offline, deterministic stand-in used by every test.
 

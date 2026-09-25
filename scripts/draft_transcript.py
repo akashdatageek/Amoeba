@@ -63,6 +63,9 @@ def attempt_md(d: dict, n: int) -> list[str]:
         out += ["**Requirements:**", ""] + [f"- {k}: {v}" for k, v in d["requirements"].items()] + [""]
     if d.get("givens"):
         out += ["**Givens and assumptions:**", ""] + [f"- {g}" for g in d["givens"]] + [""]
+    if d.get("open_questions"):   # D53
+        out += ["**Open questions (settled by assumption):**", ""] + [
+            f"- {q['question']} — *assumed:* {q['assumption'] or '(none given)'}" for q in d["open_questions"]] + [""]
     out += ["| role | tools | missing tools | skills | covers | summariser |", "|---|---|---|---|---|---|"]
     out += [f"| {x['name']} | {', '.join(x['tools']) or 'none'} | {', '.join(x.get('missing_tools') or []) or ''} | "
             f"{'; '.join(x.get('skills') or [])} | {', '.join(x.get('covers') or [])} | {'yes' if x['is_summariser'] else ''} |"

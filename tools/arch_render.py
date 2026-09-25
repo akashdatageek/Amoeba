@@ -493,6 +493,7 @@ function shortKey(k){ return k.split('::').pop(); }
 var RENDER = {
  what: function(b){
   var h = (b.what||[]).map(function(s){ return '<p>' + esc(s) + '</p>'; }).join('');
+  h += '<p class="muted">Text: ' + esc(b.text_source || 'hand') + (b.text_stale ? ' · <span class="warnline">stale: ' + esc(b.text_stale) + '</span>' : '') + (Object.keys(b.numbers || {}).length ? ' · numbers filled from the code: ' + Object.keys(b.numbers).filter(function(k){ return (b.sentence_tpl + (b.what_tpl||[]).join(' ')).indexOf('{' + k + '}') >= 0; }).map(function(k){ return esc(k) + ' = ' + b.numbers[k]; }).join(', ') : '') + '</p>';
   h += '<h4>LLM proposes / code disposes</h4><div class="lpcd"><div class="ai"><b>The AI may suggest:</b> ' + esc(b.proposes||'unknown') + '</div><div class="cd"><b>Plain code checks before accepting:</b> ' + esc(b.disposes||'unknown') + '</div></div>';
   var g = (b.guards||[]).concat(b.output_guards||[]);
   h += '<h4>Checks on AI output here (' + g.length + ')</h4>' + (g.length ? '<ul>' + g.slice(0, 12).map(function(x){ return '<li><code>' + esc(x.code) + '</code> → ' + esc(x.effect) + '</li>'; }).join('') + (g.length > 12 ? '<li>… ' + (g.length - 12) + ' more in the Code tab</li>' : '') + '</ul>' : '<p class="muted">None: ' + (b.kind === 'llm' ? '<span class="warnline">nothing in this box checks the AI reply</span>' : 'no AI output is handled here') + '.</p>');
@@ -586,7 +587,10 @@ $('#topo').onchange = function(){ topo = this.value; buildTimeline(); paintCost(
 var rows = [], replayT = null, replayI = 0;
 function buildTimeline(){
   var tl = A.sample.runs[topo].timeline, tb = $('#tlbody'); tb.innerHTML = '';
-  $('#tlmeta').textContent = 'Sample run ' + A.sample.runs[topo].run_id.slice(0, 8) + ' · ' + A.sample.runs[topo].dir + ' · ' + tl.length + ' trace lines · answer ' + JSON.stringify(A.sample.runs[topo].result.answer) + ' · score ' + A.sample.runs[topo].result.score + '. Only traced steps appear: plain-code steps between them are not logged in Phase 1.';
+  var R = A.sample.runs[topo];
+  $('#tlmeta').textContent = (R.real ? 'Real run ' : 'Sample run ') + R.run_id.slice(0, 8) + ' · ' + R.dir + ' · ' + tl.length + ' trace lines · answer ' + JSON.stringify(R.result.answer).slice(0, 120) + ' · score ' + R.result.score + (R.real ? ' · profile ' + R.result.profile + (R.stamped ? '' : ' · this trace predates box ids: lines were placed by rule') : '') + '. Only traced steps appear: plain-code steps between them are not logged in Phase 1.';
+  var cv = R.coverage || {boxes_without_lines: [], lines_without_box: []};
+  $('#tlgaps').innerHTML = '<b>' + cv.lines_without_box.length + '</b> trace line(s) name no box' + (cv.lines_without_box.length ? ' (' + cv.lines_without_box.slice(0, 8).map(function(x){ return esc(x.span) + ' @' + x.file_line; }).join(', ') + ')' : '') + ' · <b>' + cv.boxes_without_lines.length + '</b> box(es) wrote no line in this run: ' + cv.boxes_without_lines.map(function(id){ return esc(BOX[id] ? BOX[id].title : id); }).join(', ');
   rows = tl.map(function(r){ var b = BOX[r.box]; var tr = document.createElement('tr'); tr.className = 'row'; tr.tabIndex = 0;
     tr.innerHTML = '<td>' + (r.i + 1) + '</td><td>' + esc(b ? b.title : r.box) + '</td><td>' + esc(r.helper || '—') + '</td><td class="mono">' + esc(r.span) + '</td><td>' + (r.tokens || '') + '</td><td>' + esc(r.result) + '</td>';
     var det = document.createElement('tr'); det.className = 'det'; det.setAttribute('hidden','');
@@ -836,11 +840,32 @@ def render() -> Path:
     data = dict(A)
     data["__views"] = {k: {"label": v["label"], "note": v["note"]} for k, v in VIEWS.items()}
     data["__examples"] = examples(A)
-    for k in ("functions", "modules", "classes", "constants", "guards"):   # shown per box already; keep the page light
+    for k in ("functions", "modules", "classes", "constants", "guards", "defs", "tags"):   # shown per box already; keep the page light
         data.pop(k, None)
     blob = json.dumps(data, ensure_ascii=False, default=str).replace("</", "<\\/")
     gloss = "".join(f"<dt>{esc(t)}</dt><dd>{esc(d)}</dd>" for t, d in A["glossary"])
     changes_html = "<ul class='changes'>" + "".join(f"<li>{esc(l)}</li>" for l in changes) + "</ul>"
+    tl = A.get("text_log") or {}
+    stale = [b["title"] for b in A["boxes"] if b.get("text_stale")]
+    text_log_html = esc(f"This build: {tl.get('unchanged', 0)} box texts reused (facts unchanged), {tl.get('hand', 0)} "
+                        f"from hand text, {tl.get('checked', 0)} re-checked by {tl.get('model') or 'no model'} "
+                        f"({tl.get('kept', 0)} kept, {tl.get('rewritten', 0)} rewritten, {tl.get('rejected', 0)} rejected); "
+                        f"tokens {tl.get('input_tokens', 0)} in / {tl.get('output_tokens', 0)} out. "
+                        + (f"Stale (code changed, not yet re-checked): {', '.join(stale)}." if stale else "No stale text.")
+                        + " Every rebuild is logged in docs/arch/text_log.jsonl.")
+    rr = A["sample"]["runs"].get("real")
+    real_option = (f'<option value="real">real run: {esc(rr["result"].get("task_id") or rr["run_id"][:8])} '
+                   f'({esc((rr["result"].get("models") or {}).get("returned", ["?"])[0] if (rr["result"].get("models") or {}).get("returned") else rr["result"].get("profile") or "?")})</option>') if rr else ""
+    un = A.get("unassigned", [])
+    new_un = [u for u in un if u["new"]]
+    unassigned_html = (
+        "<p class='sub'>Code is placed in a box by a <code># box: &lt;id&gt;</code> line above its def or class. "
+        + (f"<b class='warnline'>{len(new_un)} new since the last build and on no box:</b></p><ul class='changes'>"
+           + "".join(f"<li><code>{esc(u['key'])}</code> ({esc(u['kind'])}, {esc(u['path'])}:{u['line']})</li>" for u in new_un)
+           + "</ul>" if new_un else "No code added since the last build is missing a tag.</p>")
+        + f"<details><summary>{len(un) - len(new_un)} older top-level definitions carry no tag (helpers the boxes "
+          f"do not show)</summary><ul class='changes'>"
+        + "".join(f"<li><code>{esc(u['key'])}</code></li>" for u in un if not u["new"]) + "</ul></details>")
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{TITLE}</title>
@@ -857,7 +882,7 @@ def render() -> Path:
 <span>✦ changed since last build</span><span><code>task/draft.py:39</code> = where it lives in the code</span></div>
 <div class="tools">
 <button type="button" class="btn" id="replay" aria-pressed="false">▶ Replay sample run</button>
-<label>sample: <select id="topo"><option value="flat">step by step (flat)</option><option value="boss_reviewers">writer + reviewers</option><option value="plan">step graph (plan)</option></select></label>
+<label>sample: <select id="topo"><option value="flat">step by step (flat)</option><option value="boss_reviewers">writer + reviewers</option><option value="plan">step graph (plan)</option>{real_option}</select></label>
 <button type="button" class="btn" id="cost" aria-pressed="false">Cost overlay</button>
 <button type="button" class="btn" id="guards" aria-pressed="false">Show only guards</button>
 <input type="search" id="q" placeholder="Search a class, prompt file or word…" aria-label="Search boxes" list="qlist">
@@ -872,9 +897,14 @@ def render() -> Path:
 <p class="notes" id="note"></p>
 <h2>Sample run timeline</h2>
 <p class="sub" id="tlmeta"></p>
+<p class="sub" id="tlgaps"></p>
 <div class="timeline"><table><thead><tr><th>#</th><th>step</th><th>helper</th><th>log line</th><th>tokens</th><th>result</th></tr></thead><tbody id="tlbody"></tbody></table></div>
 <h2>What changed since the last build</h2>
 {changes_html}
+<h2>Box text upkeep</h2>
+<p class="sub">{text_log_html}</p>
+<h2>Unassigned code</h2>
+{unassigned_html}
 <h2>Glossary</h2>
 <dl class="gloss">{gloss}</dl>
 <p class="foot">Generated by tools/arch_render.py from docs/arch/architecture.json (tools/arch_extract.py) at {esc(A.get("generated_at", "unknown"))}. Plan compared against: <a href="{esc(A["plan_page"])}">Amoeba Phase 1 (plan)</a>, saved as {esc(A["plan_source"])}. Nothing on this page is hand-written about the code; boxes with no fact available say “unknown”.</p>

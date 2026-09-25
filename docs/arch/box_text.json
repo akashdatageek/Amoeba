@@ -1,0 +1,5217 @@
+{
+ "agent_obs": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
+      "amoeba/task/draft.py::_observer_sections",
+      "amoeba/task/draft.py::_sections",
+      "amoeba/task/draft.py::approves",
+      "amoeba/task/draft.py::assemble",
+      "amoeba/task/draft.py::n_suggestions",
+      "amoeba/task/draft.py::parse_capability_requests",
+      "amoeba/task/draft.py::request_survival",
+      "amoeba/task/draft.py::requirements_text",
+      "amoeba/task/draft.py::role_blobs",
+      "amoeba/task/draft.py::section_requests",
+      "amoeba/task/draft.py::token_limits",
+      "amoeba/task/models.py::DraftRound",
+      "amoeba/task/parsers.py::parse_plan",
+      "amoeba/task/parsers.py::parse_plan_d24",
+      "amoeba/task/parsers.py::parse_sections",
+      "amoeba/task/parsers.py::parse_verdict",
+      "amoeba/task/quality.py::draft_quality",
+      "amoeba/task/quality.py::gate_suggestions"
+     ],
+     "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
+     "key": "amoeba/task/draft.py::draft_team",
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "decide",
+     "if d24",
+     "set rec.agent_observer_raw, s = _observer_sections(tl, 'agent_observer', render(PROMPT.d24_rev"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "Envelope.max_agents",
+    "Episode.seed",
+    "draft_team.seed"
+   ],
+   "prompts": {
+    "autoagents_check_roles": "31892d6a8895",
+    "autoagents_check_roles_format": "d3e887b0c886",
+    "d24_agent_observer_system": "24f644bcc595",
+    "d24_review_team": "722f2df9cebb"
+   },
+   "title": "Agent Observer"
+  },
+  "facts_hash": "a653e430207d2c26",
+  "seed_hash": "212a1f1f8d5da60e",
+  "sentence": "A second AI checks the list of helpers and replies with suggestions, or 'No Suggestions'.",
+  "source": "hand",
+  "what": [
+   "The checking AI reads the job, the drafted helpers, the capability requests and every earlier helper suggestion.",
+   "A helper using a tool we lack that is not requested gets 'add a Capability Request for it', never 'remove the tool'; a request may be questioned only if the job does not need that ability at all, not because an existing tool could work around it.",
+   "It lists problems with the helpers, or writes 'No Suggestions'.",
+   "It runs every round, even after it has once agreed."
+  ]
+ },
+ "artifacts": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner._write",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._save",
+     "signature": "_save(self, n: int, wave: int, text: str, meta: dict, prov: dict) -> None"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "decide",
+     "if self.dir",
+     "set suffix = '.rework' if meta['rework_of'] or meta.get('reverify_of') or meta.get('rerun_of_s"
+    ],
+    [
+     "fallback",
+     "'.rework' if meta['rework_of'] or meta.get('reverify_of') or meta.get('rerun_of_stale') else ''",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if k != 'untagged_examples'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not c['pass']",
+     "drop the rest"
+    ]
+   ],
+   "kind": "data",
+   "numbers": [],
+   "prompts": {},
+   "title": "Step artifacts"
+  },
+  "facts_hash": "cfadece1c2650e6a",
+  "seed_hash": "549a229c301b1f99",
+  "sentence": "Each step's output saved as a file, with who wrote it, what it saw, its status and its sources.",
+  "source": "hand",
+  "what": [
+   "runs/<id>/artifacts/step_<n>.md holds the text; step_<n>.json the step, wave, roles, inputs, status, checks, verdict, sources and figure counts.",
+   "A reworked step keeps its first version as step_<n>.first.md."
+  ]
+ },
+ "capreq": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "A tool or skill the team asked for that the registry does not have (D19). Recorded, never acted on.",
+     "fields": [
+      [
+       "name",
+       "str"
+      ],
+      [
+       "kind",
+       "Literal['tool', 'skill']"
+      ],
+      [
+       "for_role",
+       "str"
+      ],
+      [
+       "what_it_does",
+       "str"
+      ],
+      [
+       "input",
+       "str"
+      ],
+      [
+       "output",
+       "str"
+      ],
+      [
+       "example_input",
+       "str"
+      ],
+      [
+       "example_output",
+       "str"
+      ],
+      [
+       "source",
+       "Literal['planner', 'unregistered_tool', 'runtime_unknown_tool']"
+      ],
+      [
+       "canonical",
+       "str"
+      ],
+      [
+       "mapped",
+       "bool"
+      ]
+     ],
+     "key": "amoeba/task/models.py::CapabilityRequest",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/capabilities/__init__.py::_table",
+      "amoeba/capabilities/__init__.py::snake",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "(canonical name, mapped?). An unknown name is kept as written (not snake-cased) and reported as unmapped.",
+     "key": "amoeba/capabilities/__init__.py::normalise",
+     "signature": "normalise(name: str) -> tuple[str, bool]"
+    },
+    {
+     "callees": [
+      "amoeba/config/io.py::dump_yaml",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter",
+      "amoeba/interp/runtime.py::Interpreter.run",
+      "amoeba/interp/trace.py::TraceWriter",
+      "amoeba/interp/trace.py::TraceWriter.close",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.spans",
+      "amoeba/llm/limits.py::estimate",
+      "amoeba/task/draft.py::draft_team",
+      "amoeba/task/evaluate.py::rubric_score",
+      "amoeba/task/evaluate.py::score",
+      "amoeba/task/instantiate.py::instantiate",
+      "amoeba/task/models.py::RunResult",
+      "scripts/run_task.py::ask_user",
+      "scripts/run_task.py::blocked_of",
+      "scripts/run_task.py::intake_text",
+      "scripts/run_task.py::models_of",
+      "scripts/run_task.py::provenance_of",
+      "scripts/run_task.py::refinement_of"
+     ],
+     "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
+     "key": "scripts/run_task.py::run_one",
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None) -> RunResult"
+    }
+   ],
+   "checks": [],
+   "guards": [],
+   "kind": "data",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "ChatResponse.latency_ms",
+    "Draft.requests_dropped_by_observers",
+    "Draft.requests_proposed",
+    "Episode.latency_ms",
+    "Episode.n_llm_calls",
+    "Episode.seed",
+    "Episode.total_tokens",
+    "RunResult.requests_dropped_by_observers",
+    "RunResult.requests_proposed",
+    "run_one.seed"
+   ],
+   "prompts": {},
+   "title": "Capability requests"
+  },
+  "facts_hash": "198d5e6c4e26b4b5",
+  "seed_hash": "b334e2ca877416cf",
+  "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
+  "source": "hand",
+  "what": [
+   "One record per request: name, tool or skill, for which helper, what it does, input, output and an example of each.",
+   "Where it came from: the planner's list, a helper's tool list, or an action during the run.",
+   "Also in result.json (with the steps that answered BLOCKED) and as one log line each.",
+   "result.json also says how many requests round 1 proposed and how many were gone from the final draft (requests_proposed, requests_dropped_by_observers).",
+   "Each request keeps the name as written and a standard name from a list of known aliases ('Web Search' and 'web research' are both web_search); names not on the list are reported as unmapped so the list can grow."
+  ]
+ },
+ "checks": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
+      "amoeba/task/draft.py::_observer_sections",
+      "amoeba/task/draft.py::_sections",
+      "amoeba/task/draft.py::approves",
+      "amoeba/task/draft.py::assemble",
+      "amoeba/task/draft.py::n_suggestions",
+      "amoeba/task/draft.py::parse_capability_requests",
+      "amoeba/task/draft.py::request_survival",
+      "amoeba/task/draft.py::requirements_text",
+      "amoeba/task/draft.py::role_blobs",
+      "amoeba/task/draft.py::section_requests",
+      "amoeba/task/draft.py::token_limits",
+      "amoeba/task/models.py::DraftRound",
+      "amoeba/task/parsers.py::parse_plan",
+      "amoeba/task/parsers.py::parse_plan_d24",
+      "amoeba/task/parsers.py::parse_sections",
+      "amoeba/task/parsers.py::parse_verdict",
+      "amoeba/task/quality.py::draft_quality",
+      "amoeba/task/quality.py::gate_suggestions"
+     ],
+     "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
+     "key": "amoeba/task/draft.py::draft_team",
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+    },
+    {
+     "callees": [],
+     "doc": "D20: the role that writes the final answer — the first one the planner marks \"is_summariser\": true, else",
+     "key": "amoeba/task/draft.py::pick_summariser",
+     "signature": "pick_summariser(roles: list[DraftedRole], plan: list[DraftPlanStep]) -> DraftedRole"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/draft.py::DraftError",
+      "amoeba/task/draft.py::parse_capability_requests",
+      "amoeba/task/draft.py::pick_summariser",
+      "amoeba/task/draft.py::resolve_tools",
+      "amoeba/task/draft.py::role_blobs",
+      "amoeba/task/models.py::Draft",
+      "amoeba/task/models.py::DraftPlanStep",
+      "amoeba/task/models.py::DraftedRole",
+      "amoeba/task/parsers.py::parse_bullets",
+      "amoeba/task/parsers.py::parse_open_questions",
+      "amoeba/task/parsers.py::parse_plan",
+      "amoeba/task/parsers.py::parse_plan_d24",
+      "amoeba/task/parsers.py::parse_requirements"
+     ],
+     "doc": "One planner reply → a Draft, by the deterministic post-checks. Used on the last round (publish) and, with",
+     "key": "amoeba/task/draft.py::assemble",
+     "signature": "assemble(sec: dict[str, str], raw: str, prompts: str, envelope: Envelope, log: list[DraftRound] | None=None) -> Draft"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedLLM.key",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/quality.py::_role_blobs",
+      "amoeba/task/quality.py::task_coverage",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "task_text: the task as Box 2 saw it; without it (or without requirement ids) task_coverage is n/a.",
+     "key": "amoeba/task/quality.py::draft_quality",
+     "signature": "draft_quality(d: Draft, task_text: str='') -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "D28: what the quality gate tells the planner, one numbered line per failed hard check.",
+     "key": "amoeba/task/quality.py::gate_suggestions",
+     "signature": "gate_suggestions(q: dict) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/interp/provenance.py::claim_numbers",
+      "amoeba/interp/provenance.py::numbers_in",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/task/quality.py::_content",
+      "amoeba/task/quality.py::deliverable_phrases",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D52: is the task carried into the Planner's Requirements and Givens? Every number the task states must",
+     "key": "amoeba/task/quality.py::task_coverage",
+     "signature": "task_coverage(task_text: str, requirements: dict[str, str], givens: list[str]) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/parsers.py::parse_json_objects"
+     ],
+     "doc": "Role JSON blobs of one planner reply, Created then Selected. DEVIATION D22: brace-balanced parsing",
+     "key": "amoeba/task/draft.py::role_blobs",
+     "signature": "role_blobs(sec: dict[str, str]) -> list[dict]"
+    },
+    {
+     "callees": [],
+     "doc": "environment._parser_roles (environment.py:60-73).",
+     "key": "amoeba/task/parsers.py::parse_role_blobs",
+     "signature": "parse_role_blobs(text: str) -> list[dict]"
+    },
+    {
+     "callees": [],
+     "doc": "environment._parser_plan (environment.py:75-84) + our bracket parser.",
+     "key": "amoeba/task/parsers.py::parse_plan",
+     "signature": "parse_plan(text: str) -> list[tuple[list[str], str]]"
+    },
+    {
+     "callees": [],
+     "doc": "One JSON blob from the planner (AutoAgents keys: name, description, tools, suggestions, prompt).",
+     "fields": [
+      [
+       "name",
+       "str"
+      ],
+      [
+       "description",
+       "str"
+      ],
+      [
+       "tools",
+       "list[str]"
+      ],
+      [
+       "suggestions",
+       "str"
+      ],
+      [
+       "prompt",
+       "str"
+      ],
+      [
+       "missing_tools",
+       "list[str]"
+      ],
+      [
+       "is_summariser",
+       "bool"
+      ],
+      [
+       "seniority",
+       "str"
+      ],
+      [
+       "goal",
+       "str"
+      ],
+      [
+       "responsibilities",
+       "list[str]"
+      ],
+      [
+       "skills",
+       "list[str]"
+      ],
+      [
+       "inputs",
+       "list[str]"
+      ],
+      [
+       "outputs",
+       "list[Any]"
+      ],
+      [
+       "success_criteria",
+       "list[str]"
+      ],
+      [
+       "constraints",
+       "list[str]"
+      ],
+      [
+       "covers",
+       "list[str]"
+      ]
+     ],
+     "key": "amoeba/task/models.py::DraftedRole",
+     "methods": [],
+     "signature": null
+    }
+   ],
+   "checks": [
+    [
+     "ok",
+     "Largest team: #"
+    ]
+   ],
+   "guards": [
+    [
+     "correct",
+     "if 'independent_verification' in q['hard_failed']",
+     "add 'No step verifies numbers, sources or test results by a role that did not produce them. Add a verification step (depends_on the producing steps) done by a different role.'"
+    ],
+    [
+     "correct",
+     "if isinstance(d, dict) and d",
+     "add d"
+    ],
+    [
+     "correct",
+     "if not any((re.search('\\\\b' + DELIVERABLE_VERBS[key] + '\\\\b', r, re.I) and (not words or words & _content(r)) for r in requirements.values()))",
+     "add phrase"
+    ],
+    [
+     "correct",
+     "if tc['missing_numbers']",
+     "add f\"Numbers in the task that no requirement or given carries: {', '.join(tc['missing_numbers'])}. Add each to Givens and Assumptions (or to the requirement that uses it).\""
+    ],
+    [
+     "correct",
+     "if tc['missing_phrases']",
+     "add 'Task phrases no requirement keeps (same verb, same object): ' + '; '.join((f'\"{x}\"' for x in tc['missing_phrases'])) + \". Add a requirement for each, keeping the task's own verb.\""
+    ],
+    [
+     "correct",
+     "if who",
+     "add DraftPlanStep(index=i, agent_names=who, text=text, **fields)"
+    ],
+    [
+     "decide",
+     "if 'requirements_covered' in q['hard_failed']",
+     "set rc = c['requirements_covered']"
+    ],
+    [
+     "decide",
+     "if 'summariser' in q['hard_failed']",
+     "set sm = c['summariser']"
+    ],
+    [
+     "decide",
+     "if 'task_coverage' in q['hard_failed']",
+     "set tc = c['task_coverage']"
+    ],
+    [
+     "decide",
+     "if any((s.covers for s in steps))",
+     "set verify = [s.index + 1 for s in steps for e in steps if e.index < s.index and set(s.covers)"
+    ],
+    [
+     "decide",
+     "if any((s.depends_on for s in steps))",
+     "set found = []"
+    ],
+    [
+     "decide",
+     "if any((s.depends_on for s in steps)) or any((s.covers for s in steps))",
+     "set bad = [{'step': s.index + 1, 'depends_on': dep} for s in steps for dep in s.depends_on if "
+    ],
+    [
+     "decide",
+     "if not who",
+     "set head = text.split(':')[0]"
+    ],
+    [
+     "decide",
+     "if req",
+     "set by_steps = {r for s in steps for r in s.covers}"
+    ],
+    [
+     "decide",
+     "if req and task_text",
+     "set checks['task_coverage'] = task_coverage(task_text, d.requirements, d.givens)"
+    ],
+    [
+     "fallback",
+     "'' if v is None else str(v)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'no requirement ids (d19 draft or none written)' if not req else 'no task text given'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[n.strip() for n in m.group(1).split(',')] if m else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[v] if isinstance(v, (str, dict)) else list(v)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[v] if v.strip() else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "d.rounds[-1].roles if d.rounds else _role_blobs(d.raw_draft)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "declared == 1 if d.prompts == 'd24' else True",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except json.JSONDecodeError",
+     "skip (continue)"
+    ],
+    [
+     "fallback",
+     "flagged[0] if flagged else next((r for r in roles if r.name == last))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "log if log is not None else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "parse_bullets(sec.get('Givens and Assumptions', '')) if d24 else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "parse_bullets(sec.get('Risks and Decisions', '')) if d24 else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "parse_open_questions(sec.get('Open Questions', '')) if d24 else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "parse_plan_d24(sec['Execution Plan']) if d24 else [(names, text, {}) for names, text in parse_plan(sec['Execution Plan'])]",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "parse_requirements(sec.get('Requirements', '')) if d24 else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "s.kind == 'verify' if declared else VERIFY_WORDS.search(f'{s.text}\\n{s.do}\\n{s.done_when}')",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "steps[-1].index + 1 if steps else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "summ.name if summ else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "summ.tools + summ.missing_tools if summ else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "x if isinstance(x, str) else json.dumps(x, ensure_ascii=False)",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if c['ok'] is False",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if checks.get(k, {}).get('ok') is False",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if dep in number",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if dep not in number or dep >= s.index + 1",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if e.index < s.index and set(s.covers) & set(e.covers) and (not set(s.agent_names) & set(e.agent_names))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if key(t) not in asked",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n in bracket",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n not in carried",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n.replace('_', ' ') in head",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not getattr(x, f)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if q.source == 'planner'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r not in by_roles",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r not in by_steps",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.is_summariser",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.name == last",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if s.depends_on and s.agent_names != [summ_name] and (s.kind == 'verify' if declared else VERIFY_WORDS.search(f'{s.text}\\n{s.do}\\n{s.done_when}'))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if summ and summ.name in s.agent_names",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if v",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if x.is_summariser",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if any((x.name == r.name for x in roles))",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if not 2 <= len(roles) <= envelope.max_agents",
+     "raise DraftError"
+    ],
+    [
+     "reject",
+     "if not plan",
+     "raise DraftError"
+    ],
+    [
+     "reject",
+     "if not str(b.get('name', '')).strip()",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if phrase in phrases",
+     "skip (continue)"
+    ],
+    [
+     "stop",
+     "if isinstance(v, str)",
+     "return [v]"
+    ],
+    [
+     "stop",
+     "if isinstance(v, str)",
+     "return [v] if v.strip() else []"
+    ],
+    [
+     "stop",
+     "if v is None",
+     "return []"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "Draft.gate_hits",
+    "Draft.requests_dropped_by_observers",
+    "Draft.requests_proposed",
+    "Envelope.max_agents",
+    "RunResult.requests_dropped_by_observers",
+    "RunResult.requests_proposed",
+    "draft_team.seed"
+   ],
+   "prompts": {},
+   "title": "Plain-code checks on the final draft"
+  },
+  "facts_hash": "aad5d1e6588425b2",
+  "seed_hash": "122c285d7e3abf0c",
+  "sentence": "Throws out broken or nameless helper entries, records tools we lack instead of dropping them, flags the summariser, and drops steps that name nobody.",
+  "source": "hand",
+  "what": [
+   "Reads the helper records and the numbered steps out of the last draft.",
+   "Skips records that are not valid, have no name, or repeat a name; tools we lack go to the tool resolver below.",
+   "Flags the summariser: the helper the planner marked, else the last helper of the last step (having no tools no longer decides it; nothing is appended). Then requires a team size in the allowed range.",
+   "Matches each step's names to helpers (exact first, then by part of the name) and drops steps that match nobody; no steps left means drafting failed.",
+   "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one summariser, a checking step done by a helper that did not produce what it checks, and task coverage: every number in the task and every deliverable verb (deliver, estimate, assess, prototype, test, gather, build, plan) must reach a requirement or a given.",
+   "With the quality gate on, a draft failing a must-have check goes back to the planner for one more round with the failed checks listed, within the round cap."
+  ]
+ },
+ "client": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "Any OpenAI-compatible endpoint (vLLM, Ollama, OpenAI, DeepSeek ...).",
+     "fields": [],
+     "key": "amoeba/llm/client.py::OpenAICompatibleClient",
+     "methods": [
+      "__init__(self, base_url: str | None, api_key: str, model: str, temperature: float=0.2, max_tokens: int=2048, max_rate_retries: int=5, min_seconds_between_calls: float=0.0, sleep: Callable[[float], None]=time.sleep, merge_system: bool=False, reasoning_effort: str | None=None)",
+      "request_options(self) -> dict",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None) -> ChatResponse"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "model",
+       "str"
+      ]
+     ],
+     "key": "amoeba/llm/client.py::LLMClient",
+     "methods": [
+      "chat(self, system: str, user: str, seed: int=0, max_tokens: int | None=None) -> ChatResponse",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None) -> ChatResponse"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "content",
+       "str"
+      ],
+      [
+       "input_tokens",
+       "int"
+      ],
+      [
+       "output_tokens",
+       "int"
+      ],
+      [
+       "model",
+       "str"
+      ],
+      [
+       "latency_ms",
+       "int"
+      ],
+      [
+       "finish_reason",
+       "str | None"
+      ],
+      [
+       "reasoning_tokens",
+       "int"
+      ],
+      [
+       "reasoning_source",
+       "str | None"
+      ],
+      [
+       "cached",
+       "bool"
+      ],
+      [
+       "retries",
+       "list"
+      ],
+      [
+       "throttle_wait_s",
+       "float"
+      ]
+     ],
+     "key": "amoeba/llm/client.py::ChatResponse",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D49: for models without a system role — the system text goes at the top of the first user message",
+     "key": "amoeba/llm/client.py::merge_system",
+     "signature": "merge_system(messages: Messages) -> Messages"
+    },
+    {
+     "callees": [],
+     "doc": "Wraps any LLMClient. The wrapped client is only called on a miss in record (or off) mode.",
+     "fields": [],
+     "key": "amoeba/llm/cache.py::CachedLLM",
+     "methods": [
+      "__init__(self, inner: LLMClient, folder: str | Path, mode: str='record', namespace: str='')",
+      "key(self, messages: Messages, max_tokens: int | None) -> str",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None) -> ChatResponse"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "max_tokens",
+       "int | None"
+      ],
+      [
+       "max_calls",
+       "int | None"
+      ]
+     ],
+     "key": "amoeba/llm/limits.py::RunLimits",
+     "methods": [
+      "active(self) -> bool",
+      "check(self, trace) -> None"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/limits.py::billed",
+      "amoeba/llm/limits.py::load_prices"
+     ],
+     "doc": "Billed tokens and, when every model used has prices, the estimated cost in USD (else cost_usd is None).",
+     "key": "amoeba/llm/limits.py::estimate",
+     "signature": "estimate(chat_spans: list[dict], model: str, prices: dict | None=None) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "The profile's clients: `route(group)` gives the client and reply limit (None = the call's own) of a role",
+     "fields": [],
+     "key": "amoeba/llm/profiles.py::RoleRouter",
+     "methods": [
+      "__init__(self, profile: str, default: LLMClient, by_group: dict[str, LLMClient] | None=None, max_tokens: dict[str, int] | None=None)",
+      "route(self, group: str | None) -> tuple[LLMClient, int | None]",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None) -> ChatResponse",
+      "models(self) -> dict[str, str]"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/profiles.py::RoleRouter",
+      "amoeba/llm/profiles.py::build_router.client",
+      "scripts/run_task.py::build_llm.make"
+     ],
+     "doc": "make(model) builds one client (with the profile's endpoint and options); one client per distinct model.",
+     "key": "amoeba/llm/profiles.py::build_router",
+     "signature": "build_router(profile: Profile, make: Callable[[str], LLMClient], model: str | None=None, keep_max_tokens: set[str] | None=None) -> RoleRouter"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedLLM",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/client.py::OpenAICompatibleClient",
+      "amoeba/llm/profiles.py::build_router",
+      "amoeba/llm/profiles.py::get_profile",
+      "amoeba/llm/toy_mock.py::toy_mock_client",
+      "scripts/run_task.py::endpoint"
+     ],
+     "doc": "",
+     "key": "scripts/run_task.py::build_llm",
+     "signature": "build_llm(args: argparse.Namespace) -> LLMClient"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "decide",
+     "if args.llm == 'mock'",
+     "set mock = toy_mock_client()"
+    ],
+    [
+     "decide",
+     "if len(by_model) > 1",
+     "set out['models'] = sorted(by_model)"
+    ],
+    [
+     "decide",
+     "if m not in clients",
+     "set clients[m] = make(m)"
+    ],
+    [
+     "decide",
+     "if m.get('role') == 'user'",
+     "set m['content'] = f\"{system}\\n\\n{m['content']}\""
+    ],
+    [
+     "decide",
+     "if opts and any(opts.values())",
+     "set parts['options'] = opts"
+    ],
+    [
+     "decide",
+     "if pin is None or pout is None",
+     "set cost = None"
+    ],
+    [
+     "decide",
+     "if self.reasoning_effort is not None",
+     "set kw['reasoning_effort'] = REASONING_EFFORTS[self.reasoning_effort]"
+    ],
+    [
+     "decide",
+     "if status not in RATE_STATUS or len(retries) >= self.max_rate_retries or spend_cap(e)",
+     "set e.amoeba_retries = retries"
+    ],
+    [
+     "fallback",
+     "CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else client",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "CachedLLM(mock, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else mock",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "None if args.reasoning_effort == 'unset' else args.reasoning_effort or profile.reasoning_effort",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "None if cost is None else round(cost, 6)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "after if after is not None else min(60.0, 2.0 * 2 ** len(retries))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "set self.sends_seed = False"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "set status = getattr(e, 'status_code', None)"
+    ],
+    [
+     "fallback",
+     "load_prices() if prices is None else prices",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "merge_system(messages) if self.merge_system else messages",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "profile.merge_system if args.merge_system is None else args.merge_system",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.min_interval - (time.monotonic() - self._last_call) if self._last_call else 0.0",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'observers'} if getattr(args, 'observer_max_tokens', None) else set()",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'planner'} if getattr(args, 'planner_max_tokens', None) else set()",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'seed': seed} if self.sends_seed else {}",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if m.get('role') != 'system'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if m.get('role') == 'system' and m.get('content')",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.get('max_tokens') and (keep_max_tokens is None or g in keep_max_tokens)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.get('model')",
+     "drop the rest"
+    ],
+    [
+     "loop cap",
+     "while True",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if not (self.sends_seed and getattr(e, 'status_code', None) == 400 and ('seed' in str(e)))",
+     "raise "
+    ],
+    [
+     "reject",
+     "if over",
+     "raise RunLimitReached"
+    ],
+    [
+     "reject",
+     "if reasoning_effort is not None and reasoning_effort not in REASONING_EFFORTS",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if self.store.mode == 'replay'",
+     "raise CacheMiss"
+    ],
+    [
+     "stop",
+     "if hit is not None",
+     "return ChatResponse(**{**hit['response'], 'cached': True})"
+    ],
+    [
+     "stop",
+     "if not system",
+     "return rest"
+    ],
+    [
+     "stop",
+     "if self.store.mode == 'off'",
+     "return self.inner.chat_messages(messages, seed, max_tokens=max_tokens)"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "AgentResult.input_tokens",
+    "AgentResult.output_tokens",
+    "AgentSpec.max_tokens",
+    "AgentSpec.temperature",
+    "ChatResponse.input_tokens",
+    "ChatResponse.latency_ms",
+    "ChatResponse.output_tokens",
+    "ChatResponse.reasoning_tokens",
+    "ChatResponse.throttle_wait_s",
+    "Episode.latency_ms",
+    "Episode.seed"
+   ],
+   "prompts": {},
+   "title": "AI connection"
+  },
+  "facts_hash": "10f9e397306452f4",
+  "seed_hash": "5c303e1325c2e5fb",
+  "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
+  "source": "hand",
+  "what": [
+   "Sends the messages to the AI service and returns the reply with its token counts.",
+   "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged) and can space calls out; can fold the system message into the user message and set the reasoning effort.",
+   "With --llm-cache every reply is stored and can be replayed without a call; --max-tokens-per-run / --max-calls-per-run stop a run cleanly; every run prints its tokens and estimated cost.",
+   "A named profile (amoeba/config/models.yaml, default gemma-api) sets the service, the model and how to call it; each role group (planner, checkers, helpers, reviewers, summariser) may get its own model and reply length. Every log line names the profile, and each AI line the exact model the service returned.",
+   "Temperature is set once for the connection, not per helper.",
+   "Every call from every box goes through here, wrapped so it is logged."
+  ]
+ },
+ "critics": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+      "amoeba/interp/runtime.py::_Msg",
+      "amoeba/interp/runtime.py::with_card",
+      "amoeba/task/parsers.py::parse_critic"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.review",
+     "signature": "review(c: AgentSpec) -> _Msg"
+    },
+    {
+     "callees": [
+      "amoeba/task/parsers.py::ParseError"
+     ],
+     "doc": "AgentVerse 'critic' parser = CommonParser3 (output_parser/output_parser.py:541-561) → (is_agree, criticism).",
+     "key": "amoeba/task/parsers.py::parse_critic",
+     "signature": "parse_critic(text: str) -> tuple[bool, str]"
+    }
+   ],
+   "checks": [
+    [
+     "ok",
+     "Read attempts per review: # (runtime.py review)"
+    ],
+    [
+     "ok",
+     "Review rounds: #"
+    ]
+   ],
+   "guards": [
+    [
+     "decide",
+     "if first.strip('. ') == 'Action: Disagree'",
+     "set m = re.findall('Action Input: ([\\\\S\\\\n ]+)', text)"
+    ],
+    [
+     "fallback",
+     "all attempts of `for _attempt in range(2)` failed",
+     "agree, crit = (False, '')"
+    ],
+    [
+     "fallback",
+     "except ParseError",
+     "skip (continue)"
+    ],
+    [
+     "fallback",
+     "m[0].strip() if m else CRITIC_DEFAULT",
+     "choose value"
+    ],
+    [
+     "loop cap",
+     "for _attempt in range(2)",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if not first.startswith('Action:')",
+     "raise ParseError"
+    ],
+    [
+     "stop",
+     "if first.strip('. ') == 'Action: Agree'",
+     "return (True, '')"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [],
+   "prompts": {
+    "agentverse_critic_append": "2981f8685419",
+    "agentverse_critic_prepend": "37868d6c1686"
+   },
+   "title": "Critics (all others)"
+  },
+  "facts_hash": "e92d12d95f09c607",
+  "seed_hash": "7d6586e2c55f4a4e",
+  "sentence": "Every other helper reviews the answer and must reply Agree or Disagree; unreadable replies count as agreement.",
+  "source": "hand",
+  "what": [
+   "Each reviewer sees the job, its own role and the recent chat history (answers and objections).",
+   "Its first line must be exactly 'Action: Agree' or 'Action: Disagree'; a disagreement carries a reason.",
+   "A reply that cannot be read twice in a row is treated as silent, which counts as agreeing."
+  ]
+ },
+ "disagree": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/interp/runtime.py::Interpreter._llm_messages",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.broadcast",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.review",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
+      "amoeba/interp/runtime.py::_Msg",
+      "amoeba/interp/runtime.py::with_card",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/task/parsers.py::parse_critic"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers",
+     "signature": "run_boss_reviewers(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.broadcast",
+     "signature": "broadcast(msgs: list[_Msg]) -> None"
+    }
+   ],
+   "checks": [
+    [
+     "ok",
+     "Review rounds: #"
+    ]
+   ],
+   "guards": [
+    [
+     "filter",
+     "keep only if not r.is_agree and r.content != ''",
+     "drop the rest"
+    ],
+    [
+     "loop cap",
+     "for _round in range(cfg.max_inner_turns)",
+     "loop ends"
+    ],
+    [
+     "stop",
+     "if not nonempty",
+     "stop (break)"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "TeamConfig.max_inner_turns"
+   ],
+   "prompts": {},
+   "title": "Anyone disagree?"
+  },
+  "facts_hash": "e26ef732318184d2",
+  "seed_hash": "5cd085c314ad94ee",
+  "sentence": "Counts the objections: none ends the run; otherwise everyone sees them and the writer revises, up to three rounds.",
+  "source": "hand",
+  "what": [
+   "After each review round, plain code keeps only the disagreeing reviews that carry a reason.",
+   "None left: the run ends and the current answer is the result.",
+   "Otherwise the objections are shared with everyone and the writer revises.",
+   "After the last round the final revision is not reviewed again."
+  ]
+ },
+ "each_step": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/interp/runtime.py::Interpreter._dispatch",
+      "amoeba/interp/runtime.py::Interpreter._llm_sections",
+      "amoeba/interp/runtime.py::step_context",
+      "amoeba/interp/runtime.py::with_card",
+      "amoeba/interp/runtime.py::with_unavailable",
+      "amoeba/interp/trace.py::TraceWriter.span"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_flat",
+     "signature": "run_flat(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/interp/runtime.py::Interpreter._dispatch",
+      "amoeba/interp/runtime.py::Interpreter._llm_sections",
+      "amoeba/interp/runtime.py::step_context",
+      "amoeba/interp/runtime.py::with_card",
+      "amoeba/interp/runtime.py::with_unavailable",
+      "amoeba/interp/trace.py::TraceWriter.span"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_flat",
+     "signature": "run_flat(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "fallback",
+     "'blocked' if last_step_blocked else 'max_turns'",
+     "choose value"
+    ],
+    [
+     "stop",
+     "if last_step_done and (not last_step_blocked)",
+     "return (answer, None)"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "Limits.max_turns"
+   ],
+   "prompts": {},
+   "title": "For each step"
+  },
+  "facts_hash": "e660d5a3df59bc4f",
+  "seed_hash": "1ddbd3b677e803eb",
+  "sentence": "Walks through the plan's steps in order, giving each step everything the earlier steps produced.",
+  "source": "hand",
+  "what": [
+   "Takes the plan's steps one at a time, in order.",
+   "Each step sees the job plus the published result of every earlier step.",
+   "The run's answer is the last step's final answer."
+  ]
+ },
+ "envelope": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "allowed_tools",
+       "dict[str, list[str]]"
+      ],
+      [
+       "max_agents",
+       "int"
+      ],
+      [
+       "default_model",
+       "str"
+      ],
+      [
+       "tool_descriptions",
+       "dict[str, str]"
+      ]
+     ],
+     "key": "amoeba/safety/envelope.py::Envelope",
+     "methods": [
+      "allowed_tool_names(self) -> list[str]",
+      "tool_catalog_string(self) -> str",
+      "from_registry(cls, registry, model: str='mock', max_agents: int=5) -> 'Envelope'"
+     ],
+     "signature": null
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "stop",
+     "if not names",
+     "return 'None'"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "Envelope.max_agents"
+   ],
+   "prompts": {},
+   "title": "Allowed tools and team size"
+  },
+  "facts_hash": "0b414e5597320084",
+  "seed_hash": "c1454e46ae55b9cb",
+  "sentence": "The rulebook the planner is held to: which tools exist and how many helpers a team may have.",
+  "source": "hand",
+  "what": [
+   "Lists the tools each kind of helper may use and the largest team allowed.",
+   "The planner and both checkers are shown this tool list in their prompts.",
+   "Plain code uses it to strip unknown tools and to reject teams that break the rules."
+  ]
+ },
+ "free_text": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/limits.py::RunLimits",
+      "amoeba/llm/limits.py::describe",
+      "amoeba/safety/envelope.py::Envelope.from_registry",
+      "amoeba/task/models.py::Task",
+      "amoeba/task/saved_drafts.py::load_saved_drafts",
+      "amoeba/task/saved_drafts.py::pick",
+      "amoeba/task/source.py::ToyTaskSource",
+      "amoeba/task/source.py::ToyTaskSource.tasks",
+      "amoeba/tools/registry.py::default_registry",
+      "scripts/eval_draft.py::parse_args",
+      "scripts/run_task.py::build_box3_tools",
+      "scripts/run_task.py::build_llm",
+      "scripts/run_task.py::cli_plan_options",
+      "scripts/run_task.py::cli_token_limits",
+      "scripts/run_task.py::parse_args",
+      "scripts/run_task.py::run_one"
+     ],
+     "doc": "",
+     "key": "scripts/run_task.py::main",
+     "signature": "main(argv: list[str] | None=None) -> int"
+    },
+    {
+     "callees": [
+      "scripts/eval_draft.py::parse_args",
+      "scripts/run_task.py::add_client_args",
+      "scripts/run_task.py::parse_args"
+     ],
+     "doc": "",
+     "key": "scripts/run_task.py::parse_args",
+     "signature": "parse_args(argv: list[str] | None) -> argparse.Namespace"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "decide",
+     "if args.tasks",
+     "set tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding='utf-8')"
+    ],
+    [
+     "decide",
+     "if saved is not None",
+     "set chosen = pick(saved, task.id, args.draft_pick)"
+    ],
+    [
+     "fallback",
+     "ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f', est. cost ${sum(costs):.4f}' if all((c is not None for c in costs)) else ' (no price for this model)'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "input if args.interactive else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "load_saved_drafts(args.drafts_from) if args.drafts_from else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "sum(scored) / len(scored) if scored else float('nan')",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if l.strip()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.score is not None",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if chosen is None",
+     "skip (continue)"
+    ],
+    [
+     "stop",
+     "if not results",
+     "return 1"
+    ]
+   ],
+   "kind": "plain",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "Episode.n_llm_calls",
+    "Episode.seed",
+    "Episode.total_tokens"
+   ],
+   "prompts": {},
+   "title": "Free-text task"
+  },
+  "facts_hash": "686b6185c55e7d78",
+  "seed_hash": "bc08817c92af9cff",
+  "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
+  "source": "hand",
+  "what": [
+   "When you give a sentence instead of asking for practice jobs, it becomes a single job.",
+   "It has no known answer, so its score stays empty.",
+   "Everything else runs exactly as for a practice job."
+  ]
+ },
+ "handoff": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
+      "amoeba/task/draft.py::_observer_sections",
+      "amoeba/task/draft.py::_sections",
+      "amoeba/task/draft.py::approves",
+      "amoeba/task/draft.py::assemble",
+      "amoeba/task/draft.py::n_suggestions",
+      "amoeba/task/draft.py::parse_capability_requests",
+      "amoeba/task/draft.py::request_survival",
+      "amoeba/task/draft.py::requirements_text",
+      "amoeba/task/draft.py::role_blobs",
+      "amoeba/task/draft.py::section_requests",
+      "amoeba/task/draft.py::token_limits",
+      "amoeba/task/models.py::DraftRound",
+      "amoeba/task/parsers.py::parse_plan",
+      "amoeba/task/parsers.py::parse_plan_d24",
+      "amoeba/task/parsers.py::parse_sections",
+      "amoeba/task/parsers.py::parse_verdict",
+      "amoeba/task/quality.py::draft_quality",
+      "amoeba/task/quality.py::gate_suggestions"
+     ],
+     "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
+     "key": "amoeba/task/draft.py::draft_team",
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+    }
+   ],
+   "checks": [
+    [
+     "differs",
+     "The plan's call is draft_team(task, llm, envelope, trace); the code is draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=#, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft: an extra seed argument (default #) that is passed on to every AI call."
+    ]
+   ],
+   "guards": [],
+   "kind": "plain",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "Draft.gate_hits",
+    "Draft.requests_dropped_by_observers",
+    "Draft.requests_proposed",
+    "DraftRound.agent_suggestions_n",
+    "DraftRound.plan_suggestions_n",
+    "Envelope.max_agents",
+    "Episode.seed",
+    "MAX_ROUNDS",
+    "RunResult.requests_dropped_by_observers",
+    "RunResult.requests_proposed",
+    "draft_team.seed"
+   ],
+   "prompts": {},
+   "title": "→ Box 2"
+  },
+  "facts_hash": "0d0e7bde4c344d84",
+  "seed_hash": "8a1ad7c906bf1b0d",
+  "sentence": "Passes the job to the team planner, which reads only the job text.",
+  "source": "hand",
+  "what": [
+   "The job moves to the planning box.",
+   "The planner sees the job text, never the known answer or the rubric (a test sends a rubric full of marker words through every prompt and checks none arrives)."
+  ]
+ },
+ "helper": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/interp/runtime.py::Interpreter._dispatch",
+      "amoeba/interp/runtime.py::Interpreter._llm_sections",
+      "amoeba/interp/runtime.py::step_context",
+      "amoeba/interp/runtime.py::with_card",
+      "amoeba/interp/runtime.py::with_unavailable",
+      "amoeba/interp/trace.py::TraceWriter.span"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_flat",
+     "signature": "run_flat(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]"
+    },
+    {
+     "callees": [],
+     "doc": "The agent's suggestions plus one line per tool its role named that is not registered (D21).",
+     "key": "amoeba/interp/runtime.py::with_unavailable",
+     "signature": "with_unavailable(agent: AgentSpec) -> str"
+    }
+   ],
+   "checks": [
+    [
+     "ok",
+     "Turns per step: #"
+    ]
+   ],
+   "guards": [
+    [
+     "fallback",
+     "'\\n'.join([agent.suggestions, *lines]) if lines else agent.suggestions",
+     "choose value"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [],
+   "prompts": {
+    "autoagents_custom_action": "519491f4dc95",
+    "autoagents_custom_action_format": "bdb3d9e5388e"
+   },
+   "title": "Helper(s) named in the step"
+  },
+  "facts_hash": "50957ed0fa037d67",
+  "seed_hash": "2abe057f94628663",
+  "sentence": "The AI helper for a step reads the step, the earlier results and a shared scratchpad, then picks one action.",
+  "source": "hand",
+  "what": [
+   "Each helper named in the step gets its own drafted instructions plus the step, earlier results and a scratchpad shared with the other helpers of that step.",
+   "If its role named a tool we lack, one line per such tool says it is unavailable this run and that it may answer BLOCKED.",
+   "It must reply with a current sub-step, one action and that action's input.",
+   "The action is a tool name, 'Print', or 'Final Output'."
+  ]
+ },
+ "instantiate": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/schema.py::AgentSpec",
+      "amoeba/config/schema.py::Edge",
+      "amoeba/config/schema.py::PlanStep",
+      "amoeba/config/schema.py::PromptRef",
+      "amoeba/config/schema.py::TeamConfig",
+      "amoeba/config/validate.py::validate",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/plan_runner.py::relink",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/draft.py::DraftError"
+     ],
+     "doc": "",
+     "key": "amoeba/task/instantiate.py::instantiate",
+     "signature": "instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> TeamConfig"
+    },
+    {
+     "callees": [
+      "amoeba/config/validate.py::_is_uuid",
+      "amoeba/interp/plan_runner.py::waves",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "",
+     "key": "amoeba/config/validate.py::validate",
+     "signature": "validate(cfg: TeamConfig, envelope: Envelope) -> list[str]"
+    }
+   ],
+   "checks": [
+    [
+     "differs",
+     "For one writer with reviewers, the writer uses a trimmed copy of the AgentVerse closing prompt (agentverse_solver_append_generic) without 'Write the code step by step.'"
+    ],
+    [
+     "differs",
+     "The drafted instructions are stored in a separate helper field, role_prompt (the plan attaches them to the prompt); they are filled into the step prompt's {role} slot at run time."
+    ]
+   ],
+   "guards": [
+    [
+     "correct",
+     "if a not in ids",
+     "add f'V1 entry {a!r} is not an agent'"
+    ],
+    [
+     "correct",
+     "if a not in ids",
+     "add f'V8 flat: step {s.index} names unknown agent {a!r}'"
+    ],
+    [
+     "correct",
+     "if a.agent_id != key",
+     "add f'V7 agents[{key!r}].agent_id is {a.agent_id!r}'"
+    ],
+    [
+     "correct",
+     "if a.agent_id in seen",
+     "add f'V7 duplicate agent_id {a.agent_id!r}'"
+    ],
+    [
+     "correct",
+     "if cfg.exit not in ids",
+     "add f'V1 exit {cfg.exit!r} is not an agent'"
+    ],
+    [
+     "correct",
+     "if e.dst in ids and e.schema_id not in cfg.agents[e.dst].contract.inputs.values()",
+     "add f'V3 edge {e.src}->{e.dst}: {e.schema_id!r} not an input of dst'"
+    ],
+    [
+     "correct",
+     "if e.src in ids and e.schema_id not in cfg.agents[e.src].contract.outputs.values()",
+     "add f'V3 edge {e.src}->{e.dst}: {e.schema_id!r} not an output of src'"
+    ],
+    [
+     "correct",
+     "if end not in ids",
+     "add f'V1 edge {e.src}->{e.dst} references unknown agent {end!r}'"
+    ],
+    [
+     "correct",
+     "if extra",
+     "add f'V5 agent {a.name!r} ({a.role}) uses tools outside the allowlist: {sorted(extra)}'"
+    ],
+    [
+     "correct",
+     "if n_critic < 1",
+     "add 'V8 boss_reviewers: need at least one critic'"
+    ],
+    [
+     "correct",
+     "if n_solver != 1",
+     "add f'V8 boss_reviewers: need exactly one solver, found {n_solver}'"
+    ],
+    [
+     "correct",
+     "if not 2 <= len(cfg.agents) <= envelope.max_agents",
+     "add f'V6 team has {len(cfg.agents)} agents; need 2..{envelope.max_agents}'"
+    ],
+    [
+     "correct",
+     "if not _is_uuid(a.agent_id)",
+     "add f'V7 agent_id {a.agent_id!r} is not a UUID'"
+    ],
+    [
+     "correct",
+     "if not cfg.entry",
+     "add 'V1 entry is empty'"
+    ],
+    [
+     "correct",
+     "if not cfg.plan",
+     "add 'V8 flat: plan is empty'"
+    ],
+    [
+     "correct",
+     "if not cfg.plan",
+     "add 'V8 plan: plan is empty'"
+    ],
+    [
+     "correct",
+     "if not s.agent_ids",
+     "add f'V8 flat: step {s.index} names no agent'"
+    ],
+    [
+     "correct",
+     "if not s.agent_ids or any((a not in ids for a in s.agent_ids))",
+     "add f'V8 plan: step {s.index + 1} names no or an unknown agent'"
+    ],
+    [
+     "decide",
+     "if topology == 'boss_reviewers'",
+     "set solver_id = next((by_name[r.name] for r in draft.created_roles if r.is_summariser))"
+    ],
+    [
+     "decide",
+     "if topology == 'flat'",
+     "set plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text"
+    ],
+    [
+     "decide",
+     "if topology == 'plan'",
+     "set plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text"
+    ],
+    [
+     "fallback",
+     "except PlanGraphError",
+     "add f'V8 plan: {e}'"
+    ],
+    [
+     "fallback",
+     "{i + 1: list(w.get('depends_on') or []) for i, w in enumerate(draft.rounds[-1].plan)} if draft.rounds else {}",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if a != b",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if a != solver_id",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if agents[a].is_summariser",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if d in steps",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not any((d in steps for d in s.depends_on))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.is_summariser",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if errs",
+     "raise DraftError"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "AgentSpec.max_history",
+    "AgentSpec.max_tokens",
+    "Envelope.max_agents",
+    "PLAN_MAX_TOKENS",
+    "TeamConfig.max_inner_turns"
+   ],
+   "prompts": {},
+   "title": "Build the team (instantiate)"
+  },
+  "facts_hash": "b889513a6fcf9c9d",
+  "seed_hash": "eee28a8b08285ada",
+  "sentence": "Gives each helper a permanent id, wires the helpers for the chosen shape, and rejects the team if any rule is broken.",
+  "source": "hand",
+  "what": [
+   "Each helper gets a permanent id and its drafted instructions, tools and suggestions.",
+   "Step by step: every helper of one step hands on to every helper of the next.",
+   "One writer with reviewers: the helper flagged as summariser writes, all others review.",
+   "The finished team is checked against every validation rule; any failure stops the run."
+  ]
+ },
+ "interpreter": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/trace.py::NoopListener",
+      "amoeba/interp/trace.py::TraceWriter",
+      "amoeba/interp/trace.py::TracedLLM"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.__init__",
+     "signature": "__init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None=None, listener: NoopListener | None=None, run_dir: str | None=None, plan_options=None)"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter.run",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers",
+      "amoeba/interp/runtime.py::Interpreter.run_flat",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/task/models.py::Episode"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run",
+     "signature": "run(self, cfg: TeamConfig, task: Task, seed: int=0) -> Episode"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "decide",
+     "if cfg.topology == 'flat'",
+     "set ep.answer, ep.error = self.run_flat(cfg, task, ep)"
+    ],
+    [
+     "decide",
+     "if cfg.topology == 'plan'",
+     "set ep.answer, ep.error = PlanRunner(self, cfg, task, ep, self.run_dir, self.plan_options).run"
+    ],
+    [
+     "fallback",
+     "except (ParseError, MissingSections)",
+     "set ep.answer, ep.error = (None, f'parse: {e}')"
+    ],
+    [
+     "fallback",
+     "except RunLimitReached",
+     "set ep.answer, ep.error = (None, e.code)"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "ChatResponse.latency_ms",
+    "Episode.latency_ms",
+    "Episode.seed",
+    "Episode.team_version",
+    "TeamConfig.version",
+    "run.seed"
+   ],
+   "prompts": {},
+   "title": "Interpreter"
+  },
+  "facts_hash": "318968434f27e73d",
+  "seed_hash": "92a5bb70bcb60bb1",
+  "sentence": "Reads the team's shape and hands the job to the matching runner.",
+  "source": "hand",
+  "what": [
+   "Opens the log entry for the whole run and picks the runner for the team's shape.",
+   "If an AI reply cannot be read at all, the run ends with a parse error instead of crashing.",
+   "It has an unused listening hook that a later phase's monitor will plug into."
+  ]
+ },
+ "ov_leave": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/io.py::dump_yaml",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter",
+      "amoeba/interp/runtime.py::Interpreter.run",
+      "amoeba/interp/trace.py::TraceWriter",
+      "amoeba/interp/trace.py::TraceWriter.close",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.spans",
+      "amoeba/llm/limits.py::estimate",
+      "amoeba/task/draft.py::draft_team",
+      "amoeba/task/evaluate.py::rubric_score",
+      "amoeba/task/evaluate.py::score",
+      "amoeba/task/instantiate.py::instantiate",
+      "amoeba/task/models.py::RunResult",
+      "scripts/run_task.py::ask_user",
+      "scripts/run_task.py::blocked_of",
+      "scripts/run_task.py::intake_text",
+      "scripts/run_task.py::models_of",
+      "scripts/run_task.py::provenance_of",
+      "scripts/run_task.py::refinement_of"
+     ],
+     "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
+     "key": "scripts/run_task.py::run_one",
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None) -> RunResult"
+    }
+   ],
+   "checks": [
+    [
+     "differs",
+     "Files written by the sample run: capability_requests.json, plan.json, result.json, team.yaml, trace.jsonl (the plan lists four; capability_requests.json is new, D19)"
+    ]
+   ],
+   "guards": [],
+   "kind": "data",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "ChatResponse.latency_ms",
+    "Draft.requests_dropped_by_observers",
+    "Draft.requests_proposed",
+    "Episode.latency_ms",
+    "Episode.n_llm_calls",
+    "Episode.seed",
+    "Episode.total_tokens",
+    "RunResult.requests_dropped_by_observers",
+    "RunResult.requests_proposed",
+    "run_one.seed"
+   ],
+   "prompts": {},
+   "title": "What every run leaves behind"
+  },
+  "facts_hash": "744a0334601c75e3",
+  "seed_hash": "788599a768833711",
+  "sentence": "Every run saves five files: the team, the draft, a log line per AI call, the tools or skills the team asked for, and a result summary.",
+  "source": "hand",
+  "what": [
+   "Each run gets its own folder named by a random run id.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), and a one-line result.",
+   "These files are the raw material later phases will learn from."
+  ]
+ },
+ "ov_plan": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
+      "amoeba/task/draft.py::_observer_sections",
+      "amoeba/task/draft.py::_sections",
+      "amoeba/task/draft.py::approves",
+      "amoeba/task/draft.py::assemble",
+      "amoeba/task/draft.py::n_suggestions",
+      "amoeba/task/draft.py::parse_capability_requests",
+      "amoeba/task/draft.py::request_survival",
+      "amoeba/task/draft.py::requirements_text",
+      "amoeba/task/draft.py::role_blobs",
+      "amoeba/task/draft.py::section_requests",
+      "amoeba/task/draft.py::token_limits",
+      "amoeba/task/models.py::DraftRound",
+      "amoeba/task/parsers.py::parse_plan",
+      "amoeba/task/parsers.py::parse_plan_d24",
+      "amoeba/task/parsers.py::parse_sections",
+      "amoeba/task/parsers.py::parse_verdict",
+      "amoeba/task/quality.py::draft_quality",
+      "amoeba/task/quality.py::gate_suggestions"
+     ],
+     "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
+     "key": "amoeba/task/draft.py::draft_team",
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+    },
+    {
+     "callees": [
+      "amoeba/config/schema.py::AgentSpec",
+      "amoeba/config/schema.py::Edge",
+      "amoeba/config/schema.py::PlanStep",
+      "amoeba/config/schema.py::PromptRef",
+      "amoeba/config/schema.py::TeamConfig",
+      "amoeba/config/validate.py::validate",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/plan_runner.py::relink",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/draft.py::DraftError"
+     ],
+     "doc": "",
+     "key": "amoeba/task/instantiate.py::instantiate",
+     "signature": "instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> TeamConfig"
+    }
+   ],
+   "checks": [
+    [
+     "ok",
+     "Drafting rounds: #"
+    ],
+    [
+     "ok",
+     "Largest team: #"
+    ]
+   ],
+   "guards": [],
+   "kind": "top",
+   "numbers": [
+    "AgentSpec.max_history",
+    "AgentSpec.max_tokens",
+    "Draft.gate_hits",
+    "Draft.requests_dropped_by_observers",
+    "Draft.requests_proposed",
+    "DraftRound.agent_suggestions_n",
+    "DraftRound.plan_suggestions_n",
+    "Envelope.max_agents",
+    "Episode.seed",
+    "MAX_ROUNDS",
+    "PLAN_MAX_TOKENS",
+    "RunResult.requests_dropped_by_observers",
+    "RunResult.requests_proposed",
+    "TeamConfig.max_inner_turns",
+    "draft_team.seed"
+   ],
+   "prompts": {},
+   "title": "2 · Plan a new team"
+  },
+  "facts_hash": "c51dfda3949e323b",
+  "seed_hash": "a940602a52cfd22e",
+  "sentence": "An AI drafts a team and a step plan, two AIs critique it, then plain code checks it and builds the team.",
+  "source": "hand",
+  "what": [
+   "A planning AI proposes a set of helpers and a numbered step plan for the job.",
+   "Two checking AIs critique the helpers and the plan; the planner revises from their latest comments.",
+   "The last draft is used whether or not the checkers agreed.",
+   "Plain code then cleans the draft, applies the rules and builds the team."
+  ]
+ },
+ "ov_run": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter.run",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers",
+      "amoeba/interp/runtime.py::Interpreter.run_flat",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/task/models.py::Episode"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run",
+     "signature": "run(self, cfg: TeamConfig, task: Task, seed: int=0) -> Episode"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/interp/runtime.py::Interpreter._dispatch",
+      "amoeba/interp/runtime.py::Interpreter._llm_sections",
+      "amoeba/interp/runtime.py::step_context",
+      "amoeba/interp/runtime.py::with_card",
+      "amoeba/interp/runtime.py::with_unavailable",
+      "amoeba/interp/trace.py::TraceWriter.span"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_flat",
+     "signature": "run_flat(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/interp/runtime.py::Interpreter._llm_messages",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.broadcast",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.review",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
+      "amoeba/interp/runtime.py::_Msg",
+      "amoeba/interp/runtime.py::with_card",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/task/parsers.py::parse_critic"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers",
+     "signature": "run_boss_reviewers(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
+      "amoeba/interp/plan_runner.py::PlanRunner._max_turns",
+      "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
+      "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+      "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/interp/plan_runner.py::waves",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/tools/web.py::WebLimits.as_trace"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.run",
+     "signature": "run(self) -> tuple[str | None, str | None]"
+    }
+   ],
+   "checks": [
+    [
+     "ok",
+     "Review rounds: #"
+    ],
+    [
+     "ok",
+     "Turns per step: #"
+    ]
+   ],
+   "guards": [],
+   "kind": "top",
+   "numbers": [
+    "AgentSpec.max_history",
+    "ChatResponse.latency_ms",
+    "Episode.latency_ms",
+    "Episode.seed",
+    "Episode.team_version",
+    "Limits.max_turns",
+    "PLAN_MAX_TOKENS",
+    "TeamConfig.max_inner_turns",
+    "TeamConfig.version",
+    "run.seed"
+   ],
+   "prompts": {},
+   "title": "3 · Team runs the task"
+  },
+  "facts_hash": "5c46f8d0a9a72ab4",
+  "seed_hash": "81fa681844a11987",
+  "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call is logged.",
+  "source": "hand",
+  "what": [
+   "The team runs in one of three shapes chosen when you start the run, never by an AI.",
+   "Over the step graph (plan): each step sees only the job and the outputs of the steps it depends on, code checks each step's output, and a summariser only assembles.",
+   "Step by step: each plan step's helpers work in turns until they give a final answer.",
+   "One writer with reviewers: the writer answers, the others review, and the writer revises on objections.",
+   "Every AI call and tool call is written to a log with its token counts."
+  ]
+ },
+ "ov_task": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "id",
+       "str"
+      ],
+      [
+       "prompt",
+       "str"
+      ],
+      [
+       "family",
+       "str"
+      ],
+      [
+       "ground_truth",
+       "str | None"
+      ],
+      [
+       "tags",
+       "list[str]"
+      ],
+      [
+       "rubric",
+       "Rubric | None"
+      ]
+     ],
+     "key": "amoeba/task/models.py::Task",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [],
+     "key": "amoeba/task/source.py::ToyTaskSource",
+     "methods": [
+      "__init__(self, seed: int=0, n: int=20)",
+      "tasks(self) -> list[Task]"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/task/evaluate.py::normalise"
+     ],
+     "doc": "1.0 / 0.0 after trimming spaces and case; None when there is no known answer.",
+     "key": "amoeba/task/evaluate.py::score",
+     "signature": "score(answer: str | None, ground_truth: str | None) -> float | None"
+    }
+   ],
+   "checks": [],
+   "guards": [],
+   "kind": "top",
+   "numbers": [
+    "Episode.seed"
+   ],
+   "prompts": {},
+   "title": "1 · Task"
+  },
+  "facts_hash": "aa0b5067f5667652",
+  "seed_hash": "1fea08b8b77be9ed",
+  "sentence": "One job to do; practice jobs also carry the right answer, so the system can grade itself.",
+  "source": "hand",
+  "what": [
+   "A task is one job for the team: a line of text, plus the right answer when it is a practice job.",
+   "Practice jobs come from a seed, so the same seed always gives the same jobs.",
+   "A job you type yourself runs the same way but cannot be scored.",
+   "Nothing in this box calls an AI."
+  ]
+ },
+ "plan_graph": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanGraphError",
+      "amoeba/interp/plan_runner.py::dependencies"
+     ],
+     "doc": "Topological waves: each wave holds the steps whose dependencies are all in earlier waves (Kahn's",
+     "key": "amoeba/interp/plan_runner.py::waves",
+     "signature": "waves(plan: list[PlanStep]) -> list[list[int]]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::number"
+     ],
+     "doc": "step number -> the step numbers it depends on. A plan with no depends_on at all (a d19 draft) is a chain.",
+     "key": "amoeba/interp/plan_runner.py::dependencies",
+     "signature": "dependencies(plan: list[PlanStep]) -> dict[int, list[int]]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::number"
+     ],
+     "doc": "Box 2 drops a step that names no known role but keeps the others' numbers, so depends_on can point at a",
+     "key": "amoeba/interp/plan_runner.py::relink",
+     "signature": "relink(plan: list[PlanStep], written: dict[int, list[int]]) -> tuple[list[PlanStep], list[dict]]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
+      "amoeba/interp/plan_runner.py::PlanRunner._max_turns",
+      "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
+      "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+      "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/interp/plan_runner.py::waves",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/tools/web.py::WebLimits.as_trace"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.run",
+     "signature": "run(self) -> tuple[str | None, str | None]"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if d in kept or d not in written",
+     "add d"
+    ],
+    [
+     "correct",
+     "if x in kept",
+     "add x"
+    ],
+    [
+     "decide",
+     "if not any((s.depends_on for s in plan))",
+     "set nums = [number(s) for s in plan]"
+    ],
+    [
+     "fallback",
+     "None if status == 'done' else status",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[nums[i - 1]] if i else []",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if d not in known",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n not in done and all((d in done for d in deps[n]))",
+     "drop the rest"
+    ],
+    [
+     "loop cap",
+     "while len(done) < len(deps)",
+     "loop ends"
+    ],
+    [
+     "loop cap",
+     "while todo",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if bad",
+     "raise PlanGraphError"
+    ],
+    [
+     "reject",
+     "if not ready",
+     "raise PlanGraphError"
+    ],
+    [
+     "reject",
+     "if x in seen",
+     "skip (continue)"
+    ],
+    [
+     "stop",
+     "if self.answer_n is None",
+     "return self.assemble_by_code(ws[-1])"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "PLAN_MAX_TOKENS"
+   ],
+   "prompts": {},
+   "title": "Step graph (depends_on)"
+  },
+  "facts_hash": "5ec173bb47783394",
+  "seed_hash": "15b138f4913a332f",
+  "sentence": "Builds the order of work from each step's 'depends on' line and rejects a plan that loops.",
+  "source": "hand",
+  "what": [
+   "Reads which earlier steps each step depends on; a plan with no such lines runs as a simple chain.",
+   "A dependency on a step the planner wrote but Box 2 dropped is pointed at that step's own dependencies, and the change is logged.",
+   "An unknown step number or a loop stops the team from being built, before any AI call.",
+   "Steps whose inputs are ready form a wave; waves run one after another (the wave is logged)."
+  ]
+ },
+ "plan_obs": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
+      "amoeba/task/draft.py::_observer_sections",
+      "amoeba/task/draft.py::_sections",
+      "amoeba/task/draft.py::approves",
+      "amoeba/task/draft.py::assemble",
+      "amoeba/task/draft.py::n_suggestions",
+      "amoeba/task/draft.py::parse_capability_requests",
+      "amoeba/task/draft.py::request_survival",
+      "amoeba/task/draft.py::requirements_text",
+      "amoeba/task/draft.py::role_blobs",
+      "amoeba/task/draft.py::section_requests",
+      "amoeba/task/draft.py::token_limits",
+      "amoeba/task/models.py::DraftRound",
+      "amoeba/task/parsers.py::parse_plan",
+      "amoeba/task/parsers.py::parse_plan_d24",
+      "amoeba/task/parsers.py::parse_sections",
+      "amoeba/task/parsers.py::parse_verdict",
+      "amoeba/task/quality.py::draft_quality",
+      "amoeba/task/quality.py::gate_suggestions"
+     ],
+     "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
+     "key": "amoeba/task/draft.py::draft_team",
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "decide",
+     "if approved and (not rec.gate_failed)",
+     "set consensus = rec.consensus = True"
+    ],
+    [
+     "decide",
+     "if d24",
+     "set rec.plan_observer_raw, s = _observer_sections(tl, 'plan_observer', render(PROMPT.d24_revie"
+    ],
+    [
+     "decide",
+     "if quality_gate",
+     "set rec.gate_failed = q['hard_failed'] if q else []"
+    ],
+    [
+     "decide",
+     "if rec.gate_failed",
+     "set suggestions += f'\\n\\n## Quality Gate (plain-code checks, must be fixed)\\n{gate_suggestions"
+    ],
+    [
+     "fallback",
+     "except DraftError",
+     "set q = None"
+    ],
+    [
+     "fallback",
+     "q['hard_failed'] if q else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "rec.agent_verdict == rec.plan_verdict == 'APPROVE' if d24 else approves(sr) and approves(sp)",
+     "choose value"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "DraftRound.agent_suggestions_n",
+    "DraftRound.plan_suggestions_n",
+    "Episode.seed",
+    "draft_team.seed"
+   ],
+   "prompts": {
+    "autoagents_check_plans": "cc78a0e20f4a",
+    "autoagents_check_plans_format": "ea1c8181119a",
+    "d24_plan_observer_system": "3ee679d29976",
+    "d24_review_plan": "ca2f9255232d"
+   },
+   "title": "Plan Observer"
+  },
+  "facts_hash": "bdb329e4a1353cfc",
+  "seed_hash": "4a783811da20fbfc",
+  "sentence": "A third AI checks the step plan; the loop stops when both checkers say 'No Suggestions' in one round.",
+  "source": "hand",
+  "what": [
+   "The plan-checking AI reads the job, the helpers, the step plan, the capability requests and every earlier plan suggestion; like the helper checker, it may question a request only on need.",
+   "It lists problems with the plan, or writes 'No Suggestions'.",
+   "Drafting stops early only when both checkers wrote 'No Suggestions' in the same round."
+  ]
+ },
+ "plan_step": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/interp/plan_runner.py::PlanRunner._loop",
+      "amoeba/interp/plan_runner.py::PlanRunner._save",
+      "amoeba/interp/plan_runner.py::PlanRunner._sources",
+      "amoeba/interp/plan_runner.py::PlanRunner._text",
+      "amoeba/interp/plan_runner.py::PlanRunner.all_inputs_text",
+      "amoeba/interp/plan_runner.py::PlanRunner.critique",
+      "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
+      "amoeba/interp/plan_runner.py::PlanRunner.inputs_text",
+      "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
+      "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
+      "amoeba/interp/plan_runner.py::PlanRunner.ledger_update",
+      "amoeba/interp/plan_runner.py::PlanRunner.mark_stale",
+      "amoeba/interp/plan_runner.py::PlanRunner.refine",
+      "amoeba/interp/plan_runner.py::PlanRunner.rework_producers",
+      "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
+      "amoeba/interp/plan_runner.py::_Work",
+      "amoeba/interp/plan_runner.py::blocked_marks",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/plan_runner.py::parse_verdict_block",
+      "amoeba/interp/plan_runner.py::refine_counts",
+      "amoeba/interp/plan_runner.py::step_checks",
+      "amoeba/interp/provenance.py::check_provenance",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/task/evaluate.py::normalise",
+      "amoeba/tools/web.py::WebTools.begin_step"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+     "signature": "run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None=None, reverify: dict | None=None, rerun: dict | None=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner._turn"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._loop",
+     "signature": "_loop(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: '_Work', template: str='') -> None"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/plan_runner.py::PlanRunner.deliverables_text",
+      "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
+      "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
+      "amoeba/interp/plan_runner.py::full_action_input",
+      "amoeba/interp/plan_runner.py::plan_card",
+      "amoeba/interp/plan_runner.py::step_detail",
+      "amoeba/interp/runtime.py::Interpreter._dispatch",
+      "amoeba/interp/runtime.py::Interpreter._record",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TraceWriter.spans",
+      "amoeba/interp/trace.py::TracedLLM.chat_sections",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/profiles.py::role_group"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._turn",
+     "signature": "_turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int, extra: str='', template: str='') -> tuple[str, str, str, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/runtime.py::_output_text"
+     ],
+     "doc": "The role card a plan step's helper sees: the D24 role record, prompt last.",
+     "key": "amoeba/interp/plan_runner.py::plan_card",
+     "signature": "plan_card(agent: AgentSpec) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::step_detail",
+     "signature": "step_detail(step: PlanStep) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "ActionInput is the last section, so it runs to the end of the reply. The AutoAgents parser splits on every",
+     "key": "amoeba/interp/plan_runner.py::full_action_input",
+     "signature": "full_action_input(raw: str, parsed: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/evaluate.py::normalise"
+     ],
+     "doc": "D32: a role whose missing tools or capability requests normalise to web_search gets web_search and",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+     "signature": "grant_web_tools(self) -> None"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner._loop",
+      "amoeba/interp/plan_runner.py::refine_counts",
+      "amoeba/interp/plan_runner.py::refine_findings",
+      "amoeba/interp/trace.py::TraceWriter.event"
+     ],
+     "doc": "D50: one refine turn for the helper(s) of a finished step, with turns of its own (check_retry_turns, not",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.refine",
+     "signature": "refine(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: '_Work', template: str, checks: list[dict], prov: dict) -> dict | None"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner._loop",
+      "amoeba/interp/plan_runner.py::PlanRunner._review",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D51: the reviewers answer AGREE or REVISE (numbered issues against done_when and their own success",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.critique",
+     "signature": "critique(self, step: PlanStep, n: int, drafter: AgentSpec, reviewers: list[AgentSpec], inputs: str, extra: str, w: '_Work', template: str) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/plan_runner.py::plan_card",
+      "amoeba/interp/plan_runner.py::step_detail",
+      "amoeba/interp/runtime.py::Interpreter._record",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TraceWriter.spans",
+      "amoeba/interp/trace.py::TracedLLM.chat_sections",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/profiles.py::role_group"
+     ],
+     "doc": "D51: one reviewer's verdict and numbered issues. An unreadable reply counts as AGREE (recorded).",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._review",
+     "signature": "_review(self, rv: AgentSpec, step: PlanStep, n: int, drafter: AgentSpec, draft: str, inputs: str) -> tuple[str, list[str]]"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if act in agent.tools",
+     "add resp"
+    ],
+    [
+     "correct",
+     "if verdict == 'REVISE'",
+     "add (rv.name, issues or ['(no specific issue given)'])"
+    ],
+    [
+     "decide",
+     "if FINAL_OUTPUT in act",
+     "set w.done[agent.agent_id] = inp.strip()"
+    ],
+    [
+     "decide",
+     "if failed",
+     "set status, reason = ('incomplete', 'checks failed: ' + ', '.join(failed))"
+    ],
+    [
+     "decide",
+     "if gap is not None",
+     "set w.blocked[agent.agent_id] = gap"
+    ],
+    [
+     "decide",
+     "if gaps",
+     "set status = 'partial' if wrote else 'incomplete'"
+    ],
+    [
+     "decide",
+     "if mode == 'off'",
+     "set prov_items = []"
+    ],
+    [
+     "decide",
+     "if not asks",
+     "set agreed = True"
+    ],
+    [
+     "decide",
+     "if not finished",
+     "set status, reason = ('incomplete', 'max_turns')"
+    ],
+    [
+     "decide",
+     "if not prov_items",
+     "set note = RETRY_NOTE.format(failed='; '.join(check_items))"
+    ],
+    [
+     "decide",
+     "if not reason and mode == 'always'",
+     "set reason = 'self_review'"
+    ],
+    [
+     "decide",
+     "if reason == 'self_review'",
+     "set criteria = '; '.join((c for a in agents for c in a.success_criteria)) or 'none written'"
+    ],
+    [
+     "decide",
+     "if refine",
+     "set text = self._text(agents, w)"
+    ],
+    [
+     "decide",
+     "if reverify",
+     "set extra += REVERIFY_NOTE.format(steps=', '.join(map(str, reverify['reworked'])), issues=reve"
+    ],
+    [
+     "decide",
+     "if rework",
+     "set extra += REWORK_NOTE.format(by=rework['by_step'], issues=rework['issues'].strip(), previou"
+    ],
+    [
+     "decide",
+     "if summarising",
+     "set text, added = self.enforce_limitations(text)"
+    ],
+    [
+     "decide",
+     "if verdict == 'UNREADABLE'",
+     "set verdict = 'AGREE'"
+    ],
+    [
+     "decide",
+     "if verifier",
+     "set meta['verdict'], meta['issues'] = parse_verdict_block(text)"
+    ],
+    [
+     "decide",
+     "if verifier and meta['verdict'] == 'FAIL' and (not reverify)",
+     "set reworked = self.rework_producers(n, deps, meta['issues'])"
+    ],
+    [
+     "fallback",
+     "'; checks failed: ' + ', '.join(failed) if failed else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'AGREE' if 'AGREE' in word else 'UNREADABLE'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'REVISE' if 'REVISE' in word else 'AGREE' if 'AGREE' in word else 'UNREADABLE'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'partial' if wrote else 'incomplete'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'plan_summary' if self.is_summary_step(step) else 'plan_step'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "PROMPT.plan_summarise if summarising else PROMPT.plan_step",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "VERIFY_NOTE if verifier else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[] if answer_step else sorted(set(w.blocked.values()) | set(mentions))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "agents[:1] if self.opt.collab == 'critique' and len(agents) > 1 else agents",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "checks[0]['source'] if checks else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except MissingSections",
+     "set raw, sec = (getattr(e, 'raw', '') or '', {})"
+    ],
+    [
+     "fallback",
+     "f\"Constraints: {'; '.join(agent.constraints)}\" if agent.constraints else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f\"Outputs: {'; '.join((_output_text(o) for o in agent.outputs))}\" if agent.outputs else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f\"Skills: {'; '.join(agent.skills)}\" if agent.skills else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f\"Success criteria: {'; '.join(agent.success_criteria)}\" if agent.success_criteria else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f'Goal: {agent.goal}' if agent.goal else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f'Instructions: {agent.role_prompt}' if agent.role_prompt else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f'Suggestions: {agent.suggestions}' if agent.suggestions else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "issues if verdict == 'REVISE' else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "len(issues) if verdict == 'REVISE' else 0",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "mentions if answer_step else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "meta['verdict'] if reverify else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "raw[head + len('## Issues'):] if head >= 0 else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "refine['reason'] if refine else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "rest if len(rest) >= len(parsed.strip()) else parsed",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "reverify['first_verdict'] if reverify else meta['verdict']",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.all_inputs_text(n) if summarising else self.inputs_text(deps, n)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.critique(step, n, agents[0], agents[1:], inputs, extra, w, template) if writers is not agents else None",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if getattr(step, k)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if normalise(n)[0] == 'web_search'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not c['pass']",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if q.get('for_role') == a.name",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t not in hits",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if v",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if x",
+     "drop the rest"
+    ],
+    [
+     "loop cap",
+     "for rnd in range(1, self.opt.collab_rounds + 1)",
+     "loop ends"
+    ],
+    [
+     "loop cap",
+     "while len(w.done) + len(w.blocked) < len(agents) and w.turn < w.max_turns",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if agent.agent_id in w.done or agent.agent_id in w.blocked",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if not hits",
+     "skip (continue)"
+    ],
+    [
+     "stop",
+     "if head < 0",
+     "return parsed"
+    ],
+    [
+     "stop",
+     "if not draft",
+     "stop (break)"
+    ],
+    [
+     "stop",
+     "if not reason or not w.done",
+     "return None"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "Episode.n_llm_calls",
+    "Episode.seed",
+    "Limits.max_turns",
+    "PLAN_MAX_TOKENS",
+    "PlanOptions.check_retry_turns",
+    "PlanOptions.collab_rounds"
+   ],
+   "prompts": {
+    "plan_critique": "404c588e8d12",
+    "plan_step": "2e61b39e6900",
+    "plan_step_system": "daf8cf4bba11"
+   },
+   "title": "Plan step helper(s)"
+  },
+  "facts_hash": "05c0f900a3f8814d",
+  "model": "gemini-3.1-flash-lite",
+  "seed_hash": "bf908ddbf6af5ba0",
+  "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
+  "source": "hand (model: still true)",
+  "what": [
+   "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
+   "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
+   "It picks one action per turn: a tool, Print, or Final Output; up to {Limits.max_turns} turns per step.",
+   "With --web-tools, a role that asked for web search also gets web_search and fetch_url.",
+   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most 2 rounds (--collab critique); the step keeps one output."
+  ]
+ },
+ "plan_summary": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.cap",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "The summariser sees every step's latest output, its status and where its figures come from. D44: each",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.all_inputs_text",
+     "signature": "all_inputs_text(self, n: int) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/interp/provenance.py::claim_numbers",
+      "amoeba/interp/provenance.py::numbers_in",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D35: a figure in the final answer that is in no step output and not in the task is new. D43: the answer's",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
+     "signature": "summary_check(self, n: int, text: str) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.blocked_capabilities",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D36: the final answer's Limitations section must name every capability a step lacked. Names it leaves",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
+     "signature": "enforce_limitations(self, text: str) -> tuple[str, dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::number"
+     ],
+     "doc": "D35: the answer step, when the summariser owns it, only assembles.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
+     "signature": "is_summary_step(self, step: PlanStep) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
+      "amoeba/interp/trace.py::TraceWriter.event"
+     ],
+     "doc": "D41: no summariser step to write the answer, so plain code puts the last wave's outputs under one heading",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
+     "signature": "assemble_by_code(self, last: list[int]) -> tuple[str, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D43: the first status of each figure in the run (cited / unverified / untagged / derived / given, and the",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.ledger_update",
+     "signature": "ledger_update(self, n: int, figures: list[dict]) -> dict[str, int]"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "decide",
+     "if e is None and f['status'] != 'inherited'",
+     "set e = self.ledger[f['n']] = {'status': f['status'], 'step': n, 'as': f['as'], 'sources': f['"
+    ],
+    [
+     "decide",
+     "if m.get('stale')",
+     "set verdict += f\"; STALE: built on step(s) {', '.join(map(str, m['stale_because']))} before th"
+    ],
+    [
+     "decide",
+     "if m.get('verdict_after_rework')",
+     "set verdict += f\" (after rework; first verdict {m['verdict_first']})\""
+    ],
+    [
+     "decide",
+     "if missing",
+     "set lines = '\\n'.join((f'- BLOCKED: {c} (the team had no such capability; added by plain code)"
+    ],
+    [
+     "fallback",
+     "None if worst == 'done' else worst",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "e['status'] if e else 'inherited'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f\" ({m['status_reason']})\" if m.get('status_reason') else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f\"; lacked: {', '.join(m['blocked'])}\" if m.get('blocked') else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f\"; verdict: {m['verdict']}\" if m.get('verdict') else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f'{text.rstrip()}\\n\\n{lines}\\n' if m else f'{text.rstrip()}\\n\\n## Limitations\\n{lines}\\n'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.opt.max_input_chars if total <= self.opt.max_summary_input_chars else max(500, self.opt.max_summary_input_chars // max(1, len(items)))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "text[m.end():] if m else ''",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if a.is_summariser",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if d != n",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not any((x.lower() in section.lower() for x in spell(c, names)))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if s in statuses",
+     "drop the rest"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [
+    "PlanOptions.max_input_chars",
+    "PlanOptions.max_summary_input_chars"
+   ],
+   "prompts": {
+    "plan_step_system": "daf8cf4bba11",
+    "plan_summarise": "c8352099ca3c"
+   },
+   "title": "Summariser assembles"
+  },
+  "facts_hash": "fee3c95e00d3c49f",
+  "seed_hash": "625b7e3f17220b51",
+  "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
+  "source": "hand",
+  "what": [
+   "Sees every step's latest output with its status, missing capabilities, verdict and figure counts, and the deliverables the plan committed to (never the scoring rubric).",
+   "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under Limitations when there are any.",
+   "Code counts any number it adds, lists the answer's untagged and unverified figures, and appends a line for any missing capability it left out.",
+   "Each input is cut at {PlanOptions.max_input_chars} characters and all of them at {PlanOptions.max_summary_input_chars} (marked). When several final steps have no summariser step, code puts their outputs together under headings instead."
+  ]
+ },
+ "planner": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
+      "amoeba/task/draft.py::_observer_sections",
+      "amoeba/task/draft.py::_sections",
+      "amoeba/task/draft.py::approves",
+      "amoeba/task/draft.py::assemble",
+      "amoeba/task/draft.py::n_suggestions",
+      "amoeba/task/draft.py::parse_capability_requests",
+      "amoeba/task/draft.py::request_survival",
+      "amoeba/task/draft.py::requirements_text",
+      "amoeba/task/draft.py::role_blobs",
+      "amoeba/task/draft.py::section_requests",
+      "amoeba/task/draft.py::token_limits",
+      "amoeba/task/models.py::DraftRound",
+      "amoeba/task/parsers.py::parse_plan",
+      "amoeba/task/parsers.py::parse_plan_d24",
+      "amoeba/task/parsers.py::parse_sections",
+      "amoeba/task/parsers.py::parse_verdict",
+      "amoeba/task/quality.py::draft_quality",
+      "amoeba/task/quality.py::gate_suggestions"
+     ],
+     "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
+     "key": "amoeba/task/draft.py::draft_team",
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/task/parsers.py::parse_bullets",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D53 '## Open Questions': one {\"question\", \"assumption\"} per item. An item is \"- question: ... | assumption:",
+     "key": "amoeba/task/parsers.py::parse_open_questions",
+     "signature": "parse_open_questions(text: str) -> list[dict[str, str]]"
+    },
+    {
+     "callees": [],
+     "doc": "Wait for \"continue\" (None) or an edited assumption (returned). An empty line asks again; end of input is",
+     "key": "scripts/run_task.py::ask_user",
+     "signature": "ask_user(ask) -> str | None"
+    }
+   ],
+   "checks": [
+    [
+     "ok",
+     "Drafting rounds: #"
+    ]
+   ],
+   "guards": [
+    [
+     "correct",
+     "if q",
+     "add {'question': q, 'assumption': a}"
+    ],
+    [
+     "decide",
+     "if d24",
+     "set raw, sec = _sections(tl, 'planner', render(PROMPT.d24_create_team, context=task.prompt, ex"
+    ],
+    [
+     "decide",
+     "if not q and a and out and (not out[-1]['assumption'])",
+     "set out[-1]['assumption'] = a"
+    ],
+    [
+     "decide",
+     "if rounds == 0",
+     "set first_requests = section_requests(sec, envelope)"
+    ],
+    [
+     "fallback",
+     "(item[:m.start()], item[m.end():]) if m else (item, '')",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[{'agents': names, 'text': text, **fields} for names, text, fields in parse_plan_d24(sec['Execution Plan'])] if d24 else [{'agents': names, 'text': text} for names, text in parse_plan(sec['Execution Plan'])]",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except EOFError",
+     "return None"
+    ],
+    [
+     "loop cap",
+     "while True",
+     "loop ends"
+    ],
+    [
+     "loop cap",
+     "while not consensus and rounds < max_rounds",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if prompts not in DRAFT_PROMPTS",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if q and set(q) <= set('. ')",
+     "skip (continue)"
+    ],
+    [
+     "stop",
+     "if reply",
+     "return reply"
+    ],
+    [
+     "stop",
+     "if reply.lower() == CONTINUE",
+     "return None"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "Envelope.max_agents",
+    "Episode.seed",
+    "MAX_ROUNDS",
+    "draft_team.seed"
+   ],
+   "prompts": {
+    "autoagents_create_roles": "f3c05bff6b72",
+    "autoagents_create_roles_format": "5f8f573931b2",
+    "d24_create_team": "feef178fe14e",
+    "d24_create_team_format": "ede25ecc3816",
+    "d24_planner_system": "fbd5a10be5fa"
+   },
+   "title": "Planner"
+  },
+  "facts_hash": "bb315d554f9fec7b",
+  "seed_hash": "3d5323ad3c92feaa",
+  "sentence": "An AI writes the list of helpers and a numbered step plan; later rounds see only the latest critique.",
+  "source": "hand",
+  "what": [
+   "The planning AI reads the job and the tools that exist, then writes each helper as a small record and a numbered plan saying which helper does which step.",
+   "From the second round on it also sees its own last draft and the checkers' latest suggestions.",
+   "Its reply must contain five labelled parts; see Split sections for what happens if one is missing.",
+   "It is told to prefer the tools that exist; a tool or skill it needs but we lack goes in an optional sixth part, Capability Requests, which costs no retry when absent.",
+   "At most three rounds are run.",
+   "With our prompts (d24) it may also list Open Questions: each ambiguity in the job and the assumption it took. With --interactive the person sees the requirements, assumptions and open questions and types continue, or a correction that is added to the job before one more round."
+  ]
+ },
+ "provenance": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/provenance.py::_derived",
+      "amoeba/interp/provenance.py::_line_numbers",
+      "amoeba/interp/provenance.py::_norm",
+      "amoeba/interp/provenance.py::numbers_in"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/provenance.py::check_provenance",
+     "signature": "check_provenance(text: str, allowed_ids: set[str], task_text: str='', inputs_text: str='', tool_results: list[str] | None=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "The run's provenance: the per-step counts summed; hallucinated citations listed with their step.",
+     "key": "amoeba/interp/provenance.py::total",
+     "signature": "total(per_step: list[dict]) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/interp/provenance.py::_line_numbers",
+      "amoeba/interp/provenance.py::_norm"
+     ],
+     "doc": "The numbers a text states as figures: list markers, [S#] tags and labels (step 3, R2, p95) left out.",
+     "key": "amoeba/interp/provenance.py::claim_numbers",
+     "signature": "claim_numbers(text: str) -> set[str]"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "decide",
+     "if '[unverified]' in line.lower()",
+     "set st = 'unverified'"
+    ],
+    [
+     "decide",
+     "if good",
+     "set st = 'cited'"
+    ],
+    [
+     "decide",
+     "if n in computed or _derived(line, tok)",
+     "set st = 'derived'"
+    ],
+    [
+     "decide",
+     "if n in given",
+     "set st = 'given'"
+    ],
+    [
+     "decide",
+     "if n in inherited",
+     "set st = 'inherited'"
+    ],
+    [
+     "fallback",
+     "set().union(*(numbers_in(r) for r in tool_results or [])) if tool_results else set()",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if i in allowed_ids",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if i not in allowed_ids",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t.lower() != '[unverified]'",
+     "drop the rest"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [],
+   "prompts": {},
+   "title": "Where each figure came from"
+  },
+  "facts_hash": "42e593b70cb23441",
+  "seed_hash": "1d72cc742ec918a0",
+  "sentence": "Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
+  "source": "hand",
+  "what": [
+   "A number is cited when its line carries a source id the step could have seen.",
+   "Numbers from the task, from a calculation shown or run, and from the step's inputs are counted apart.",
+   "A source id the step never saw is counted as a made-up citation.",
+   "A run-wide ledger keeps each figure's first status and step, so a figure that entered untagged stays untagged however often later steps or the answer copy it.",
+   "It only measures; nothing is rejected on these counts."
+  ]
+ },
+ "read_action": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/interp/runtime.py::Interpreter._dispatch",
+      "amoeba/interp/runtime.py::Interpreter._llm_sections",
+      "amoeba/interp/runtime.py::step_context",
+      "amoeba/interp/runtime.py::with_card",
+      "amoeba/interp/runtime.py::with_unavailable",
+      "amoeba/interp/trace.py::TraceWriter.span"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_flat",
+     "signature": "run_flat(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/interp/runtime.py::Interpreter._dispatch",
+      "amoeba/interp/runtime.py::Interpreter._llm_sections",
+      "amoeba/interp/runtime.py::step_context",
+      "amoeba/interp/runtime.py::with_card",
+      "amoeba/interp/runtime.py::with_unavailable",
+      "amoeba/interp/trace.py::TraceWriter.span"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_flat",
+     "signature": "run_flat(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/runtime.py::Interpreter._tool",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/task/models.py::CapabilityRequest"
+     ],
+     "doc": "Route one \"## Action\". Returns (response, blocked tool or None). Original: a tool of the agent → SerpAPI,",
+     "key": "amoeba/interp/runtime.py::Interpreter._dispatch",
+     "signature": "_dispatch(self, agent: AgentSpec, act: str, inp: str, step: int, ep: Episode) -> tuple[str, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/trace.py::NoopListener.on_tool_call",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/tools/registry.py::ToolRegistry.execute"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter._tool",
+     "signature": "_tool(self, agent: AgentSpec, name: str, action_input: str) -> str"
+    }
+   ],
+   "checks": [
+    [
+     "ok",
+     "Turns per step: #"
+    ]
+   ],
+   "guards": [
+    [
+     "correct",
+     "if not registered and (not any((q.name == act and q.for_role == agent.name for q in ep.requested_capabilities)))",
+     "add CapabilityRequest(name=act, kind='tool', for_role=agent.name, source='runtime_unknown_tool', input=inp, what_it_does='chosen as an action during the run; no such tool is registered')"
+    ],
+    [
+     "decide",
+     "if FINAL_OUTPUT in act",
+     "set info = f'\\n## Step\\n{step.text}\\n## Response\\n{completed_steps}>>>> Final Output\\n{resp}\\n"
+    ],
+    [
+     "decide",
+     "if act.strip().upper().startswith(BLOCKED) or inp.strip().startswith(f'{BLOCKED}:')",
+     "set text = act if act.strip().upper().startswith(BLOCKED) else inp"
+    ],
+    [
+     "decide",
+     "if gap is not None",
+     "set info = f'\\n## Step\\n{step.text}\\n## Response\\n{completed_steps}>>>> {BLOCKED}: {gap}\\n{res"
+    ],
+    [
+     "decide",
+     "if it > max_turns - 2",
+     "set completed_steps += SYNTHESIZE_HINT"
+    ],
+    [
+     "fallback",
+     "act if act.strip().upper().startswith(BLOCKED) else inp",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except ToolError",
+     "set rec['error.type'] = type(e).__name__"
+    ],
+    [
+     "loop cap",
+     "while sum(consensus) < len(agents) and it < max_turns",
+     "loop ends"
+    ],
+    [
+     "stop",
+     "if act in (PRINT, '') or FINAL_OUTPUT in act",
+     "return (f'\\n{inp}\\n', None)"
+    ],
+    [
+     "stop",
+     "if act in agent.tools",
+     "return (self._tool(agent, act, inp), None)"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "Limits.max_turns"
+   ],
+   "prompts": {},
+   "title": "Read \"## Action\""
+  },
+  "facts_hash": "f6bbee33830ffed1",
+  "seed_hash": "0bc95896d46d5143",
+  "sentence": "Reads the helper's chosen action: runs a tool and loops, or accepts a final answer; gives up after five turns.",
+  "source": "hand",
+  "what": [
+   "If the chosen action is one of the helper's tools, the tool runs and its result goes on the scratchpad.",
+   "'Final Output' marks that helper done; the step ends when every helper of it is done.",
+   "'BLOCKED: X' also marks the helper done and is recorded; a blocked last step without a final answer ends the run with error 'blocked'.",
+   "A tool the helper does not have is not run: it gets a notice and the log an 'unknown_tool' line.",
+   "On the last allowed turn a 'please synthesize' hint is added to the scratchpad.",
+   "If turns run out, the last reply is kept and the run is marked as having hit the turn limit."
+  ]
+ },
+ "resolver": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/task/models.py::CapabilityRequest"
+     ],
+     "doc": "Keep each role's registered tools; a name the registry lacks becomes a recorded request and the role's",
+     "key": "amoeba/task/draft.py::resolve_tools",
+     "signature": "resolve_tools(roles: list[DraftedRole], envelope: Envelope, requests: list[CapabilityRequest]) -> list[CapabilityRequest]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/models.py::CapabilityRequest",
+      "amoeba/task/parsers.py::parse_json_objects"
+     ],
+     "doc": "The planner's \"## Capability Requests\" section (D19). 'None', prose or bad JSON yield nothing.",
+     "key": "amoeba/task/draft.py::parse_capability_requests",
+     "signature": "parse_capability_requests(text: str) -> list[CapabilityRequest]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/runtime.py::Interpreter._tool",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/task/models.py::CapabilityRequest"
+     ],
+     "doc": "Route one \"## Action\". Returns (response, blocked tool or None). Original: a tool of the agent → SerpAPI,",
+     "key": "amoeba/interp/runtime.py::Interpreter._dispatch",
+     "signature": "_dispatch(self, agent: AgentSpec, act: str, inp: str, step: int, ep: Episode) -> tuple[str, str | None]"
+    },
+    {
+     "callees": [],
+     "doc": "The agent's suggestions plus one line per tool its role named that is not registered (D21).",
+     "key": "amoeba/interp/runtime.py::with_unavailable",
+     "signature": "with_unavailable(agent: AgentSpec) -> str"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if (t, role.name) not in seen and (t, '') not in seen",
+     "add CapabilityRequest(name=t, kind='tool', for_role=role.name, source='unregistered_tool', what_it_does=\"named in the role's tools; no such tool is registered\")"
+    ],
+    [
+     "correct",
+     "if not registered and (not any((q.name == act and q.for_role == agent.name for q in ep.requested_capabilities)))",
+     "add CapabilityRequest(name=act, kind='tool', for_role=agent.name, source='runtime_unknown_tool', input=inp, what_it_does='chosen as an action during the run; no such tool is registered')"
+    ],
+    [
+     "decide",
+     "if act.strip().upper().startswith(BLOCKED) or inp.strip().startswith(f'{BLOCKED}:')",
+     "set text = act if act.strip().upper().startswith(BLOCKED) else inp"
+    ],
+    [
+     "decide",
+     "if name",
+     "set extra = {'what_it_does': d['reason']} if 'reason' in d and 'what_it_does' not in d else {}"
+    ],
+    [
+     "fallback",
+     "'\\n'.join([agent.suggestions, *lines]) if lines else agent.suggestions",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "act if act.strip().upper().startswith(BLOCKED) else inp",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "kept if t in envelope.allowed_tool_names else missing",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'what_it_does': d['reason']} if 'reason' in d and 'what_it_does' not in d else {}",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if str(d.get(k, '')).strip()",
+     "drop the rest"
+    ],
+    [
+     "stop",
+     "if act in (PRINT, '') or FINAL_OUTPUT in act",
+     "return (f'\\n{inp}\\n', None)"
+    ],
+    [
+     "stop",
+     "if act in agent.tools",
+     "return (self._tool(agent, act, inp), None)"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [],
+   "prompts": {},
+   "title": "Tool resolver"
+  },
+  "facts_hash": "63657cbb3e9025af",
+  "seed_hash": "c3479029142aaf35",
+  "sentence": "Keeps the tools that exist; a tool we lack is recorded as a request, never used and never silently dropped.",
+  "source": "hand",
+  "what": [
+   "After drafting: each helper's tools are split into the ones the registry has (kept) and the rest (its missing tools). Each missing one becomes a capability request unless the planner already asked for it.",
+   "The planner's own Capability Requests part is read as JSON; entries without a name are ignored.",
+   "During the run: a helper with missing tools is told 'Tool X is unavailable this run; proceed without it or answer BLOCKED: X'. BLOCKED ends that helper's step and is logged.",
+   "A helper that names a tool it does not have gets a notice instead of an echo; the log gets an 'unknown_tool' line and, if no such tool exists at all, a request is recorded.",
+   "Nothing is fetched or built: that is a later phase."
+  ]
+ },
+ "runresult": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "run_id",
+       "str"
+      ],
+      [
+       "task_id",
+       "str"
+      ],
+      [
+       "draft_source",
+       "str | None"
+      ],
+      [
+       "team_id",
+       "str"
+      ],
+      [
+       "topology",
+       "str"
+      ],
+      [
+       "answer",
+       "str | None"
+      ],
+      [
+       "error",
+       "str | None"
+      ],
+      [
+       "score",
+       "float | None"
+      ],
+      [
+       "total_tokens",
+       "int"
+      ],
+      [
+       "usage",
+       "dict"
+      ],
+      [
+       "latency_ms",
+       "int"
+      ],
+      [
+       "n_llm_calls",
+       "int"
+      ],
+      [
+       "draft_rounds",
+       "int"
+      ],
+      [
+       "consensus",
+       "bool"
+      ],
+      [
+       "blocked_steps",
+       "list[dict]"
+      ],
+      [
+       "requested_capabilities",
+       "list[CapabilityRequest]"
+      ],
+      [
+       "requests_proposed",
+       "int"
+      ],
+      [
+       "requests_dropped_by_observers",
+       "int"
+      ],
+      [
+       "draft_quality",
+       "dict"
+      ],
+      [
+       "unmapped_capabilities",
+       "list[str]"
+      ],
+      [
+       "answer_assembled_by_code",
+       "list[int]"
+      ],
+      [
+       "figure_ledger",
+       "dict[str, dict]"
+      ],
+      [
+       "refinement",
+       "dict"
+      ],
+      [
+       "blocked_capabilities",
+       "dict[str, int]"
+      ],
+      [
+       "summary_check",
+       "dict"
+      ],
+      [
+       "provenance",
+       "dict"
+      ],
+      [
+       "profile",
+       "str | None"
+      ],
+      [
+       "models",
+       "dict"
+      ],
+      [
+       "clarification",
+       "str | None"
+      ],
+      [
+       "rubric",
+       "dict | None"
+      ]
+     ],
+     "key": "amoeba/task/models.py::RunResult",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/config/io.py::dump_yaml",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter",
+      "amoeba/interp/runtime.py::Interpreter.run",
+      "amoeba/interp/trace.py::TraceWriter",
+      "amoeba/interp/trace.py::TraceWriter.close",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.spans",
+      "amoeba/llm/limits.py::estimate",
+      "amoeba/task/draft.py::draft_team",
+      "amoeba/task/evaluate.py::rubric_score",
+      "amoeba/task/evaluate.py::score",
+      "amoeba/task/instantiate.py::instantiate",
+      "amoeba/task/models.py::RunResult",
+      "scripts/run_task.py::ask_user",
+      "scripts/run_task.py::blocked_of",
+      "scripts/run_task.py::intake_text",
+      "scripts/run_task.py::models_of",
+      "scripts/run_task.py::provenance_of",
+      "scripts/run_task.py::refinement_of"
+     ],
+     "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
+     "key": "scripts/run_task.py::run_one",
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None) -> RunResult"
+    }
+   ],
+   "checks": [
+    [
+     "differs",
+     "The plan builds it from the Episode and Draft; the code builds it in scripts/run_task.py from the trace (tokens, calls) and the Draft (rounds, consensus)."
+    ]
+   ],
+   "guards": [],
+   "kind": "data",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "ChatResponse.latency_ms",
+    "Draft.requests_dropped_by_observers",
+    "Draft.requests_proposed",
+    "Episode.latency_ms",
+    "Episode.n_llm_calls",
+    "Episode.seed",
+    "Episode.total_tokens",
+    "RunResult.requests_dropped_by_observers",
+    "RunResult.requests_proposed",
+    "run_one.seed"
+   ],
+   "prompts": {},
+   "title": "RunResult"
+  },
+  "facts_hash": "98b10233c1b68c5c",
+  "seed_hash": "bef6a71b78aeb520",
+  "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
+  "source": "hand",
+  "what": [
+   "Summarises the run in one record saved as result.json.",
+   "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
+   "It also lists the steps that answered BLOCKED and every capability request, and counts how many requests round 1 made and how many the checkers talked the planner out of."
+  ]
+ },
+ "scoring": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/task/evaluate.py::normalise",
+     "signature": "normalise(s: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/task/evaluate.py::normalise"
+     ],
+     "doc": "1.0 / 0.0 after trimming spaces and case; None when there is no known answer.",
+     "key": "amoeba/task/evaluate.py::score",
+     "signature": "score(answer: str | None, ground_truth: str | None) -> float | None"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/task/evaluate.py::_any",
+      "amoeba/task/evaluate.py::number_found",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "Per-item pass/fail and the overall fraction, by string/regex/number match only. `judge`, if given, is called",
+     "key": "amoeba/task/evaluate.py::rubric_score",
+     "signature": "rubric_score(answer: str | None, rubric, judge=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/evaluate.py::quantities"
+     ],
+     "doc": "The first quantity in `text` equal to value+unit within the relative tolerance (either reading of a byte",
+     "key": "amoeba/task/evaluate.py::number_found",
+     "signature": "number_found(text: str, value: float, unit: str, tolerance: float=0.05) -> str | None"
+    },
+    {
+     "callees": [],
+     "doc": "D30: how a task with no single right answer is scored (Box 1, deterministic). Never shown to Box 2 or Box 3.",
+     "fields": [
+      [
+       "required_deliverables",
+       "list[RubricItem]"
+      ],
+      [
+       "expected_numbers",
+       "list[RubricNumber]"
+      ],
+      [
+       "constraints_to_respect",
+       "list[RubricItem]"
+      ],
+      [
+       "must_not",
+       "list[RubricMustNot]"
+      ]
+     ],
+     "key": "amoeba/task/models.py::Rubric",
+     "methods": [],
+     "signature": null
+    }
+   ],
+   "checks": [
+    [
+     "differs",
+     "The plan says the comparison only trims spaces and ignores case; the code also squeezes runs of spaces inside the text to one and drops trailing full stops (evaluate.py normalise)."
+    ]
+   ],
+   "guards": [
+    [
+     "correct",
+     "if not (mn.unless_nearby and re.search(mn.unless_nearby, window, re.I))",
+     "add m.group(0)"
+    ],
+    [
+     "decide",
+     "if u in _BYTES",
+     "set target, kinds = (value * _BYTES[u], {'bytes'})"
+    ],
+    [
+     "fallback",
+     "1.0 if normalise(answer) == normalise(ground_truth) else 0.0",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "judge(answer, rubric) if judge else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(passed / len(items), 3) if items else None",
+     "choose value"
+    ],
+    [
+     "stop",
+     "if ground_truth is None or answer is None",
+     "return None"
+    ],
+    [
+     "stop",
+     "if q['kind'] in kinds and any((abs(v - target) <= tolerance * abs(target) for v in q['values']))",
+     "return q['text']"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "RubricMustNot.window",
+    "RubricNumber.tolerance",
+    "number_found.tolerance"
+   ],
+   "prompts": {},
+   "title": "Scoring (after Box 3)"
+  },
+  "facts_hash": "ed59fd795dafa4dc",
+  "seed_hash": "462d766e9d3c79f0",
+  "sentence": "Compares the team's answer with the known answer; a job with no single right answer is scored against its rubric instead.",
+  "source": "hand",
+  "what": [
+   "After the run, the team's answer is compared with the known answer.",
+   "Both are lower-cased, runs of spaces are squeezed to one, and trailing full stops are dropped.",
+   "An exact match scores 1, anything else 0.",
+   "A job with a rubric and no known answer gets the fraction of rubric items it passes: each deliverable and constraint found by pattern, each number found with its unit within a tolerance (10 TB and 9.1 TiB are the same amount), and nothing it must not do (such as a price with no source nearby).",
+   "No AI judges the answer in Phase 1; a hook can store a judge's view beside the score, never in it."
+  ]
+ },
+ "solver": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+      "amoeba/interp/runtime.py::_Msg",
+      "amoeba/interp/runtime.py::with_card"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
+     "signature": "solve() -> _Msg"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/interp/runtime.py::Interpreter._llm_messages",
+      "amoeba/interp/trace.py::TraceWriter.span"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+     "signature": "call(agent: AgentSpec, kw: dict) -> str"
+    }
+   ],
+   "checks": [
+    [
+     "differs",
+     "The plan says an empty reply gives an empty answer; the code first asks the writer once more (runtime.py solve: `if not raw.strip(): raw = call(...)`)."
+    ],
+    [
+     "ok",
+     "Most times the writer is asked: # (# + max_inner_turns)"
+    ]
+   ],
+   "guards": [
+    [
+     "decide",
+     "if not raw.strip()",
+     "set raw = call(solver, kw)"
+    ],
+    [
+     "fallback",
+     "'critics' if agent.role == 'critic' else 'solver'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "memory[agent.agent_id][-agent.max_history:] if agent.max_history > 0 else []",
+     "choose value"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [
+    "AgentSpec.max_history"
+   ],
+   "prompts": {
+    "agentverse_solver_append": "f66a80a5b169",
+    "agentverse_solver_prepend": "feb6d4f70709"
+   },
+   "title": "Solver"
+  },
+  "facts_hash": "607f802990d6de58",
+  "model": "gemini-3.1-flash-lite",
+  "seed_hash": "64c34b6ba3d51870",
+  "sentence": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply triggers an immediate retry.",
+  "source": "model: rewritten",
+  "what": [
+   "The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
+   "It writes a full new answer each time it is asked.",
+   "It is asked at most four times: once, then once per review round with an objection."
+  ]
+ },
+ "split": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "AutoAgents OutputParser.parse_blocks + parse_code (system/utils/common.py:31-59).",
+     "key": "amoeba/task/parsers.py::parse_sections",
+     "signature": "parse_sections(text: str, all_fences: bool=False) -> dict[str, str]"
+    },
+    {
+     "callees": [
+      "amoeba/task/parsers.py::MissingSections"
+     ],
+     "doc": "Missing key → MissingSections; the caller makes one LLM repair call (action.py:69-75) then gives up.",
+     "key": "amoeba/task/parsers.py::require",
+     "signature": "require(sections: dict[str, str], keys: list[str]) -> dict[str, str]"
+    },
+    {
+     "callees": [],
+     "doc": "The one repair round AutoAgents makes when a required section is missing (action.py:69-75).",
+     "key": "amoeba/task/parsers.py::repair_prompt",
+     "signature": "repair_prompt(user: str, raw: str, keys: list[str], error: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/interp/trace.py::TracedLLM.chat",
+      "amoeba/task/parsers.py::parse_sections",
+      "amoeba/task/parsers.py::repair_prompt",
+      "amoeba/task/parsers.py::require"
+     ],
+     "doc": "AutoAgents _aask_v1: parse '## Section' blocks; a missing one gets one LLM repair call, then raises.",
+     "key": "amoeba/interp/trace.py::TracedLLM.chat_sections",
+     "signature": "chat_sections(self, system: str, user: str, keys: list[str], seed: int=0, **ids) -> tuple[str, dict[str, str]]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/trace.py::TracedLLM.chat_sections",
+      "amoeba/task/draft.py::DraftError"
+     ],
+     "doc": "",
+     "key": "amoeba/task/draft.py::_sections",
+     "signature": "_sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int, log: list[DraftRound], system: str=MANAGER_PREFIX, max_tokens: int | None=None) -> tuple[str, dict[str, str]]"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "decide",
+     "if '\\n' in block",
+     "set title, body = block.split('\\n', 1)"
+    ],
+    [
+     "decide",
+     "if all_fences",
+     "set blocks = re.findall('```.*?\\\\s+(.*?)```', body, re.DOTALL)"
+    ],
+    [
+     "decide",
+     "if blocks",
+     "set body = '\\n'.join(blocks)"
+    ],
+    [
+     "decide",
+     "if m",
+     "set body = m.group(1)"
+    ],
+    [
+     "decide",
+     "if title.endswith(':')",
+     "set title = title[:-1]"
+    ],
+    [
+     "fallback",
+     "PLANNER_MAX_TOKENS if name == 'planner' else OBSERVER_MAX_TOKENS",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except MissingSections",
+     "raise DraftError"
+    ],
+    [
+     "fallback",
+     "except MissingSections",
+     "set e2.raw = raw2"
+    ],
+    [
+     "fallback",
+     "except MissingSections",
+     "set raw2 = self.chat(system, repair_prompt(user, raw, keys, str(e)), seed, **ids).content"
+    ],
+    [
+     "filter",
+     "keep only if k not in sections",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if missing",
+     "raise MissingSections"
+    ],
+    [
+     "reject",
+     "if not block.strip() or re.fullmatch('\\\\s*-{3,}\\\\s*', block)",
+     "skip (continue)"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "Episode.seed",
+    "OBSERVER_MAX_TOKENS",
+    "PLANNER_MAX_TOKENS",
+    "chat_sections.seed"
+   ],
+   "prompts": {},
+   "title": "Split sections"
+  },
+  "facts_hash": "7e7f4583a4491be3",
+  "seed_hash": "fef54b117607e8e1",
+  "sentence": "Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
+  "source": "hand",
+  "what": [
+   "Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts.",
+   "If a required part is missing, the AI is asked once more with the error attached.",
+   "If the retry still lacks it, drafting stops with an error (or the run ends with a parse error)."
+  ]
+ },
+ "step_check": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::_format_check",
+      "amoeba/interp/plan_runner.py::_keyword_checks",
+      "amoeba/interp/plan_runner.py::output_markers",
+      "amoeba/interp/plan_runner.py::parse_verdict_block",
+      "amoeba/interp/plan_runner.py::uses_inputs"
+     ],
+     "doc": "D34: deterministic checks of a step's output. D42: the format checks come from the markers the planner",
+     "key": "amoeba/interp/plan_runner.py::step_checks",
+     "signature": "step_checks(step: PlanStep, text: str, deps: list[int], artifacts: dict, verifier: bool=False) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::_words",
+      "amoeba/interp/plan_runner.py::shares_words",
+      "amoeba/interp/provenance.py::numbers_in",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D42: a real match with an input — a figure it contains (not a single digit), one of its source ids, a",
+     "key": "amoeba/interp/plan_runner.py::uses_inputs",
+     "signature": "uses_inputs(body: str, deps: list[int], artifacts: dict) -> bool"
+    },
+    {
+     "callees": [],
+     "doc": "D42: the format markers the planner put in a step's `output` line (table:, list:, code:, memo:).",
+     "key": "amoeba/interp/plan_runner.py::output_markers",
+     "signature": "output_markers(output: str) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner._write",
+      "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/interp/plan_runner.py::waves",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D39: a step that already ran on the output of a step that was later reworked (directly or through other",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.mark_stale",
+     "signature": "mark_stale(self, reworked: list[int], verifier_step: int) -> None"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::parse_verdict_block",
+     "signature": "parse_verdict_block(text: str) -> tuple[str | None, str]"
+    },
+    {
+     "callees": [],
+     "doc": "D36: the capabilities named in 'BLOCKED: <capability> — ...' lines of a step's output.",
+     "key": "amoeba/interp/plan_runner.py::blocked_marks",
+     "signature": "blocked_marks(text: str) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D37: a step the planner declared `kind: verify` that depends on the steps it checks. Only when the step",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
+     "signature": "is_verification(self, step: PlanStep) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D34: on a FAIL verdict each producer step it checked is re-run once with the issues. Returns the steps",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.rework_producers",
+     "signature": "rework_producers(self, n: int, deps: list[int], issues: str) -> list[int]"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if deps",
+     "add {'name': 'inputs_referenced', 'pass': uses_inputs(body, deps, artifacts), 'detail': 'the output uses nothing from the steps it depends on (no figure, source id, step or role name, or 8 words in a row from them)'}"
+    ],
+    [
+     "correct",
+     "if name and name.lower() not in names and (name.lower() not in ('none', 'n/a'))",
+     "add name"
+    ],
+    [
+     "correct",
+     "if verifier",
+     "add {'name': 'verdict', 'pass': parse_verdict_block(body)[0] is not None, 'detail': 'a verification step must start with \"Verdict: PASS\" or \"Verdict: FAIL\"'}"
+    ],
+    [
+     "decide",
+     "if markers",
+     "set out += [_format_check(MARKERS[m], body) for m in markers]"
+    ],
+    [
+     "fallback",
+     "'markers' if markers else 'keywords'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "issues[1].strip() if len(issues) > 1 else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "m.group(1).upper() if m else None",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if a.is_summariser",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if len(x.replace('.', '')) > 1",
+     "drop the rest"
+    ],
+    [
+     "loop cap",
+     "while todo",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if d in self.reworked or self.artifacts[d]['meta'].get('verification')",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if x in seen",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if x in self.rerun_done",
+     "skip (continue)"
+    ],
+    [
+     "stop",
+     "if any((s.kind for s in self.cfg.plan))",
+     "return step.kind == 'verify'"
+    ],
+    [
+     "stop",
+     "if set(step.agent_ids) <= summ or not step.depends_on",
+     "return False"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [],
+   "prompts": {},
+   "title": "Check the step"
+  },
+  "facts_hash": "b56b9e7584c9d4ca",
+  "seed_hash": "85cae13a47c5c59a",
+  "sentence": "Checks each step's output against its output and done-when lines, reads verdicts and gaps.",
+  "source": "hand",
+  "what": [
+   "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
+   "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
+   "A step the planner marked kind: verify must answer PASS or FAIL; a FAIL sends each step it checked back once, then it checks again. Steps that already used the old output are marked stale (--rerun-stale redoes them once).",
+   "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them."
+  ]
+ },
+ "task_record": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "id",
+       "str"
+      ],
+      [
+       "prompt",
+       "str"
+      ],
+      [
+       "family",
+       "str"
+      ],
+      [
+       "ground_truth",
+       "str | None"
+      ],
+      [
+       "tags",
+       "list[str]"
+      ],
+      [
+       "rubric",
+       "Rubric | None"
+      ]
+     ],
+     "key": "amoeba/task/models.py::Task",
+     "methods": [],
+     "signature": null
+    }
+   ],
+   "checks": [],
+   "guards": [],
+   "kind": "data",
+   "numbers": [],
+   "prompts": {},
+   "title": "Task"
+  },
+  "facts_hash": "5279e9db28c1aa11",
+  "seed_hash": "1d444c46e5bf737f",
+  "sentence": "The single record every later step reads: the job text, its kind and, for practice jobs, the answer.",
+  "source": "hand",
+  "what": [
+   "A small record with an id, the job text, its kind, the known answer if any, and tags.",
+   "Jobs with no single right answer may carry a rubric instead: deliverables, numbers with units, constraints and things the answer must not do.",
+   "The planner only ever reads the job text; the answer and the rubric are used only for scoring."
+  ]
+ },
+ "teamconfig": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "team_id",
+       "str"
+      ],
+      [
+       "version",
+       "int"
+      ],
+      [
+       "parent_version",
+       "int | None"
+      ],
+      [
+       "name",
+       "str"
+      ],
+      [
+       "topology",
+       "Literal['flat', 'boss_reviewers', 'plan']"
+      ],
+      [
+       "agents",
+       "dict[str, AgentSpec]"
+      ],
+      [
+       "edges",
+       "list[Edge]"
+      ],
+      [
+       "entry",
+       "list[str]"
+      ],
+      [
+       "exit",
+       "str"
+      ],
+      [
+       "plan",
+       "list[PlanStep]"
+      ],
+      [
+       "requirements",
+       "dict[str, str]"
+      ],
+      [
+       "max_inner_turns",
+       "int"
+      ],
+      [
+       "meta",
+       "dict"
+      ]
+     ],
+     "key": "amoeba/config/schema.py::TeamConfig",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "agent_id",
+       "str"
+      ],
+      [
+       "name",
+       "str"
+      ],
+      [
+       "role",
+       "Role"
+      ],
+      [
+       "model",
+       "str"
+      ],
+      [
+       "prompt",
+       "PromptRef"
+      ],
+      [
+       "tools",
+       "list[str]"
+      ],
+      [
+       "contract",
+       "Contract"
+      ],
+      [
+       "limits",
+       "Limits"
+      ],
+      [
+       "suggestions",
+       "str"
+      ],
+      [
+       "description",
+       "str"
+      ],
+      [
+       "role_prompt",
+       "str"
+      ],
+      [
+       "max_history",
+       "int"
+      ],
+      [
+       "missing_tools",
+       "list[str]"
+      ],
+      [
+       "is_summariser",
+       "bool"
+      ],
+      [
+       "goal",
+       "str"
+      ],
+      [
+       "skills",
+       "list[str]"
+      ],
+      [
+       "outputs",
+       "list[Any]"
+      ],
+      [
+       "success_criteria",
+       "list[str]"
+      ],
+      [
+       "constraints",
+       "list[str]"
+      ],
+      [
+       "created_by",
+       "Literal['human', 'drafter']"
+      ],
+      [
+       "temperature",
+       "float"
+      ],
+      [
+       "max_tokens",
+       "int"
+      ]
+     ],
+     "key": "amoeba/config/schema.py::AgentSpec",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/config/io.py::to_dict"
+     ],
+     "doc": "sha256 of the canonical JSON form — stable under key reordering.",
+     "key": "amoeba/config/io.py::config_hash",
+     "signature": "config_hash(cfg: TeamConfig | dict) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/config/io.py::to_dict"
+     ],
+     "doc": "",
+     "key": "amoeba/config/io.py::dump_yaml",
+     "signature": "dump_yaml(cfg: TeamConfig, path: str | Path) -> None"
+    }
+   ],
+   "checks": [
+    [
+     "differs",
+     "Each helper's model, temperature, max_tokens are written into the team file but the runner never reads them: every AI call uses the connection's own settings."
+    ]
+   ],
+   "guards": [],
+   "kind": "data",
+   "numbers": [
+    "AgentSpec.max_history",
+    "AgentSpec.max_tokens",
+    "AgentSpec.temperature",
+    "TeamConfig.max_inner_turns",
+    "TeamConfig.version"
+   ],
+   "prompts": {},
+   "title": "TeamConfig"
+  },
+  "facts_hash": "73e159c6bfdc34e6",
+  "seed_hash": "53dfb3b38116dee8",
+  "sentence": "The finished team written down as data: who exists, what each may use and who hands work to whom.",
+  "source": "hand",
+  "what": [
+   "The team as a data record: helpers, connections, where work starts and which helper gives the answer.",
+   "It is saved as team.yaml in the run folder and can be fingerprinted to spot identical teams."
+  ]
+ },
+ "tools": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [],
+     "key": "amoeba/tools/registry.py::ToolRegistry",
+     "methods": [
+      "__init__(self) -> None",
+      "register(self, name: str, description: str, fn: Callable[[str], str]) -> None",
+      "names(self) -> list[str]",
+      "descriptions(self) -> dict[str, str]",
+      "execute(self, name: str, action_input: str, agent=None) -> str"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/tools/registry.py::ToolError",
+      "amoeba/tools/registry.py::calc.ev"
+     ],
+     "doc": "Arithmetic on numbers only (+ - * / // % ** and parentheses); anything else is an error string.",
+     "key": "amoeba/tools/registry.py::calc",
+     "signature": "calc(expr: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/tools/registry.py::ToolRegistry",
+      "amoeba/tools/registry.py::ToolRegistry.register"
+     ],
+     "doc": "",
+     "key": "amoeba/tools/registry.py::default_registry",
+     "signature": "default_registry() -> ToolRegistry"
+    },
+    {
+     "callees": [],
+     "doc": "The two tools for one run: the provider, the limits, the run's source list and per-step counters.",
+     "fields": [
+      [
+       "provider",
+       "SearchProvider"
+      ],
+      [
+       "limits",
+       "WebLimits"
+      ],
+      [
+       "sources",
+       "list[dict]"
+      ],
+      [
+       "step",
+       "int | None"
+      ],
+      [
+       "trace",
+       "object | None"
+      ],
+      [
+       "_used",
+       "dict"
+      ]
+     ],
+     "key": "amoeba/tools/web.py::WebTools",
+     "methods": [
+      "begin_step(self, step: int, trace=None) -> None",
+      "sources_for(self, step: int) -> list[dict]",
+      "web_search(self, query: str) -> str",
+      "fetch_url(self, url: str) -> str"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "Tavily search (/search) and page extraction (/extract); both on api.tavily.com.",
+     "fields": [],
+     "key": "amoeba/tools/web.py::TavilyProvider",
+     "methods": [
+      "__init__(self, api_key: str | None=None, timeout_s: float=20.0)",
+      "search(self, query: str, max_results: int) -> list[dict]",
+      "fetch(self, url: str) -> dict"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/tools/registry.py::default_registry",
+      "amoeba/tools/web.py::TavilyProvider",
+      "amoeba/tools/web.py::WebLimits",
+      "amoeba/tools/web.py::WebTools",
+      "amoeba/tools/web.py::register_web_tools"
+     ],
+     "doc": "A fresh Box 3 registry for one run: echo, calc, web_search and fetch_url (Tavily unless a provider is given).",
+     "key": "amoeba/tools/web.py::web_registry",
+     "signature": "web_registry(provider: SearchProvider | None=None, limits: WebLimits | None=None)"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if self.step is not None and self.step not in s['steps']",
+     "add self.step"
+    ],
+    [
+     "decide",
+     "if isinstance(n, ast.BinOp) and type(n.op) in _BIN",
+     "set a, b = (ev(n.left), ev(n.right))"
+    ],
+    [
+     "decide",
+     "if isinstance(value, float) and value.is_integer()",
+     "set value = int(value)"
+    ],
+    [
+     "decide",
+     "if kind == 'fetch'",
+     "set s['fetched'] = True"
+    ],
+    [
+     "decide",
+     "if m",
+     "set known = next((s for s in self.sources if s['id'] == m.group(1)), None)"
+    ],
+    [
+     "decide",
+     "if not ok",
+     "set why = (data.get('failed_results') or [{}])[0].get('error', 'no content')"
+    ],
+    [
+     "decide",
+     "if trace is not None",
+     "set self.trace = trace"
+    ],
+    [
+     "fallback",
+     "[self.step] if self.step is not None else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except (ToolError, ZeroDivisionError, OverflowError, ValueError)",
+     "return f'error: {e}'"
+    ],
+    [
+     "fallback",
+     "except (WebToolError, urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError)",
+     "return self._fail('fetch_url', f'{type(e).__name__}: {e}')"
+    ],
+    [
+     "fallback",
+     "except (WebToolError, urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError)",
+     "return self._fail('web_search', f'{type(e).__name__}: {e}')"
+    ],
+    [
+     "fallback",
+     "except SyntaxError",
+     "return f'error: {e.msg}'"
+    ],
+    [
+     "fallback",
+     "f', first {len(cut)} of {len(text)} characters' if len(text) > len(cut) else ''",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if s['id'] == m.group(1)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if step in s['steps']",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if isinstance(n.op, ast.Pow) and abs(b) > 1000",
+     "raise ToolError"
+    ],
+    [
+     "reject",
+     "if name not in self._tools",
+     "raise ToolError"
+    ],
+    [
+     "reject",
+     "if not self.api_key",
+     "raise WebToolError"
+    ],
+    [
+     "stop",
+     "if (stop := self._quota('fetch_url', self.limits.max_fetches_per_step))",
+     "return stop"
+    ],
+    [
+     "stop",
+     "if (stop := self._quota('web_search', self.limits.max_searches_per_step))",
+     "return stop"
+    ],
+    [
+     "stop",
+     "if isinstance(n, ast.Constant) and isinstance(n.value, (int, float)) and (not isinstance(n.value, bool))",
+     "return n.value"
+    ],
+    [
+     "stop",
+     "if isinstance(n, ast.Expression)",
+     "return ev(n.body)"
+    ],
+    [
+     "stop",
+     "if isinstance(n, ast.UnaryOp) and type(n.op) in _UN",
+     "return _UN[type(n.op)](ev(n.operand))"
+    ],
+    [
+     "stop",
+     "if known is None",
+     "return f'error: fetch_url: no source {m.group(1)} in this run'"
+    ],
+    [
+     "stop",
+     "if not query",
+     "return 'error: web_search needs a query'"
+    ],
+    [
+     "stop",
+     "if not re.match('^https?://', url)",
+     "return 'error: fetch_url needs an http(s) url'"
+    ],
+    [
+     "stop",
+     "if not results",
+     "return f'No results for \"{query}\".'"
+    ],
+    [
+     "stop",
+     "if s['url'] == url",
+     "return s"
+    ],
+    [
+     "stop",
+     "if self._used.get(tool, 0) >= cap",
+     "return f'error: {tool} limit reached ({cap} per step); work with the sources you have'"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "WebLimits.max_fetch_chars",
+    "WebLimits.max_fetches_per_step",
+    "WebLimits.max_results",
+    "WebLimits.max_searches_per_step",
+    "WebLimits.snippet_chars",
+    "WebLimits.timeout_s"
+   ],
+   "prompts": {},
+   "title": "Tool box"
+  },
+  "facts_hash": "e0f9d73897bda505",
+  "seed_hash": "1fa3840bd048c24d",
+  "sentence": "Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search and page reading.",
+  "source": "hand",
+  "what": [
+   "Tools are looked up by name; a name that is not registered is an error, not a web search.",
+   "The arithmetic tool accepts numbers and + − × ÷ and powers only, never arbitrary code.",
+   "web_search and fetch_url (Tavily) give every result a source id [S#]; searches and fetches per step, page length and time are capped, and a failure comes back as an error line, never a crash.",
+   "This is the single place any tool is ever run."
+  ]
+ },
+ "toy_source": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [],
+     "key": "amoeba/task/source.py::ToyTaskSource",
+     "methods": [
+      "__init__(self, seed: int=0, n: int=20)",
+      "tasks(self) -> list[Task]"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/task/models.py::Task",
+      "amoeba/tools/registry.py::calc"
+     ],
+     "doc": "",
+     "key": "amoeba/task/source.py::_make",
+     "signature": "_make(rng: random.Random, family: str, i: int, seed: int) -> Task"
+    }
+   ],
+   "checks": [
+    [
+     "differs",
+     "The plan lists 'arithmetic chains · string transforms · JSON extraction'; the code has ['arith', 'reverse', 'vowels']: sums, reversing a word, counting vowels. There is no JSON-extraction job."
+    ],
+    [
+     "ok",
+     "Number of job kinds: #"
+    ]
+   ],
+   "guards": [
+    [
+     "decide",
+     "if family == 'arith'",
+     "set a, b, c = (rng.randint(2, 40), rng.randint(2, 40), rng.randint(1, 99))"
+    ],
+    [
+     "stop",
+     "if family == 'reverse'",
+     "return Task(id=tid, prompt=f\"Reverse the string '{word}' then uppercase it. Reply with just the result.\", family=family, ground_truth=word[::-1].upper(), tags=['toy'])"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "Episode.seed"
+   ],
+   "prompts": {},
+   "title": "Toy task source"
+  },
+  "facts_hash": "6add364136c4ecab",
+  "seed_hash": "1d60587f1519b694",
+  "sentence": "Makes practice jobs with known answers (sums, reversed words, vowel counts), the same for the same seed.",
+  "source": "hand",
+  "what": [
+   "Generates practice jobs from a seed number, cycling through three kinds of job.",
+   "Each job's right answer is computed by code at the same time.",
+   "The same seed always gives exactly the same jobs, so runs can be compared fairly."
+  ]
+ },
+ "toymock": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/llm/client.py::MockLLMClient"
+     ],
+     "doc": "",
+     "key": "amoeba/llm/toy_mock.py::toy_mock_client",
+     "signature": "toy_mock_client() -> MockLLMClient"
+    },
+    {
+     "callees": [],
+     "doc": "Offline, deterministic stand-in used by every test.",
+     "fields": [
+      [
+       "SIGNATURES",
+       "dict[str, str | tuple[str, ...]]"
+      ]
+     ],
+     "key": "amoeba/llm/client.py::MockLLMClient",
+     "methods": [
+      "__init__(self, script: dict[str, list[str] | Responder] | None=None, responses: list[str] | None=None, responder: Responder | None=None, model: str='mock')",
+      "classify(cls, messages: Messages) -> str",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None) -> ChatResponse",
+      "calls_of(self, kind: str) -> list[dict]",
+      "n_calls(self) -> int"
+     ],
+     "signature": null
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "fallback",
+     "(signature,) if isinstance(signature, str) else signature",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "list(v) if isinstance(v, list) else v",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "src.pop(0) if len(src) > 1 else src[0]",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if c['kind'] == kind",
+     "drop the rest"
+    ],
+    [
+     "stop",
+     "if any((s in text for s in ((signature,) if isinstance(signature, str) else signature)))",
+     "return kind"
+    ],
+    [
+     "stop",
+     "if callable(src)",
+     "return src(messages, seed)"
+    ],
+    [
+     "stop",
+     "if isinstance(src, list) and src",
+     "return src.pop(0) if len(src) > 1 else src[0]"
+    ],
+    [
+     "stop",
+     "if self._responder is not None",
+     "return self._responder(messages, seed)"
+    ],
+    [
+     "stop",
+     "if self._responses",
+     "return self._responses.pop(0)"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [
+    "AgentResult.input_tokens",
+    "AgentResult.output_tokens",
+    "AgentSpec.max_tokens",
+    "ChatResponse.input_tokens",
+    "ChatResponse.output_tokens",
+    "Episode.seed"
+   ],
+   "prompts": {},
+   "title": "Offline stand-in AI"
+  },
+  "facts_hash": "22dbff79e3ff6525",
+  "seed_hash": "369f64886d776560",
+  "sentence": "A scripted pretend AI that answers the practice jobs correctly, so everything runs without a real AI.",
+  "source": "hand",
+  "what": [
+   "Recognises which role is being asked from a fixed phrase in the prompt.",
+   "Answers from a script: a two-helper team, agreeing checkers, the calculator for sums, agreeing reviewers.",
+   "Used by the command line when no real AI is configured, and by every test."
+  ]
+ },
+ "trace": {
+  "checked_at": "7126cfe",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "Spans: invoke_workflow | invoke_agent | chat | execute_tool. Kept in memory and, if a path is given, appended",
+     "fields": [],
+     "key": "amoeba/interp/trace.py::TraceWriter",
+     "methods": [
+      "__init__(self, path: str | Path | None=None, episode_id: str | None=None, log_content: bool=False, stamp: dict | None=None)",
+      "span(self, name: str, attrs: dict | None=None) -> Iterator[dict]",
+      "box(self) -> str | None",
+      "event(self, name: str, attrs: dict | None=None) -> dict",
+      "events(self, name: str | None=None) -> list[dict]",
+      "spans(self, name: str | None=None) -> list[dict]",
+      "total_tokens(self) -> int",
+      "total_reasoning_tokens(self) -> int",
+      "n_llm_calls(self) -> int",
+      "close(self) -> None"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/interp/trace.py::TraceWriter._write",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "A point-in-time record (kind \"event\"), e.g. capability_request, unknown_tool, blocked.",
+     "key": "amoeba/interp/trace.py::TraceWriter.event",
+     "signature": "event(self, name: str, attrs: dict | None=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/interp/trace.py::NoopListener.on_llm_call",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TracedLLM._log_retries",
+      "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/cache.py::CachedLLM.chat_messages",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/client.py::LLMClient.chat_messages",
+      "amoeba/llm/client.py::MockLLMClient.chat_messages",
+      "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
+      "amoeba/llm/limits.py::RunLimits.active",
+      "amoeba/llm/limits.py::RunLimits.check",
+      "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/llm/profiles.py::RoleRouter.route",
+      "scripts/eval_draft.py::Recording.chat_messages",
+      "scripts/eval_draft.py::Recording.route"
+     ],
+     "doc": "role: the call's role group (D54; Box 2 callers are known by name). A profile's RoleRouter picks the",
+     "key": "amoeba/interp/trace.py::TracedLLM.chat_messages",
+     "signature": "chat_messages(self, messages: Messages, seed: int=0, *, agent_id: str | None=None, agent_name: str | None=None, max_tokens: int | None=None, role: str | None=None, _retry: bool=False) -> ChatResponse"
+    },
+    {
+     "callees": [],
+     "doc": "Phase 3's monitor implements these; Phase 1 passes a no-op so Interpreter's signature never changes.",
+     "fields": [],
+     "key": "amoeba/interp/trace.py::NoopListener",
+     "methods": [
+      "on_llm_call(self, agent_id: str | None, resp: ChatResponse) -> None",
+      "on_tool_call(self, agent_id: str | None, result: str) -> None"
+     ],
+     "signature": null
+    }
+   ],
+   "checks": [],
+   "guards": [],
+   "kind": "data",
+   "numbers": [
+    "AgentResult.input_tokens",
+    "AgentResult.output_tokens",
+    "AgentSpec.max_tokens",
+    "ChatResponse.input_tokens",
+    "ChatResponse.output_tokens",
+    "ChatResponse.reasoning_tokens",
+    "ChatResponse.throttle_wait_s",
+    "Episode.seed",
+    "chat_messages.seed"
+   ],
+   "prompts": {},
+   "title": "Every AI call → one trace line"
+  },
+  "facts_hash": "35fdbfbd3a30c560",
+  "model": "gemini-3.1-flash-lite",
+  "seed_hash": "0f5f3df261f75ad2",
+  "sentence": "Writes one log line per AI call and tool call: who, which model, tokens and time. Nothing enforces a budget.",
+  "source": "hand (model: still true)",
+  "what": [
+   "Every AI call becomes one log line with the helper, model, tokens in and out, and time taken.",
+   "Tool calls, each helper's turn and the whole run get their own lines too.",
+   "Point events are logged too: capability_request, blocked and unknown_tool.",
+   "From the command line each AI line also holds the exact prompt sent and the reply received (turn off with --no-log-content).",
+   "Token counts are only recorded; no code reads them to stop a run.",
+   "Every line names the model profile; each AI line holds the model asked for and the exact model name the service returned."
+  ]
+ }
+}

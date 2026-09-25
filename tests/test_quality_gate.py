@@ -1,7 +1,8 @@
 """D28 — independent verification (not self-reported) and the optional --quality-gate."""
 from amoeba.config.prompts import PROMPT
 from amoeba.task.draft import draft_team
-from tests.conftest import fx, mock
+from amoeba.task.models import Task
+from tests.conftest import DB_PROMPT, fx, mock
 
 FULL = fx("draft_d24_full")          # step 3 'Cross-check numbers' is done by the producers of steps 1-2
 INDEPENDENT = FULL.replace("3. [Schema Engineer, Cost Analyst]: Cross-check numbers",
@@ -12,6 +13,7 @@ APPROVE = fx("observer_d24_approve")
 
 def run(task, envelope, trace, planner, gate):
     llm = mock(planner=planner, agent_observer=[APPROVE], plan_observer=[APPROVE])
+    task = Task(id="db-choice", prompt=DB_PROMPT)   # D52: a task the fixture's requirements carry (task_coverage)
     return llm, draft_team(task, llm, envelope, trace, prompts="d24", quality_gate=gate)
 
 

@@ -1,0 +1,60 @@
+# Named model profiles (D54): how run_task and eval_draft call a real model (--llm openai --profile NAME).
+# Model ids change: check the exact name against the provider's own list first
+# (python -m scripts.list_models --profile NAME).
+#
+# A profile's keys:
+#   base_url          the OpenAI-compatible endpoint
+#   model             the model for every call without a per-role model below
+#   api_key_env       the environment variable holding the key (AMOEBA_API_KEY, when set, is used first)
+#   merge_system      true for models without a system role (Gemma): the system text goes into the user message
+#   reasoning_effort  off | low | medium | high, sent only when set (off is sent as "none")
+#   max_tokens        the reply limit of calls that set none of their own (the client default is 2048)
+#   roles             optional, per role group: {model: ..., max_tokens: ...}. Groups: planner, observers (both
+#                     Box 2 checkers), workers (Box 3 helpers), reviewers (boss_reviewers critics, the plan runner's
+#                     verify steps and critique reviews), summariser (the role that writes the final answer)
+#
+# Precedence: --base-url / --model flags > AMOEBA_BASE_URL / AMOEBA_MODEL > the profile (per-role models still
+# apply); --merge-system / --reasoning-effort flags > the profile; --planner-max-tokens / --observer-max-tokens >
+# the profile's planner / observers max_tokens > AMOEBA_MAX_TOKENS_* > 8192.
+
+default: gemma-api
+
+profiles:
+  gemma-api:                     # Gemma 4 through the Gemini API (Google AI Studio key)
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    model: gemma-4-31b-it
+    api_key_env: GEMINI_API_KEY
+    merge_system: true
+    reasoning_effort: low
+
+  gemma-openrouter:              # Gemma 4 through OpenRouter, free variant (openrouter.ai key)
+    base_url: https://openrouter.ai/api/v1
+    model: google/gemma-4-31b-it:free
+    api_key_env: OPENROUTER_API_KEY
+    merge_system: true
+
+  gemini-flash-lite:             # the settings of the 2026-09-24 baseline runs
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    model: gemini-3.1-flash-lite
+    api_key_env: GEMINI_API_KEY
+
+  gemini-flash:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    model: gemini-3.5-flash
+    api_key_env: GEMINI_API_KEY
+
+  arch-text:                     # tools/arch_text.py: re-checks the as-built page's box text (cheap, short replies)
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    model: gemini-3.1-flash-lite
+    api_key_env: GEMINI_API_KEY
+    max_tokens: 700
+
+# Example of per-role settings (not a shipped profile):
+#   gemma-mixed:
+#     base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+#     model: gemma-4-31b-it
+#     merge_system: true
+#     max_tokens: 4096
+#     roles:
+#       planner: {model: gemini-3.5-flash, max_tokens: 8192}
+#       reviewers: {model: gemini-3.1-flash-lite}

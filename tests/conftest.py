@@ -34,6 +34,17 @@ def task():
                 ground_truth="396")
 
 
+# D52: a task whose numbers and deliverables the draft_d24_full fixture carries into its Requirements and Givens
+DB_PROMPT = ("For 50 tenants at 200 GB each, gather current benchmark results for PostgreSQL and MongoDB, estimate "
+             "the monthly cost, prototype and test the event schema in both databases, and deliver a recommendation "
+             "memo with a risk table.")
+
+
+@pytest.fixture
+def db_task():
+    return Task(id="db-choice", prompt=DB_PROMPT, family="design")
+
+
 @pytest.fixture
 def trace():
     return TraceWriter(None, episode_id="ep-test")
