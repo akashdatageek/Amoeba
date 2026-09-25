@@ -17,6 +17,26 @@ from amoeba.llm.profiles import BOX2_GROUPS
 from amoeba.task.parsers import MissingSections, parse_sections, repair_prompt, require
 
 
+# D55: every trace line names the as-built page box (tools/arch_extract.py BOXES id) whose code wrote it, so the page
+# can replay any run. Spans and events not listed here take the box of the span they happen inside.
+SPAN_BOX = {"invoke_workflow": "interpreter", "execute_tool": "tools"}
+EVENT_BOX = {
+    "capability_request": "capreq", "unknown_tool": "resolver", "blocked": "read_action",
+    "draft_quality": "checks", "quality_gate": "checks", "draft_reused": "handoff", "intake_review": "planner",
+    "truncated": "client", "rate_limited": "client", "cache_miss": "client",
+    "plan_graph": "plan_graph", "dependency_relinked": "plan_graph", "step_input": "plan_step",
+    "input_truncated": "plan_step", "collab_round": "plan_step", "review_unreadable": "plan_step",
+    "step_done": "step_check", "check_retry": "step_check", "rework": "step_check", "reverify": "step_check",
+    "stale": "step_check", "refine": "step_check", "verification_inferred": "step_check",
+    "provenance": "provenance", "figure_ledger": "provenance",
+    "summary_check": "plan_summary", "limitations_added": "plan_summary", "answer_assembled_by_code": "plan_summary",
+    "capability_mapped": "tools", "web_tools": "tools", "web_search": "tools", "fetch_url": "tools",
+    "tool_error": "tools", "tool_limit": "tools",
+}
+BOX2_BOX = {"planner": "planner", "agent_observer": "agent_obs", "plan_observer": "plan_obs"}
+
+
+# box: trace
 class TraceWriter:
     """Spans: invoke_workflow | invoke_agent | chat | execute_tool. Kept in memory and, if a path is given, appended
     to a JSONL file as they close."""
@@ -28,6 +48,7 @@ class TraceWriter:
         self.log_content = log_content   # also write each call's messages and reply (gen_ai.input/output.messages)
         self.episode_id = episode_id or str(uuid4())
         self.records: list[dict] = []
+        self._boxes: list[str | None] = []     # the box of each open span, innermost last (D55)
         self._fh = None
         if self.path:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -38,6 +59,8 @@ class TraceWriter:
         rec = {"ts": datetime.now(timezone.utc).isoformat(), "episode_id": self.episode_id, "kind": "span",
                "name": name, **self.stamp}
         rec.update({k: v for k, v in (attrs or {}).items() if v is not None})
+        rec["amoeba.box"] = rec.get("amoeba.box") or SPAN_BOX.get(name) or self.box
+        self._boxes.append(rec["amoeba.box"])
         t0 = time.perf_counter()
         try:
             yield rec
@@ -45,14 +68,22 @@ class TraceWriter:
             rec["error.type"] = type(e).__name__
             raise
         finally:
+            self._boxes.pop()
             rec["latency_ms"] = int((time.perf_counter() - t0) * 1000)
             self._write(rec)
 
+    @property
+    def box(self) -> str | None:
+        """The box of the innermost open span (None outside every span)."""
+        return self._boxes[-1] if self._boxes else None
+
+    # box: trace
     def event(self, name: str, attrs: dict | None = None) -> dict:
         """A point-in-time record (kind "event"), e.g. capability_request, unknown_tool, blocked."""
         rec = {"ts": datetime.now(timezone.utc).isoformat(), "episode_id": self.episode_id, "kind": "event",
                "name": name, **self.stamp}
         rec.update({k: v for k, v in (attrs or {}).items() if v is not None})
+        rec["amoeba.box"] = rec.get("amoeba.box") or EVENT_BOX.get(name) or self.box
         self._write(rec)
         return rec
 
@@ -88,6 +119,7 @@ class TraceWriter:
             self._fh = None
 
 
+# box: trace
 class NoopListener:
     """Phase 3's monitor implements these; Phase 1 passes a no-op so Interpreter's signature never changes."""
 
@@ -104,6 +136,7 @@ class TracedLLM:
     def __init__(self, llm: LLMClient, trace: TraceWriter, listener: NoopListener | None = None):
         self.llm, self.trace, self.listener = llm, trace, listener or NoopListener()
 
+    # box: trace
     def chat_messages(self, messages: Messages, seed: int = 0, *, agent_id: str | None = None,
                       agent_name: str | None = None, max_tokens: int | None = None, role: str | None = None,
                       _retry: bool = False) -> ChatResponse:
@@ -114,6 +147,7 @@ class TracedLLM:
         if cap and not _retry:
             max_tokens = cap
         attrs = {"gen_ai.agent.id": agent_id, "gen_ai.agent.name": agent_name, "amoeba.role_group": group,
+                 "amoeba.box": BOX2_BOX.get(agent_name or ""),
                  "gen_ai.request.model": llm.model, "gen_ai.request.max_tokens": max_tokens,
                  "amoeba.retry_of_truncated": True if _retry else None}
         limits = getattr(self.trace, "limits", None)   # D47: opt-in per-run limits, checked before the call
@@ -168,6 +202,7 @@ class TracedLLM:
         return self.chat_messages([{"role": "system", "content": system}, {"role": "user", "content": user}],
                                   seed, **ids)
 
+    # box: split
     def chat_sections(self, system: str, user: str, keys: list[str], seed: int = 0, **ids
                       ) -> tuple[str, dict[str, str]]:
         """AutoAgents _aask_v1: parse '## Section' blocks; a missing one gets one LLM repair call, then raises."""

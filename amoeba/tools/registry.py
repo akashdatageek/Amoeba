@@ -18,6 +18,7 @@ class Tool:
     fn: Callable[[str], str]
 
 
+# box: tools
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
@@ -50,6 +51,7 @@ _BIN = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul, as
 _UN = {ast.USub: operator.neg, ast.UAdd: operator.pos}
 
 
+# box: tools
 def calc(expr: str) -> str:
     """Arithmetic on numbers only (+ - * / // % ** and parentheses); anything else is an error string."""
     src = expr.strip().strip("`").strip()
@@ -79,6 +81,7 @@ def calc(expr: str) -> str:
     return str(value)
 
 
+# box: tools
 def default_registry() -> ToolRegistry:
     reg = ToolRegistry()
     reg.register("echo", "returns its input unchanged", echo)

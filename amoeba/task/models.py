@@ -40,6 +40,7 @@ class RubricMustNot(BaseModel):
     window: int = 160
 
 
+# box: scoring
 class Rubric(BaseModel):
     """D30: how a task with no single right answer is scored (Box 1, deterministic). Never shown to Box 2 or Box 3."""
 
@@ -49,6 +50,7 @@ class Rubric(BaseModel):
     must_not: list[RubricMustNot] = Field(default_factory=list)
 
 
+# box: ov_task, task_record
 class Task(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     prompt: str
@@ -100,6 +102,7 @@ class Answer(BaseModel):
     error: str | None = None
 
 
+# box: capreq
 class CapabilityRequest(BaseModel):
     """A tool or skill the team asked for that the registry does not have (D19). Recorded, never acted on."""
 
@@ -141,6 +144,7 @@ class CapabilityRequest(BaseModel):
         return "skill" if str(v or "").strip().lower() == "skill" else "tool"
 
 
+# box: checks
 class DraftedRole(BaseModel):
     """One JSON blob from the planner (AutoAgents keys: name, description, tools, suggestions, prompt)."""
 
@@ -251,6 +255,7 @@ class Draft(BaseModel):
     requests_dropped_by_observers: int = 0     # of those, how many the final draft no longer asks for
 
 
+# box: runresult
 class RunResult(BaseModel):
     run_id: str
     task_id: str

@@ -13,6 +13,7 @@ import ast
 import hashlib
 import html
 import json
+import os
 import re
 import shutil
 import string
@@ -24,6 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tools"))
 PKG = ROOT / "amoeba"
 OUT = ROOT / "docs" / "arch"
 PLAN_HTML = OUT / "plan_phase1.html"
@@ -579,6 +581,75 @@ class Facts:
         raise KeyError(f"marker {marker!r} not found in {key}")
 
 
+# ============================================================================================ box tags
+# A `# box: id1, id2` comment right above a def or class (decorators may sit between) puts that code in those
+# boxes. The tags are the anchors in the code; BOXES keeps only their order and [from, to) line markers.
+TAG = re.compile(r"^\s*#\s*box:\s*(.*?)\s*$")
+
+
+def box_tags(F: Facts) -> tuple[dict[str, list[str]], list[str]]:
+    """key -> box ids, and the problems: a tag followed by no def/class, or naming a box that does not exist."""
+    ids = {B["id"] for B in BOXES}
+    at_line = {(d["path"], d["node"].lineno): k for k, d in F.defs.items()}
+    tags: dict[str, list[str]] = {}
+    errors: list[str] = []
+    for path, lines in F.src.items():
+        for i, line in enumerate(lines):
+            m = TAG.match(line)
+            if not m:
+                continue
+            j = i + 1
+            while j < len(lines) and (not lines[j].strip() or lines[j].lstrip().startswith("@")):
+                j += 1
+            key = at_line.get((path, j + 1))
+            named = [x.strip() for x in m.group(1).split(",") if x.strip()]
+            if key is None:
+                errors.append(f"{path}:{i + 1}: '# box:' tag is not directly above a def or class")
+                continue
+            for b in named:
+                if b not in ids:
+                    errors.append(f"{path}:{i + 1}: '# box: {b}' names no box in tools/arch_extract.py BOXES")
+            tags.setdefault(key, []).extend(b for b in named if b in ids)
+    return tags, errors
+
+
+def check_anchors(F: Facts, tags: dict[str, list[str]]) -> list[str]:
+    """Every BOXES anchor must resolve to code, and that code must carry the box's tag."""
+    errors = []
+    for B in BOXES:
+        for a in B.get("anchors", []):
+            key = a if isinstance(a, str) else a[0]
+            if key not in F.defs:
+                errors.append(f"box {B['id']}: anchor {key} points at code that does not exist")
+            elif B["id"] not in tags.get(key, []):
+                errors.append(f"box {B['id']}: {key} has no '# box: {B['id']}' tag above it")
+    return errors
+
+
+def tagged_anchors(tags: dict[str, list[str]]) -> None:
+    """A def tagged for a box that BOXES does not list yet joins that box (after the listed ones)."""
+    for B in BOXES:
+        listed = {a if isinstance(a, str) else a[0] for a in B.get("anchors", [])}
+        extra = sorted(k for k, ids in tags.items() if B["id"] in ids and k not in listed)
+        if extra and not B.get("ref"):
+            B["anchors"] = list(B.get("anchors", [])) + extra
+
+
+def unassigned(F: Facts, tags: dict[str, list[str]], prev_defs: set[str] | None) -> list[dict]:
+    """Top-level defs and classes with no tag on themselves, anything inside them, or anything around them.
+    `new` = not in the previous build (every one of them is new only when there is no previous list)."""
+    tagged = set(tags)
+    out = []
+    for k, d in F.defs.items():
+        if "." in d["qual"]:
+            continue
+        if k in tagged or any(t.startswith(k + ".") for t in tagged):
+            continue
+        out.append({"key": k, "name": d["qual"], "path": d["path"], "line": d["node"].lineno, "kind": d["kind"],
+                    "new": prev_defs is not None and k not in prev_defs})
+    return sorted(out, key=lambda u: (not u["new"], u["key"]))
+
+
 def first_doc_line(node) -> str:
     doc = ast.get_docstring(node) if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef)) else None
     return doc.strip().split("\n")[0] if doc else ""
@@ -991,6 +1062,74 @@ def capability_example() -> dict:
             "capability_requests_json": reqs, "events": events, "error": r.error, "answer": r.answer}
 
 
+def coverage(timeline: list[dict]) -> dict:
+    """D55: boxes no trace line maps to, and trace lines that name no (known) box."""
+    ids = {B["id"] for B in BOXES if not B.get("ref")}
+    seen = {t["box"] for t in timeline}
+    return {"boxes_without_lines": sorted(ids - seen),
+            "lines_without_box": [{"i": t["i"], "file_line": t["file_line"], "span": t["span"], "box": t["box"]}
+                                  for t in timeline if t["box"] not in ids]}
+
+
+def find_real_run() -> Path | None:
+    """--replay-run DIR, else $ARCH_REPLAY_RUN, else the newest run under runs/ made with a real model (a profile)."""
+    arg = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--replay-run=")), None)
+    if arg or os.environ.get("ARCH_REPLAY_RUN"):
+        d = Path(arg or os.environ["ARCH_REPLAY_RUN"])
+        return d if (d / "trace.jsonl").exists() else None
+    best = None
+    for r in list((ROOT / "runs").glob("*/result.json")) + list((ROOT / "runs").glob("*/*/result.json")):
+        try:
+            if json.loads(r.read_text(encoding="utf-8")).get("profile") and (r.parent / "trace.jsonl").exists():
+                if best is None or r.stat().st_mtime > best.stat().st_mtime:
+                    best = r
+        except (OSError, json.JSONDecodeError):
+            continue
+    return best.parent if best else None
+
+
+def real_run(d: Path) -> dict:
+    """D55: a real run from runs/, replayed on the page from its own trace: every line placed by its amoeba.box
+    (older traces without it are placed by the same rules as the sample runs, and say so)."""
+    spans = [json.loads(l) for l in (d / "trace.jsonl").read_text(encoding="utf-8").splitlines() if l.strip()]
+    result = json.loads((d / "result.json").read_text(encoding="utf-8"))
+    depth = {"invoke_workflow": 0, "invoke_agent": 1, "chat": 2, "execute_tool": 2}
+    ordered = sorted(enumerate(spans), key=lambda iv: (iv[1]["ts"], depth.get(iv[1]["name"], 3), iv[0]))
+    stamped = any("amoeba.box" in s for s in spans)
+    timeline = []
+    for file_idx, s in ordered:
+        box = s.get("amoeba.box") if stamped else (
+            {"planner": "planner", "agent_observer": "agent_obs", "plan_observer": "plan_obs"}.get(s.get("gen_ai.agent.name", ""))
+            or ("interpreter" if s["name"] == "invoke_workflow" else "tools" if s["name"] == "execute_tool"
+                else EVENT_BOX.get(s["name"]) if s.get("kind") == "event" else None))
+        out = (s.get("gen_ai.output.messages") or [{}])[0].get("content", "")
+        if s["name"] == "chat":
+            result_txt = next((l for l in out.splitlines() if l.strip()), "") if out else f"finish: {s.get('gen_ai.response.finish_reasons')}"
+        elif s.get("kind") == "event":
+            result_txt = f"{s['name']}: " + ", ".join(f"{k.split('.')[-1]}={v}" for k, v in s.items() if k.startswith("amoeba.")
+                                                      and k not in ("amoeba.box", "amoeba.profile"))
+        else:
+            result_txt = s.get("error.type", "")
+        raw = {k: v for k, v in s.items() if k not in ("gen_ai.input.messages", "gen_ai.output.messages")}
+        timeline.append({"i": len(timeline), "file_line": file_idx + 1, "span": s["name"], "box": box,
+                         "helper": s.get("gen_ai.agent.name", ""),
+                         "tokens": s.get("gen_ai.usage.input_tokens", 0) + s.get("gen_ai.usage.output_tokens", 0),
+                         "latency_ms": s.get("latency_ms", 0), "result": trim(result_txt, 120), "raw": raw})
+    per_box = {}
+    for t in timeline:
+        if t["span"] in ("chat", "execute_tool", "invoke_workflow"):
+            b = per_box.setdefault(t["box"], {"calls": 0, "tokens": 0, "ms": 0})
+            b["calls"] += t["span"] == "chat"
+            b["tokens"] += t["tokens"]
+            b["ms"] += t["latency_ms"]
+    keep = ("task_id", "topology", "score", "error", "profile", "models", "usage", "n_llm_calls", "total_tokens")
+    return {"real": True, "stamped": stamped, "run_id": d.name, "dir": rel(d) if d.is_relative_to(ROOT) else str(d),
+            "files": sorted(p.name for p in d.iterdir()), "result": {**{k: result.get(k) for k in keep},
+                                                                    "answer": trim(result.get("answer") or "", 300)},
+            "n_trace_lines": len(spans), "timeline": timeline, "per_box": per_box, "coverage": coverage(timeline),
+            "calls": [], "artifacts": [], "examples": {}}
+
+
 def sample_runs() -> dict:
     import yaml
     from amoeba.llm.toy_mock import toy_mock_client
@@ -1024,7 +1163,9 @@ def sample_runs() -> dict:
         for file_idx, s in ordered:
             name = s.get("gen_ai.agent.name", "")
             role = roles.get(s.get("gen_ai.agent.id", ""), "")
-            if s["name"] == "invoke_workflow":
+            if s.get("amoeba.box"):          # D55: the trace names its box; the rules below are for older traces
+                box = s["amoeba.box"]
+            elif s["name"] == "invoke_workflow":
                 box = "interpreter"
             elif s["name"] == "execute_tool":
                 box = "tools"
@@ -1072,6 +1213,7 @@ def sample_runs() -> dict:
                     critic_verdicts.append({"agree": parse_critic(c["response"])[0], "reason": parse_critic(c["response"])[1]})
                 except Exception as e:
                     critic_verdicts.append({"unparseable": str(e)[:80]})
+        cov = coverage(timeline)
         solver = next((a for a in team["agents"].values() if a["role"] == "solver"), None)
         out["runs"][topology] = {
             "run_id": r.run_id, "dir": f"runs/{r.run_id}", "files": sorted(p.name for p in d.iterdir()),
@@ -1084,7 +1226,7 @@ def sample_runs() -> dict:
             "plan_trimmed": {**{k: v for k, v in plan.items() if k != "raw_draft"},
                              "raw_draft": trim(plan.get("raw_draft", ""), 600)},
             "trace_lines": [json.dumps(s, ensure_ascii=False) for s in spans[:3]],
-            "n_trace_lines": len(spans), "timeline": timeline, "per_box": per_box,
+            "n_trace_lines": len(spans), "timeline": timeline, "per_box": per_box, "coverage": cov,
             "artifacts": [json.loads(p.read_text()) for p in sorted((d / "artifacts").glob("step_*.json"))]
             if (d / "artifacts").exists() else [],
             "calls": [{"kind": c["kind"], "messages": [{"role": m["role"], "content": m["content"]} for m in c["messages"]],
@@ -1329,6 +1471,19 @@ def main() -> int:
              "dirty": bool(sh("git", "status", "--porcelain", "--", "amoeba", "scripts", "tests", "spec")),
              "dirty_scope": "amoeba/ scripts/ tests/ spec/"}
     F = Facts()
+    tags, errors = box_tags(F)
+    errors += check_anchors(F, tags)
+    from amoeba.interp.trace import BOX2_BOX, EVENT_BOX as TRACE_EVENTS, SPAN_BOX      # D55: the trace's box ids
+    known = {B["id"] for B in BOXES}
+    errors += [f"amoeba/interp/trace.py names box {b!r}, which is not on the page"
+               for b in sorted((set(TRACE_EVENTS.values()) | set(SPAN_BOX.values()) | set(BOX2_BOX.values())) - known)]
+    if errors:                     # a tag or an anchor that points at nothing: the page would lie, so stop
+        print("arch_extract: box anchors are out of step with the code:\n  " + "\n  ".join(errors), file=sys.stderr)
+        return 2
+    tagged_anchors(tags)
+    prev_path = OUT / "architecture.json"
+    prev = json.loads(prev_path.read_text(encoding="utf-8")) if prev_path.exists() else {}
+    prev_defs = set(prev["defs"]) if "defs" in prev else None
     graph = call_graph(F)
     C = constants(F)
     devs, dev_table = deviations(F)
@@ -1338,9 +1493,23 @@ def main() -> int:
     facts["tests"] = test_map(F, graph, tr)
     print("sample runs …", flush=True)
     facts["sample"] = sample_runs()
+    rr = find_real_run()
+    if rr:
+        facts["sample"]["runs"]["real"] = real_run(rr)
+        cov = facts["sample"]["runs"]["real"]["coverage"]
+        print(f"real run replayed: {rel(rr) if rr.is_relative_to(ROOT) else rr} — {len(cov['lines_without_box'])} "
+              f"line(s) with no box; boxes with no line: {len(cov['boxes_without_lines'])}")
     pb = plan_boxes()
     plan_by_title = {(p["view"], p["title"]): p for p in pb}
     boxes = box_facts(F, graph, facts, plan_by_title)
+    from arch_text import update_texts                    # the words: cache, hand text, or a cheap model (D55)
+    hand = {B["id"]: {"sentence": B.get("sentence", ""), "what": B.get("what", [])} for B in BOXES if not B.get("ref")}
+    text_log = update_texts(boxes, F, C, {p["stem"]: p["text"] for p in facts["prompts"]}, hand,
+                            llm=None if "--no-llm" in sys.argv else "auto", commit=state["short"])
+    print(f"box text: {text_log['unchanged']} unchanged, {text_log['hand']} from hand text, {text_log['checked']} "
+          f"re-checked by {text_log['model'] or 'no model'} ({text_log['kept']} kept, {text_log['rewritten']} rewritten, "
+          f"{text_log['rejected']} rejected), {text_log['stale']} stale; tokens {text_log['input_tokens']} in / "
+          f"{text_log['output_tokens']} out / {text_log['reasoning_tokens']} reasoning")
     mapped = {(b["view"], b.get("plan")) for b in BOXES}
     unmapped_plan = [p["title"] for p in pb if (p["view"], p["title"]) not in mapped
                      and not (p["view"] == "run" and p["title"] == "TeamConfig")]
@@ -1359,7 +1528,9 @@ def main() -> int:
             "tools": tools(F), "tests": {"summary": tr["summary"], "tests": facts["tests"]},
             "deviations": {"in_code": devs, "spec_table": dev_table}, "sample": facts["sample"],
             "data_types": data_types(F), "boxes": boxes, "plan_boxes_not_mapped": unmapped_plan,
-            "glossary": GLOSSARY}
+            "tags": tags, "defs": sorted(k for k, d in F.defs.items() if "." not in d["qual"]),
+            "unassigned": unassigned(F, tags, prev_defs),
+            "glossary": GLOSSARY, "text_log": text_log}
     counts = {}
     for b in boxes:
         counts[b["status"]] = counts.get(b["status"], 0) + 1
@@ -1368,6 +1539,8 @@ def main() -> int:
     if target.exists():
         shutil.copyfile(target, OUT / "architecture.prev.json")
     target.write_text(json.dumps(arch, indent=1, ensure_ascii=False, default=str), encoding="utf-8")
+    new_un = [u["key"] for u in arch["unassigned"] if u["new"]]
+    print(f"untagged top-level code: {len(arch['unassigned'])}" + (f"; NEW and unassigned: {', '.join(new_un)}" if new_un else ""))
     print(f"wrote {rel(target)}: {len(boxes)} boxes {counts}; tests: {tr['summary']}; "
           f"unmapped plan boxes: {unmapped_plan}; classes used as anchors: {len(cls_keys)}")
     return 0

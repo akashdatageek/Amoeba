@@ -15,6 +15,7 @@ class MissingSections(ParseError):
         self.missing, self.found = missing, found
 
 
+# box: split
 def parse_sections(text: str, all_fences: bool = False) -> dict[str, str]:
     """AutoAgents OutputParser.parse_blocks + parse_code (system/utils/common.py:31-59).
     all_fences: DEVIATION D26 — join every fenced block of a section, in order, instead of keeping only the first
@@ -42,6 +43,7 @@ def parse_sections(text: str, all_fences: bool = False) -> dict[str, str]:
     return out
 
 
+# box: split
 def require(sections: dict[str, str], keys: list[str]) -> dict[str, str]:
     """Missing key → MissingSections; the caller makes one LLM repair call (action.py:69-75) then gives up."""
     missing = [k for k in keys if k not in sections]
@@ -50,6 +52,7 @@ def require(sections: dict[str, str], keys: list[str]) -> dict[str, str]:
     return sections
 
 
+# box: checks
 def parse_role_blobs(text: str) -> list[dict]:
     """environment._parser_roles (environment.py:60-73)."""
     roles: list[dict] = []
@@ -65,6 +68,7 @@ def parse_role_blobs(text: str) -> list[dict]:
 # planner output, so blobs from "Thought" get included too.
 
 
+# box: checks
 def parse_plan(text: str) -> list[tuple[list[str], str]]:
     """environment._parser_plan (environment.py:75-84) + our bracket parser."""
     steps = [v.split("\n")[0] for v in re.split(r"\n\d+\. ", "\n" + text)[1:]]   # environment.py:78
@@ -163,6 +167,7 @@ _ASSUMPTION = re.compile(r"\bassum(?:ption|ed|e)\s*[:=]\s*", re.I)
 _QUESTION = re.compile(r"^(?:question|q)\s*[:=]\s*", re.I)
 
 
+# box: planner
 def parse_open_questions(text: str) -> list[dict[str, str]]:
     """D53 '## Open Questions': one {"question", "assumption"} per item. An item is "- question: ... | assumption:
     ..." on one line, or a question line followed by its own "assumption: ..." line; an item without an assumption
@@ -194,6 +199,7 @@ def parse_verdict(sections: dict[str, str]) -> str | None:
 CRITIC_DEFAULT = "I think it is not correct. Please think carefully and improve it."
 
 
+# box: critics
 def parse_critic(text: str) -> tuple[bool, str]:
     """AgentVerse 'critic' parser = CommonParser3 (output_parser/output_parser.py:541-561) → (is_agree, criticism)."""
     text = re.sub(r"\n+", "\n", text.strip())                       # :544
@@ -208,6 +214,7 @@ def parse_critic(text: str) -> tuple[bool, str]:
     raise ParseError(text)                                          # :560-561
 
 
+# box: split
 def repair_prompt(user: str, raw: str, keys: list[str], error: str) -> str:
     """The one repair round AutoAgents makes when a required section is missing (action.py:69-75)."""
     wanted = "\n".join(f"## {k}" for k in keys)

@@ -51,6 +51,7 @@ class DraftError(RuntimeError):
         self.rounds = rounds if rounds is not None else []
 
 
+# box: resolver
 def parse_capability_requests(text: str) -> list[CapabilityRequest]:
     """The planner's "## Capability Requests" section (D19). 'None', prose or bad JSON yield nothing."""
     out: list[CapabilityRequest] = []
@@ -64,6 +65,7 @@ def parse_capability_requests(text: str) -> list[CapabilityRequest]:
     return out
 
 
+# box: resolver
 def resolve_tools(roles: list[DraftedRole], envelope: Envelope,
                   requests: list[CapabilityRequest]) -> list[CapabilityRequest]:
     """Keep each role's registered tools; a name the registry lacks becomes a recorded request and the role's
@@ -83,6 +85,7 @@ def resolve_tools(roles: list[DraftedRole], envelope: Envelope,
     return out
 
 
+# box: checks
 def role_blobs(sec: dict[str, str]) -> list[dict]:
     """Role JSON blobs of one planner reply, Created then Selected. DEVIATION D22: brace-balanced parsing
     (parse_json_objects) instead of AutoAgents' non-greedy regex (environment.py:62, kept as parse_role_blobs for T3),
@@ -109,6 +112,7 @@ def request_survival(first: list[CapabilityRequest], final: list[CapabilityReque
     return len(proposed), len(proposed - {q.canonical.lower() for q in final})
 
 
+# box: checks
 def pick_summariser(roles: list[DraftedRole], plan: list[DraftPlanStep]) -> DraftedRole:
     """D20: the role that writes the final answer — the first one the planner marks "is_summariser": true, else
     the last role named by the plan's last step (the flat runner's exit). Having no tools says nothing about it;
@@ -155,6 +159,7 @@ def _observer_sections(llm: TracedLLM, name: str, user: str, seed: int, log: lis
         raise DraftError(f"{name}: {e}", log) from e
 
 
+# box: split
 def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
               log: list[DraftRound], system: str = MANAGER_PREFIX, max_tokens: int | None = None
               ) -> tuple[str, dict[str, str]]:
@@ -166,6 +171,7 @@ def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
         raise DraftError(f"{name}: {e}", log) from e
 
 
+# box: ov_plan, handoff, planner, agent_obs, plan_obs, checks
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
                prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False,
                max_rounds: int = MAX_ROUNDS, history: str = "") -> Draft:
@@ -183,7 +189,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     consensus, rounds, last = False, 0, None
     first_requests: list[CapabilityRequest] = []
     log: list[DraftRound] = []                        # ours: the full record of every round (Draft.rounds)
-    with trace.span("invoke_agent", {"gen_ai.agent.name": "planner"}):
+    with trace.span("invoke_agent", {"gen_ai.agent.name": "planner", "amoeba.box": "planner"}):
         while not consensus and rounds < max_rounds:  # manager.py:27,30
             log.append(rec := DraftRound(index=rounds + 1))
             # state 0 — Planner (CreateRoles)
@@ -291,6 +297,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     return d
 
 
+# box: checks
 def assemble(sec: dict[str, str], raw: str, prompts: str, envelope: Envelope,
              log: list[DraftRound] | None = None) -> Draft:
     """One planner reply → a Draft, by the deterministic post-checks. Used on the last round (publish) and, with

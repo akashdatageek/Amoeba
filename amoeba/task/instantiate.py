@@ -12,6 +12,7 @@ from amoeba.task.draft import DraftError
 from amoeba.task.models import Draft, Task
 
 
+# box: ov_plan, instantiate
 def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> TeamConfig:
     agents: dict[str, AgentSpec] = {}
     by_name: dict[str, str] = {}

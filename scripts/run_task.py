@@ -38,6 +38,7 @@ from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
 from amoeba.tools.web import TavilyProvider, web_registry
 
 
+# box: ov_leave, capreq, runresult
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
             max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
@@ -138,6 +139,7 @@ def intake_text(d) -> str:
     return "\n".join(out)
 
 
+# box: planner
 def ask_user(ask) -> str | None:
     """Wait for "continue" (None) or an edited assumption (returned). An empty line asks again; end of input is
     "continue"."""
@@ -244,6 +246,7 @@ def endpoint(args: argparse.Namespace, profile) -> tuple[str, str]:
     return base_url, api_key
 
 
+# box: client
 def build_llm(args: argparse.Namespace) -> LLMClient:
     if args.llm == "mock":
         mock = toy_mock_client()
@@ -278,6 +281,7 @@ def build_box3_tools(args: argparse.Namespace, tools: ToolRegistry) -> ToolRegis
     return web_registry()
 
 
+# box: free_text
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("prompt", nargs="?", help="a free-text task (cannot be scored)")
@@ -342,6 +346,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return args
 
 
+# box: free_text
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     llm = build_llm(args)

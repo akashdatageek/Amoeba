@@ -72,6 +72,7 @@ def role_group(agent_name: str | None = None, *, is_summariser: bool = False, ro
     return "summariser" if is_summariser else "workers"
 
 
+# box: client
 class RoleRouter(LLMClient):
     """The profile's clients: `route(group)` gives the client and reply limit (None = the call's own) of a role
     group. Called directly, it is the profile's default client."""
@@ -94,6 +95,7 @@ class RoleRouter(LLMClient):
         return {g: self.route(g)[0].model for g in ROLE_GROUPS}
 
 
+# box: client
 def build_router(profile: Profile, make: Callable[[str], LLMClient], model: str | None = None,
                  keep_max_tokens: set[str] | None = None) -> RoleRouter:
     """make(model) builds one client (with the profile's endpoint and options); one client per distinct model.

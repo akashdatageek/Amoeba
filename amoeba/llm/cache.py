@@ -56,6 +56,7 @@ class _Store:
         self.stored += 1
 
 
+# box: client
 class CachedLLM(LLMClient):
     """Wraps any LLMClient. The wrapped client is only called on a miss in record (or off) mode."""
 

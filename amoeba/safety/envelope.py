@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 ROLES = ("planner", "observer", "solver", "critic", "worker")
 
 
+# box: envelope
 class Envelope(BaseModel):
     allowed_tools: dict[str, list[str]] = Field(default_factory=dict)  # per role
     max_agents: int = 5

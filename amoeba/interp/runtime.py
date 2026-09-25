@@ -29,6 +29,7 @@ class _Msg:
     is_agree: bool | None = None
 
 
+# box: resolver, helper
 def with_unavailable(agent: AgentSpec) -> str:
     """The agent's suggestions plus one line per tool its role named that is not registered (D21)."""
     lines = [UNAVAILABLE.format(name=t) for t in agent.missing_tools]
@@ -64,6 +65,7 @@ def step_context(step: PlanStep) -> str:
 
 
 class Interpreter:
+    # box: interpreter
     def __init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None = None,
                  listener: NoopListener | None = None, run_dir: str | None = None, plan_options=None):
         self.run_dir = run_dir   # D31: the plan runner writes its step artifacts under <run_dir>/artifacts
@@ -74,6 +76,7 @@ class Interpreter:
         self.tools = tools
 
     # ---- entry -------------------------------------------------------------------------------------------
+    # box: ov_run, interpreter
     def run(self, cfg: TeamConfig, task: Task, seed: int = 0) -> Episode:
         ep = Episode(episode_id=self.trace.episode_id, team_id=cfg.team_id, team_version=cfg.version,
                      task_id=task.id, seed=seed)
@@ -121,6 +124,7 @@ class Interpreter:
         return raw, sec
 
     # ---- flat: AutoAgents Group._think/_act + CustomAction.run -------------------------------------------
+    # box: ov_run, each_step, helper, read_action
     def run_flat(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]:
         previous_msgs = [f"Question/Task: {task.prompt}"]   # group.py:76 str(important_memory): task + every step's message
         published: str | None = None
@@ -145,7 +149,7 @@ class Interpreter:
                                   tool=str(list(agent.tools) + [PRINT, FINAL_OUTPUT]),   # :144 (DEVIATION D7: no "Write File")
                                   format_example=PROMPT.autoagents_custom_action_format)  # its "[{tool}]" stays literal
                     with self.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id,
-                                                          "gen_ai.agent.name": agent.name}):
+                                                          "gen_ai.agent.name": agent.name, "amoeba.box": "helper"}):
                         _, sec = self._llm_sections(agent, resolve(agent.prompt.system), user, WORKER_SECTIONS, ep)
                         act, inp = sec["Action"], sec["ActionInput"]
                         resp, gap = self._dispatch(agent, act, inp, step.index, ep)
@@ -175,6 +179,7 @@ class Interpreter:
             return answer, None
         return published, "blocked" if last_step_blocked else "max_turns"   # D21: a blocked last step is not an answer
 
+    # box: resolver, read_action
     def _dispatch(self, agent: AgentSpec, act: str, inp: str, step: int, ep: Episode) -> tuple[str, str | None]:
         """Route one "## Action". Returns (response, blocked tool or None). Original: a tool of the agent → SerpAPI,
         anything else → echo the input (custom_action.py:207-213). D21: BLOCKED and unknown actions are recorded."""
@@ -199,6 +204,7 @@ class Interpreter:
                 what_it_does="chosen as an action during the run; no such tool is registered"))
         return f"\n[{act!r} is not a tool {agent.name} can use; nothing was run]\n{inp}\n", None
 
+    # box: read_action
     def _tool(self, agent: AgentSpec, name: str, action_input: str) -> str:
         with self.trace.span("execute_tool", {"gen_ai.tool.name": name, "gen_ai.agent.id": agent.agent_id,
                                               "gen_ai.agent.name": agent.name}) as rec:
@@ -211,25 +217,30 @@ class Interpreter:
         return result
 
     # ---- boss_reviewers: AgentVerse VerticalSolverFirstDecisionMaker.astep --------------------------------
+    # box: ov_run, disagree
     def run_boss_reviewers(self, cfg: TeamConfig, task: Task, ep: Episode) -> tuple[str | None, str | None]:
         solver = cfg.agents[cfg.exit]
         critics = [cfg.agents[e.dst] for e in cfg.edges if e.type == "review"]
         memory: dict[str, list[_Msg]] = {a.agent_id: [] for a in [solver, *critics]}   # ChatHistoryMemory; never reset
 
+        # box: disagree
         def broadcast(msgs: list[_Msg]) -> None:             # vertical_solver_first.py:74-76
             for a in [solver, *critics]:
                 memory[a.agent_id].extend(msgs)
 
+        # box: solver
         def call(agent: AgentSpec, kw: dict) -> str:         # solver.py:38-59 / critic.py:65-91 + llms/openai.py:436-446
             system = render(resolve(agent.prompt.system), **kw)          # prepend template
             recent = memory[agent.agent_id][-agent.max_history:] if agent.max_history > 0 else []
             hist = [{"role": "assistant", "content": f"[{m.sender}]: {m.content}"} for m in recent]   # chat_history.py:102-107
             user = render(resolve(agent.prompt.user), **kw)              # append template
-            with self.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name}):
+            with self.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name,
+                                                  "amoeba.box": "critics" if agent.role == "critic" else "solver"}):
                 return self._llm_messages(agent, [{"role": "system", "content": system}, *hist,
                                                   {"role": "user", "content": user}], ep)
             # This is why format="history+append": the plan and reviews reach agents as chat history, not placeholders.
 
+        # box: solver
         def solve() -> _Msg:
             kw = dict(task_description=task.prompt, role_description=with_card(solver.description, solver))   # + D24 card
             raw = call(solver, kw)                           # parser 'dummy' → raw text (output_parser.py:300-303)
@@ -237,6 +248,7 @@ class Interpreter:
                 raw = call(solver, kw)
             return _Msg(sender=solver.name, content=raw or "")
 
+        # box: critics
         def review(c: AgentSpec) -> _Msg:
             kw = dict(task_description=task.prompt, role_description=with_card(c.description, c))   # + D24 card
             for _attempt in range(2):                        # original max_retry from config (1000!); DEVIATION D10: 2

@@ -121,6 +121,15 @@ Every trace line carries `amoeba.profile`. Each AI line holds `gen_ai.request.mo
 free OpenRouter models say so in their terms). Do not send anything confidential through a free tier; use a paid
 key for private data.
 
+## The as-built page keeps itself up to date (D55)
+
+`docs/arch/phase1.html` is rebuilt from the code by `python tools/arch_update.py`. That script does nothing when no input
+changed. After `git config core.hooksPath tools/hooks` it runs after every commit, and the Claude Code Stop hook
+(`.claude/settings.json`) runs it when Claude Code stops. Code joins a box with a `# box: <id>` line above its def or
+class. Box text is re-checked by a cheap model (`arch-text` profile) only for boxes whose extracted facts changed, and
+the tokens are logged in `docs/arch/text_log.jsonl`. Numbers in the text come from the code. Set `ARCH_TEXT_LLM=off` to
+never call a model; changed boxes are then marked stale.
+
 ## Layout
 
 ```

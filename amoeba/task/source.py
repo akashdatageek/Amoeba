@@ -12,6 +12,7 @@ WORDS = ("adaptive", "amoeba", "topology", "interpreter", "envelope", "reviewer"
          "observer", "sentinel", "consensus", "programming", "deterministic", "trace", "schema")
 
 
+# box: toy_source
 def _make(rng: random.Random, family: str, i: int, seed: int) -> Task:
     tid = f"toy-{seed}-{i:03d}"
     if family == "arith":
@@ -27,6 +28,7 @@ def _make(rng: random.Random, family: str, i: int, seed: int) -> Task:
                 family="vowels", ground_truth=str(sum(ch in "aeiou" for ch in word)), tags=["toy"])
 
 
+# box: ov_task, toy_source
 class ToyTaskSource:
     def __init__(self, seed: int = 0, n: int = 20):
         self.seed, self.n = seed, n

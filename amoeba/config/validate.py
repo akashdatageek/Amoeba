@@ -15,6 +15,7 @@ def _is_uuid(s: str) -> bool:
         return False
 
 
+# box: instantiate
 def validate(cfg: TeamConfig, envelope: Envelope) -> list[str]:
     errs: list[str] = []
     ids = set(cfg.agents)

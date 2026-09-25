@@ -61,6 +61,7 @@ def deliverable_phrases(task_text: str) -> list[tuple[str, str, str]]:
     return out
 
 
+# box: checks
 def task_coverage(task_text: str, requirements: dict[str, str], givens: list[str]) -> dict:
     """D52: is the task carried into the Planner's Requirements and Givens? Every number the task states must
     appear in a requirement or a given; every deliverable-like phrase must map to a requirement — one that uses
@@ -81,6 +82,7 @@ def task_coverage(task_text: str, requirements: dict[str, str], givens: list[str
             "phrases": phrases, "missing_phrases": missing}
 
 
+# box: checks
 def draft_quality(d: Draft, task_text: str = "") -> dict:
     """task_text: the task as Box 2 saw it; without it (or without requirement ids) task_coverage is n/a."""
     checks: dict[str, dict] = {}
@@ -168,6 +170,7 @@ def draft_quality(d: Draft, task_text: str = "") -> dict:
             "hard_failed": [k for k in HARD_CHECKS if checks.get(k, {}).get("ok") is False]}
 
 
+# box: checks
 def gate_suggestions(q: dict) -> str:
     """D28: what the quality gate tells the planner, one numbered line per failed hard check."""
     c, lines = q["checks"], []
