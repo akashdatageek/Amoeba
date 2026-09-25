@@ -3444,7 +3444,7 @@
   ]
  },
  "pool_index": {
-  "checked_at": "88d51dc",
+  "checked_at": "1704212",
   "facts": {
    "anchors": [
     {
@@ -3459,7 +3459,7 @@
      ],
      "doc": "Build the cache from every source in pool.yaml (no model call). Returns {entries, sources, errors}. A source",
      "key": "amoeba/pool/index.py::refresh",
-     "signature": "refresh(config: dict | None=None, cache_dir: str | Path | None=None, get: Callable[[str], bytes]=http_get, only: str | None=None, log: Callable[[str], None]=print) -> dict"
+     "signature": "refresh(config: dict | None=None, cache_dir: str | Path | None=None, get: Callable[[str], bytes]=http_get, only: str | None=None, log: Callable[[str], None]=print, clone: Callable[[str, Path], None]=git_clone) -> dict"
     },
     {
      "callees": [],
@@ -3497,11 +3497,29 @@
     },
     {
      "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter.run"
+     ],
+     "doc": "",
+     "key": "amoeba/pool/index.py::_git",
+     "signature": "_git(repo_dir: Path, *args: str) -> str"
+    },
+    {
+     "callees": [
       "amoeba/llm/cache.py::_Store.get"
      ],
      "doc": "",
      "key": "amoeba/pool/index.py::_official",
      "signature": "_official(item: dict) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter.run"
+     ],
+     "doc": "D58: a shallow clone of https://github.com/<repo> into dest (LFS files stay pointers: skills are text).",
+     "key": "amoeba/pool/index.py::git_clone",
+     "signature": "git_clone(repo: str, dest: Path, timeout: float=600.0) -> None"
     },
     {
      "callees": [
@@ -3524,11 +3542,12 @@
      "callees": [
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/index.py::PoolSourceError",
+      "amoeba/pool/index.py::_git",
       "amoeba/pool/index.py::split_skill"
      ],
-     "doc": "({repo, commit}, [{dir, name, description, body, has_scripts}]) for every <path>/<name>/SKILL.md at the",
+     "doc": "({repo, commit}, [{dir, name, description, body, has_scripts}]) for every <path>/<name>/SKILL.md of a shallow",
      "key": "amoeba/pool/index.py::repo_skills",
-     "signature": "repo_skills(repo: str, path: str='skills', get: Callable[[str], bytes]=http_get) -> tuple[dict, list[dict]]"
+     "signature": "repo_skills(repo: str, path: str='skills', clone: Callable[[str, Path], None]=git_clone, work: Path | None=None) -> tuple[dict, list[dict]]"
     },
     {
      "callees": [],
@@ -3579,19 +3598,20 @@
    "guards": [],
    "kind": "data",
    "numbers": [
+    "git_clone.timeout",
     "http_get.timeout",
     "registry_servers.max_pages"
    ],
    "prompts": {},
    "title": "Pool index (cache)"
   },
-  "facts_hash": "3095404d7e95b8a9",
-  "seed_hash": "8eba33ff05c493b5",
+  "facts_hash": "26f422b511f55cd7",
+  "seed_hash": "7d10bc2a68374039",
   "sentence": "The tools and skills Box 3 may draw on, fetched ahead of time by `amoeba pool refresh`; a run only reads it.",
   "source": "hand",
   "what": [
    "Tools: the official MCP Registry, the latest version of each server (remote, repository, version, whether a key is needed).",
-   "Skills: SKILL.md files of github.com/anthropics/skills (never a fork), with whether the skill ships scripts and the length of its text.",
+   "Skills: SKILL.md files from a shallow git clone of github.com/anthropics/skills (only the repository named in pool.yaml), with whether the skill ships scripts and the length of its text.",
    "Sources are listed in amoeba/config/pool.yaml, one line each; the cache is data/pool/."
   ]
  },
@@ -4947,7 +4967,7 @@
   ]
  },
  "toolbox": {
-  "checked_at": "88d51dc",
+  "checked_at": "1704212",
   "facts": {
    "anchors": [
     {
@@ -5017,7 +5037,7 @@
       "amoeba/pool/match.py::request_words",
       "amoeba/pool/match.py::words"
      ],
-     "doc": "The best `top` entries of the request's kind as (score, entry), best first; only scores above zero. A word",
+     "doc": "The best `top` entries as (score, entry), best first; only scores above zero. Tools and skills compete alike",
      "key": "amoeba/pool/match.py::rank",
      "signature": "rank(q, entries: list[dict], top: int=5) -> list[tuple[int, dict]]"
     },
@@ -5373,6 +5393,11 @@
     ],
     [
      "fallback",
+     "entry['kind'] if entry else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "except (OSError, ValueError)",
      "return {}"
     ],
@@ -5518,11 +5543,6 @@
     ],
     [
      "reject",
-     "if e.get('kind') != q.kind",
-     "skip (continue)"
-    ],
-    [
-     "reject",
      "if len(w) < 3 or w in STOP or w.isdigit()",
      "skip (continue)"
     ],
@@ -5652,12 +5672,12 @@
    "prompts": {},
    "title": "Stock the toolbox"
   },
-  "facts_hash": "bee9719e06f3db53",
-  "seed_hash": "52bd91ee3da95599",
+  "facts_hash": "3c30f9faf51c7d0f",
+  "seed_hash": "83886069cd625f14",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
   "source": "hand",
   "what": [
-   "Match: the cached pool entries of the same kind are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
+   "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
    "Pick: one short AI call shows the request and those candidates and must answer exactly one listed id or NONE; any other reply counts as NONE.",
    "Vet: a tool needs an HTTPS remote, a source repository, a pinned version, no key or its key in the environment, and an unchanged description (also re-checked against the server's tools/list at every connection); a skill must be instruction-only and at most 5,000 characters. At most {PoolLimits.max_calls_per_step} items per helper and 8 per run (pool.yaml).",
    "Attach: a tool becomes pool:<name> for the asking helper only; a skill's text goes on that helper's card. All pool text is shown inside marked data blocks, and the 'unavailable' line goes away.",
