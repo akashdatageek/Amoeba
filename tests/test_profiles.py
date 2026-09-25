@@ -33,7 +33,7 @@ def test_shipped_profiles():
     assert default == "gemma-api" and set(profiles) >= {"gemma-api", "gemma-openrouter", "gemini-flash-lite", "gemini-flash"}
     g = profiles["gemma-api"]
     assert (g.base_url, g.model, g.merge_system, g.reasoning_effort) == (
-        "https://generativelanguage.googleapis.com/v1beta/openai/", "gemma-4-31b-it", True, "low")
+        "https://generativelanguage.googleapis.com/v1beta/openai/", "gemma-4-31b-it", True, None)   # D57: Gemma rejects it
     o = profiles["gemma-openrouter"]
     assert (o.base_url, o.model, o.merge_system, o.reasoning_effort) == (
         "https://openrouter.ai/api/v1", "google/gemma-4-31b-it:free", True, None)
@@ -65,7 +65,7 @@ def test_default_is_gemma_api(clean_env):
     assert isinstance(llm, RoleRouter) and llm.profile == "gemma-api" and llm.model == "gemma-4-31b-it"
     assert isinstance(c, OpenAICompatibleClient) and str(c._client.base_url).startswith(
         "https://generativelanguage.googleapis.com/v1beta/openai")
-    assert c.merge_system and c.reasoning_effort == "low" and c._client.api_key == "k-gemini"
+    assert c.merge_system and c.reasoning_effort is None and c._client.api_key == "k-gemini"
 
 
 def test_mock_stays_the_default_and_is_not_routed():

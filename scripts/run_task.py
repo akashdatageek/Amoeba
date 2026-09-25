@@ -21,7 +21,7 @@ from uuid import uuid4
 from amoeba.config.io import dump_yaml
 from amoeba.interp.runtime import Interpreter
 from amoeba.interp.trace import TraceWriter
-from amoeba.llm.client import LLMClient, OpenAICompatibleClient
+from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, describe_api_error
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team
@@ -91,6 +91,11 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     except CacheMiss as e:            # D46: replay mode never falls back to a live call
         error = f"cache_miss: {e}"
         trace.event("cache_miss", {"error.type": str(e)[:300]})
+    except Exception as e:            # D57: the model service failed after its retries (drafting or the pool pick)
+        if not api_error(e):
+            raise
+        error = f"api: {describe_api_error(e)}"
+        trace.event("api_error", {"error.type": error[:300]})
     finally:
         # a failed draft is kept too: the error and every round up to it
         saved = draft.model_dump(mode="json") if draft else \

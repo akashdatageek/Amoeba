@@ -88,8 +88,10 @@ python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai -
 - `--max-tokens-per-run N`, `--max-calls-per-run N`: the run stops cleanly with `error="budget"`; what ran is saved.
   Every run prints its billed tokens and an estimated cost from `amoeba/config/prices.yaml` (fill in the prices;
   a model without one gets tokens only).
-- HTTP 429/503 are retried up to `--max-rate-retries` (5) with exponential waits or the server's Retry-After;
-  `--min-seconds-between-calls` spaces calls out for free tiers.
+- HTTP 429/503, dropped connections and timeouts are retried up to `--max-rate-retries` (5) with exponential waits
+  or the server's Retry-After; `--min-seconds-between-calls` spaces calls out for free tiers. An error still there
+  after the retries ends the run with `error: "api: ..."`, and its plan.json, trace and result.json are still
+  written (D57), so a re-run with the same `--llm-cache` replays the calls already paid for.
 
 ## Model profiles and Gemma 4 (D49, D54)
 
@@ -98,7 +100,7 @@ With `--llm openai` the model is chosen by a **profile** in `amoeba/config/model
 
 | profile | endpoint | model | settings |
 |---|---|---|---|
-| `gemma-api` (default) | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemma-4-31b-it` | merge_system, reasoning_effort low; key in `GEMINI_API_KEY` |
+| `gemma-api` (default) | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemma-4-31b-it` | merge_system (no reasoning_effort: the API rejects it for Gemma, D57); key in `GEMINI_API_KEY` |
 | `gemma-openrouter` | `https://openrouter.ai/api/v1` | `google/gemma-4-31b-it:free` | merge_system; key in `OPENROUTER_API_KEY` |
 | `gemini-flash-lite` | Gemini API | `gemini-3.1-flash-lite` | as in the 2026-09-24 baseline; key in `GEMINI_API_KEY` |
 | `gemini-flash` | Gemini API | `gemini-3.5-flash` | as in the 2026-09-24 baseline; key in `GEMINI_API_KEY` |

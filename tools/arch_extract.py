@@ -524,8 +524,10 @@ BOXES: list[dict] = [
     dict(id="client", view="run", title="AI connection", kind="code", plan=None,
          sentence="The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
          what=["Sends the messages to the AI service and returns the reply with its token counts.",
-               "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged) and can "
-               "space calls out; can fold the system message into the user message and set the reasoning effort.",
+               "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged), dropped "
+               "connections and timeouts too; an error still there after that ends the run with error 'api: …' "
+               "and its records are still written. It can space calls out, fold the system message into the user "
+               "message and set the reasoning effort.",
                "With --llm-cache every reply is stored and can be replayed without a call; --max-tokens-per-run / "
                "--max-calls-per-run stop a run cleanly; every run prints its tokens and estimated cost.",
                "A named profile (amoeba/config/models.yaml, default gemma-api) sets the service, the model and how to "
