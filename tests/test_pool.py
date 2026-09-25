@@ -239,6 +239,9 @@ def test_no_candidates_means_no_ai_call(cache, task, envelope, trace):
 
 # ---- 3. pick ----------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("reply,filled", [(SEARCH, True), (f"`{SEARCH}`", True), (f"{SEARCH}.", False),
+                                          (f"<thought>weighing the candidates… {SEARCH} fits</thought>{SEARCH}", True),
+                                          (f"<thought>still thinking about {SEARCH}", False),
+                                          (f"<think>x</think>\n{SEARCH}\n", True),
                                           (f"I pick {SEARCH}", False), ("NONE", False), ("io.example/weather", False)])
 def test_the_pick_is_parsed_strictly(cache, task, envelope, trace, reply, filled):
     llm = mock(planner=[fx(CAP)], pool_picker=[reply])

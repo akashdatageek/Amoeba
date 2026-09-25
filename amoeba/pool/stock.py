@@ -32,6 +32,7 @@ from amoeba.pool.mcp import PoolLimits, PoolTools, SdkConnector, SourceBook, dat
 from amoeba.tools.registry import ToolRegistry
 
 PICKER = "pool_picker"
+THINKING = re.compile(r"<(thought|think|thinking)>.*?</\1>", re.S | re.I)
 NONE = "NONE"
 VERSION = re.compile(r"^v?\d+(\.\d+)*([-+][0-9A-Za-z.-]+)?$")
 # D58: read-only tools only for now — a tool that says it acts outside (sends, posts, pays, deletes …) is refused
@@ -85,7 +86,9 @@ def pick(llm: TracedLLM, q, helper: str, steps: str, candidates: list[dict], see
                   input=q.input or "(not given)", output=q.output or "(not given)", helper=helper,
                   steps=steps or "(not given)", candidates=data_block("pool candidates", lines))
     reply = llm.chat_messages([{"role": "user", "content": user}], seed, agent_name=PICKER, role="pool").content
-    answer = (reply or "").strip().strip("`'\"").strip()
+    # D58: Gemma writes its reasoning into the reply as <thought>…</thought> before the answer; the answer is what
+    # follows a closed thinking block (an unclosed block leaves nothing that can match an id)
+    answer = THINKING.sub("", reply or "").strip().strip("`'\"").strip()
     ids = {e["id"] for e in candidates}
     return answer if answer in ids else None
 
