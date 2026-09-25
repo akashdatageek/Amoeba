@@ -256,6 +256,7 @@
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "One record per request: name, tool or skill, for which helper, what it does, input, output and an example of each.",
    "Where it came from: the planner's list, a helper's tool list, or an action during the run.",
@@ -801,7 +802,7 @@
   ]
  },
  "client": {
-  "checked_at": "7126cfe",
+  "checked_at": "752b7f3",
   "facts": {
    "anchors": [
     {
@@ -978,6 +979,11 @@
    "guards": [
     [
      "decide",
+     "if 'pool' not in by_group and 'workers' in by_group",
+     "set by_group['pool'] = by_group['workers']"
+    ],
+    [
+     "decide",
      "if args.llm == 'mock'",
      "set mock = toy_mock_client()"
     ],
@@ -1013,7 +1019,7 @@
     ],
     [
      "decide",
-     "if status not in RATE_STATUS or len(retries) >= self.max_rate_retries or spend_cap(e)",
+     "if status not in RATE_STATUS and lost is None or len(retries) >= self.max_rate_retries or spend_cap(e)",
      "set e.amoeba_retries = retries"
     ],
     [
@@ -1049,7 +1055,7 @@
     [
      "fallback",
      "except Exception",
-     "set status = getattr(e, 'status_code', None)"
+     "set status, lost = (getattr(e, 'status_code', None), dropped(e))"
     ],
     [
      "fallback",
@@ -1164,14 +1170,13 @@
    "prompts": {},
    "title": "AI connection"
   },
-  "facts_hash": "10f9e397306452f4",
-  "seed_hash": "5c303e1325c2e5fb",
+  "facts_hash": "6c82e5be9ecedb50",
+  "seed_hash": "bbd14a5aace21969",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand",
-  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
-   "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged) and can space calls out; can fold the system message into the user message and set the reasoning effort.",
+   "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message and set the reasoning effort.",
    "With --llm-cache every reply is stored and can be replayed without a call; --max-tokens-per-run / --max-calls-per-run stop a run cleanly; every run prints its tokens and estimated cost.",
    "A named profile (amoeba/config/models.yaml, default gemma-api) sets the service, the model and how to call it; each role group (planner, checkers, helpers, reviewers, summariser) may get its own model and reply length. Every log line names the profile, and each AI line the exact model the service returned.",
    "Temperature is set once for the connection, not per helper.",
@@ -1996,6 +2001,7 @@
   "seed_hash": "92a5bb70bcb60bb1",
   "sentence": "Reads the team's shape and hands the job to the matching runner.",
   "source": "hand",
+  "stale": "the code under this box changed; no model was available to re-check the text",
   "what": [
    "Opens the log entry for the whole run and picks the runner for the team's shape.",
    "If an AI reply cannot be read at all, the run ends with a parse error instead of crashing.",
