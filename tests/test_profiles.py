@@ -137,7 +137,7 @@ def test_each_role_group_gets_its_model(task, envelope, trace, tools):
     assert {m for m, _, _ in seen["reviewers"]} == {"m-rev"}                         # step 3 cross-checks
     assert seen["summariser"] == {("m-sum", "m-sum-001", 999)}                     # step 4
     assert llm.models == {"planner": "m-plan", "observers": "m-obs", "workers": "m-work", "reviewers": "m-rev",
-                          "summariser": "m-sum"}
+                          "summariser": "m-sum", "pool": "m-work"}   # D56: pool defaults to workers
 
 
 def test_command_line_reply_limits_win_over_the_profile():

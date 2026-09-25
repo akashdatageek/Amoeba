@@ -136,4 +136,5 @@ def toy_mock_client() -> MockLLMClient:
         "plan_critic": ["## Verdict\nAGREE\n\n## Issues\nnone\n"],
         "solver": _solver,
         "critic": ["Action: Agree\nAction Input: Agree."],
+        "pool_picker": ["NONE"],          # D56: the toy tasks need nothing from the pool
     }, model="toy-mock")

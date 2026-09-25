@@ -33,10 +33,11 @@ def files_field(card: dict[str, str]) -> str:
 
 
 def package_paths(text: str) -> set[str]:
-    """Paths in a Files: field that point into amoeba/, as paths relative to amoeba/. Bare *.txt names are prompts."""
+    """Paths in a Files: field that point into amoeba/, as paths relative to amoeba/. Bare *.txt names are prompts;
+    a bare *.py name counts when amoeba/ itself holds it (cli.py, __main__.py)."""
     paths = set()
     for tok in re.findall(r"[\w./*-]+\.(?:py|txt)", text):
-        if tok.startswith(SUBPACKAGES):
+        if tok.startswith(SUBPACKAGES) or ("/" not in tok and tok.endswith(".py") and (PACKAGE / tok).is_file()):
             paths.add(tok)
         elif "/" not in tok and tok.endswith(".txt"):
             paths.add(f"config/prompts/{tok}")

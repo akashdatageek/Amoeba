@@ -12,6 +12,7 @@ from amoeba.task.models import AgentResult, CapabilityRequest, Episode, Message,
 from amoeba.task.parsers import MissingSections, ParseError, parse_critic
 from amoeba.llm.limits import RunLimitReached
 from amoeba.llm.profiles import role_group
+from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.tools.registry import ToolError, ToolRegistry
 
 WORKER_SECTIONS = ["CurrentStep", "Action", "ActionInput"]           # custom_action.py:79-83
@@ -31,8 +32,9 @@ class _Msg:
 
 # box: resolver, helper
 def with_unavailable(agent: AgentSpec) -> str:
-    """The agent's suggestions plus one line per tool its role named that is not registered (D21)."""
-    lines = [UNAVAILABLE.format(name=t) for t in agent.missing_tools]
+    """The agent's suggestions plus one line per tool its role named that is not registered (D21), and how to use
+    each pool tool Box 3 attached to it (D56)."""
+    lines = [UNAVAILABLE.format(name=t) for t in agent.missing_tools] + pool_tool_notes(agent)
     return "\n".join([agent.suggestions, *lines]) if lines else agent.suggestions
 
 
@@ -49,7 +51,8 @@ def role_card(agent: AgentSpec) -> str:
     lines = [f"Goal: {agent.goal}" if agent.goal else "",
              f"Skills: {'; '.join(agent.skills)}" if agent.skills else "",
              f"Outputs: {'; '.join(_output_text(o) for o in agent.outputs)}" if agent.outputs else "",
-             f"Success criteria: {'; '.join(agent.success_criteria)}" if agent.success_criteria else ""]
+             f"Success criteria: {'; '.join(agent.success_criteria)}" if agent.success_criteria else "",
+             *pool_skill_notes(agent)]   # D56: skills from the pool, as data
     return "\n".join(x for x in lines if x)
 
 
@@ -131,6 +134,8 @@ class Interpreter:
         answer: str | None = None
         last_step_done = last_step_blocked = False
         for step in cfg.plan:                                # environment.py:256 while Group.steps
+            if getattr(self.tools, "pool", None) is not None:   # D56: pool tool call caps are per step
+                self.tools.pool.begin_step(step.index, self.trace)
             agents = [cfg.agents[a] for a in step.agent_ids]
             previous = "[" + ", ".join(previous_msgs) + "]"  # group.py:76 — full history, not just the last edge
             completed_steps = ""                             # group.py:75 — SHARED by all agents of the step
@@ -231,6 +236,8 @@ class Interpreter:
         # box: solver
         def call(agent: AgentSpec, kw: dict) -> str:         # solver.py:38-59 / critic.py:65-91 + llms/openai.py:436-446
             system = render(resolve(agent.prompt.system), **kw)          # prepend template
+            if agent.role == "solver" and pool_skill_notes(agent):       # D56: the solver prompt has no card slot
+                system += "\n\n" + "\n".join(pool_skill_notes(agent))
             recent = memory[agent.agent_id][-agent.max_history:] if agent.max_history > 0 else []
             hist = [{"role": "assistant", "content": f"[{m.sender}]: {m.content}"} for m in recent]   # chat_history.py:102-107
             user = render(resolve(agent.prompt.user), **kw)              # append template

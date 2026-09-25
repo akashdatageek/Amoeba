@@ -211,6 +211,7 @@ class MockLLMClient(LLMClient):
         "worker": "Based on prior agents' results and completed steps",
         "solver": "You are faced with the task",
         "critic": "Now the group is asking your opinion",
+        "pool_picker": "Choose the one candidate below that can do this job",                           # D56
     }
 
     def __init__(self, script: dict[str, list[str] | Responder] | None = None,

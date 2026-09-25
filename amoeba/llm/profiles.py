@@ -16,7 +16,7 @@ import yaml
 from amoeba.llm.client import ChatResponse, LLMClient, Messages
 
 MODELS = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
-ROLE_GROUPS = ("planner", "observers", "workers", "reviewers", "summariser")
+ROLE_GROUPS = ("planner", "observers", "workers", "reviewers", "summariser", "pool")   # pool: D56's picker
 PROFILE_KEYS = {"base_url", "model", "api_key_env", "merge_system", "reasoning_effort", "max_tokens", "roles"}
 ROLE_KEYS = {"model", "max_tokens"}
 BOX2_GROUPS = {"planner": "planner", "agent_observer": "observers", "plan_observer": "observers"}
@@ -110,6 +110,8 @@ def build_router(profile: Profile, make: Callable[[str], LLMClient], model: str 
 
     default = client(model or profile.model)
     by_group = {g: client(r["model"]) for g, r in profile.roles.items() if r.get("model")}
+    if "pool" not in by_group and "workers" in by_group:   # D56: the pool picker defaults to the helpers' model
+        by_group["pool"] = by_group["workers"]
     caps = {g: int(r["max_tokens"]) for g, r in profile.roles.items() if r.get("max_tokens")
             and (keep_max_tokens is None or g in keep_max_tokens)}
     return RoleRouter(profile.name, default, by_group, caps)

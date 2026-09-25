@@ -255,7 +255,8 @@ BOXES: list[dict] = [
                "without it or answer BLOCKED: X'. BLOCKED ends that helper's step and is logged.",
                "A helper that names a tool it does not have gets a notice instead of an echo; the log gets an "
                "'unknown_tool' line and, if no such tool exists at all, a request is recorded.",
-               "Nothing is fetched or built: that is a later phase."],
+               "Nothing is built here. From D56 Box 3 starts by trying to fill each request from the tool/skill pool "
+               "(see Stock the toolbox); a request it cannot fill keeps the behaviour above."],
          proposes="Tool names in helper records, the Capability Requests part, and helper actions.",
          disposes="Plain code decides what is registered; the AI can only ask.",
          anchors=["amoeba/task/draft.py::resolve_tools", "amoeba/task/draft.py::parse_capability_requests",
@@ -270,7 +271,9 @@ BOXES: list[dict] = [
                "(requests_proposed, requests_dropped_by_observers).",
                "Each request keeps the name as written and a standard name from a list of known aliases "
                "('Web Search' and 'web research' are both web_search); names not on the list are reported as "
-               "unmapped so the list can grow."],
+               "unmapped so the list can grow.",
+               "D56: each request also says what Box 3's toolbox step did with it: status filled or unfilled, the "
+               "pool id picked, the candidates shown and the reason code when it stayed unfilled."],
          proposes="Nothing.", disposes="Plain code writes the file, empty when nothing was asked for.",
          anchors=["amoeba/task/models.py::CapabilityRequest", "amoeba/capabilities/__init__.py::normalise",
                   "scripts/run_task.py::run_one"], guard_anchors=[]),
@@ -479,12 +482,45 @@ BOXES: list[dict] = [
                "The arithmetic tool accepts numbers and + − × ÷ and powers only, never arbitrary code.",
                "web_search and fetch_url (Tavily) give every result a source id [S#]; searches and fetches per step, "
                "page length and time are capped, and a failure comes back as an error line, never a crash.",
+               "Pool tools (D56) are remote MCP servers registered as pool:<name> for the helper that asked; they "
+               "run here too, with the same caps, [S#] source ids and error lines.",
                "This is the single place any tool is ever run."],
          proposes="A tool name and its input (from a helper).",
          disposes="Plain code checks the name and the arithmetic before anything runs.",
          anchors=["amoeba/tools/registry.py::ToolRegistry", "amoeba/tools/registry.py::calc",
                   "amoeba/tools/registry.py::default_registry", "amoeba/tools/web.py::WebTools",
                   "amoeba/tools/web.py::TavilyProvider", "amoeba/tools/web.py::web_registry"]),
+    dict(id="toolbox", view="run", title="Stock the toolbox", kind="code", plan=None,
+         sentence="Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI "
+                  "pick per request, everything else plain code.",
+         what=["Match: the cached pool entries of the same kind are ranked by the words they share with the "
+               "request (its standard name and aliases, name, what it does, input and output); the best 5 "
+               "(pool.yaml) are kept. None above zero: unfilled, no AI call.",
+               "Pick: one short AI call shows the request and those candidates and must answer exactly one listed id "
+               "or NONE; any other reply counts as NONE.",
+               "Vet: a tool needs an HTTPS remote, a source repository, a pinned version, no key or its key in the "
+               "environment, and an unchanged description (also re-checked against the server's tools/list at every "
+               "connection); a skill must be instruction-only and at most 5,000 characters. At most 3 items per "
+               "helper and 8 per run (pool.yaml).",
+               "Attach: a tool becomes pool:<name> for the asking helper only; a skill's text goes on that helper's "
+               "card. All pool text is shown inside marked data blocks, and the 'unavailable' line goes away.",
+               "Every request's outcome and reason code is written to capability_requests.json and result.json; "
+               "without a pool cache the run logs pool_unavailable and goes on as before."],
+         proposes="The picker names one candidate (or NONE).",
+         disposes="Plain code ranks the candidates, rejects anything unsafe or over the caps, and attaches.",
+         anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
+                  "amoeba/pool/match.py::rank", "amoeba/pool/mcp.py::PoolTools", "amoeba/pool/mcp.py::SdkConnector"]),
+    dict(id="pool_index", view="run", title="Pool index (cache)", kind="data", plan=None,
+         sentence="The tools and skills Box 3 may draw on, fetched ahead of time by `amoeba pool refresh`; a run only "
+                  "reads it.",
+         what=["Tools: the official MCP Registry, the latest version of each server (remote, repository, version, "
+               "whether a key is needed).",
+               "Skills: SKILL.md files of github.com/anthropics/skills (never a fork), with whether the skill ships "
+               "scripts and the length of its text.",
+               "Sources are listed in amoeba/config/pool.yaml, one line each; the cache is data/pool/."],
+         proposes="Nothing.", disposes="Plain code fetches and stores; no AI call.",
+         anchors=["amoeba/pool/index.py::refresh", "amoeba/pool/index.py::load_index",
+                  "amoeba/pool/index.py::load_pool_config", "amoeba/cli.py::main"], guard_anchors=[]),
     dict(id="client", view="run", title="AI connection", kind="code", plan=None,
          sentence="The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
          what=["Sends the messages to the AI service and returns the reply with its token counts.",
@@ -516,7 +552,7 @@ BOXES: list[dict] = [
 # boxes where plain code rejects, corrects or caps what an AI produced (shield icon when they have guards)
 SHIELD = {"planner", "agent_obs", "plan_obs", "split", "checks", "instantiate", "interpreter", "each_step", "helper",
           "read_action", "solver", "critics", "disagree", "tools", "resolver", "plan_graph", "plan_step", "step_check",
-          "plan_summary"}
+          "plan_summary", "toolbox"}
 
 GLOSSARY = [
     ("helper", "One AI worker in a team, with its own name, instructions and allowed tools."),

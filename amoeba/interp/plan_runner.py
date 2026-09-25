@@ -17,6 +17,7 @@ from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.provenance import check_provenance, claim_numbers, numbers_in
 from amoeba.llm.profiles import role_group
+from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
 from amoeba.task.models import Episode, Task
 from amoeba.task.parsers import MissingSections
@@ -124,7 +125,8 @@ def plan_card(agent: AgentSpec) -> str:
              f"Outputs: {'; '.join(_output_text(o) for o in agent.outputs)}" if agent.outputs else "",
              f"Success criteria: {'; '.join(agent.success_criteria)}" if agent.success_criteria else "",
              f"Instructions: {agent.role_prompt}" if agent.role_prompt else "",
-             f"Suggestions: {agent.suggestions}" if agent.suggestions else ""]
+             f"Suggestions: {agent.suggestions}" if agent.suggestions else "",
+             *pool_skill_notes(agent)]   # D56: skills from the pool, as data
     return "\n".join(x for x in lines if x)
 
 
@@ -347,6 +349,7 @@ class PlanRunner:
         self.inferred_logged: set[int] = set()   # D37: steps whose verifier status came from the keyword fallback
         self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
         self.web = getattr(interp.tools, "web", None)
+        self.pool = getattr(interp.tools, "pool", None)   # D56: pool tools; their [S#] share web's list when it exists
 
     # box: plan_step
     def grant_web_tools(self) -> None:
@@ -455,6 +458,8 @@ class PlanRunner:
         verifier = self.is_verification(step) and not summarising
         if self.web is not None:
             self.web.begin_step(n, self.i.trace)
+        if self.pool is not None:
+            self.pool.begin_step(n, self.i.trace)
         self.i.trace.event("step_input", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.depends_on": deps,
                                           "amoeba.received": deps, "amoeba.input_chars": len(inputs),
                                           "amoeba.verification": verifier, "amoeba.rework": bool(rework)})
@@ -540,8 +545,10 @@ class PlanRunner:
 
     def _sources(self, n: int, deps: list[int]) -> tuple[list[dict], set[str]]:
         """The step's own sources and every source id it could have seen (its own and its inputs')."""
+        books = [b for b in (self.web, self.pool.book if self.pool is not None else None) if b is not None]
+        books = [b for i, b in enumerate(books) if all(b is not c for c in books[:i])]   # one list when shared
         own = [{k: s[k] for k in ("id", "url", "title", "kind", "fetched_at")}
-               for s in (self.web.sources_for(n) if self.web is not None else [])]
+               for b in books for s in b.sources_for(n)]
         visible = {s["id"] for s in own}.union(*(self.artifacts[d]["meta"]["visible_source_ids"] for d in deps)) \
             if deps else {s["id"] for s in own}
         return own, visible
@@ -881,7 +888,8 @@ class PlanRunner:
         user = render(template or PROMPT.plan_step, task=self.task.prompt, deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
                       step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
                       tools=str(tools), turns_left=turns_left,
-                      unavailable="\n".join(UNAVAILABLE.format(name=t) for t in agent.missing_tools))
+                      unavailable="\n".join([UNAVAILABLE.format(name=t) for t in agent.missing_tools]
+                                             + pool_tool_notes(agent)))   # D56
         system = render(PROMPT.plan_step_system, name=agent.name)
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name,
                                                 "amoeba.box": "plan_summary" if self.is_summary_step(step) else "plan_step",

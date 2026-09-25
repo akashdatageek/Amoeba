@@ -49,6 +49,28 @@ environment variable **`TAVILY_API_KEY`** (never from a file). In the Claude Cod
 **`api.tavily.com`** to the environment's network allowlist (cloud environment menu → Edit → Network access); search
 and page extraction both go through that one domain, so no other site needs to be reachable.
 
+## Box 3 stocks its toolbox from the tool/skill pool (D56)
+
+```bash
+python -m amoeba pool refresh        # or `amoeba pool refresh`: MCP Registry servers + anthropics/skills → data/pool/
+python -m amoeba pool status         # what the cache holds
+python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --draft-prompts d24 --topology plan
+python -m scripts.run_task ... --no-pool                 # the step off (e.g. to replay an older --llm-cache)
+```
+
+Before the runner is chosen, every capability request Box 2 recorded is matched against the cached pool by keywords
+(plain code, the top 5), one short AI call (role group `pool`, default the workers' model) picks one candidate or
+NONE, and plain code vets and attaches it. A tool needs an HTTPS remote, a source repository, a pinned version, no key
+or its key in the environment variable named in `amoeba/config/pool.yaml` (`auth_env`), and a description unchanged
+since the refresh and since it was first attached (`data/pool/pins.json`). It becomes `pool:<name>` for the asking
+helper only and runs through `ToolRegistry.execute` with the MCP Python SDK, capped like web_search, every result an
+[S#] source. A skill must be instruction-only and at most 5,000 characters; its SKILL.md text goes on the helper's
+role card. Pool text only ever reaches a prompt inside marked POOL DATA blocks. Each request's outcome (status,
+pool_id, candidates, reason) is in capability_requests.json; result.json has a `pool` summary. Without a cache the
+run logs `pool_unavailable` and runs as before. Refreshing needs `registry.modelcontextprotocol.io`, `api.github.com`
+and `raw.githubusercontent.com` (set `GITHUB_TOKEN` for a higher GitHub rate limit); a run needs only the hosts of the
+servers it attaches.
+
 ## Cost controls (D45–D48)
 
 ```bash
@@ -151,6 +173,8 @@ amoeba/
   interp/trace.py          TraceWriter (JSONL, OpenTelemetry GenAI names), TracedLLM
   tools/registry.py        echo, calc
   safety/envelope.py       allowed_tools per role, max_agents
+  pool/                    D56: index (refresh), match, stock (pick, vet, attach), mcp (pool tools)
+  cli.py                   D56: `amoeba pool refresh` / `python -m amoeba pool refresh`
 scripts/run_task.py        CLI
 scripts/list_models.py     D54: the models an endpoint offers (check a profile's names)
 scripts/extract_prompts.py copies the prompts out of repos/

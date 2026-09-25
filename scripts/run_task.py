@@ -36,15 +36,17 @@ from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
 from amoeba.tools.web import TavilyProvider, web_registry
+from amoeba.pool.stock import PoolSetup, stock_toolbox
 
 
 # box: ov_leave, capreq, runresult
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
             max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
-            saved_draft=None, limits: RunLimits | None = None, ask=None) -> RunResult:
+            saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
-    ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once."""
+    ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
+    pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off)."""
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -55,6 +57,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     draft = ep = failed = clarification = None
     answer = error = None
     team_id = ""
+    requests: list = []
+    pool_summary: dict = {"status": "off"} if pool is None else {}
     try:
         if saved_draft is not None:   # D45: reuse a saved Box 2 draft; no drafting call is made
             draft = saved_draft.draft
@@ -73,6 +77,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                                        quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft)
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
+        requests = [q.model_copy(deep=True) for q in draft.capability_requests]
+        if pool is not None:          # D56: Box 3 starts by stocking the toolbox, before the runner is chosen
+            tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed)
         dump_yaml(cfg, run_dir / "team.yaml")
         ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options).run(cfg, task, seed)
         answer, error = ep.answer, ep.error
@@ -90,8 +97,12 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             {"error": error, "rounds": [r.model_dump(mode="json") for r in (failed.rounds if failed else [])]}
         (run_dir / "plan.json").write_text(json.dumps(saved, indent=2, ensure_ascii=False), encoding="utf-8")
         trace.close()
-    # D19/D21: every tool or skill the team asked for and did not get — recorded, never fetched (always written)
-    requested = (draft.capability_requests if draft else []) + (ep.requested_capabilities if ep else [])
+    # D19/D21: every tool or skill the team asked for (always written); D56: with what the toolbox step did about it
+    if draft and not requests:
+        requests = [q.model_copy(deep=True) for q in draft.capability_requests]
+    during = [q.model_copy(update={"status": "unfilled", "reason": "raised_during_run"}) if pool is not None else q
+              for q in (ep.requested_capabilities if ep else [])]
+    requested = requests + during
     (run_dir / "capability_requests.json").write_text(
         json.dumps([q.model_dump() for q in requested], indent=2, ensure_ascii=False), encoding="utf-8")
     # D30: a task with a rubric and no single right answer is scored by the rubric fraction (Box 1, after the run)
@@ -112,7 +123,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         unmapped_capabilities=sorted({q.name for q in requested if not q.mapped}),
         requests_proposed=draft.requests_proposed if draft else 0,
         requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0,
-        clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace))
+        clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace),
+        pool=pool_summary)
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
     return result
 
@@ -329,6 +341,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="after Box 2, print the requirements, assumptions and open questions and wait for 'continue' "
                         "or an edited assumption (appended to the task as 'User clarification: ...', then one "
                         "re-draft round) (D53). Never in eval scripts")
+    p.add_argument("--pool", action=argparse.BooleanOptionalAction, default=True,
+                   help="Box 3 first fills capability requests from the cached tool/skill pool (MCP Registry servers, "
+                        "anthropics/skills): keyword match, one AI pick per request, plain-code vetting (D56). Build "
+                        "the cache with `python -m amoeba pool refresh`; without it the run logs pool_unavailable "
+                        "and goes on as before")
+    p.add_argument("--pool-dir", default=None, metavar="DIR",
+                   help="the pool cache (default: cache_dir in amoeba/config/pool.yaml, data/pool)")
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     add_client_args(p)
@@ -357,6 +376,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
     saved = load_saved_drafts(args.drafts_from) if args.drafts_from else None
+    pool = PoolSetup(cache_dir=args.pool_dir) if args.pool else None   # D56
     results = []
     for task in tasks:
         chosen = None
@@ -371,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
                     max_tokens=cli_token_limits(args), quality_gate=args.quality_gate,
                     plan_options=cli_plan_options(args), saved_draft=chosen,
                     limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
-                    ask=input if args.interactive else None)
+                    ask=input if args.interactive else None, pool=pool)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
