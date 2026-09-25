@@ -69,3 +69,69 @@ def test_min_seconds_between_calls_spaces_calls_out():
     c, slept, _ = client(["a", "b"], min_seconds_between_calls=5.0)
     first, second = c.chat("s", "u"), c.chat("s", "u")
     assert first.throttle_wait_s == 0 and len(slept) == 1 and 4.5 < slept[0] <= 5.0 and second.throttle_wait_s > 4.5
+
+
+# ---- D57: dropped connections and timeouts are retried too; a run that still fails keeps its records ----------------
+class APIConnectionError(Exception):
+    """Stands in for the SDK's class of that name (matched by name, like its status codes)."""
+
+
+class APITimeoutError(APIConnectionError):
+    pass
+
+
+def test_dropped_connections_and_timeouts_are_retried_like_a_429():
+    c, slept, sent = client([APIConnectionError("Connection error."), APITimeoutError("Request timed out."),
+                             ConnectionResetError("reset"), "ok"])
+    trace = TraceWriter(None)
+    r = TracedLLM(c, trace).chat("s", "u")
+    assert r.content == "ok" and slept == [2.0, 4.0, 8.0] and len(sent) == 4
+    assert [e["amoeba.dropped"] for e in trace.events("rate_limited")] == ["connection", "timeout", "connection"]
+    c, slept, _ = client([APIConnectionError("down")] * 6)
+    with pytest.raises(APIConnectionError):
+        c.chat("s", "u")
+    assert len(slept) == 5
+    c, slept, _ = client([ValueError("a bug, not the network")])
+    with pytest.raises(ValueError):
+        c.chat("s", "u")
+    assert slept == []
+
+
+def failing(kind, error):
+    """The toy mock, except that calls of one kind raise `error`."""
+    from amoeba.llm.toy_mock import toy_mock_client
+    llm = toy_mock_client()
+    llm._script[kind] = lambda messages, seed: (_ for _ in ()).throw(error)
+    return llm
+
+
+@pytest.mark.parametrize("kind,error", [("worker", ApiError(500, "Internal error")),
+                                        ("planner", APIConnectionError("Connection error."))])
+def test_an_api_error_ends_the_run_with_its_records(tmp_path, kind, error):
+    import json
+    from amoeba.safety.envelope import Envelope
+    from amoeba.task.source import ToyTaskSource
+    from amoeba.tools.registry import default_registry
+    from scripts.run_task import run_one
+    tools = default_registry()
+    llm = failing(kind, error)
+    r = run_one(ToyTaskSource(0, 1).tasks()[0], "flat", llm, Envelope.from_registry(tools, model=llm.model), tools,
+                tmp_path)
+    saved = json.loads((tmp_path / r.run_id / "result.json").read_text())
+    assert saved["error"].startswith(f"api: {type(error).__name__}") and saved["answer"] is None
+    assert (tmp_path / r.run_id / "plan.json").exists() and (tmp_path / r.run_id / "capability_requests.json").exists()
+    events = [json.loads(l) for l in (tmp_path / r.run_id / "trace.jsonl").read_text().splitlines()
+              if '"api_error"' in l]
+    assert events and events[0]["amoeba.box"] == "client"
+
+
+def test_a_bug_is_not_an_api_error(tmp_path):
+    from amoeba.safety.envelope import Envelope
+    from amoeba.task.source import ToyTaskSource
+    from amoeba.tools.registry import default_registry
+    from scripts.run_task import run_one
+    tools = default_registry()
+    llm = failing("worker", KeyError("oops"))
+    with pytest.raises(KeyError):
+        run_one(ToyTaskSource(0, 1).tasks()[0], "flat", llm, Envelope.from_registry(tools, model=llm.model), tools,
+                tmp_path)

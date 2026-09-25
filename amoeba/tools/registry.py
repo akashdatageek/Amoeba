@@ -32,6 +32,14 @@ class ToolRegistry:
     def descriptions(self) -> dict[str, str]:
         return {t.name: t.description for t in self._tools.values()}
 
+    def copy(self) -> "ToolRegistry":
+        """A run's own registry: the same tools (and web tools) plus whatever this run adds (D56 pool tools)."""
+        new = ToolRegistry()
+        new._tools = dict(self._tools)
+        if hasattr(self, "web"):
+            new.web = self.web
+        return new
+
     def __contains__(self, name: object) -> bool:
         return name in self._tools
 

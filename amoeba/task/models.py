@@ -122,6 +122,12 @@ class CapabilityRequest(BaseModel):
     # D29: the canonical name from amoeba/capabilities/aliases.yaml; `name` keeps what the model wrote
     canonical: str = ""
     mapped: bool = False
+    # D56: what Box 3's toolbox step did with it. status filled | unfilled (None: the step did not run); pool_id =
+    # the candidate picked; candidates = the ids shown to the picker; reason = why it stayed unfilled
+    status: Literal["filled", "unfilled"] | None = None
+    pool_id: str = ""
+    candidates: list[str] = Field(default_factory=list)
+    reason: str = ""
 
     @model_validator(mode="after")
     def _canonical(self):
@@ -285,5 +291,6 @@ class RunResult(BaseModel):
     provenance: dict = Field(default_factory=dict)   # D33 plan runner: {"total": counts, "steps": {n: counts}}
     profile: str | None = None   # D54: the model profile (amoeba/config/models.yaml); None = the mock client
     models: dict = Field(default_factory=dict)   # D54: {"requested": {role group: model}, "returned": [API model names]}
+    pool: dict = Field(default_factory=dict)   # D56: the toolbox step: status, filled, unfilled, llm_calls, reasons, attached
     clarification: str | None = None   # D53 --interactive: the user's edit appended to the task before one re-draft
     rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric

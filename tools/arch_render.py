@@ -47,6 +47,7 @@ L = {  # id: (x, y, w, h)
     "tools": (30, 400, 420, 80), "client": (30, 530, 205, 128), "toymock": (245, 530, 205, 128),
     "plan_graph": (510, 705, 180, 130), "plan_step": (715, 705, 215, 130), "step_check": (955, 705, 195, 130),
     "artifacts": (510, 855, 180, 128), "provenance": (715, 855, 215, 128), "plan_summary": (955, 855, 195, 128),
+    "toolbox": (30, 700, 420, 120), "pool_index": (30, 860, 420, 90),
 }
 DECOR = {  # static enclosures, captions and loop arrows (text filled from data where it states a fact)
     "plan": [("group", 30, 56, 770, 320), ("lbl", 44, 76, "loop_plan"),
@@ -88,6 +89,8 @@ EDGES = [  # (view, from, to, path, label, data key, label x, label y)
     ("run", "plan_step", "step_check", "M930 770 H955", "", "worker_sections", 0, 0),
     ("run", "step_check", "plan_summary", "M1052 835 V855", "", "worker_sections", 0, 0),
     ("run", "step_check", "artifacts", "M990 835 V845 H600 V855", "", "worker_sections", 0, 0),
+    ("run", "pool_index", "toolbox", "M240 860 V820", "cached pool", "PoolSetup", 246, 845),
+    ("run", "toolbox", "tools", "M30 760 H16 V440 H30", "pool:<name>", "PoolTools", 40, 684),
 ]
 KIND_WHO = {"llm": "AI writes text", "code": "Plain code decides", "data": "Record passed along",
             "plain": "Input / output", "top": "See inside"}

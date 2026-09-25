@@ -33,7 +33,7 @@ def test_shipped_profiles():
     assert default == "gemma-api" and set(profiles) >= {"gemma-api", "gemma-openrouter", "gemini-flash-lite", "gemini-flash"}
     g = profiles["gemma-api"]
     assert (g.base_url, g.model, g.merge_system, g.reasoning_effort) == (
-        "https://generativelanguage.googleapis.com/v1beta/openai/", "gemma-4-31b-it", True, "low")
+        "https://generativelanguage.googleapis.com/v1beta/openai/", "gemma-4-31b-it", True, None)   # D57: Gemma rejects it
     o = profiles["gemma-openrouter"]
     assert (o.base_url, o.model, o.merge_system, o.reasoning_effort) == (
         "https://openrouter.ai/api/v1", "google/gemma-4-31b-it:free", True, None)
@@ -65,7 +65,7 @@ def test_default_is_gemma_api(clean_env):
     assert isinstance(llm, RoleRouter) and llm.profile == "gemma-api" and llm.model == "gemma-4-31b-it"
     assert isinstance(c, OpenAICompatibleClient) and str(c._client.base_url).startswith(
         "https://generativelanguage.googleapis.com/v1beta/openai")
-    assert c.merge_system and c.reasoning_effort == "low" and c._client.api_key == "k-gemini"
+    assert c.merge_system and c.reasoning_effort is None and c._client.api_key == "k-gemini"
 
 
 def test_mock_stays_the_default_and_is_not_routed():
@@ -137,7 +137,7 @@ def test_each_role_group_gets_its_model(task, envelope, trace, tools):
     assert {m for m, _, _ in seen["reviewers"]} == {"m-rev"}                         # step 3 cross-checks
     assert seen["summariser"] == {("m-sum", "m-sum-001", 999)}                     # step 4
     assert llm.models == {"planner": "m-plan", "observers": "m-obs", "workers": "m-work", "reviewers": "m-rev",
-                          "summariser": "m-sum"}
+                          "summariser": "m-sum", "pool": "m-work"}   # D56: pool defaults to workers
 
 
 def test_command_line_reply_limits_win_over_the_profile():

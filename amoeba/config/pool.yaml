@@ -1,0 +1,26 @@
+# D56: the pool Box 3 may stock its toolbox from ("Stock the toolbox", amoeba/pool/).
+# `python -m amoeba pool refresh` (or `amoeba pool refresh`) reads every source below into the cache; a run reads
+# only the cache and never fetches. One line per source; add more the same way.
+#   kind    tool | skill
+#   source  registry: the official MCP Registry API (cursor pagination, the latest version of each server name)
+#           repo: a GitHub repository of skills (<path>/<name>/SKILL.md); the repository itself, never a fork
+sources:
+  - {kind: tool, source: registry, url: "https://registry.modelcontextprotocol.io/v0/servers"}
+  - {kind: skill, source: repo, repo: anthropics/skills, path: skills}
+
+cache_dir: data/pool          # index.json, skills/<name>.md and pins.json (relative to the working directory)
+
+# A tool whose server needs a key is attached only when the key is in the environment. Server name ->
+# {env: the variable holding the key, header: the HTTP header it goes in, format: how the value is written}.
+# The key is read at attach time, sent only to that server, and never written to the trace or any file.
+auth_env: {}
+#   io.github.example/weather: {env: WEATHER_API_KEY, header: Authorization, format: "Bearer {key}"}
+
+limits:
+  max_candidates: 5           # pool entries shown to the picker per request (the best keyword matches)
+  max_per_helper: 3           # pool items one helper may receive
+  max_per_run: 8              # pool items one run may attach
+  max_skill_chars: 5000       # a longer SKILL.md body is not attached (too_long)
+  max_calls_per_step: 3       # calls of one pool tool in one step (as web_search)
+  timeout_s: 20               # seconds for one connection or call
+  max_result_chars: 6000      # characters of one tool result passed to the helper

@@ -13,7 +13,7 @@ Phase 1 builds three boxes only: **Task → Plan a new team → Team runs the ta
 ## Setup
     ./clone_sources.sh          # repos/ with AutoAgents, AgentVerse, jiuwen_atm (read-only; never import from them)
     python -m venv .venv && . .venv/bin/activate
-    pip install pydantic pyyaml openai pytest playwright
+    pip install pydantic pyyaml openai mcp pytest playwright
 
 ## Rules
 - Package name `amoeba`, layout exactly as spec §3. Python ≥3.11, pydantic v2.

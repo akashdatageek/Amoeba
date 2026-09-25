@@ -118,14 +118,15 @@ class OpenAICompatibleClient(LLMClient):
                 resp = self._create(kw, seed)
                 break
             except Exception as e:
-                status = getattr(e, "status_code", None)
-                if status not in RATE_STATUS or len(retries) >= self.max_rate_retries or spend_cap(e):
+                status, lost = getattr(e, "status_code", None), dropped(e)   # D57: dropped connections too
+                if (status not in RATE_STATUS and lost is None) or len(retries) >= self.max_rate_retries \
+                        or spend_cap(e):
                     e.amoeba_retries = retries   # the trace records the waits even when the call finally fails
                     raise
                 after = retry_after(e)
                 wait = after if after is not None else min(60.0, 2.0 * 2 ** len(retries))
                 retries.append({"status": status, "wait_s": wait, "attempt": len(retries) + 1,
-                                "retry_after": after})
+                                "retry_after": after, "error": lost})
                 self._sleep(wait)
                 self._last_call = time.monotonic()
         usage = getattr(resp, "usage", None)
@@ -162,6 +163,28 @@ def merge_system(messages: Messages) -> Messages:
 
 
 RATE_STATUS = (429, 503)   # D48: too many requests / service unavailable — worth waiting for
+
+
+def dropped(e: BaseException) -> str | None:
+    """D57: a dropped connection or a timeout (the SDK's APIConnectionError / APITimeoutError, or the plain Python
+    ones) — worth another try like a 429. Its kind, or None for any other error."""
+    names = {c.__name__ for c in type(e).__mro__}
+    if "APITimeoutError" in names or isinstance(e, TimeoutError):
+        return "timeout"
+    if "APIConnectionError" in names or isinstance(e, ConnectionError):
+        return "connection"
+    return None
+
+
+def api_error(e: BaseException) -> bool:
+    """D57: an error from the model service itself (an HTTP status, a dropped connection, a timeout) that is still
+    there after the retries; a run ends on it with error='api: ...' and keeps its records."""
+    return getattr(e, "status_code", None) is not None or dropped(e) is not None
+
+
+def describe_api_error(e: BaseException) -> str:
+    status = getattr(e, "status_code", None)
+    return f"{type(e).__name__}{f' {status}' if status else ''}: {' '.join(str(e).split())[:200]}"
 
 
 def spend_cap(e: Exception) -> bool:
@@ -211,6 +234,7 @@ class MockLLMClient(LLMClient):
         "worker": "Based on prior agents' results and completed steps",
         "solver": "You are faced with the task",
         "critic": "Now the group is asking your opinion",
+        "pool_picker": "Choose the one candidate below that can do this job",                           # D56
     }
 
     def __init__(self, script: dict[str, list[str] | Responder] | None = None,

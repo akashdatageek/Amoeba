@@ -19,11 +19,11 @@ from amoeba.task.parsers import MissingSections, parse_sections, repair_prompt, 
 
 # D55: every trace line names the as-built page box (tools/arch_extract.py BOXES id) whose code wrote it, so the page
 # can replay any run. Spans and events not listed here take the box of the span they happen inside.
-SPAN_BOX = {"invoke_workflow": "interpreter", "execute_tool": "tools"}
+SPAN_BOX = {"invoke_workflow": "interpreter", "execute_tool": "tools", "stock_toolbox": "toolbox"}
 EVENT_BOX = {
     "capability_request": "capreq", "unknown_tool": "resolver", "blocked": "read_action",
     "draft_quality": "checks", "quality_gate": "checks", "draft_reused": "handoff", "intake_review": "planner",
-    "truncated": "client", "rate_limited": "client", "cache_miss": "client",
+    "truncated": "client", "rate_limited": "client", "cache_miss": "client", "api_error": "client",
     "plan_graph": "plan_graph", "dependency_relinked": "plan_graph", "step_input": "plan_step",
     "input_truncated": "plan_step", "collab_round": "plan_step", "review_unreadable": "plan_step",
     "step_done": "step_check", "check_retry": "step_check", "rework": "step_check", "reverify": "step_check",
@@ -31,7 +31,9 @@ EVENT_BOX = {
     "provenance": "provenance", "figure_ledger": "provenance",
     "summary_check": "plan_summary", "limitations_added": "plan_summary", "answer_assembled_by_code": "plan_summary",
     "capability_mapped": "tools", "web_tools": "tools", "web_search": "tools", "fetch_url": "tools",
-    "tool_error": "tools", "tool_limit": "tools",
+    "tool_error": "tools", "tool_limit": "tools", "pool_call": "tools",
+    "pool_unavailable": "toolbox", "pool_match": "toolbox", "pool_vet": "toolbox", "pool_pinned": "toolbox",
+    "pool_connect_failed": "toolbox", "pool_summary": "toolbox",
 }
 BOX2_BOX = {"planner": "planner", "agent_observer": "agent_obs", "plan_observer": "plan_obs"}
 
@@ -196,7 +198,8 @@ class TracedLLM:
         for r in retries:
             self.trace.event("rate_limited", {"gen_ai.agent.name": agent_name, "http.status_code": r["status"],
                                               "amoeba.wait_s": r["wait_s"], "amoeba.attempt": r["attempt"],
-                                              "amoeba.retry_after": r["retry_after"], "amoeba.gave_up": failed})
+                                              "amoeba.retry_after": r["retry_after"], "amoeba.gave_up": failed,
+                                              "amoeba.dropped": r.get("error")})   # D57: connection | timeout
 
     def chat(self, system: str, user: str, seed: int = 0, **ids) -> ChatResponse:
         return self.chat_messages([{"role": "system", "content": system}, {"role": "user", "content": user}],

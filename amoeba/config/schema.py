@@ -51,6 +51,8 @@ class AgentSpec(BaseModel):
     outputs: list[Any] = Field(default_factory=list)
     success_criteria: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)   # D31: shown on the plan runner's role card
+    # D56: what Box 3's toolbox step attached from the pool: {kind: tool|skill, id, name, text (a POOL DATA block)}
+    pool: list[dict] = Field(default_factory=list)
     created_by: Literal["human", "drafter"] = "drafter"
     temperature: float = 0.2
     max_tokens: int = 2048
