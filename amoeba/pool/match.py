@@ -43,13 +43,12 @@ def request_words(q) -> set[str]:
 
 # box: toolbox
 def rank(q, entries: list[dict], top: int = 5) -> list[tuple[int, dict]]:
-    """The best `top` entries of the request's kind as (score, entry), best first; only scores above zero. A word
-    counts once for appearing in the entry's description and once more for appearing in its name or title."""
+    """The best `top` entries as (score, entry), best first; only scores above zero. Tools and skills compete alike
+    (D58): the request's kind is the planner's guess, so an xlsx 'tool' may be met by an xlsx skill. A word counts
+    once for appearing in the entry's description and once more for appearing in its name or title."""
     want = request_words(q)
     scored = []
     for e in entries:
-        if e.get("kind") != q.kind:
-            continue
         name = words(f"{e.get('name', '')} {e.get('title', '')}".replace("/", " ").replace(".", " "))
         score = len(want & words(e.get("description", ""))) + len(want & name)
         if score > 0:

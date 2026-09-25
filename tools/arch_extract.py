@@ -493,7 +493,8 @@ BOXES: list[dict] = [
     dict(id="toolbox", view="run", title="Stock the toolbox", kind="code", plan=None,
          sentence="Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI "
                   "pick per request, everything else plain code.",
-         what=["Match: the cached pool entries of the same kind are ranked by the words they share with the "
+         what=["Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's "
+               "guess; the kind asked and the kind picked are logged), are ranked by the words they share with the "
                "request (its standard name and aliases, name, what it does, input and output); the best 5 "
                "(pool.yaml) are kept. None above zero: unfilled, no AI call.",
                "Pick: one short AI call shows the request and those candidates and must answer exactly one listed id "
@@ -515,8 +516,8 @@ BOXES: list[dict] = [
                   "reads it.",
          what=["Tools: the official MCP Registry, the latest version of each server (remote, repository, version, "
                "whether a key is needed).",
-               "Skills: SKILL.md files of github.com/anthropics/skills (never a fork), with whether the skill ships "
-               "scripts and the length of its text.",
+               "Skills: SKILL.md files from a shallow git clone of github.com/anthropics/skills (only the repository "
+               "named in pool.yaml), with whether the skill ships scripts and the length of its text.",
                "Sources are listed in amoeba/config/pool.yaml, one line each; the cache is data/pool/."],
          proposes="Nothing.", disposes="Plain code fetches and stores; no AI call.",
          anchors=["amoeba/pool/index.py::refresh", "amoeba/pool/index.py::load_index",

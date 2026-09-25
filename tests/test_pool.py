@@ -102,29 +102,41 @@ def req(name, kind="tool", role="Researcher", what="", **kw):
 
 
 # ---- 1. the index ---------------------------------------------------------------------------------------------
-def fake_web(pages, repo_info=None):
+def fake_web(pages):
     def get(url):
         if url.startswith("https://registry.example/v0/servers"):
             cursor = re.search(r"cursor=([^&]+)", url)
             return json.dumps(pages[cursor.group(1) if cursor else ""]).encode()
-        if url.endswith("/repos/anthropics/skills"):
-            return json.dumps(repo_info or {"full_name": "anthropics/skills", "fork": False,
-                                            "default_branch": "main"}).encode()
-        if "/commits/main" in url:
-            return json.dumps({"sha": "c0ffee1234567890"}).encode()
-        if "/git/trees/" in url:
-            return json.dumps({"tree": [
-                {"path": "skills/pdf/SKILL.md", "type": "blob", "mode": "100644"},
-                {"path": "skills/pdf/scripts/fill.py", "type": "blob", "mode": "100644"},
-                {"path": "skills/brand/SKILL.md", "type": "blob", "mode": "100644"},
-                {"path": "skills/brand/NOTES.md", "type": "blob", "mode": "100644"},
-                {"path": "skills/brand/sub/SKILL.md", "type": "blob", "mode": "100644"}]}).encode()
-        if url.endswith("/skills/brand/SKILL.md"):
-            return b"---\nname: brand-guidelines\ndescription: Applies the brand colours\n---\n# Brand\nUse navy."
-        if url.endswith("/skills/pdf/SKILL.md"):
-            return b"---\nname: pdf\ndescription: Fills PDF forms\n---\nRun scripts/fill.py"
         raise AssertionError(url)
     return get
+
+
+SKILL_FILES = {
+    "skills/pdf/SKILL.md": "---\nname: pdf\ndescription: Fills PDF forms\n---\nRun scripts/fill.py",
+    "skills/pdf/scripts/fill.py": "print('x')\n",
+    "skills/brand/SKILL.md": "---\nname: brand-guidelines\ndescription: Applies the brand colours\n---\n# Brand\nUse navy.",
+    "skills/brand/NOTES.md": "notes\n",
+    "skills/brand/sub/SKILL.md": "---\nname: nested\n---\nnot a top-level skill",
+    "README.md": "readme\n",
+}
+
+
+def fake_clone(files=SKILL_FILES, origin="https://github.com/anthropics/skills"):
+    """D58: stands in for `git clone --depth 1`: a real local repository with the given files and origin."""
+    import subprocess
+
+    def clone(repo, dest):
+        dest.mkdir(parents=True)
+        for path, text in files.items():
+            (dest / path).parent.mkdir(parents=True, exist_ok=True)
+            (dest / path).write_text(text)
+        git = lambda *a: subprocess.run(["git", "-C", str(dest), "-c", "user.email=t@t", "-c", "user.name=t", *a],
+                                        check=True, capture_output=True)
+        git("init", "-q")
+        git("add", "-A")
+        git("commit", "-q", "-m", "skills")
+        git("remote", "add", "origin", origin)
+    return clone
 
 
 def srv(name, version, latest, published, **kw):
@@ -144,7 +156,7 @@ def test_refresh_builds_the_cache_from_both_sources(tmp_path):
                     "metadata": {}}}
     cfg = {"sources": [{"kind": "tool", "source": "registry", "url": "https://registry.example/v0/servers"},
                        {"kind": "skill", "source": "repo", "repo": "anthropics/skills", "path": "skills"}]}
-    index = refresh(cfg, tmp_path, get=fake_web(pages), log=lambda _: None)
+    index = refresh(cfg, tmp_path, get=fake_web(pages), log=lambda _: None, clone=fake_clone())
     by = {e["id"]: e for e in index["entries"]}
     assert set(by) == {"a", "b", "anthropics/skills:brand", "anthropics/skills:pdf"}
     a = by["a"]                                             # the latest version, its HTTPS remote and its key
@@ -153,20 +165,32 @@ def test_refresh_builds_the_cache_from_both_sources(tmp_path):
     assert a["source_repo"] == "https://github.com/x/a" and a["description_sha256"] == sha256("a tools")
     assert (by["b"]["remote_url"], by["b"]["transport"]) == ("", "package")
     brand, pdf = by["anthropics/skills:brand"], by["anthropics/skills:pdf"]
-    assert (brand["name"], brand["description"], brand["has_scripts"], brand["commit"]) == \
-        ("brand-guidelines", "Applies the brand colours", False, "c0ffee1234567890")
+    assert (brand["name"], brand["description"], brand["has_scripts"]) == \
+        ("brand-guidelines", "Applies the brand colours", False)
+    assert re.fullmatch(r"[0-9a-f]{40}", brand["commit"]) and brand["commit"] == pdf["commit"]   # the clone's HEAD
     assert pdf["has_scripts"] is True and brand["body_length"] == len("# Brand\nUse navy.")
     assert (tmp_path / brand["body_file"]).read_text() == "# Brand\nUse navy."
     assert load_index(tmp_path)["entries"] == index["entries"] and all(e["refreshed_at"] for e in index["entries"])
 
 
-def test_a_fork_is_never_a_source_and_a_failed_source_loses_nothing_else(tmp_path):
+def test_only_the_named_repository_counts_and_a_failed_source_loses_nothing_else(tmp_path):
     cfg = {"sources": [{"kind": "skill", "source": "repo", "repo": "anthropics/skills"},
                        {"kind": "tool", "source": "registry", "url": "https://registry.example/v0/servers"}]}
-    get = fake_web({"": {"servers": [srv("a", "1.0.0", True, "2026")], "metadata": {}}},
-                   repo_info={"full_name": "anthropics/skills", "fork": True})
-    index = refresh(cfg, tmp_path, get=get, log=lambda _: None)
-    assert [e["id"] for e in index["entries"]] == ["a"] and "fork" in index["errors"][0]["error"]
+    get = fake_web({"": {"servers": [srv("a", "1.0.0", True, "2026")], "metadata": {}}})
+    index = refresh(cfg, tmp_path, get=get, log=lambda _: None, clone=fake_clone(origin="https://github.com/someone/skills"))
+    assert [e["id"] for e in index["entries"]] == ["a"] and "not anthropics/skills" in index["errors"][0]["error"]
+
+
+def test_an_executable_file_or_code_file_marks_a_skill_as_having_scripts(tmp_path):
+    from amoeba.pool.index import repo_skills
+
+    def clone(repo, dest):
+        fake_clone({"skills/x/SKILL.md": "---\nname: x\n---\nbody", "skills/x/tool": "#!/bin/sh\n",
+                    "skills/y/SKILL.md": "---\nname: y\n---\nbody", "skills/y/helper.py": "",
+                    "skills/z/SKILL.md": "---\nname: z\n---\nbody"})(repo, dest)
+        (dest / "skills/x/tool").chmod(0o755)
+    _, skills = repo_skills("anthropics/skills", clone=clone)
+    assert {s["dir"]: s["has_scripts"] for s in skills} == {"x": True, "y": True, "z": False}
 
 
 def test_skill_frontmatter():
@@ -175,16 +199,33 @@ def test_skill_frontmatter():
 
 
 # ---- 2. match ---------------------------------------------------------------------------------------------------
-def test_rank_by_shared_words_same_kind_only(cache):
+def test_rank_by_shared_words_across_tools_and_skills(cache):
     entries = load_index(cache)["entries"]
     ranked = rank(req("Web Search", what="searches the web and returns snippets"), entries)
     assert [e["id"] for _, e in ranked][:2] == [SEARCH, "io.example/local-search"]
-    assert all(e["kind"] == "tool" for _, e in ranked) and "io.example/weather" not in [e["id"] for _, e in ranked]
+    assert "io.example/weather" not in [e["id"] for _, e in ranked]
     assert rank(req("teleport", what="moves matter"), entries) == []
-    assert [e["id"] for _, e in rank(req("unit_conversion", "skill", "Writer", "states a number in a unit"),
-                                     entries)] == [SKILL]
     many = [tool(f"s{i}", "web search") for i in range(9)]
     assert len(rank(req("web_search"), many)) == 5                       # the top 5 only
+    # D58: a request's kind is the planner's guess — a "tool" request finds a skill, a "skill" request a tool
+    assert [e["id"] for _, e in rank(req("unit_conversion", "tool", "Writer", "states a number in a unit"),
+                                     entries)] == [SKILL]
+    assert [e["kind"] for _, e in rank(req("web search", "skill", what="searches the web"), entries)][0] == "tool"
+
+
+def test_a_tool_request_filled_by_a_skill_logs_both_kinds(cache, task, envelope, trace):
+    llm = mock(planner=[fx(CAP)], pool_picker=[SKILL])
+    cfg = instantiate(draft_team(task, llm, envelope, trace), "flat", task, envelope)
+    q = req("unit_conversion", "tool", "Writer", "states a number in the unit the task asks for")
+    _, summary = stock_toolbox([q], cfg, default_registry(), llm, trace, setup(cache))
+    assert (q.status, q.pool_id) == ("filled", SKILL)
+    [vet_ev] = trace.events("pool_vet")
+    assert (vet_ev["amoeba.kind_requested"], vet_ev["amoeba.kind_picked"]) == ("tool", "skill")
+    assert summary["attached"][0]["kind"] == "skill" and summary["attached"][0]["kind_requested"] == "tool"
+    writer = next(a for a in cfg.agents.values() if a.name == "Writer")
+    assert writer.pool[0]["kind"] == "skill" and "Skill: unit-converter" in writer.pool[0]["text"]
+    [match] = trace.events("pool_match")
+    assert {c["kind"] for c in match["amoeba.pool.candidates"]} == {"skill"}
 
 
 def test_no_candidates_means_no_ai_call(cache, task, envelope, trace):

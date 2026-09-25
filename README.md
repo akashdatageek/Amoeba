@@ -59,7 +59,7 @@ python -m scripts.run_task ... --no-pool                 # the step off (e.g. to
 ```
 
 Before the runner is chosen, every capability request Box 2 recorded is matched against the cached pool by keywords
-(plain code, the top 5), one short AI call (role group `pool`, default the workers' model) picks one candidate or
+(plain code, the top 5, tools and skills alike: the requested kind is only the planner's guess, D58), one short AI call (role group `pool`, default the workers' model) picks one candidate or
 NONE, and plain code vets and attaches it. A tool needs an HTTPS remote, a source repository, a pinned version, no key
 or its key in the environment variable named in `amoeba/config/pool.yaml` (`auth_env`), and a description unchanged
 since the refresh and since it was first attached (`data/pool/pins.json`). It becomes `pool:<name>` for the asking
@@ -67,9 +67,9 @@ helper only and runs through `ToolRegistry.execute` with the MCP Python SDK, cap
 [S#] source. A skill must be instruction-only and at most 5,000 characters; its SKILL.md text goes on the helper's
 role card. Pool text only ever reaches a prompt inside marked POOL DATA blocks. Each request's outcome (status,
 pool_id, candidates, reason) is in capability_requests.json; result.json has a `pool` summary. Without a cache the
-run logs `pool_unavailable` and runs as before. Refreshing needs `registry.modelcontextprotocol.io`, `api.github.com`
-and `raw.githubusercontent.com` (set `GITHUB_TOKEN` for a higher GitHub rate limit); a run needs only the hosts of the
-servers it attaches.
+run logs `pool_unavailable` and runs as before. Refreshing needs `registry.modelcontextprotocol.io` and `github.com`
+(skills are read from a shallow `git clone`, D58, not the GitHub API); a run needs only the hosts of the servers it
+attaches.
 
 ## Cost controls (D45–D48)
 

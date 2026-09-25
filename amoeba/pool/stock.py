@@ -1,7 +1,8 @@
 """D56 — Box 3 starts by stocking the toolbox: each capability request Box 2 recorded may be filled from the pool.
 
 LLM proposes, plain code disposes. For every request (deduplicated by kind, standard name and helper):
-  1. match  (code)  keyword overlap with the cached pool index; the best `max_candidates` of the same kind.
+  1. match  (code)  keyword overlap with the cached pool index; the best `max_candidates`, tools and skills alike
+                    (D58: the request's kind is only the planner's guess; the kind asked and picked are logged).
                     None above zero → unfilled, "no_candidates", and no AI call.
   2. pick   (AI)    one call in the "pool" role group: exactly one listed id, or NONE. Anything else is NONE.
   3. vet    (code)  tools: an HTTPS remote, a source repository, a pinned version, no key needed or the key in the
@@ -159,7 +160,8 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                 out["candidates"] = [e["id"] for _, e in ranked]
                 trace.event("pool_match", {"amoeba.capability": q.canonical or q.name, "amoeba.kind": q.kind,
                                            "gen_ai.agent.name": q.for_role or None,
-                                           "amoeba.pool.candidates": [{"id": e["id"], "score": s} for s, e in ranked]})
+                                           "amoeba.pool.candidates": [{"id": e["id"], "kind": e["kind"], "score": s}
+                                                                      for s, e in ranked]})
                 if not ranked:
                     out["reason"] = "no_candidates"
                 else:
@@ -211,10 +213,13 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                             per_helper.setdefault(a.agent_id, set()).add(chosen)
                         attached.add(chosen)
                         out["status"] = "filled"
-                        summary["attached"].append({"id": chosen, "kind": entry["kind"], "as": name if entry["kind"]
-                                                    == "tool" else entry["name"], "helpers": [a.name for a in takers]})
+                        summary["attached"].append({"id": chosen, "kind": entry["kind"], "kind_requested": q.kind,
+                                                    "as": name if entry["kind"] == "tool" else entry["name"],
+                                                    "helpers": [a.name for a in takers]})
                     out["reason"] = reason or ""
                     trace.event("pool_vet", {"amoeba.pool.id": chosen, "amoeba.capability": q.canonical or q.name,
+                                             "amoeba.kind_requested": q.kind,                       # D58: the guess
+                                             "amoeba.kind_picked": entry["kind"] if entry else None,  # what was chosen
                                              "amoeba.accepted": reason is None, "amoeba.reason": reason})
             for r in group:
                 r.status, r.pool_id, r.candidates, r.reason = out["status"], out["pool_id"], out["candidates"], out["reason"]

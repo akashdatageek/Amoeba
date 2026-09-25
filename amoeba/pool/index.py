@@ -4,8 +4,8 @@
 one skills/<name>.md per skill body. A run only ever reads this cache (`load_index`); it never fetches the index.
 
 Tools come from the official MCP Registry API (cursor pagination; the latest version of each server name; its
-server.json fields remotes, repository and version). Skills come from a GitHub repository (never a fork): each
-<path>/<name>/SKILL.md, YAML frontmatter (name, description) then the body.
+server.json fields remotes, repository and version). Skills come from a GitHub repository, read from a shallow
+`git clone` (D58): each <path>/<name>/SKILL.md, YAML frontmatter (name, description) then the body.
 """
 from __future__ import annotations
 
@@ -13,6 +13,9 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
+import tempfile
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -121,32 +124,47 @@ def split_skill(text: str) -> tuple[dict, str]:
 
 
 # box: pool_index
-def repo_skills(repo: str, path: str = "skills", get: Callable[[str], bytes] = http_get) -> tuple[dict, list[dict]]:
-    """({repo, commit}, [{dir, name, description, body, has_scripts}]) for every <path>/<name>/SKILL.md at the
-    default branch's current commit. A fork is refused: only the original repository is a source."""
-    info = json.loads(get(f"https://api.github.com/repos/{repo}"))
-    if info.get("fork"):
-        raise PoolSourceError(f"{repo} is a fork; only original repositories are pool sources")
-    if info.get("full_name", repo).lower() != repo.lower():
-        raise PoolSourceError(f"{repo} resolves to {info.get('full_name')}; name the repository itself")
-    branch = info.get("default_branch") or "main"
-    commit = json.loads(get(f"https://api.github.com/repos/{repo}/commits/{branch}"))["sha"]
-    tree = json.loads(get(f"https://api.github.com/repos/{repo}/git/trees/{commit}?recursive=1")).get("tree") or []
-    prefix = path.strip("/") + "/"
-    dirs = sorted({t["path"][len(prefix):].split("/")[0] for t in tree
-                   if t["path"].startswith(prefix) and t["path"].endswith("/SKILL.md")
-                   and t["path"].count("/") == prefix.count("/") + 1})
-    out = []
-    for d in dirs:
-        base = f"{prefix}{d}/"
-        files = [t for t in tree if t["path"].startswith(base)]
-        has_scripts = any("/scripts/" in f"/{t['path'][len(base):]}/" or t.get("mode") == "100755"
-                          or (t.get("type") == "blob" and t["path"].lower().endswith(CODE_SUFFIXES)) for t in files)
-        text = get(f"https://raw.githubusercontent.com/{repo}/{commit}/{base}SKILL.md").decode("utf-8", "replace")
-        front, body = split_skill(text)
-        out.append({"dir": d, "name": str(front.get("name") or d), "description": str(front.get("description") or ""),
-                    "body": body, "has_scripts": has_scripts})
-    return {"repo": repo, "commit": commit}, out
+def git_clone(repo: str, dest: Path, timeout: float = 600.0) -> None:
+    """D58: a shallow clone of https://github.com/<repo> into dest (LFS files stay pointers: skills are text)."""
+    env = {**os.environ, "GIT_LFS_SKIP_SMUDGE": "1", "GIT_TERMINAL_PROMPT": "0"}
+    subprocess.run(["git", "clone", "--quiet", "--depth", "1", f"https://github.com/{repo}", str(dest)],
+                   check=True, capture_output=True, text=True, timeout=timeout, env=env)
+
+
+# box: pool_index
+def repo_skills(repo: str, path: str = "skills", clone: Callable[[str, Path], None] = git_clone,
+                work: Path | None = None) -> tuple[dict, list[dict]]:
+    """({repo, commit}, [{dir, name, description, body, has_scripts}]) for every <path>/<name>/SKILL.md of a shallow
+    clone of the default branch (D58: git, not the GitHub API, which a session's GitHub proxy may refuse). Only the
+    repository named in pool.yaml is cloned, and the clone's origin must be exactly that repository."""
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
+        raise PoolSourceError(f"not a GitHub owner/name: {repo!r}")
+    tmp = Path(tempfile.mkdtemp(prefix="skills-", dir=work))
+    try:
+        dest = tmp / "repo"
+        clone(repo, dest)
+        origin = _git(dest, "remote", "get-url", "origin").rstrip("/").removesuffix(".git")
+        if origin.lower() != f"https://github.com/{repo}".lower():
+            raise PoolSourceError(f"the clone's origin is {origin}, not {repo}")
+        commit = _git(dest, "rev-parse", "HEAD")
+        root = dest / path.strip("/")
+        out = []
+        for skill_md in sorted(root.glob("*/SKILL.md")):
+            base = skill_md.parent
+            files = [f for f in base.rglob("*") if f.is_file()]
+            has_scripts = any("scripts" in f.relative_to(base).parts[:-1] or os.access(f, os.X_OK)
+                              or f.name.lower().endswith(CODE_SUFFIXES) for f in files)
+            front, body = split_skill(skill_md.read_text(encoding="utf-8", errors="replace"))
+            out.append({"dir": base.name, "name": str(front.get("name") or base.name),
+                        "description": str(front.get("description") or ""), "body": body, "has_scripts": has_scripts})
+        return {"repo": repo, "commit": commit}, out
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+# box: pool_index
+def _git(repo_dir: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo_dir), *args], check=True, capture_output=True, text=True).stdout.strip()
 
 
 # box: pool_index
@@ -165,7 +183,8 @@ def safe_name(s: str) -> str:
 
 # box: pool_index
 def refresh(config: dict | None = None, cache_dir: str | Path | None = None, get: Callable[[str], bytes] = http_get,
-            only: str | None = None, log: Callable[[str], None] = print) -> dict:
+            only: str | None = None, log: Callable[[str], None] = print,
+            clone: Callable[[str, Path], None] = git_clone) -> dict:
     """Build the cache from every source in pool.yaml (no model call). Returns {entries, sources, errors}. A source
     that fails is reported and left out; the other sources are still written."""
     cfg = config or load_pool_config()
@@ -181,7 +200,7 @@ def refresh(config: dict | None = None, cache_dir: str | Path | None = None, get
                 entries += [tool_entry(s, now) for s in servers]
                 done.append({**src, "entries": len(servers)})
             elif src.get("source") == "repo":
-                meta, skills = repo_skills(src["repo"], src.get("path", "skills"), get)
+                meta, skills = repo_skills(src["repo"], src.get("path", "skills"), clone)
                 for s in skills:
                     e = skill_entry(meta["repo"], meta["commit"], s, now)
                     (out_dir / e["body_file"]).parent.mkdir(parents=True, exist_ok=True)
