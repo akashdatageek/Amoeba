@@ -4967,7 +4967,7 @@
   ]
  },
  "toolbox": {
-  "checked_at": "1704212",
+  "checked_at": "7609db4",
   "facts": {
    "anchors": [
     {
@@ -4991,6 +4991,7 @@
       "amoeba/pool/stock.py::attach",
       "amoeba/pool/stock.py::helpers_for",
       "amoeba/pool/stock.py::pick",
+      "amoeba/pool/stock.py::side_effect",
       "amoeba/pool/stock.py::steps_of",
       "amoeba/pool/stock.py::vet",
       "amoeba/task/saved_drafts.py::pick",
@@ -5024,6 +5025,8 @@
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/index.py::skill_body",
       "amoeba/pool/index.py::text_sha256",
+      "amoeba/pool/stock.py::paid_host",
+      "amoeba/pool/stock.py::side_effect",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
      ],
@@ -5236,6 +5239,14 @@
      "signature": "helpers_for(q, cfg: TeamConfig) -> list[AgentSpec]"
     },
     {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D58: a host under a domain pool.yaml lists as pay-per-call (e.g. *.klymax402.com, x402 endpoints).",
+     "key": "amoeba/pool/stock.py::paid_host",
+     "signature": "paid_host(url: str, setup: 'PoolSetup') -> bool"
+    },
+    {
      "callees": [],
      "doc": "",
      "key": "amoeba/pool/stock.py::pool_skill_notes",
@@ -5246,6 +5257,16 @@
      "doc": "Lines for a helper's prompt: how to use each pool tool it was given (as data).",
      "key": "amoeba/pool/stock.py::pool_tool_notes",
      "signature": "pool_tool_notes(agent: AgentSpec) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "The first outside-action word in a tool's name or description (names are split at - _ . /), or None.",
+     "key": "amoeba/pool/stock.py::side_effect",
+     "signature": "side_effect(*texts: str) -> str | None"
     },
     {
      "callees": [],
@@ -5275,6 +5296,11 @@
      "correct",
      "if self.step is not None and self.step not in s['steps']",
      "add self.step"
+    ],
+    [
+     "decide",
+     "if any((side_effect(t['name'], t.get('description', '')) for t in listing))",
+     "set reason = 'side_effect'"
     ],
     [
      "decide",
@@ -5613,6 +5639,11 @@
     ],
     [
      "stop",
+     "if m",
+     "return m.group(0)"
+    ],
+    [
+     "stop",
      "if n >= self.limits.max_calls_per_step",
      "return f'error: {name} limit reached ({self.limits.max_calls_per_step} per step); work with what you have'"
     ],
@@ -5643,8 +5674,18 @@
     ],
     [
      "stop",
+     "if paid_host(e['remote_url'], setup)",
+     "return ('paid_endpoint', {}, None)"
+    ],
+    [
+     "stop",
      "if s['url'] == url",
      "return s"
+    ],
+    [
+     "stop",
+     "if side_effect(e.get('name', ''), e.get('title', ''), e.get('description', ''))",
+     "return ('side_effect', {}, None)"
     ],
     [
      "stop",
@@ -5672,14 +5713,14 @@
    "prompts": {},
    "title": "Stock the toolbox"
   },
-  "facts_hash": "3c30f9faf51c7d0f",
-  "seed_hash": "83886069cd625f14",
+  "facts_hash": "48ea5ce1a446c38f",
+  "seed_hash": "6877529dec928f1d",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
   "source": "hand",
   "what": [
    "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
    "Pick: one short AI call shows the request and those candidates and must answer exactly one listed id or NONE; any other reply counts as NONE.",
-   "Vet: a tool needs an HTTPS remote, a source repository, a pinned version, no key or its key in the environment, and an unchanged description (also re-checked against the server's tools/list at every connection); a skill must be instruction-only and at most 5,000 characters. At most {PoolLimits.max_calls_per_step} items per helper and 8 per run (pool.yaml).",
+   "Vet: a tool must be read-only (nothing in its name or description that sends, posts, pays or deletes) and not a pay-per-call host; it needs an HTTPS remote, a source repository, a pinned version, no key or its key in the environment, and an unchanged description (also re-checked against the server's tools/list at every connection); a skill must be instruction-only and at most 5,000 characters. At most {PoolLimits.max_calls_per_step} items per helper and 8 per run (pool.yaml).",
    "Attach: a tool becomes pool:<name> for the asking helper only; a skill's text goes on that helper's card. All pool text is shown inside marked data blocks, and the 'unavailable' line goes away.",
    "Every request's outcome and reason code is written to capability_requests.json and result.json; without a pool cache the run logs pool_unavailable and goes on as before."
   ]
