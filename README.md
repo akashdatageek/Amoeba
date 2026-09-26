@@ -76,6 +76,7 @@ attaches.
 ## Local tools (D59)
 
 ```bash
+pip install -e ".[local]"            # openpyxl, python-docx, python-pptx, matplotlib, pypdf — beforehand, never at run time
 export AMOEBA_SANDBOX=1              # only inside this cloud container or a Docker container, never on your own machine
 python -m amoeba pool refresh        # also keeps the anthropics/skills folders under data/pool/repos/
 python -m scripts.run_task --tasks tasks/observer_round1.jsonl --llm openai --topology plan --local-tools on
