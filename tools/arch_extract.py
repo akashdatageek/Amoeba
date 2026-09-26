@@ -493,30 +493,62 @@ BOXES: list[dict] = [
     dict(id="toolbox", view="run", title="Stock the toolbox", kind="code", plan=None,
          sentence="Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI "
                   "pick per request, everything else plain code.",
-         what=["Match: the cached pool entries of the same kind are ranked by the words they share with the "
+         what=["Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's "
+               "guess; the kind asked and the kind picked are logged), are ranked by the words they share with the "
                "request (its standard name and aliases, name, what it does, input and output); the best 5 "
                "(pool.yaml) are kept. None above zero: unfilled, no AI call.",
                "Pick: one short AI call shows the request and those candidates and must answer exactly one listed id "
                "or NONE; any other reply counts as NONE.",
-               "Vet: a tool needs an HTTPS remote, a source repository, a pinned version, no key or its key in the "
+               "Vet: a tool must be read-only (nothing in its name or description that sends, posts, pays or deletes) "
+               "and not a pay-per-call host; it needs an HTTPS remote, a source repository, a pinned version, no key or "
+               "its key in the "
                "environment, and an unchanged description (also re-checked against the server's tools/list at every "
                "connection); a skill must be instruction-only and at most 5,000 characters. At most 3 items per "
                "helper and 8 per run (pool.yaml).",
                "Attach: a tool becomes pool:<name> for the asking helper only; a skill's text goes on that helper's "
                "card. All pool text is shown inside marked data blocks, and the 'unavailable' line goes away.",
                "Every request's outcome and reason code is written to capability_requests.json and result.json; "
-               "without a pool cache the run logs pool_unavailable and goes on as before."],
+               "without a pool cache the run logs pool_unavailable and goes on as before.",
+               "With --local-tools on (D59) the local toolbox's items are candidates too, listed before the pool's, "
+               "and a skill with scripts is no longer refused: it is copied into the run's workspace."],
          proposes="The picker names one candidate (or NONE).",
          disposes="Plain code ranks the candidates, rejects anything unsafe or over the caps, and attaches.",
          anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
                   "amoeba/pool/match.py::rank", "amoeba/pool/mcp.py::PoolTools", "amoeba/pool/mcp.py::SdkConnector"]),
+    dict(id="localtools", view="run", title="Local toolbox (sandboxed)", kind="code", plan=None,
+         sentence="With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp "
+                  "serve`, inside a workspace folder of the run.",
+         what=["Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at "
+               "the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused "
+               "and logged once. They become local:<Name> tools of the run.",
+               "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); "
+               "a Bash command runs from there, network commands are refused (network_command) and destructive or "
+               "escaping ones too (unsafe_command).",
+               "Limits (localtools.yaml): 60 s per call, 8,000 characters of output, 20 calls per step and 60 "
+               "per run; a trace line for every call and "
+               "every refusal.",
+               "Skills are listed from Claude Code's skill folders and the kept anthropics/skills clone; an attached "
+               "skill's folder is copied to workspace/skills/<name>/ and its SKILL.md (frontmatter and first 5,000 "
+               "characters) goes on the helper's card.",
+               "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first.",
+               "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); "
+               "result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the "
+               "workspace is copied to artifacts/files/."],
+         proposes="A helper's tool call (name and input); the picker's choice of a local item.",
+         disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
+                  "claimed files.",
+         anchors=["amoeba/localtools/toolbox.py::LocalToolbox", "amoeba/localtools/toolbox.py::LocalSetup",
+                  "amoeba/localtools/server.py::StdioServer", "amoeba/localtools/gate.py::screen_command",
+                  "amoeba/localtools/gate.py::inside", "amoeba/localtools/skills.py::list_skills",
+                  "amoeba/localtools/claims.py::claimed_files"]),
     dict(id="pool_index", view="run", title="Pool index (cache)", kind="data", plan=None,
          sentence="The tools and skills Box 3 may draw on, fetched ahead of time by `amoeba pool refresh`; a run only "
                   "reads it.",
          what=["Tools: the official MCP Registry, the latest version of each server (remote, repository, version, "
                "whether a key is needed).",
-               "Skills: SKILL.md files of github.com/anthropics/skills (never a fork), with whether the skill ships "
-               "scripts and the length of its text.",
+               "Skills: SKILL.md files from a shallow git clone of github.com/anthropics/skills (only the repository "
+               "named in pool.yaml), with whether the skill ships scripts and the length of its text; the skill "
+               "folders are kept whole under repos/ for the local toolbox (D59).",
                "Sources are listed in amoeba/config/pool.yaml, one line each; the cache is data/pool/."],
          proposes="Nothing.", disposes="Plain code fetches and stores; no AI call.",
          anchors=["amoeba/pool/index.py::refresh", "amoeba/pool/index.py::load_index",
@@ -554,7 +586,7 @@ BOXES: list[dict] = [
 # boxes where plain code rejects, corrects or caps what an AI produced (shield icon when they have guards)
 SHIELD = {"planner", "agent_obs", "plan_obs", "split", "checks", "instantiate", "interpreter", "each_step", "helper",
           "read_action", "solver", "critics", "disagree", "tools", "resolver", "plan_graph", "plan_step", "step_check",
-          "plan_summary", "toolbox"}
+          "plan_summary", "toolbox", "localtools"}
 
 GLOSSARY = [
     ("helper", "One AI worker in a team, with its own name, instructions and allowed tools."),

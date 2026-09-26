@@ -1,0 +1,269 @@
+team_id: 2f16f7a1-bcab-432b-9d52-53ddc084d2e8
+version: 1
+parent_version: null
+name: team-plan-r1-repo
+topology: plan
+agents:
+  bdb15311-065a-437e-a25e-65edd79f205b:
+    agent_id: bdb15311-065a-437e-a25e-65edd79f205b
+    name: Static Analysis Engineer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in code metrics and static analysis tools. Responsible for
+      extracting quantitative data from the codebase.
+    role_prompt: "You are a Senior Static Analysis Engineer. Your task is to analyze\
+      \ the repository `akashdatageek/Amoeba`. \n1. Use the `github_repo_reader` to\
+      \ map the directory structure and identify all `.py` files.\n2. For each folder,\
+      \ count the number of `.py` files and the total lines of code within those files.\n\
+      3. Use the `python_code_analyzer` to parse the AST of all Python files, calculate\
+      \ the line length of every function, and identify the 5 longest ones.\n4. Output\
+      \ a markdown table for folder metrics (Folder | Python Files | LOC) and a bulleted\
+      \ list for the 5 longest functions including their file path and line count."
+    max_history: 5
+    missing_tools:
+    - github_repo_reader
+    - python_code_analyzer
+    is_summariser: false
+    goal: Provide accurate counts of files, LOC, and function lengths.
+    skills:
+    - Python AST analysis
+    - Static code analysis
+    - Shell scripting
+    outputs:
+    - artifact: metrics_report
+      format: 'markdown table: folder | py_files | loc'
+    - artifact: longest_functions
+      format: 'list: function_name (file_path) - length_in_lines'
+    success_criteria:
+    - All folders containing .py files are listed
+    - LOC counts are accurate per folder
+    - Exactly 5 longest functions are identified with their lengths
+    constraints:
+    - Only analyze .py files
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  a1571cb6-4277-4c18-9319-7e6607882619:
+    agent_id: a1571cb6-4277-4c18-9319-7e6607882619
+    name: Software Architect
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in system design and pattern recognition. Responsible for
+      understanding the 'how' and 'why' of the codebase.
+    role_prompt: "You are a Principal Software Architect. \n1. Use the `github_repo_reader`\
+      \ to examine the codebase of `akashdatageek/Amoeba`. Focus on the entry points,\
+      \ main classes, and directory organization.\n2. Write a short summary of the\
+      \ architecture, explaining the primary objective of the code and how the components\
+      \ interact.\n3. Review the metrics provided by the Static Analysis Engineer.\
+      \ Spot-check the folder with the most LOC and the longest function to ensure\
+      \ the numbers are plausible.\n4. Output the architecture summary as a memo and\
+      \ a brief verification log confirming the metrics."
+    max_history: 5
+    missing_tools:
+    - github_repo_reader
+    is_summariser: false
+    goal: Produce a concise, accurate summary of the project architecture.
+    skills:
+    - Software architecture analysis
+    - Design pattern recognition
+    - Python proficiency
+    outputs:
+    - artifact: architecture_summary
+      format: 'memo: Architecture Summary'
+    - artifact: verification_log
+      format: 'list: verification results'
+    success_criteria:
+    - Summary accurately describes the project's purpose and structure
+    - Verification confirms the metrics report is consistent with the codebase
+    constraints:
+    - Summary must be short and concise
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  02b4ec30-667c-464b-9e04-f6771e0dce5a:
+    agent_id: 02b4ec30-667c-464b-9e04-f6771e0dce5a
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Project lead responsible for final quality control and assembly of
+      deliverables.
+    role_prompt: "You are the Delivery Lead. Your role is to assemble the final report.\
+      \ \n1. Take the folder metrics table and the list of 5 longest functions from\
+      \ the Static Analysis Engineer.\n2. Take the architecture summary from the Software\
+      \ Architect.\n3. Ensure the verification log confirms the data is correct.\n\
+      4. Combine these into a single, professional report. Do not perform any new\
+      \ analysis. Format the output clearly with headings for 'Folder Metrics', 'Longest\
+      \ Functions', and 'Architecture Summary'."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver a polished final report meeting all requirements.
+    skills:
+    - Technical writing
+    - Quality assurance
+    outputs:
+    - artifact: final_analysis_report
+      format: 'memo: Final Analysis of Amoeba Repo'
+    success_criteria:
+    - All four requirements are present
+    - The report is professional and free of contradictions
+    constraints:
+    - Must not add new analysis; only assemble and edit
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: bdb15311-065a-437e-a25e-65edd79f205b
+  dst: a1571cb6-4277-4c18-9319-7e6607882619
+  type: sequential
+  schema_id: text
+  condition: null
+- src: a1571cb6-4277-4c18-9319-7e6607882619
+  dst: 02b4ec30-667c-464b-9e04-f6771e0dce5a
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- bdb15311-065a-437e-a25e-65edd79f205b
+- a1571cb6-4277-4c18-9319-7e6607882619
+exit: 02b4ec30-667c-464b-9e04-f6771e0dce5a
+plan:
+- index: 0
+  agent_ids:
+  - bdb15311-065a-437e-a25e-65edd79f205b
+  text: '[Static Analysis Engineer]: Quantitative Analysis'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Map all directories and `.py` files in `akashdatageek/Amoeba`
+
+    - Calculate file counts and LOC per folder
+
+    - Parse functions to find the 5 longest by line count'
+  output: 'table: folder x py_files x loc, list: 5 longest functions'
+  done_when: Both the table and the list are produced.
+- index: 1
+  agent_ids:
+  - a1571cb6-4277-4c18-9319-7e6607882619
+  text: '[Software Architect]: Architectural Analysis'
+  kind: work
+  covers:
+  - R4
+  depends_on: []
+  do: '
+
+    - Review the repository structure and code logic
+
+    - Identify the core architectural patterns and purpose'
+  output: 'memo: Architecture Summary'
+  done_when: A concise summary of the architecture is written.
+- index: 2
+  agent_ids:
+  - a1571cb6-4277-4c18-9319-7e6607882619
+  text: '[Software Architect]: Metrics Verification'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Cross-reference the `metrics_report` and `longest_functions` list against the
+    actual repository files
+
+    - Confirm the counts and function lengths are accurate'
+  output: 'list: verification results'
+  done_when: The metrics are confirmed as accurate or corrections are noted.
+- index: 3
+  agent_ids:
+  - 02b4ec30-667c-464b-9e04-f6771e0dce5a
+  text: '[Delivery Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  depends_on:
+  - 2
+  - 3
+  do: '
+
+    - Collect the verified metrics and the architecture summary
+
+    - Format into the final deliverable'
+  output: 'memo: Final Analysis of Amoeba Repo'
+  done_when: All requirements are met in a single document.
+requirements:
+  R1: count Python files per folder
+  R2: count lines of code per folder
+  R3: list the 5 longest functions
+  R4: write a short summary of its architecture
+max_inner_turns: 3
+meta:
+  task_id: r1-repo
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: github_repo_reader
+    for_role: Static Analysis Engineer
+  - name: python_code_analyzer
+    for_role: Static Analysis Engineer
+  - name: github_repo_reader
+    for_role: Software Architect

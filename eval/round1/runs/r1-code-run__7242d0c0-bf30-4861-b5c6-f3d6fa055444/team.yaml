@@ -1,0 +1,216 @@
+team_id: baaf3ccd-f94c-47a1-972d-840a40689316
+version: 1
+parent_version: null
+name: team-plan-r1-code-
+topology: plan
+agents:
+  64171dba-7294-4715-8e0b-bd6cf686273c:
+    agent_id: 64171dba-7294-4715-8e0b-bd6cf686273c
+    name: Python Developer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in Python implementation and algorithmic efficiency. Responsible
+      for writing a performant Fibonacci function.
+    role_prompt: 'You are a Senior Python Developer. Write a function to calculate
+      the 50th Fibonacci number. Do NOT use naive recursion; use an iterative approach
+      or memoization to ensure $O(n)$ time complexity. Execute the code and provide
+      the exact output. Format: Provide the code block followed by the result.'
+    max_history: 5
+    missing_tools:
+    - python_interpreter
+    is_summariser: false
+    goal: Provide a working, efficient Python function and its execution result.
+    skills:
+    - Python
+    - Algorithm Design
+    - Time/Space Complexity Analysis
+    outputs:
+    - artifact: Python code and result
+      format: 'code: python block with output'
+    success_criteria:
+    - Function returns the correct 50th Fibonacci number
+    - Execution completes in < 1 second
+    constraints:
+    - Must use Python
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  ef6dab12-b87a-4257-8004-a9c2e03f3214:
+    agent_id: ef6dab12-b87a-4257-8004-a9c2e03f3214
+    name: QA Engineer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Responsible for verifying the correctness of the implementation and
+      the resulting value.
+    role_prompt: You are a QA Engineer. Review the Python code provided by the developer.
+      Ensure the logic correctly implements the Fibonacci sequence and that the result
+      for $n=50$ is accurate. Verify the result using an independent check. Output
+      a simple 'Verified' or 'Incorrect' with a brief explanation.
+    max_history: 5
+    missing_tools:
+    - python_interpreter
+    is_summariser: false
+    goal: Verify that the 50th Fibonacci number is mathematically correct.
+    skills:
+    - Unit Testing
+    - Mathematical Verification
+    outputs:
+    - artifact: Verification report
+      format: 'memo: verification status'
+    success_criteria:
+    - Result is confirmed as $F_{50}$
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  b0af4f4e-234c-4685-a574-c5549a02c0b4:
+    agent_id: b0af4f4e-234c-4685-a574-c5549a02c0b4
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Assembles the final deliverable for the user.
+    role_prompt: You are the Delivery Lead. Take the verified Python function and
+      the resulting 50th Fibonacci number and present them to the user. Ensure the
+      output is clean and directly answers the prompt.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Report the final output clearly.
+    skills:
+    - Technical Communication
+    outputs:
+    - artifact: Final Report
+      format: 'memo: function and output'
+    success_criteria:
+    - R1, R2, and R3 are fully satisfied
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 64171dba-7294-4715-8e0b-bd6cf686273c
+  dst: ef6dab12-b87a-4257-8004-a9c2e03f3214
+  type: sequential
+  schema_id: text
+  condition: null
+- src: ef6dab12-b87a-4257-8004-a9c2e03f3214
+  dst: b0af4f4e-234c-4685-a574-c5549a02c0b4
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 64171dba-7294-4715-8e0b-bd6cf686273c
+exit: b0af4f4e-234c-4685-a574-c5549a02c0b4
+plan:
+- index: 0
+  agent_ids:
+  - 64171dba-7294-4715-8e0b-bd6cf686273c
+  text: '[Python Developer]: Implement and Run'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on: []
+  do: '
+
+    - Write an iterative Python function for Fibonacci.
+
+    - Call the function with $n=50$.
+
+    - Capture the return value.'
+  output: 'code: Python function and the printed result of $F_{50}$'
+  done_when: The code is written and the result for $n=50$ is produced.
+- index: 1
+  agent_ids:
+  - ef6dab12-b87a-4257-8004-a9c2e03f3214
+  text: '[QA Engineer]: Verify Result'
+  kind: verify
+  covers:
+  - R2
+  depends_on:
+  - 1
+  do: '
+
+    - Check the developer''s logic for off-by-one errors.
+
+    - Verify the numerical result of $F_{50}$ using a known reference or independent
+    calculation.'
+  output: 'memo: verification status'
+  done_when: The result is confirmed as correct.
+- index: 2
+  agent_ids:
+  - b0af4f4e-234c-4685-a574-c5549a02c0b4
+  text: '[Delivery Lead]: Final Report'
+  kind: work
+  covers:
+  - R3
+  depends_on:
+  - 2
+  do: '
+
+    - Assemble the function and the verified output into the final response.'
+  output: 'memo: The Python function and the 50th Fibonacci number.'
+  done_when: The final output is delivered to the user.
+requirements:
+  R1: Write a Python function that returns the 50th Fibonacci number.
+  R2: Run the function.
+  R3: Report the output.
+max_inner_turns: 3
+meta:
+  task_id: r1-code-run
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: python_interpreter
+    for_role: Python Developer
+  - name: python_interpreter
+    for_role: QA Engineer

@@ -18,6 +18,7 @@ from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.provenance import check_provenance, claim_numbers, numbers_in
 from amoeba.llm.profiles import role_group
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
+from amoeba.localtools.claims import claimed_files
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
 from amoeba.task.models import Episode, Task
 from amoeba.task.parsers import MissingSections
@@ -350,6 +351,7 @@ class PlanRunner:
         self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
         self.web = getattr(interp.tools, "web", None)
         self.pool = getattr(interp.tools, "pool", None)   # D56: pool tools; their [S#] share web's list when it exists
+        self.local = getattr(interp.tools, "local", None)  # D59: local tools (--local-tools on)
 
     # box: plan_step
     def grant_web_tools(self) -> None:
@@ -460,6 +462,8 @@ class PlanRunner:
             self.web.begin_step(n, self.i.trace)
         if self.pool is not None:
             self.pool.begin_step(n, self.i.trace)
+        if self.local is not None:
+            self.local.begin_step(n, self.i.trace)
         self.i.trace.event("step_input", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.depends_on": deps,
                                           "amoeba.received": deps, "amoeba.input_chars": len(inputs),
                                           "amoeba.verification": verifier, "amoeba.rework": bool(rework)})
@@ -511,6 +515,14 @@ class PlanRunner:
             status, reason = "incomplete", "checks failed: " + ", ".join(failed)
         else:
             status, reason = "done", ""
+        claimed = missing = None
+        if self.local is not None:                # D59: a file the step says it made must be in the workspace
+            claimed = claimed_files(text)
+            missing = [f for f in claimed if not self.local.has_file(f)]
+            if missing:
+                status = "incomplete"
+                reason = "; ".join(x for x in (reason, "claimed_file_missing: " + ", ".join(missing)) if x)
+                self.i.trace.event("claimed_file_missing", {"amoeba.step": n, "amoeba.files": missing})
         origins = self.ledger_update(n, prov.pop("figures"))                               # D43
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents_all], "covers": step.covers,
                 "collab": collab,
@@ -525,6 +537,8 @@ class PlanRunner:
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
                 "stale": False, "stale_because": [],
                 "contributions": w.contributions}
+        if claimed is not None:
+            meta["claimed_files"], meta["claimed_files_missing"] = claimed, missing
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
             # D38: both verdicts are kept; `verdict` is always the latest one

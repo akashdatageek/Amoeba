@@ -59,17 +59,48 @@ python -m scripts.run_task ... --no-pool                 # the step off (e.g. to
 ```
 
 Before the runner is chosen, every capability request Box 2 recorded is matched against the cached pool by keywords
-(plain code, the top 5), one short AI call (role group `pool`, default the workers' model) picks one candidate or
-NONE, and plain code vets and attaches it. A tool needs an HTTPS remote, a source repository, a pinned version, no key
-or its key in the environment variable named in `amoeba/config/pool.yaml` (`auth_env`), and a description unchanged
+(plain code, the top 5, tools and skills alike: the requested kind is only the planner's guess, D58), one short AI call (role group `pool`, default the workers' model) picks one candidate or
+NONE, and plain code vets and attaches it. A tool must be read-only (no send / email / post / publish / pay / purchase /
+delete / "write to" in its name or description, nor in any tool the server lists) and not on a pay-per-call host
+(`paid_hosts` in pool.yaml), and needs an HTTPS remote, a source repository, a pinned version, no key or its key in
+the environment variable named in `amoeba/config/pool.yaml` (`auth_env`), and a description unchanged
 since the refresh and since it was first attached (`data/pool/pins.json`). It becomes `pool:<name>` for the asking
 helper only and runs through `ToolRegistry.execute` with the MCP Python SDK, capped like web_search, every result an
 [S#] source. A skill must be instruction-only and at most 5,000 characters; its SKILL.md text goes on the helper's
 role card. Pool text only ever reaches a prompt inside marked POOL DATA blocks. Each request's outcome (status,
 pool_id, candidates, reason) is in capability_requests.json; result.json has a `pool` summary. Without a cache the
-run logs `pool_unavailable` and runs as before. Refreshing needs `registry.modelcontextprotocol.io`, `api.github.com`
-and `raw.githubusercontent.com` (set `GITHUB_TOKEN` for a higher GitHub rate limit); a run needs only the hosts of the
-servers it attaches.
+run logs `pool_unavailable` and runs as before. Refreshing needs `registry.modelcontextprotocol.io` and `github.com`
+(skills are read from a shallow `git clone`, D58, not the GitHub API); a run needs only the hosts of the servers it
+attaches.
+
+## Local tools (D59)
+
+```bash
+pip install -e ".[local]"            # openpyxl, python-docx, python-pptx, matplotlib, pypdf — beforehand, never at run time
+export AMOEBA_SANDBOX=1              # only inside this cloud container or a Docker container, never on your own machine
+python -m amoeba pool refresh        # also keeps the anthropics/skills folders under data/pool/repos/
+python -m scripts.run_task --tasks tasks/observer_round1.jsonl --llm openai --topology plan --local-tools on
+```
+
+With `--local-tools on` (default off) Amoeba borrows Claude Code's own tools through `claude mcp serve`, started once
+per run over stdio and closed at the end. Claude's model is never called: the server runs with no key, and only its
+tools are used; Gemma decides, and Amoeba's plain-code gate checks every call. Only Bash, Read, Write, Edit, Glob and
+Grep are allowed (Claude Code 2.1.283 offers no Glob or Grep); every other tool is refused and logged once. The allowed
+ones become `local:<Name>` tools for the helper that asked, run through `ToolRegistry.execute`:
+
+- every path must resolve inside `runs/<id>/workspace/` (else `outside_workspace`); every Bash command starts there;
+- network commands are refused (`network_command`: curl, wget, ssh, scp, nc, git clone/push/fetch, pip/npm install …),
+  and destructive or escaping ones too (`unsafe_command`: sudo, `rm -rf /`, `cd /`, `../`, `~`, `/etc`, …);
+- 60 s per call, 8,000 characters of output, 20 calls per step and 60 per run; a trace line for every call and refusal;
+- python3 has openpyxl, python-docx, python-pptx, matplotlib and pypdf (installed beforehand, never at run time).
+
+Local tools and skills are toolbox candidates listed before the pool's (aliases: code runner → local:Bash, file
+writing → local:Write, excel/spreadsheet → xlsx, presentation → pptx, word document → docx, pdf reader → pdf). Skills
+come from Claude Code's skill folders and the kept anthropics/skills clone; a skill with scripts is allowed now: its
+folder is copied to `workspace/skills/<name>/` and its SKILL.md (frontmatter and first 5,000 characters) goes on the
+helper's card. A step that says it saved a file the workspace does not hold ends `incomplete`
+(`claimed_file_missing`). result.json adds `files_created`, `local_tool_calls`, `local_refusals` and
+`skills_attached`, and the workspace is copied to `artifacts/files/`. With the flag off nothing of this runs.
 
 ## Cost controls (D45–D48)
 
@@ -176,6 +207,7 @@ amoeba/
   tools/registry.py        echo, calc
   safety/envelope.py       allowed_tools per role, max_agents
   pool/                    D56: index (refresh), match, stock (pick, vet, attach), mcp (pool tools)
+  localtools/              D59: claude mcp serve (server), gate, skills, claims, toolbox (--local-tools on)
   cli.py                   D56: `amoeba pool refresh` / `python -m amoeba pool refresh`
 scripts/run_task.py        CLI
 scripts/list_models.py     D54: the models an endpoint offers (check a profile's names)

@@ -1,0 +1,260 @@
+team_id: 36870a78-70a0-4e00-9ba8-5389acf57949
+version: 1
+parent_version: null
+name: team-plan-r1-xlsx
+topology: plan
+agents:
+  092630b1-e5db-45a5-952c-b82036b80481:
+    agent_id: 092630b1-e5db-45a5-952c-b82036b80481
+    name: Logistics Data Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in transportation data modeling and freight financial analysis.
+      Responsible for defining the calculation logic and spreadsheet structure.
+    role_prompt: 'You are a Senior Logistics Data Analyst. Your task is to take raw
+      shipment data and design a spreadsheet layout. 1. Calculate the total revenue
+      for each lane (Loads * Avg). 2. Define a table structure: Column A (Lane), Column
+      B (Loads), Column C (Avg Revenue), Column D (Total Revenue). 3. Define the ''Totals''
+      row at the bottom. 4. Provide the exact Excel formulas for: Total Loads (SUM
+      of Col B), Total Revenue (SUM of Col D), and the Weighted Average Revenue per
+      Load (Total Revenue / Total Loads). Output this as a clear specification for
+      a developer.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Define a mathematically sound spreadsheet schema that supports dynamic totals
+      and weighted averages.
+    skills:
+    - freight financial modeling
+    - Excel formula design
+    - data validation
+    outputs:
+    - artifact: spreadsheet_specification
+      format: 'memo: column definitions, row data, and specific Excel formulas (e.g.,
+        =SUM(B2:B5))'
+    success_criteria:
+    - Total revenue for each lane is correctly calculated
+    - The formula for average revenue per load correctly uses Total Revenue / Total
+      Loads
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  5277e430-47e6-42a8-bf7c-e56e03e20e78:
+    agent_id: 5277e430-47e6-42a8-bf7c-e56e03e20e78
+    name: Excel Automation Engineer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in programmatic spreadsheet generation. Responsible for
+      turning specifications into a downloadable .xlsx file.
+    role_prompt: You are a Senior Excel Automation Engineer. Using the provided spreadsheet
+      specification, generate a .xlsx file. Ensure that the totals row does not contain
+      hard-coded numbers, but actual Excel formulas (e.g., =SUM(B2:B5)). The 'Average
+      Revenue per Load' cell must be a formula dividing the total revenue cell by
+      the total loads cell. Deliver the final file.
+    max_history: 5
+    missing_tools:
+    - excel_generator
+    is_summariser: false
+    goal: Produce a valid Excel file that implements the analyst's specification exactly.
+    skills:
+    - Python
+    - openpyxl
+    - xlsxwriter
+    outputs:
+    - artifact: shipment_data.xlsx
+      format: 'file: .xlsx'
+    success_criteria:
+    - File opens in Excel without errors
+    - Totals row contains formulas, not just static values
+    - Data matches the specification
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  da18e6da-514e-4b8a-bdf5-4a645aa26278:
+    agent_id: da18e6da-514e-4b8a-bdf5-4a645aa26278
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Cross-functional lead responsible for final quality assurance and
+      delivery.
+    role_prompt: 'You are the Delivery Lead. Review the generated Excel file. Check
+      that: 1. It is an Excel file. 2. It has a totals row. 3. The average revenue
+      per load is calculated via a formula. If all are present, deliver the file to
+      the user with a brief summary of the results.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Ensure the final deliverable meets all requirements and is error-free.
+    skills:
+    - QA
+    - project delivery
+    outputs:
+    - artifact: final_delivery
+      format: 'memo: confirmation of requirements met and the Excel file'
+    success_criteria:
+    - All requirements (R1, R2, R3) are verified as present in the file
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 092630b1-e5db-45a5-952c-b82036b80481
+  dst: 5277e430-47e6-42a8-bf7c-e56e03e20e78
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 5277e430-47e6-42a8-bf7c-e56e03e20e78
+  dst: 092630b1-e5db-45a5-952c-b82036b80481
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 092630b1-e5db-45a5-952c-b82036b80481
+  dst: da18e6da-514e-4b8a-bdf5-4a645aa26278
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 092630b1-e5db-45a5-952c-b82036b80481
+exit: da18e6da-514e-4b8a-bdf5-4a645aa26278
+plan:
+- index: 0
+  agent_ids:
+  - 092630b1-e5db-45a5-952c-b82036b80481
+  text: '[Logistics Data Analyst]: Data Specification'
+  kind: work
+  covers:
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate total revenue per lane
+
+    - Map data to a 4-column table (Lane, Loads, Avg, Total)
+
+    - Write the exact Excel formulas for the totals row'
+  output: 'memo: spreadsheet_specification'
+  done_when: Specification includes all raw data and the specific formulas for totals
+    and weighted average.
+- index: 1
+  agent_ids:
+  - 5277e430-47e6-42a8-bf7c-e56e03e20e78
+  text: '[Excel Automation Engineer]: File Generation'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Create the workbook based on the specification
+
+    - Populate the data rows
+
+    - Insert the formulas into the totals row'
+  output: 'file: shipment_data.xlsx'
+  done_when: The .xlsx file is generated and contains the specified formulas.
+- index: 2
+  agent_ids:
+  - 092630b1-e5db-45a5-952c-b82036b80481
+  text: '[Logistics Data Analyst]: Formula Verification'
+  kind: verify
+  covers:
+  - R2
+  - R3
+  depends_on:
+  - 2
+  do: '
+
+    - Open the generated file
+
+    - Verify that the totals row contains formulas and not static values
+
+    - Verify that the average revenue per load formula is correct (Total Revenue /
+    Total Loads)'
+  output: 'list: verification_results'
+  done_when: All formulas are confirmed to be correct and dynamic.
+- index: 3
+  agent_ids:
+  - da18e6da-514e-4b8a-bdf5-4a645aa26278
+  text: '[Delivery Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 3
+  do: '
+
+    - Confirm verification passed
+
+    - Package the file for the user'
+  output: 'memo: final_delivery'
+  done_when: The Excel file is delivered to the user.
+requirements:
+  R1: Turn shipment data into an Excel file.
+  R2: Include a totals row.
+  R3: Include a formula for average revenue per load.
+max_inner_turns: 3
+meta:
+  task_id: r1-xlsx
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: excel_generator
+    for_role: Excel Automation Engineer
