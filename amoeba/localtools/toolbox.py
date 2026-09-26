@@ -12,6 +12,7 @@ python-pptx, matplotlib and pypdf), a private HOME, and no keys or proxy setting
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -29,7 +30,7 @@ from amoeba.localtools.gate import in_workspace, inside, require_sandbox, screen
 from amoeba.localtools.server import StdioServer
 from amoeba.localtools.skills import card_text, copy_skill, list_skills
 from amoeba.pool.match import rank
-from amoeba.pool.mcp import data_block
+from amoeba.pool.mcp import SourceBook, data_block
 
 CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "localtools.yaml"
 
@@ -75,6 +76,14 @@ class LocalSetup:
 
 
 # box: localtools
+def unfence(text: str) -> str:
+    """D61 (P17): the content of a surrounding markdown code fence (```bash ... ```), else the text stripped."""
+    text = (text or "").strip()
+    m = re.fullmatch(r"```(?:[\w+.-]*[ \t]*\n)?(.*?)\n?```", text, re.S)   # a language tag only before a newline
+    return m.group(1).strip() if m else text
+
+
+# box: localtools
 def alias_words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", (text or "").lower()))
 
@@ -104,6 +113,7 @@ class LocalToolbox:
         self.skills: list[dict] = []                 # listed local skills
         self.skills_attached: list[dict] = []
         self.error: str | None = None
+        self.book = None                             # D61 (G7): the run's [S#] list, set by stock_toolbox
 
     # ---- the server -------------------------------------------------------------------------------------------
     def start(self) -> None:
@@ -191,21 +201,21 @@ class LocalToolbox:
             reg.register(name, f"local tool {name} (claude mcp serve, sandboxed, D59)",
                          lambda text, _n=name.removeprefix("local:"): self.call(_n, text))
 
-    def attach_tool(self, a: AgentSpec, name: str, reg) -> None:
+    def attach_tool(self, a: AgentSpec, name: str, reg, request: str = "") -> None:
         self.register(reg, name)
         if name not in a.tools:
             a.tools.append(name)
         if not any(p.get("name") == name for p in a.pool):
-            a.pool.append({"kind": "tool", "id": name, "name": name, "source": "local",
+            a.pool.append({"kind": "tool", "id": name, "name": name, "source": "local", "request": request,
                            "text": TOOL_TEXT[name.removeprefix("local:")][1]})
 
-    def attach_skill(self, a: AgentSpec, entry: dict, reg) -> bool:
+    def attach_skill(self, a: AgentSpec, entry: dict, reg, request: str = "") -> bool:
         body = card_text(entry, int(self.lim["max_skill_chars"]))
         if body is None:
             return False
         dest = copy_skill(entry, self.workspace)
         self._seen = self._snapshot()                 # the copied skill is input, not a file the team made
-        a.pool.append({"kind": "skill", "id": entry["id"], "name": entry["name"], "source": "local",
+        a.pool.append({"kind": "skill", "id": entry["id"], "name": entry["name"], "source": "local", "request": request,
                        "text": f"Skill: {entry['name']} (local, from {entry['root']})\n"
                                f"{data_block('skill ' + entry['name'], body)}\n"
                                f"Full skill files are in skills/{entry['name']}/; read them with local:Read if needed."})
@@ -225,6 +235,8 @@ class LocalToolbox:
         self.step, self.step_calls = step, 0
         if trace is not None:
             self.trace = trace
+        if isinstance(self.book, SourceBook):        # WebTools is stepped by its own runner call
+            self.book.begin_step(step, trace)
 
     @staticmethod
     def what(tool: str, args) -> str:
@@ -244,7 +256,7 @@ class LocalToolbox:
                ". Nothing was run; stay inside the workspace, with no network."
 
     def arguments(self, tool: str, text: str) -> dict:
-        text = (text or "").strip()
+        text = unfence(text)                          # D61 (P17): a ```bash ... ``` block is its content
         if text.startswith("{"):
             try:
                 obj = json.loads(text)
@@ -308,7 +320,14 @@ class LocalToolbox:
                                         "amoeba.timeout": timed_out, "amoeba.files": new,
                                         "amoeba.ms": int((time.perf_counter() - t0) * 1000)})
         more = f"\n[… first {cap} of {len(out)} characters]" if len(out) > cap else ""
-        return f"[local:{tool}{' error' if is_error else ''}]\n{cut}{more}"
+        src = ""
+        if self.book is not None and not is_error:    # D61 (G7): a local result is a source the helper can cite
+            key = hashlib.sha256(f"{self.calls}:{tool}:{what}".encode()).hexdigest()[:10]
+            s = self.book._source(f"local://{tool}/{key}", f"local:{tool} · {what[:80]}", "local", what[:300])
+            src = f" [{s['id']}] (cite a fact from this result by its [{s['id']}])"
+            self.trace.event("local_source", {"amoeba.box": "localtools", "amoeba.step": self.step,
+                                              "gen_ai.tool.name": f"local:{tool}", "amoeba.source_id": s["id"]})
+        return f"[local:{tool}{' error' if is_error else ''}]{src}\n{cut}{more}"
 
     # ---- files -----------------------------------------------------------------------------------------------
     def _snapshot(self) -> dict[str, tuple[int, int]]:
