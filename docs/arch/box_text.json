@@ -2071,7 +2071,7 @@
   ]
  },
  "localtools": {
-  "checked_at": "bfb4dbf",
+  "checked_at": "30e73f9",
   "facts": {
    "anchors": [
     {
@@ -2682,14 +2682,14 @@
    "title": "Local toolbox (sandboxed)"
   },
   "facts_hash": "ed1e69595bb9742b",
-  "seed_hash": "a45a82a547cac795",
+  "seed_hash": "77c0b079d147092c",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
   "source": "hand",
   "what": [
    "Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused and logged once. They become local:<Name> tools of the run.",
    "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); a Bash command runs from there, network commands are refused (network_command) and destructive or escaping ones too (unsafe_command).",
    "Limits (localtools.yaml): 60 s per call, 8,000 characters of output, 20 calls per step and 60 per run; a trace line for every call and every refusal.",
-   "Skills are listed from Claude Code's skill folders and the kept anthropics/skills clone; an attached skill's folder is copied to workspace/skills/<name>/ and its SKILL.md (frontmatter and first 5,000 characters) goes on the helper's card.",
+   "Skills are listed only from the kept anthropics/skills clone (D60: not the user's ~/.claude/skills); an attached skill's folder is copied to workspace/skills/<name>/ and its SKILL.md (frontmatter and first 5,000 characters) goes on the helper's card.",
    "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first.",
    "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the workspace is copied to artifacts/files/."
   ]
@@ -5649,7 +5649,7 @@
   ]
  },
  "toolbox": {
-  "checked_at": "bfb4dbf",
+  "checked_at": "30e73f9",
   "facts": {
    "anchors": [
     {
@@ -5707,7 +5707,7 @@
      ],
      "doc": "The one AI call: the request and its candidates in, one listed id (or None) out. Parsed strictly.",
      "key": "amoeba/pool/stock.py::pick",
-     "signature": "pick(llm: TracedLLM, q, helper: str, steps: str, candidates: list[dict], seed: int=0) -> str | None"
+     "signature": "pick(llm: TracedLLM, q, helper: str, steps: str, candidates: list[dict], seed: int=0, max_tokens: int | None=None) -> str | None"
     },
     {
      "callees": [
@@ -5990,6 +5990,11 @@
      "add self.step"
     ],
     [
+     "correct",
+     "if v[0] is None",
+     "add (s, e)"
+    ],
+    [
      "decide",
      "if any((side_effect(t['name'], t.get('description', '')) for t in listing))",
      "set reason = 'side_effect'"
@@ -6027,7 +6032,7 @@
     [
      "decide",
      "if local is not None",
-     "set near = local.candidates(q, int(lim['max_candidates']))"
+     "set near = local.candidates(q, top)"
     ],
     [
      "decide",
@@ -6056,8 +6061,8 @@
     ],
     [
      "decide",
-     "if not ranked",
-     "set out['reason'] = 'no_candidates'"
+     "if not shown",
+     "set out['reason'] = 'all_refused' if ranked else 'no_candidates'"
     ],
     [
      "decide",
@@ -6101,6 +6106,11 @@
     ],
     [
      "fallback",
+     "'all_refused' if ranked else 'no_candidates'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'description_changed' if str(e) == 'description_changed' else 'call_failed'",
      "choose value"
     ],
@@ -6131,7 +6141,7 @@
     ],
     [
      "fallback",
-     "(local.vet(entry), {}, None) if near else vet(entry, setup) if entry else ('pick_none', {}, None)",
+     "(local.vet(e), {}, None) if e.get('source') == 'local' else vet(e, setup)",
      "choose value"
     ],
     [
@@ -6236,7 +6246,7 @@
     ],
     [
      "fallback",
-     "vet(entry, setup) if entry else ('pick_none', {}, None)",
+     "verdicts[chosen] if entry else ('pick_none', {}, None)",
      "choose value"
     ],
     [
@@ -6406,6 +6416,11 @@
     ],
     [
      "stop",
+     "if len(shown) == top",
+     "stop (break)"
+    ],
+    [
+     "stop",
      "if m",
      "return m.group(0)"
     ],
@@ -6467,6 +6482,7 @@
    ],
    "kind": "code",
    "numbers": [
+    "AgentSpec.max_tokens",
     "Episode.n_llm_calls",
     "Episode.seed",
     "PoolLimits.max_calls_per_step",
@@ -6480,14 +6496,15 @@
    "prompts": {},
    "title": "Stock the toolbox"
   },
-  "facts_hash": "da0cc8672680eb54",
-  "seed_hash": "3ac665089621d5d7",
+  "facts_hash": "806e0bf4af1608c1",
+  "seed_hash": "6a26e347985b7739",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
   "source": "hand",
   "what": [
    "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
-   "Pick: one short AI call shows the request and those candidates and must answer exactly one listed id or NONE; any other reply counts as NONE.",
-   "Vet: a tool must be read-only (nothing in its name or description that sends, posts, pays or deletes) and not a pay-per-call host; it needs an HTTPS remote, a source repository, a pinned version, no key or its key in the environment, and an unchanged description (also re-checked against the server's tools/list at every connection); a skill must be instruction-only and at most 5,000 characters. At most {PoolLimits.max_calls_per_step} items per helper and 8 per run (pool.yaml).",
+   "Vet first (D60): the candidates are checked before the pick and the AI is shown only the best {rank.top} that pass (up to 50 matches are checked); if none pass, the request is unfilled (all_refused) with no AI call.",
+   "Pick: one short AI call shows the request and those candidates and must answer exactly one listed id or NONE; any other reply counts as NONE. It gets {PoolLimits.max_result_chars} tokens of room, and once more with twice that when the reply is cut off.",
+   "Vet: a tool must be read-only (nothing in its name or description that sends, posts, pays or deletes, or creates, updates, uploads, edits or writes anything in an outside service, D60) and not a pay-per-call host; it needs an HTTPS remote, a source repository, a pinned version, no key or its key in the environment, and an unchanged description (also re-checked against the server's tools/list at every connection); a skill must be instruction-only and at most 5,000 characters. At most {PoolLimits.max_calls_per_step} items per helper and 8 per run (pool.yaml).",
    "Attach: a tool becomes pool:<name> for the asking helper only; a skill's text goes on that helper's card. All pool text is shown inside marked data blocks, and the 'unavailable' line goes away.",
    "Every request's outcome and reason code is written to capability_requests.json and result.json; without a pool cache the run logs pool_unavailable and goes on as before.",
    "With --local-tools on (D59) the local toolbox's items are candidates too, listed before the pool's, and a skill with scripts is no longer refused: it is copied into the run's workspace."
