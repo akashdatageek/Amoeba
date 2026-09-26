@@ -35,9 +35,15 @@ PICKER = "pool_picker"
 THINKING = re.compile(r"<(thought|think|thinking)>.*?</\1>", re.S | re.I)
 NONE = "NONE"
 VERSION = re.compile(r"^v?\d+(\.\d+)*([-+][0-9A-Za-z.-]+)?$")
-# D58: read-only tools only for now — a tool that says it acts outside (sends, posts, pays, deletes …) is refused
+# D58: read-only tools only for now — a tool that says it acts outside (sends, posts, pays, deletes …) is refused.
+# D60: also a tool that creates or changes anything in an outside service or account (a deck, doc or sheet is made
+# locally with local tools instead)
 SIDE_EFFECT = re.compile(r"\b(send|sends|sending|sent|e-?mails?|e-?mailing|mails?|mailing|mailer|post|posts|posting|"
-                         r"publish\w*|pay|pays|paying|payments?|purchas\w*|delet\w*|write to)\b", re.I)
+                         r"publish\w*|pay|pays|paying|payments?|purchas\w*|delet\w*|write to|"
+                         r"create|creates|creating|update|updating|upload|uploads|uploading|modify|modifies|"
+                         r"modifying|edit|edits|editing|insert|inserts|inserting|remove|removes|removing|rename|"
+                         r"renames|renaming|submit|submits|submitting|write|writes|writing|overwrite\w*|"
+                         r"append|appends|appending)\b", re.I)
 
 
 # box: toolbox
@@ -78,14 +84,18 @@ class PoolSetup:
 
 
 # box: toolbox
-def pick(llm: TracedLLM, q, helper: str, steps: str, candidates: list[dict], seed: int = 0) -> str | None:
-    """The one AI call: the request and its candidates in, one listed id (or None) out. Parsed strictly."""
+def pick(llm: TracedLLM, q, helper: str, steps: str, candidates: list[dict], seed: int = 0,
+         max_tokens: int | None = None) -> str | None:
+    """The one AI call: the request and its candidates in, one listed id (or None) out. Parsed strictly.
+    D60: max_tokens gives the reply room (pool.yaml pick_max_tokens); a reply cut off at it is asked once more with
+    twice the room (TracedLLM, D27)."""
     lines = "\n".join(f"- id: {e['id']} | name: {e.get('title') or e['name']} | kind: {e['kind']} | description: "
                       f"{' '.join((e.get('description') or '').split())[:240]}" for e in candidates)
     user = render(PROMPT.pool_pick, kind=q.kind, name=q.canonical or q.name, what=q.what_it_does or "(not given)",
                   input=q.input or "(not given)", output=q.output or "(not given)", helper=helper,
                   steps=steps or "(not given)", candidates=data_block("pool candidates", lines))
-    reply = llm.chat_messages([{"role": "user", "content": user}], seed, agent_name=PICKER, role="pool").content
+    reply = llm.chat_messages([{"role": "user", "content": user}], seed, agent_name=PICKER, role="pool",
+                              max_tokens=max_tokens).content
     # D58: Gemma writes its reasoning into the reply as <thought>…</thought> before the answer; the answer is what
     # follows a closed thinking block (an unclosed block leaves nothing that can match an id)
     answer = THINKING.sub("", reply or "").strip().strip("`'\"").strip()
@@ -196,29 +206,41 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
             elif not helpers:
                 out["reason"] = "no_helper"
             else:
-                ranked = rank(q, entries, int(lim["max_candidates"]))
+                top = int(lim["max_candidates"])
+                ranked = rank(q, entries, int(lim.get("vet_depth", 10 * top)))
                 if local is not None:         # D59: local candidates rank above internet ones
-                    near = local.candidates(q, int(lim["max_candidates"]))
+                    near = local.candidates(q, top)
                     ids = {e["id"] for _, e in near}
-                    ranked = (near + [x for x in ranked if x[1]["id"] not in ids])[:int(lim["max_candidates"])]
-                out["candidates"] = [e["id"] for _, e in ranked]
+                    ranked = near + [x for x in ranked if x[1]["id"] not in ids]
+                # D60: vet before the pick — the picker is shown only candidates that pass, the best `top` of them
+                shown, refused, verdicts = [], [], {}
+                for s, e in ranked:
+                    v = (local.vet(e), {}, None) if e.get("source") == "local" else vet(e, setup)
+                    if v[0] is None:
+                        shown.append((s, e))
+                        verdicts[e["id"]] = v
+                        if len(shown) == top:
+                            break
+                    else:
+                        refused.append({"id": e["id"], "reason": v[0]})
+                out["candidates"] = [e["id"] for _, e in shown]
                 trace.event("pool_match", {"amoeba.capability": q.canonical or q.name, "amoeba.kind": q.kind,
                                            "gen_ai.agent.name": q.for_role or None,
                                            "amoeba.pool.candidates": [{"id": e["id"], "kind": e["kind"], "score": s}
                                                                       | ({"source": "local"} if e.get("source") == "local"
-                                                                         else {}) for s, e in ranked]})
-                if not ranked:
-                    out["reason"] = "no_candidates"
+                                                                         else {}) for s, e in shown],
+                                           "amoeba.pool.refused": refused})
+                if not shown:
+                    out["reason"] = "all_refused" if ranked else "no_candidates"   # no AI call either way
                 else:
                     before = trace.n_llm_calls
                     chosen = pick(traced, q, ", ".join(a.name for a in helpers), steps_of(cfg, helpers),
-                                  [e for _, e in ranked], seed)
+                                  [e for _, e in shown], seed, max_tokens=int(lim.get("pick_max_tokens", 0)) or None)
                     summary["llm_calls"] += trace.n_llm_calls - before
-                    entry = next((e for _, e in ranked if e["id"] == chosen), None)
+                    entry = next((e for _, e in shown if e["id"] == chosen), None)
                     out["pool_id"] = chosen or ""
                     near = entry is not None and entry.get("source") == "local"            # D59
-                    reason, headers, body = (local.vet(entry), {}, None) if near else \
-                        vet(entry, setup) if entry else ("pick_none", {}, None)
+                    reason, headers, body = verdicts[chosen] if entry else ("pick_none", {}, None)
                     takers = [a for a in helpers if len(per_helper.get(a.agent_id, set()) - {chosen})
                               < int(lim["max_per_helper"])]
                     if reason is None and (not takers or (chosen not in attached

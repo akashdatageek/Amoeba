@@ -143,6 +143,8 @@ def test_rewrite_uses_placeholders_and_rejects_invented_numbers(tmp_path, monkey
     bad = '{"verdict": "rewrite", "changes": [{"line": 0, "text": "Rejects inputs over 12."}]}'
     log, b = build(tmp_path, monkeypatch, box(sig="f(x, y, z)"), llm=Stub(bad), consts={"CAP": 8})
     assert log["rejected"] == 1 and b["sentence"] == "Rejects inputs over 8." and b["text_stale"]
+    log, b = build(tmp_path, monkeypatch, box(sig="f(x, y, z)"), llm=Stub(bad), consts={"CAP": 8})
+    assert log["llm_calls"] == 0 and log["stale"] == 1 and b["text_stale"]   # same facts: not asked again
 
 
 def test_without_a_model_the_box_is_marked_stale(tmp_path, monkeypatch):

@@ -1,0 +1,1 @@
+BLOCKED: Framework Data Table and Star Count Chart — Step 1 and Step 2 failed to provide the necessary data and visualization, making it impossible to analyze the frameworks or write the professional report. As a result, the Analysis Report (.docx) could not be generated.

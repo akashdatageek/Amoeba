@@ -1,0 +1,1038 @@
+{
+ "run_id": "7fb70fb0-1f01-489d-bbb5-ac9c6d9e5fa5",
+ "task_id": "r1-fx-email",
+ "error": null,
+ "box1": {
+  "intake": {
+   "ok": true,
+   "numbers": [
+    "2500"
+   ],
+   "missing_numbers": [],
+   "phrases": [
+    "test @example"
+   ],
+   "missing_phrases": []
+  },
+  "draft_quality": {
+   "requirements_covered": true,
+   "dependencies_valid": true,
+   "roles_fully_defined": true,
+   "summariser": true,
+   "tools_accounted": true,
+   "verification_step": true,
+   "independent_verification": true,
+   "task_coverage": true
+  },
+  "draft_quality_failed": []
+ },
+ "box2": {
+  "rounds_used": 2,
+  "consensus": true,
+  "rounds": [
+   {
+    "index": 1,
+    "roles": [
+     "Currency Specialist",
+     "Quality Auditor",
+     "Delivery Coordinator"
+    ],
+    "steps": 3,
+    "requests": [
+     [
+      "currency_api",
+      "tool",
+      "Currency Specialist"
+     ],
+     [
+      "email_service",
+      "tool",
+      "Delivery Coordinator"
+     ]
+    ],
+    "agent_verdict": "REVISE",
+    "plan_verdict": "REVISE",
+    "agent_observer": "1.  **Summariser Constraint**: The Delivery Coordinator cannot be the summariser because they require the `email_service` tool to fulfill R3. The summariser must have no tools. The planner should either create a separate, tool-less Summariser role or move the `is_summariser` flag to a new role that only handles the final project summary.",
+    "plan_observer": "1.  **Update Delivery Coordinator Prompt:** Modify the prompt to explicitly include the base amount in the email content (e.g., \"...send the conversion result, including the base amount ($2,500), the rate, and the final INR amount\").\n2.  **Add `calc` to Capability Requests:** Add a definition for the `calc` tool in the Capability requests section to match the tools assigned to the roles.",
+    "consensus": false,
+    "gate_failed": []
+   },
+   {
+    "index": 2,
+    "roles": [
+     "Currency Specialist",
+     "Quality Auditor",
+     "Communications Lead",
+     "Project Summariser"
+    ],
+    "steps": 4,
+    "requests": [
+     [
+      "currency_api",
+      "tool",
+      "Currency Specialist"
+     ],
+     [
+      "email_service",
+      "tool",
+      "Communications Lead"
+     ],
+     [
+      "calc",
+      "tool",
+      "Currency Specialist"
+     ]
+    ],
+    "agent_verdict": "APPROVE",
+    "plan_verdict": "APPROVE",
+    "agent_observer": "None",
+    "plan_observer": "None",
+    "consensus": true,
+    "gate_failed": []
+   }
+  ],
+  "requirements": {
+   "R1": "gather current USD to INR exchange rate",
+   "R2": "convert $2,500 USD to INR",
+   "R3": "email the result to test@example.com"
+  },
+  "givens": [
+   "given: amount = 2,500 USD",
+   "given: target currency = INR",
+   "given: recipient = test@example.com",
+   "assumption: \"today's rate\" refers to the mid-market exchange rate available via a reliable financial data provider.",
+   "assumption: the email must be professional and include the base amount, the exchange rate used, and the final converted amount."
+  ],
+  "open_questions": [],
+  "roles": [
+   {
+    "name": "Currency Specialist",
+    "goal": "Provide the current USD/INR rate and the converted value of $2,500.",
+    "skills": [
+     "financial data sourcing",
+     "currency conversion"
+    ],
+    "inputs": [
+     "USD amount (2,500)"
+    ],
+    "outputs": [
+     {
+      "artifact": "conversion_data",
+      "format": "memo: rate, base_amount, result"
+     }
+    ],
+    "success_criteria": [
+     "Rate is current (today)",
+     "Calculation is mathematically accurate"
+    ],
+    "tools": [
+     "calc"
+    ],
+    "missing_tools": [
+     "currency_api"
+    ],
+    "is_summariser": false
+   },
+   {
+    "name": "Quality Auditor",
+    "goal": "Verify the accuracy of the exchange rate and the conversion calculation.",
+    "skills": [
+     "data verification",
+     "arithmetic auditing"
+    ],
+    "inputs": [
+     "conversion_data from Currency Specialist"
+    ],
+    "outputs": [
+     {
+      "artifact": "verification_report",
+      "format": "list: status (Pass/Fail), verified_rate, verified_result"
+     }
+    ],
+    "success_criteria": [
+     "Calculation is verified to be correct",
+     "Rate is confirmed as current"
+    ],
+    "tools": [
+     "calc"
+    ],
+    "missing_tools": [
+     "currency_api"
+    ],
+    "is_summariser": false
+   },
+   {
+    "name": "Communications Lead",
+    "goal": "Email the verified conversion result to the client.",
+    "skills": [
+     "professional communication"
+    ],
+    "inputs": [
+     "verification_report from Quality Auditor",
+     "conversion_data from Currency Specialist"
+    ],
+    "outputs": [
+     {
+      "artifact": "delivery_confirmation",
+      "format": "memo: email_status, recipient, content_sent"
+     }
+    ],
+    "success_criteria": [
+     "Email successfully sent to test@example.com"
+    ],
+    "tools": [],
+    "missing_tools": [
+     "email_service"
+    ],
+    "is_summariser": false
+   },
+   {
+    "name": "Project Summariser",
+    "goal": "Provide a final summary of the completed task.",
+    "skills": [
+     "technical writing",
+     "synthesis"
+    ],
+    "inputs": [
+     "delivery_confirmation from Communications Lead",
+     "verification_report from Quality Auditor"
+    ],
+    "outputs": [
+     {
+      "artifact": "final_summary",
+      "format": "memo: project_status, details"
+     }
+    ],
+    "success_criteria": [
+     "Summary accurately reflects the work done without adding new analysis"
+    ],
+    "tools": [],
+    "missing_tools": [],
+    "is_summariser": true
+   }
+  ],
+  "plan": [
+   {
+    "index": 0,
+    "agent_names": [
+     "Currency Specialist"
+    ],
+    "text": "[Currency Specialist]: Fetch and Convert",
+    "kind": "work",
+    "depends_on": [],
+    "covers": [
+     "R1",
+     "R2"
+    ]
+   },
+   {
+    "index": 1,
+    "agent_names": [
+     "Quality Auditor"
+    ],
+    "text": "[Quality Auditor]: Verify Accuracy",
+    "kind": "verify",
+    "depends_on": [
+     1
+    ],
+    "covers": [
+     "R1",
+     "R2"
+    ]
+   },
+   {
+    "index": 2,
+    "agent_names": [
+     "Communications Lead"
+    ],
+    "text": "[Communications Lead]: Email Result",
+    "kind": "work",
+    "depends_on": [
+     2
+    ],
+    "covers": [
+     "R3"
+    ]
+   },
+   {
+    "index": 3,
+    "agent_names": [
+     "Project Summariser"
+    ],
+    "text": "[Project Summariser]: Final Assembly",
+    "kind": "work",
+    "depends_on": [
+     3
+    ],
+    "covers": []
+   }
+  ],
+  "requests_proposed": 2,
+  "requests_dropped_by_observers": 0
+ },
+ "requests": [
+  {
+   "name": "currency_api",
+   "kind": "tool",
+   "for_role": "Currency Specialist",
+   "source": "planner",
+   "canonical": "currency_api",
+   "mapped": false,
+   "what_it_does": "Fetches the real-time exchange rate between two currencies.",
+   "input": "pair (e.g., 'USD/INR')",
+   "output": "current exchange rate (float)",
+   "status": "unfilled",
+   "reason": "side_effect"
+  },
+  {
+   "name": "email_service",
+   "kind": "tool",
+   "for_role": "Communications Lead",
+   "source": "planner",
+   "canonical": "email_service",
+   "mapped": false,
+   "what_it_does": "Sends an email to a specified recipient.",
+   "input": "recipient, subject, body",
+   "output": "delivery status (Sent/Failed)",
+   "status": "unfilled",
+   "reason": "pick_none"
+  },
+  {
+   "name": "calc",
+   "kind": "tool",
+   "for_role": "Currency Specialist",
+   "source": "planner",
+   "canonical": "calc",
+   "mapped": false,
+   "what_it_does": "Evaluates an arithmetic expression.",
+   "input": "expression",
+   "output": "result",
+   "status": "unfilled",
+   "reason": "registered_tool"
+  },
+  {
+   "name": "currency_api",
+   "kind": "tool",
+   "for_role": "Quality Auditor",
+   "source": "unregistered_tool",
+   "canonical": "currency_api",
+   "mapped": false,
+   "what_it_does": "named in the role's tools; no such tool is registered",
+   "input": "",
+   "output": "",
+   "status": "unfilled",
+   "reason": "side_effect"
+  }
+ ],
+ "box3": {
+  "waves": [
+   [
+    1
+   ],
+   [
+    2
+   ],
+   [
+    3
+   ],
+   [
+    4
+   ]
+  ],
+  "steps": [
+   {
+    "step": 1,
+    "wave": 1,
+    "roles": [
+     "Currency Specialist"
+    ],
+    "status": "partial",
+    "status_reason": "lacked: currency_api, currency_api — Could not fetch the current USD to INR exchange rate, therefore could not calculate the converted value of $2,500.; checks failed: format_headings",
+    "turns": 1,
+    "blocked": [
+     "currency_api",
+     "currency_api — Could not fetch the current USD to INR exchange rate, therefore could not calculate the converted value of $2,500."
+    ],
+    "retried": false,
+    "refine_reason": "",
+    "verification": false,
+    "verdict": null,
+    "rework_of": true,
+    "sources": [],
+    "provenance": {
+     "cited": 0,
+     "unverified": 0,
+     "given": 1,
+     "derived": 0,
+     "inherited": 0,
+     "untagged": 0,
+     "numbers": 1,
+     "hallucinated_citations": []
+    },
+    "failed_checks": [
+     "format_headings"
+    ],
+    "collab": null,
+    "chars": 139
+   },
+   {
+    "step": 2,
+    "wave": 2,
+    "roles": [
+     "Quality Auditor"
+    ],
+    "status": "partial",
+    "status_reason": "lacked: currency_api",
+    "turns": 1,
+    "blocked": [
+     "currency_api"
+    ],
+    "retried": false,
+    "refine_reason": "",
+    "verification": true,
+    "verdict": "FAIL",
+    "rework_of": false,
+    "sources": [],
+    "provenance": {
+     "cited": 0,
+     "unverified": 0,
+     "given": 0,
+     "derived": 0,
+     "inherited": 0,
+     "untagged": 0,
+     "numbers": 0,
+     "hallucinated_citations": []
+    },
+    "failed_checks": [],
+    "collab": null,
+    "chars": 301
+   },
+   {
+    "step": 3,
+    "wave": 3,
+    "roles": [
+     "Communications Lead"
+    ],
+    "status": "done",
+    "status_reason": "",
+    "turns": 2,
+    "blocked": [],
+    "retried": true,
+    "refine_reason": "checks",
+    "verification": false,
+    "verdict": null,
+    "rework_of": false,
+    "sources": [],
+    "provenance": {
+     "cited": 0,
+     "unverified": 0,
+     "given": 0,
+     "derived": 0,
+     "inherited": 0,
+     "untagged": 0,
+     "numbers": 0,
+     "hallucinated_citations": []
+    },
+    "failed_checks": [],
+    "collab": null,
+    "chars": 470
+   },
+   {
+    "step": 4,
+    "wave": 4,
+    "roles": [
+     "Project Summariser"
+    ],
+    "status": "done",
+    "status_reason": "",
+    "turns": 2,
+    "blocked": [],
+    "retried": true,
+    "refine_reason": "checks",
+    "verification": false,
+    "verdict": null,
+    "rework_of": false,
+    "sources": [],
+    "provenance": {
+     "cited": 0,
+     "unverified": 0,
+     "given": 1,
+     "derived": 0,
+     "inherited": 0,
+     "untagged": 0,
+     "numbers": 1,
+     "hallucinated_citations": []
+    },
+    "failed_checks": [],
+    "collab": null,
+    "chars": 620
+   }
+  ],
+  "blocked_events": [
+   [
+    "Currency Specialist",
+    "currency_api — Could not fetch the current USD to INR exchange rate, therefore could not calculate the converted value of $2,500.",
+    0
+   ],
+   [
+    "Currency Specialist",
+    "currency_api — Could not fetch the current USD to INR exchange rate, therefore could not calculate the converted value of $2,500.",
+    0
+   ]
+  ],
+  "unknown_tool": [],
+  "tool_calls": {},
+  "tool_errors": [],
+  "truncated": 0,
+  "rate_limited": 0,
+  "limitations_added": [
+   [
+    "currency_api — Could not fetch the current USD to INR exchange rate, therefore could not calculate the converted value of $2,500."
+   ]
+  ],
+  "summary_check": {
+   "new_number_in_summary": 0,
+   "new_numbers": [],
+   "limitations_section": true,
+   "answer_figures": 1,
+   "answer_cited": 0,
+   "answer_unverified": [],
+   "answer_untagged": [],
+   "blocked_capabilities": [
+    "currency_api",
+    "currency_api — Could not fetch the current USD to INR exchange rate, therefore could not calculate the converted value of $2,500."
+   ],
+   "limitations_added_by_code": [
+    "currency_api — Could not fetch the current USD to INR exchange rate, therefore could not calculate the converted value of $2,500."
+   ]
+  },
+  "blocked_capabilities": {
+   "currency_api": 2,
+   "currency_api — Could not fetch the current USD to INR exchange rate, therefore could not calculate the converted value of $2,500.": 1
+  },
+  "provenance": {
+   "cited": 0,
+   "unverified": 0,
+   "given": 3,
+   "derived": 0,
+   "inherited": 0,
+   "untagged": 0,
+   "numbers": 3,
+   "hallucinated_citations": 0
+  },
+  "answer_limitations": "- Step 1: partial (lacked: currency_api) - could not fetch exchange rate or calculate conversion.\n- Step 2: partial (lacked: currency_api) - unable to provide fallback or verification.\n\n- BLOCKED: currency_api — Could not fetch the current USD to INR exchange rate, therefore could not calculate the converted value of $2,500. (the team had no such capability; added by plain code)",
+  "answer_chars": 619
+ },
+ "honesty_hits": [],
+ "cost": {
+  "total_tokens": 11577,
+  "usage": {
+   "calls": 11,
+   "input": 9767,
+   "output": 1810,
+   "reasoning": 10836,
+   "tokens": 22413,
+   "cached_calls": 0,
+   "model": "gemma-4-31b-it",
+   "cost_usd": null
+  },
+  "llm_calls": 11,
+  "latency_ms": 361477,
+  "first_line": "2026-09-26T04:36:39.377594+00:00",
+  "last_line": "2026-09-26T04:42:40.852775+00:00",
+  "models": {
+   "requested": {
+    "planner": "gemma-4-31b-it",
+    "observers": "gemma-4-31b-it",
+    "workers": "gemma-4-31b-it",
+    "reviewers": "gemma-4-31b-it",
+    "summariser": "gemma-4-31b-it",
+    "pool": "gemma-4-31b-it"
+   },
+   "returned": [
+    "gemma-4-31b-it"
+   ]
+  },
+  "reasoning_tokens": 10836,
+  "cache_hits": 0
+ },
+ "trace_counts": {
+  "draft_reused": 1,
+  "local_tool_refused": 19,
+  "local_tool_missing": 2,
+  "local_tools": 1,
+  "pool_match": 3,
+  "chat": 11,
+  "pool_vet": 3,
+  "pool_summary": 1,
+  "stock_toolbox": 1,
+  "web_tools": 1,
+  "plan_graph": 1,
+  "step_input": 6,
+  "blocked": 2,
+  "invoke_agent": 8,
+  "step_done": 6,
+  "provenance": 6,
+  "rework": 1,
+  "reverify": 1,
+  "check_retry": 2,
+  "refine": 2,
+  "limitations_added": 1,
+  "summary_check": 1,
+  "figure_ledger": 1,
+  "invoke_workflow": 1,
+  "local_summary": 1
+ },
+ "pool": {
+  "pool_summary": {
+   "status": "ran",
+   "filled": 0,
+   "unfilled": 4,
+   "llm_calls": 3,
+   "reasons": {
+    "side_effect": 2,
+    "pick_none": 1,
+    "registered_tool": 1
+   },
+   "attached": [],
+   "local": {
+    "server": {
+     "name": "claude/tengu",
+     "version": "2.1.283"
+    },
+    "error": null,
+    "exposed": [
+     "local:Bash",
+     "local:Read",
+     "local:Write",
+     "local:Edit"
+    ],
+    "skills_listed": 19
+   },
+   "pool": "ran"
+  },
+  "pool_events": {
+   "pool_unavailable": [],
+   "pool_match": [
+    {
+     "amoeba.profile": "gemma-api",
+     "amoeba.capability": "currency_api",
+     "amoeba.kind": "tool",
+     "gen_ai.agent.name": "Currency Specialist",
+     "amoeba.pool.candidates": [
+      {
+       "id": "local:skill:anthropics_skills/xlsx",
+       "kind": "skill",
+       "score": 3,
+       "source": "local"
+      },
+      {
+       "id": "local:skill:anthropics_skills/claude-api",
+       "kind": "skill",
+       "score": 2,
+       "source": "local"
+      },
+      {
+       "id": "local:skill:anthropics_skills/pptx",
+       "kind": "skill",
+       "score": 1,
+       "source": "local"
+      },
+      {
+       "id": "com.datakoot/fx-currency-exchange-rates",
+       "kind": "tool",
+       "score": 6
+      },
+      {
+       "id": "io.github.Blue-Gamma/bluegamma",
+       "kind": "tool",
+       "score": 6
+      }
+     ],
+     "amoeba.pool.refused": [
+      {
+       "id": "io.github.Exchange-RateAPI/mcp-server",
+       "reason": "not_remote"
+      },
+      {
+       "id": "io.github.cahthuranag/realtime-exchange-rate-mcp",
+       "reason": "not_remote"
+      },
+      {
+       "id": "bo.paralelo/mcp",
+       "reason": "no_source"
+      }
+     ],
+     "amoeba.box": "toolbox"
+    },
+    {
+     "amoeba.profile": "gemma-api",
+     "amoeba.capability": "email_service",
+     "amoeba.kind": "tool",
+     "gen_ai.agent.name": "Communications Lead",
+     "amoeba.pool.candidates": [
+      {
+       "id": "local:skill:anthropics_skills/discernment-nudge",
+       "kind": "skill",
+       "score": 1,
+       "source": "local"
+      },
+      {
+       "id": "local:skill:anthropics_skills/internal-comms",
+       "kind": "skill",
+       "score": 1,
+       "source": "local"
+      },
+      {
+       "id": "local:skill:anthropics_skills/mcp-builder",
+       "kind": "skill",
+       "score": 1,
+       "source": "local"
+      },
+      {
+       "id": "local:skill:anthropics_skills/pptx",
+       "kind": "skill",
+       "score": 1,
+       "source": "local"
+      },
+      {
+       "id": "io.github.sadri-dridi/compose-ok",
+       "kind": "tool",
+       "score": 4
+      }
+     ],
+     "amoeba.pool.refused": [
+      {
+       "id": "dev.wraps/email",
+       "reason": "not_remote"
+      },
+      {
+       "id": "io.github.Br0ski777/email-send",
+       "reason": "paid_endpoint"
+      },
+      {
+       "id": "io.github.hal9ai/send-email",
+       "reason": "side_effect"
+      },
+      {
+       "id": "io.github.pipeworx-io/send-that-email",
+       "reason": "side_effect"
+      }
+     ],
+     "amoeba.box": "toolbox"
+    },
+    {
+     "amoeba.profile": "gemma-api",
+     "amoeba.capability": "currency_api",
+     "amoeba.kind": "tool",
+     "gen_ai.agent.name": "Quality Auditor",
+     "amoeba.pool.candidates": [
+      {
+       "id": "local:skill:anthropics_skills/claude-api",
+       "kind": "skill",
+       "score": 2,
+       "source": "local"
+      },
+      {
+       "id": "local:skill:anthropics_skills/xlsx",
+       "kind": "skill",
+       "score": 1,
+       "source": "local"
+      },
+      {
+       "id": "com.datakoot/fx-currency-exchange-rates",
+       "kind": "tool",
+       "score": 3
+      },
+      {
+       "id": "ai.smithery/anirbanbasu-frankfurtermcp",
+       "kind": "tool",
+       "score": 2
+      },
+      {
+       "id": "com.apievangelist/api-evangelist",
+       "kind": "tool",
+       "score": 2
+      }
+     ],
+     "amoeba.pool.refused": [
+      {
+       "id": "io.github.Br0ski777/currency-converter",
+       "reason": "paid_endpoint"
+      },
+      {
+       "id": "io.github.mrfentmen/er-api-mcp",
+       "reason": "not_remote"
+      },
+      {
+       "id": "ai.dxpert/uns-tools",
+       "reason": "not_remote"
+      },
+      {
+       "id": "ai.getvda/llm-orchestration-agent-opentelemetry-api",
+       "reason": "no_source"
+      },
+      {
+       "id": "ai.gomarble/mcp-api",
+       "reason": "no_source"
+      },
+      {
+       "id": "ai.perplexity/mcp-server",
+       "reason": "not_remote"
+      },
+      {
+       "id": "ai.tunnelmind/data",
+       "reason": "no_source"
+      },
+      {
+       "id": "ai.workforcegpt/workforcegpt",
+       "reason": "no_source"
+      },
+      {
+       "id": "ai.xpoz/social-insights",
+       "reason": "side_effect"
+      },
+      {
+       "id": "co.canopyapi/mcp",
+       "reason": "auth_missing"
+      },
+      {
+       "id": "com.api-ninjas/mcp",
+       "reason": "no_source"
+      }
+     ],
+     "amoeba.box": "toolbox"
+    }
+   ],
+   "pool_vet": [
+    {
+     "amoeba.profile": "gemma-api",
+     "amoeba.pool.id": "com.datakoot/fx-currency-exchange-rates",
+     "amoeba.capability": "currency_api",
+     "amoeba.kind_requested": "tool",
+     "amoeba.kind_picked": "tool",
+     "amoeba.accepted": false,
+     "amoeba.reason": "side_effect",
+     "amoeba.box": "toolbox"
+    },
+    {
+     "amoeba.profile": "gemma-api",
+     "amoeba.capability": "email_service",
+     "amoeba.kind_requested": "tool",
+     "amoeba.accepted": false,
+     "amoeba.reason": "pick_none",
+     "amoeba.box": "toolbox"
+    },
+    {
+     "amoeba.profile": "gemma-api",
+     "amoeba.pool.id": "com.datakoot/fx-currency-exchange-rates",
+     "amoeba.capability": "currency_api",
+     "amoeba.kind_requested": "tool",
+     "amoeba.kind_picked": "tool",
+     "amoeba.accepted": false,
+     "amoeba.reason": "side_effect",
+     "amoeba.box": "toolbox"
+    }
+   ],
+   "pool_pinned": [],
+   "pool_connect_failed": [],
+   "pool_summary": [
+    {
+     "amoeba.profile": "gemma-api",
+     "amoeba.pool.status": "ran",
+     "amoeba.pool.filled": 0,
+     "amoeba.pool.unfilled": 4,
+     "amoeba.pool.llm_calls": 3,
+     "amoeba.pool.reasons": {
+      "side_effect": 2,
+      "pick_none": 1,
+      "registered_tool": 1
+     },
+     "amoeba.pool.pool": "ran",
+     "amoeba.pool.attached": [],
+     "amoeba.box": "toolbox"
+    }
+   ]
+  },
+  "pool_calls": [],
+  "unknown_tool_pool": [],
+  "skills_on_cards": []
+ },
+ "local": {
+  "files_created": [],
+  "local_tool_calls": 0,
+  "local_refusals": {},
+  "skills_attached": [],
+  "server": {
+   "server": {
+    "name": "claude/tengu",
+    "version": "2.1.283"
+   },
+   "error": null,
+   "exposed": [
+    "local:Bash",
+    "local:Read",
+    "local:Write",
+    "local:Edit"
+   ],
+   "skills_listed": 19
+  },
+  "calls": [],
+  "refused": [],
+  "tools_refused_once": [
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "Agent",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "NotebookEdit",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "WebFetch",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "ReportFindings",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "WebSearch",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "TaskStop",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "Skill",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "DesignSync",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "EnterWorktree",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "ExitWorktree",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "SendMessage",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "ListAgents",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "Workflow",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "CronCreate",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "CronDelete",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "CronList",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "ScheduleWakeup",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "RemoteTrigger",
+    "amoeba.reason": "not_allowed"
+   },
+   {
+    "amoeba.profile": "gemma-api",
+    "amoeba.box": "localtools",
+    "gen_ai.tool.name": "ToolSearch",
+    "amoeba.reason": "not_allowed"
+   }
+  ],
+  "unavailable": [],
+  "claims": [
+   {
+    "step": 1,
+    "status": "partial",
+    "claimed": [],
+    "missing": []
+   },
+   {
+    "step": 1,
+    "status": "partial",
+    "claimed": [],
+    "missing": []
+   },
+   {
+    "step": 2,
+    "status": "partial",
+    "claimed": [],
+    "missing": []
+   },
+   {
+    "step": 2,
+    "status": "partial",
+    "claimed": [],
+    "missing": []
+   },
+   {
+    "step": 3,
+    "status": "done",
+    "claimed": [],
+    "missing": []
+   },
+   {
+    "step": 4,
+    "status": "done",
+    "claimed": [],
+    "missing": []
+   }
+  ]
+ }
+}
