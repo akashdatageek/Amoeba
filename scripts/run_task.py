@@ -37,16 +37,23 @@ from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
 from amoeba.tools.web import TavilyProvider, web_registry
 from amoeba.pool.stock import PoolSetup, stock_toolbox
+from amoeba.localtools.gate import SandboxRequired, require_sandbox
+from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
+
+
+LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
 
 
 # box: ov_leave, capreq, runresult
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
             max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
-            saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None) -> RunResult:
+            saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
+            local: LocalSetup | None = None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
-    pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off)."""
+    pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
+    local: D59 — --local-tools on: Claude Code's tools and skills (claude mcp serve) in runs/<id>/workspace/."""
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -59,6 +66,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     team_id = ""
     requests: list = []
     pool_summary: dict = {"status": "off"} if pool is None else {}
+    box = LocalToolbox(local, run_dir, trace) if local is not None else None   # D59: refuses without AMOEBA_SANDBOX=1
+    local_out: dict = {}
     try:
         if saved_draft is not None:   # D45: reuse a saved Box 2 draft; no drafting call is made
             draft = saved_draft.draft
@@ -78,8 +87,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         requests = [q.model_copy(deep=True) for q in draft.capability_requests]
-        if pool is not None:          # D56: Box 3 starts by stocking the toolbox, before the runner is chosen
-            tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed)
+        if pool is not None or box is not None:   # D56: Box 3 starts by stocking the toolbox, before the runner
+            tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed, local=box)
         dump_yaml(cfg, run_dir / "team.yaml")
         ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options).run(cfg, task, seed)
         answer, error = ep.answer, ep.error
@@ -101,6 +110,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         saved = draft.model_dump(mode="json") if draft else \
             {"error": error, "rounds": [r.model_dump(mode="json") for r in (failed.rounds if failed else [])]}
         (run_dir / "plan.json").write_text(json.dumps(saved, indent=2, ensure_ascii=False), encoding="utf-8")
+        if box is not None:           # D59: the server is closed and the workspace copied, whatever happened
+            local_out = box.finish()
+            trace.event("local_summary", {"amoeba.box": "localtools", **{f"amoeba.local.{k}": v for k, v in local_out.items()}})
         trace.close()
     # D19/D21: every tool or skill the team asked for (always written); D56: with what the toolbox step did about it
     if draft and not requests:
@@ -129,8 +141,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         requests_proposed=draft.requests_proposed if draft else 0,
         requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0,
         clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace),
-        pool=pool_summary)
-    (run_dir / "result.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
+        pool=pool_summary, **local_out)
+    # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
+    (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=None if box else LOCAL_FIELDS),
+                                         encoding="utf-8")
     return result
 
 
@@ -353,6 +367,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "and goes on as before")
     p.add_argument("--pool-dir", default=None, metavar="DIR",
                    help="the pool cache (default: cache_dir in amoeba/config/pool.yaml, data/pool)")
+    p.add_argument("--local-tools", choices=["on", "off"], default="off",
+                   help="Box 3 may also borrow Claude Code's tools (Bash, Read, Write, Edit, Glob, Grep) and skills "
+                        "through `claude mcp serve`, sandboxed in runs/<id>/workspace/ (D59). Needs AMOEBA_SANDBOX=1")
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     add_client_args(p)
@@ -367,6 +384,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         p.error("give a prompt, --toy or --tasks")
     if args.interactive and args.drafts_from:
         p.error("--interactive reviews a fresh draft; it cannot be combined with --drafts-from")
+    if args.local_tools == "on":
+        try:
+            require_sandbox()
+        except SandboxRequired as e:
+            p.error(str(e))
     return args
 
 
@@ -382,6 +404,8 @@ def main(argv: list[str] | None = None) -> int:
         tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
     saved = load_saved_drafts(args.drafts_from) if args.drafts_from else None
     pool = PoolSetup(cache_dir=args.pool_dir) if args.pool else None   # D56
+    local = LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir) \
+        if args.local_tools == "on" else None                            # D59
     results = []
     for task in tasks:
         chosen = None
@@ -396,7 +420,7 @@ def main(argv: list[str] | None = None) -> int:
                     max_tokens=cli_token_limits(args), quality_gate=args.quality_gate,
                     plan_options=cli_plan_options(args), saved_draft=chosen,
                     limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
-                    ask=input if args.interactive else None, pool=pool)
+                    ask=input if args.interactive else None, pool=pool, local=local)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

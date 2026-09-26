@@ -1,0 +1,28 @@
+# D59: the local toolbox — Claude Code's own tools and skills, borrowed through `claude mcp serve` (amoeba/localtools/).
+# Off by default (--local-tools off). With it on, the run must be inside a disposable sandbox (AMOEBA_SANDBOX=1).
+
+command: [claude, mcp, serve]      # started over stdio, cwd = runs/<id>/workspace, closed at the end of the run
+allowed_tools: [Bash, Read, Write, Edit, Glob, Grep]   # everything else the server lists is refused (logged once each)
+
+limits:
+  timeout_s: 60                    # one call
+  max_output_chars: 8000           # of one call's result, passed to the helper
+  max_calls_per_step: 20
+  max_calls_per_run: 60
+  max_skill_chars: 5000            # of a SKILL.md put on the role card (the whole folder is copied to the workspace)
+
+# Where skills are listed from: Claude Code's user and project skills, and the anthropics/skills clone that
+# `python -m amoeba pool refresh` keeps under <pool cache>/repos/ (D59).
+skill_roots:
+  - {label: claude-user, path: "~/.claude/skills"}
+  - {label: claude-project, path: ".claude/skills"}
+repo_skills: repos                  # relative to the pool cache (data/pool/repos/<owner>_<name>/<skill>/SKILL.md)
+
+# A request whose name (or standard name) contains every word of an alias is matched to that local item first.
+aliases:
+  "local:Bash": [code runner, python interpreter, code execution]
+  "local:Write": [file writing, save file]
+  "skill:xlsx": [excel, spreadsheet, xlsx]
+  "skill:pptx": [presentation, powerpoint, pptx]
+  "skill:docx": [word document, word doc, docx]
+  "skill:pdf": [pdf reader, pdf]

@@ -292,5 +292,11 @@ class RunResult(BaseModel):
     profile: str | None = None   # D54: the model profile (amoeba/config/models.yaml); None = the mock client
     models: dict = Field(default_factory=dict)   # D54: {"requested": {role group: model}, "returned": [API model names]}
     pool: dict = Field(default_factory=dict)   # D56: the toolbox step: status, filled, unfilled, llm_calls, reasons, attached
+    # D59 --local-tools on only (left out of result.json when off): files the local tools made {path, size, step},
+    # local tool calls, refusals by reason, skills attached {id, name, root, path, helpers}
+    files_created: list[dict] | None = None
+    local_tool_calls: int | None = None
+    local_refusals: dict[str, int] | None = None
+    skills_attached: list[dict] | None = None
     clarification: str | None = None   # D53 --interactive: the user's edit appended to the task before one re-draft
     rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric

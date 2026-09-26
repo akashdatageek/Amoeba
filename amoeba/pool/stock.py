@@ -151,22 +151,33 @@ def _pins(setup: PoolSetup) -> dict:
 
 # box: toolbox
 def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, trace: TraceWriter,
-                  setup: PoolSetup, seed: int = 0) -> tuple[ToolRegistry, dict]:
+                  setup: PoolSetup | None, seed: int = 0, local=None) -> tuple[ToolRegistry, dict]:
     """Fill what it can of `requests` (Box 2's capability requests) from the cached pool. Changes cfg's helpers
     (tools, missing tools, pool items) and each request's status / pool_id / candidates / reason. Returns the run's
-    registry (a copy holding the pool tools when any were attached) and a summary for result.json."""
+    registry (a copy holding the pool tools when any were attached) and a summary for result.json.
+    local: D59 — a LocalToolbox (--local-tools on): its items are candidates too, ranked first; setup may then be
+    None (--no-pool: local items only)."""
     summary = {"status": "ran", "filled": 0, "unfilled": 0, "llm_calls": 0, "reasons": {}, "attached": []}
-    index = load_index(setup.dir)
-    if index is None:
+    index = load_index(setup.dir) if setup is not None else None
+    if index is None and local is None:
         trace.event("pool_unavailable", {"amoeba.box": "toolbox", "amoeba.pool.cache_dir": str(setup.dir)})
         for q in requests:
             q.status, q.reason = "unfilled", "pool_unavailable"
         return tools, {**summary, "status": "unavailable", "unfilled": len(requests),
                        "reasons": {"pool_unavailable": len(requests)} if requests else {}}
+    if index is None and setup is not None:   # D59: no pool cache, but local items can still fill requests
+        trace.event("pool_unavailable", {"amoeba.box": "toolbox", "amoeba.pool.cache_dir": str(setup.dir)})
+    pool_on = setup is not None
+    setup = setup or PoolSetup()
     lim = setup.limits
-    entries = index.get("entries") or []
+    entries = (index or {}).get("entries") or []
     traced = TracedLLM(llm, trace, NoopListener())
     reg, pool = tools, None
+    if local is not None:                     # D59: start claude mcp serve; skills come from the local listing
+        local.start()
+        entries = [e for e in entries if e["kind"] != "skill"]
+        reg = tools.copy()
+        reg.local = local
     per_helper: dict[str, set[str]] = {}
     attached: set[str] = set()
     pins, pins_changed = _pins(setup), False
@@ -175,7 +186,7 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
         groups.setdefault((q.kind, (q.canonical or q.name).lower(), q.for_role), []).append(q)
     with trace.span("stock_toolbox", {"amoeba.box": "toolbox", "amoeba.pool.requests": len(requests),
                                       "amoeba.pool.entries": len(entries),
-                                      "amoeba.pool.refreshed_at": index.get("refreshed_at")}):
+                                      "amoeba.pool.refreshed_at": (index or {}).get("refreshed_at")}):
         for group in groups.values():
             q = group[0]
             out = {"status": "unfilled", "pool_id": "", "candidates": [], "reason": ""}
@@ -186,11 +197,16 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                 out["reason"] = "no_helper"
             else:
                 ranked = rank(q, entries, int(lim["max_candidates"]))
+                if local is not None:         # D59: local candidates rank above internet ones
+                    near = local.candidates(q, int(lim["max_candidates"]))
+                    ids = {e["id"] for _, e in near}
+                    ranked = (near + [x for x in ranked if x[1]["id"] not in ids])[:int(lim["max_candidates"])]
                 out["candidates"] = [e["id"] for _, e in ranked]
                 trace.event("pool_match", {"amoeba.capability": q.canonical or q.name, "amoeba.kind": q.kind,
                                            "gen_ai.agent.name": q.for_role or None,
                                            "amoeba.pool.candidates": [{"id": e["id"], "kind": e["kind"], "score": s}
-                                                                      for s, e in ranked]})
+                                                                      | ({"source": "local"} if e.get("source") == "local"
+                                                                         else {}) for s, e in ranked]})
                 if not ranked:
                     out["reason"] = "no_candidates"
                 else:
@@ -200,16 +216,18 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                     summary["llm_calls"] += trace.n_llm_calls - before
                     entry = next((e for _, e in ranked if e["id"] == chosen), None)
                     out["pool_id"] = chosen or ""
-                    reason, headers, body = vet(entry, setup) if entry else ("pick_none", {}, None)
+                    near = entry is not None and entry.get("source") == "local"            # D59
+                    reason, headers, body = (local.vet(entry), {}, None) if near else \
+                        vet(entry, setup) if entry else ("pick_none", {}, None)
                     takers = [a for a in helpers if len(per_helper.get(a.agent_id, set()) - {chosen})
                               < int(lim["max_per_helper"])]
                     if reason is None and (not takers or (chosen not in attached
                                                           and len(attached) >= int(lim["max_per_run"]))):
                         reason = "cap_reached"
-                    name = f"pool:{entry['name']}" if entry else ""
-                    if reason is None and entry["kind"] == "tool" and (pool is None or name not in pool.items):
+                    name = (entry["name"] if near else f"pool:{entry['name']}") if entry else ""
+                    if reason is None and entry["kind"] == "tool" and not near and (pool is None or name not in pool.items):
                         if pool is None:
-                            reg = tools.copy()
+                            reg = tools.copy() if reg is tools else reg
                             pool = PoolTools(setup.connector or SdkConnector(float(lim["timeout_s"])),
                                              PoolLimits(int(lim["max_calls_per_step"]), float(lim["timeout_s"]),
                                                         int(lim["max_result_chars"])),
@@ -240,13 +258,21 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                                              lambda text, _n=name: pool.call(_n, text))
                     if reason is None:
                         for a in takers:
-                            attach(a, entry, name, body, pool, q)
+                            if near:                  # D59: a local tool, or a local skill (folder copied)
+                                if entry["kind"] == "tool":
+                                    local.attach_tool(a, name, reg)
+                                else:
+                                    local.attach_skill(a, entry, reg)
+                                a.missing_tools = [t for t in a.missing_tools if t not in (q.name, q.canonical)]
+                            else:
+                                attach(a, entry, name, body, pool, q)
                             per_helper.setdefault(a.agent_id, set()).add(chosen)
                         attached.add(chosen)
                         out["status"] = "filled"
                         summary["attached"].append({"id": chosen, "kind": entry["kind"], "kind_requested": q.kind,
                                                     "as": name if entry["kind"] == "tool" else entry["name"],
-                                                    "helpers": [a.name for a in takers]})
+                                                    "helpers": [a.name for a in takers]}
+                                                   | ({"source": "local"} if near else {}))
                     out["reason"] = reason or ""
                     trace.event("pool_vet", {"amoeba.pool.id": chosen, "amoeba.capability": q.canonical or q.name,
                                              "amoeba.kind_requested": q.kind,                       # D58: the guess
@@ -257,7 +283,11 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
             summary["filled" if out["status"] == "filled" else "unfilled"] += len(group)
             if out["reason"]:
                 summary["reasons"][out["reason"]] = summary["reasons"].get(out["reason"], 0) + len(group)
-        trace.event("pool_summary", {f"amoeba.pool.{k}": v for k, v in summary.items() if k != "attached"}
+        if local is not None:                 # D59: what the local server offered
+            summary["local"] = {"server": getattr(local.server, "info", None), "error": local.error,
+                                "exposed": [f"local:{n}" for n in local.exposed], "skills_listed": len(local.skills)}
+            summary["pool"] = "ran" if index is not None else "unavailable" if pool_on else "off"
+        trace.event("pool_summary", {f"amoeba.pool.{k}": v for k, v in summary.items() if k not in ("attached", "local")}
                     | {"amoeba.pool.attached": [a["as"] for a in summary["attached"]]})
     if pins_changed:
         try:
@@ -286,7 +316,8 @@ def attach(a: AgentSpec, entry: dict, name: str, body: str | None, pool: PoolToo
 # box: toolbox
 def pool_tool_notes(agent: AgentSpec) -> list[str]:
     """Lines for a helper's prompt: how to use each pool tool it was given (as data)."""
-    return [f"You may use {p['name']} (from the pool):\n{p['text']}" for p in agent.pool if p["kind"] == "tool"]
+    return [f"You may use {p['name']} (" + ("local, sandboxed" if p.get("source") == "local" else "from the pool")
+            + f"):\n{p['text']}" for p in agent.pool if p["kind"] == "tool"]
 
 
 # box: toolbox

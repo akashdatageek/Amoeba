@@ -134,10 +134,11 @@ def git_clone(repo: str, dest: Path, timeout: float = 600.0) -> None:
 
 # box: pool_index
 def repo_skills(repo: str, path: str = "skills", clone: Callable[[str, Path], None] = git_clone,
-                work: Path | None = None) -> tuple[dict, list[dict]]:
+                work: Path | None = None, keep: Path | None = None) -> tuple[dict, list[dict]]:
     """({repo, commit}, [{dir, name, description, body, has_scripts}]) for every <path>/<name>/SKILL.md of a shallow
     clone of the default branch (D58: git, not the GitHub API, which a session's GitHub proxy may refuse). Only the
-    repository named in pool.yaml is cloned, and the clone's origin must be exactly that repository."""
+    repository named in pool.yaml is cloned, and the clone's origin must be exactly that repository.
+    keep: D59 — the skill folders (<path>/*) are also kept there, whole, for --local-tools (symlinks left out)."""
     if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
         raise PoolSourceError(f"not a GitHub owner/name: {repo!r}")
     tmp = Path(tempfile.mkdtemp(prefix="skills-", dir=work))
@@ -158,6 +159,11 @@ def repo_skills(repo: str, path: str = "skills", clone: Callable[[str, Path], No
             front, body = split_skill(skill_md.read_text(encoding="utf-8", errors="replace"))
             out.append({"dir": base.name, "name": str(front.get("name") or base.name),
                         "description": str(front.get("description") or ""), "body": body, "has_scripts": has_scripts})
+        if keep is not None:
+            shutil.rmtree(keep, ignore_errors=True)
+            shutil.copytree(root, keep, ignore=lambda d, names: [n for n in names if n == ".git"
+                                                                  or (Path(d) / n).is_symlink()])
+            (keep / ".commit").write_text(commit, encoding="utf-8")
         return {"repo": repo, "commit": commit}, out
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -201,7 +207,8 @@ def refresh(config: dict | None = None, cache_dir: str | Path | None = None, get
                 entries += [tool_entry(s, now) for s in servers]
                 done.append({**src, "entries": len(servers)})
             elif src.get("source") == "repo":
-                meta, skills = repo_skills(src["repo"], src.get("path", "skills"), clone)
+                meta, skills = repo_skills(src["repo"], src.get("path", "skills"), clone,
+                                           keep=out_dir / "repos" / safe_name(src["repo"]))   # D59
                 for s in skills:
                     e = skill_entry(meta["repo"], meta["commit"], s, now)
                     (out_dir / e["body_file"]).parent.mkdir(parents=True, exist_ok=True)

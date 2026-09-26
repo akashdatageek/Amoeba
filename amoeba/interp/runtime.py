@@ -141,6 +141,8 @@ class Interpreter:
         for step in cfg.plan:                                # environment.py:256 while Group.steps
             if getattr(self.tools, "pool", None) is not None:   # D56: pool tool call caps are per step
                 self.tools.pool.begin_step(step.index, self.trace)
+            if getattr(self.tools, "local", None) is not None:  # D59: local tool call caps are per step
+                self.tools.local.begin_step(step.index, self.trace)
             agents = [cfg.agents[a] for a in step.agent_ids]
             previous = "[" + ", ".join(previous_msgs) + "]"  # group.py:76 — full history, not just the last edge
             completed_steps = ""                             # group.py:75 — SHARED by all agents of the step

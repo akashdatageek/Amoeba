@@ -38,6 +38,9 @@ class ToolRegistry:
         new._tools = dict(self._tools)
         if hasattr(self, "web"):
             new.web = self.web
+        for extra in ("pool", "local"):          # D56 pool tools, D59 local tools
+            if hasattr(self, extra):
+                setattr(new, extra, getattr(self, extra))
         return new
 
     def __contains__(self, name: object) -> bool:
