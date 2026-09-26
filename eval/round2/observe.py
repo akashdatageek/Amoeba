@@ -48,10 +48,15 @@ def pool_facts(run: Path) -> dict:
             # the reply that chose the tool: the last chat of that agent written before this span closed
             chat = next((c for c in reversed(trace[:i]) if c["name"] == "chat" and c.get("gen_ai.agent.name") == agent),
                         {})
-            call_ev = next((c for c in trace[i + 1:] if c["name"] == "pool_call" and c.get("gen_ai.tool.name") == name),
-                           None)
-            err = next((c for c in trace[i + 1:i + 4] if c["name"] in ("tool_error", "tool_limit")
-                        and c.get("gen_ai.tool.name") == name), None)
+            # events are written when they happen, a span when it closes: this call's pool_call / tool_error line
+            # sits just before its execute_tool line
+            j = next((k for k in range(i - 1, -1, -1) if trace[k]["name"] in ("pool_call", "tool_error", "tool_limit")
+                      and trace[k].get("gen_ai.tool.name") == name
+                      and (k == 0 or not (trace[k - 1]["name"] == "execute_tool"
+                                          and trace[k - 1].get("gen_ai.tool.name") == name and k - 1 < i - 1))), None)
+            near = trace[j] if j is not None and i - j <= 3 else None
+            call_ev = near if near and near["name"] == "pool_call" else None
+            err = near if near and near["name"] != "pool_call" else None
             pid = (by_name.get(name) or {}).get("id")
             sid = call_ev.get("amoeba.source_id") if call_ev else None
             # what came back: the first prompt after the call that shows this source id or the tool's error line
