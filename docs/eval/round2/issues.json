@@ -1,0 +1,422 @@
+{
+ "round": 2,
+ "setting": "round 1 + pool (D56/D58)",
+ "top": [
+  "P2",
+  "P4",
+  "P1",
+  "P5",
+  "P6",
+  "P3"
+ ],
+ "issues": [
+  {
+   "id": "P0",
+   "title": "Gemma writes <thought>…</thought> into the pick reply, so every pick read as NONE",
+   "severity": "high",
+   "status": "fixed during the round (D58 item 4, commit 7b2c13e)",
+   "tasks": [
+    "r1-code-run"
+   ],
+   "evidence": [
+    {
+     "task": "r1-code-run",
+     "run": "478893ad",
+     "where": "eval/round2/void/r1-code-run__478893ad-before-thought-fix/trace.jsonl",
+     "quote": "pool_picker reply \"<thought>…</thought>io.github.lu-zhengda/mcp-python-exec-sandbox\" → pick_none"
+    }
+   ],
+   "root_cause_hypothesis": "Confirmed: amoeba/pool/stock.py pick() compared the whole reply with the listed ids. The first task-1 run was stopped by hand, kept as void evidence, and task 1 rerun after the fix (its two pick replies came from the observer-r2 cache, same text, 0 tokens).",
+   "confirm_by": "tests/test_pool.py pick-parse cases with a <thought> block.",
+   "possible_direction": "Done: amoeba/pool/stock.py:35 THINKING strips a closed thinking block before the strict parse."
+  },
+  {
+   "id": "P1",
+   "title": "The pick reply runs out of room: 3 of 20 picks ended at finish_reason 'length' with no id",
+   "severity": "medium",
+   "status": "open",
+   "tasks": [
+    "r1-fx-email",
+    "r1-pdf-read"
+   ],
+   "evidence": [
+    {
+     "task": "r1-fx-email",
+     "run": "56f9d9e2-d498-49c2-a9bf-72aa4a33b558",
+     "where": "eval/round2/runs/r1-fx-email__56f9d9e2-d498-49c2-a9bf-72aa4a33b558/trace.jsonl, chat pool_picker (email_service)",
+     "quote": "finish_reasons ['length'], 0 output tokens, 2,045 reasoning; reply ends '`io.github.Br0</thought>'"
+    },
+    {
+     "task": "r1-fx-email",
+     "run": "56f9d9e2-d498-49c2-a9bf-72aa4a33b558",
+     "where": "eval/round2/runs/r1-fx-email__56f9d9e2-d498-49c2-a9bf-72aa4a33b558/trace.jsonl, chat pool_picker (currency_api, Quality Auditor)",
+     "quote": "finish_reasons ['length']; '… All three do the job. Usually, the first one</thought>'"
+    },
+    {
+     "task": "r1-pdf-read",
+     "run": "3c30ecc6-aa2c-4c9a-aa69-586f2d780340",
+     "where": "eval/round2/runs/r1-pdf-read__3c30ecc6-aa2c-4c9a-aa69-586f2d780340/trace.jsonl, chat pool_picker (pdf_reader, Technical Analyst)",
+     "quote": "finish_reasons ['length']; '… the most specialized tool for the file type is the correct one. `page</thought>'"
+    }
+   ],
+   "root_cause_hypothesis": "Hypothesis, near confirmed: amoeba/pool/stock.py:94 pick() passes no max_tokens, so the reply gets the profile default (2,048) and Gemma spends it all on reasoning; the D27 'retry with more room' only runs when the caller set max_tokens. The three requests became pick_none although passing candidates were listed (datakoot FX for the auditor; agent-web for the PDF).",
+   "confirm_by": "Replay the three pick prompts with max_tokens 6,000: each should end 'stop' with an id.",
+   "possible_direction": "Give the pick its own reply room, or retry once on 'length'."
+  },
+  {
+   "id": "P2",
+   "title": "The picker chooses candidates that vetting then refuses: 13 of 15 picked ids were refused",
+   "severity": "medium",
+   "status": "open",
+   "tasks": [
+    "r1-code-run",
+    "r1-pdf-read",
+    "r1-xlsx",
+    "r1-chart",
+    "r1-fx-email",
+    "r1-route",
+    "r1-repo",
+    "r1-full-chain"
+   ],
+   "evidence": [
+    {
+     "task": "r1-fx-email",
+     "run": "56f9d9e2-d498-49c2-a9bf-72aa4a33b558",
+     "where": "eval/round2/runs/r1-fx-email__56f9d9e2-d498-49c2-a9bf-72aa4a33b558/capability_requests.json",
+     "quote": "currency_api → io.github.Exchange-RateAPI/mcp-server, not_remote; datakoot and bluegamma, both passing vetting, were in the same five (eval/round2/dryrun.json)"
+    },
+    {
+     "task": "r1-pdf-read",
+     "run": "3c30ecc6-aa2c-4c9a-aa69-586f2d780340",
+     "where": "eval/round2/runs/r1-pdf-read__3c30ecc6-aa2c-4c9a-aa69-586f2d780340/capability_requests.json",
+     "quote": "pdf_reader (QA Lead) → page.doc/pdf-extract, side_effect; io.github.foomworks/agent-web passed"
+    },
+    {
+     "task": "r1-repo",
+     "run": "0d328e58-90f4-4431-af0b-f84e68a6f52c",
+     "where": "eval/round2/runs/r1-repo__0d328e58-90f4-4431-af0b-f84e68a6f52c/capability_requests.json",
+     "quote": "github_repo_reader (Software Architect) → thedhruv-07/github-repo-mcp, not_remote; digitalgremlin/github-repo-intelligence-mcp passed"
+    },
+    {
+     "task": "r1-full-chain",
+     "run": "d8d1f39b-4808-4fb9-b378-2379a0cb0a7e",
+     "where": "eval/round2/runs/r1-full-chain__d8d1f39b-4808-4fb9-b378-2379a0cb0a7e/capability_requests.json",
+     "quote": "5 picks, 5 refusals: auth_missing, has_scripts (xlsx skill), not_remote ×2, side_effect"
+    },
+    {
+     "task": "r1-code-run",
+     "run": "e4669ee7-dfe1-48cf-a73d-c720a5b9b386",
+     "where": "eval/round2/runs/r1-code-run__e4669ee7-dfe1-48cf-a73d-c720a5b9b386/capability_requests.json",
+     "quote": "both picks lu-zhengda/mcp-python-exec-sandbox, not_remote — none of the five would have passed"
+    }
+   ],
+   "root_cause_hypothesis": "Confirmed by order: amoeba/pool/stock.py:198 calls pick() on the raw top five and :203 vets only the chosen one; the pick prompt says nothing about locality, keys or side effects, so the picker takes the best description (often a local package). Refusals of picked ids: not_remote 6, side_effect 3, auth_missing 2, no_source 1, has_scripts 1.",
+   "confirm_by": "eval/round2/dryrun.json lists the vet result of every candidate; in 4 requests a passing, relevant candidate was on the list when the refused one was picked.",
+   "possible_direction": "Vet the candidates first and show the picker only those that pass; skip the pick when none do."
+  },
+  {
+   "id": "P3",
+   "title": "Keyword matching lists unrelated tools, and some of them pass vetting",
+   "severity": "medium",
+   "status": "open",
+   "tasks": [
+    "r1-route",
+    "r1-repo",
+    "r1-chart",
+    "r1-fx-email",
+    "r1-full-chain"
+   ],
+   "evidence": [
+    {
+     "task": "r1-route",
+     "run": "87da070e-cfaa-473d-8aa8-84bc74791cdd",
+     "where": "eval/round2/runs/r1-route__87da070e-cfaa-473d-8aa8-84bc74791cdd/trace.jsonl, pool_match route_engine",
+     "quote": "booking-timing, sadri-dridi/mph-to-kmh, sadri-dridi/range-bytes, flipvo-agent-tools, where_is_my_bus"
+    },
+    {
+     "task": "r1-repo",
+     "run": "0d328e58-90f4-4431-af0b-f84e68a6f52c",
+     "where": "eval/round2/runs/r1-repo__0d328e58-90f4-4431-af0b-f84e68a6f52c/trace.jsonl, pool_match python_code_analyzer",
+     "quote": "source-map-parser, sadri-dridi/blank-ok, egg-ok, emoji-n, fstab-ok — 4 of 5 pass vetting"
+    },
+    {
+     "task": "r1-chart",
+     "run": "77adad12-3dcc-4a36-b911-17188d6d98a5",
+     "where": "eval/round2/runs/r1-chart__77adad12-3dcc-4a36-b911-17188d6d98a5/trace.jsonl, pool_match code_interpreter",
+     "quote": "…, mrfentmen/qr-code-mcp, sadri-dridi/png-magic (passes)"
+    }
+   ],
+   "root_cause_hypothesis": "Hypothesis: amoeba/pool/match.py:45 rank() scores shared words (code, time, route, read, check …); one publisher (io.github.sadri-dridi, the 'agent-observatory-sensor' workers) has many near-empty servers whose short descriptions hit common words, and they are remote, keyless and versioned, so they pass every rule. The picker mostly avoided them (route picked flipvo, 'mentions drive times').",
+   "confirm_by": "Count sadri-dridi ids among the 100 listed candidates of the round (dryrun.json): 13 listings, 12 servers.",
+   "possible_direction": "Rank by fit of the whole description and cap how many candidates one publisher may fill."
+  },
+  {
+   "id": "P4",
+   "title": "The one filled tool fetched real data, and the pipeline threw it away",
+   "severity": "high",
+   "status": "open (pipeline, exposed by the pool)",
+   "tasks": [
+    "r1-weather"
+   ],
+   "evidence": [
+    {
+     "task": "r1-weather",
+     "run": "312bad05-4203-4863-bc25-91055e7fe382",
+     "where": "eval/round2/runs/r1-weather__312bad05-4203-4863-bc25-91055e7fe382/artifacts/step_1.md",
+     "quote": "four daily highs from get_forecast, each cited [S1]"
+    },
+    {
+     "task": "r1-weather",
+     "run": "312bad05-4203-4863-bc25-91055e7fe382",
+     "where": "eval/round2/runs/r1-weather__312bad05-4203-4863-bc25-91055e7fe382/artifacts/step_3.md",
+     "quote": "\"BLOCKED: Step 1 output — unable to verify if Fahrenheit values in Step 2 … match raw data\" → Verdict FAIL"
+    },
+    {
+     "task": "r1-weather",
+     "run": "312bad05-4203-4863-bc25-91055e7fe382",
+     "where": "eval/round2/runs/r1-weather__312bad05-4203-4863-bc25-91055e7fe382/result.json → answer",
+     "quote": "\"Warning: The weather data failed verification and cannot be published.\" — no temperature"
+    }
+   ],
+   "root_cause_hypothesis": "Hypothesis: the reused draft makes step 3 (verify) depend on step 2 only, so amoeba/interp/plan_runner.py gives the verifier step 2's table but not step 1's tool output; it answers BLOCKED on a missing input (round-1 I13), the rework of step 2 cannot supply it (I14), and the summariser writes a status memo that drops every figure already produced (I12).",
+   "confirm_by": "step_3.first.md and step_3.md both lack step 1's text; plan.json step 3 depends_on [2].",
+   "possible_direction": "Part of the D59+ pipeline fixes (I12–I14): a verifier sees the sources of what it checks."
+  },
+  {
+   "id": "P5",
+   "title": "An attached pool tool is never called",
+   "severity": "medium",
+   "status": "open",
+   "tasks": [
+    "r1-deck"
+   ],
+   "evidence": [
+    {
+     "task": "r1-deck",
+     "run": "b384d832-edb8-4550-90d4-8e9e09510dbb",
+     "where": "eval/round2/runs/r1-deck__b384d832-edb8-4550-90d4-8e9e09510dbb/trace.jsonl, first chat of Corporate Presentation Designer",
+     "quote": "\"You can use: ['pool:ai.presentations/presentations-ai', 'Print', 'Final Output']\" and its POOL DATA note"
+    },
+    {
+     "task": "r1-deck",
+     "run": "b384d832-edb8-4550-90d4-8e9e09510dbb",
+     "where": "eval/round2/runs/r1-deck__b384d832-edb8-4550-90d4-8e9e09510dbb/artifacts/step_2.md",
+     "quote": "a text slide spec with an invented palette (#002D62, #708090, #D4AF37); step 2 done"
+    },
+    {
+     "task": "r1-deck",
+     "run": "b384d832-edb8-4550-90d4-8e9e09510dbb",
+     "where": "eval/round2/runs/r1-deck__b384d832-edb8-4550-90d4-8e9e09510dbb/result.json → pool.attached",
+     "quote": "presentations-ai for the designer; 0 pool calls in the run"
+    }
+   ],
+   "root_cause_hypothesis": "Hypothesis: nothing requires a helper to use the tool attached for its request; the step is 'done' from text alone (round-1 I8), so the answer and Limitations never mention the unused tool.",
+   "confirm_by": "Pool tools attached vs execute_tool spans per helper: deck 1 attached, 0 called.",
+   "possible_direction": "A helper that got a pool tool for a request and did not call it says why, and the step records it."
+  },
+  {
+   "id": "P6",
+   "title": "side_effect lets through tools that create things in an outside account",
+   "severity": "medium",
+   "status": "open (needs a decision)",
+   "tasks": [
+    "r1-deck"
+   ],
+   "evidence": [
+    {
+     "task": "r1-deck",
+     "run": "b384d832-edb8-4550-90d4-8e9e09510dbb",
+     "where": "eval/round2/runs/r1-deck__b384d832-edb8-4550-90d4-8e9e09510dbb/trace.jsonl, pool_pinned",
+     "quote": "presentations-ai: create_presentation_from_topic / _from_content / _from_file, create_single_slide"
+    },
+    {
+     "task": "r1-deck",
+     "run": "b384d832-edb8-4550-90d4-8e9e09510dbb",
+     "where": "eval/round2/runs/r1-deck__b384d832-edb8-4550-90d4-8e9e09510dbb/trace.jsonl, pool_vet",
+     "quote": "accepted: True"
+    }
+   ],
+   "root_cause_hypothesis": "Confirmed: amoeba/pool/stock.py:39 SIDE_EFFECT names send, e-mail, post, publish, pay, purchase, delete and 'write to'; 'create', 'upload', 'generate' are not in it. Had the designer called the tool, a deck would have been made in the vendor's service (and the result was never needed in round 2 terms).",
+   "confirm_by": "side_effect('create_presentation_from_topic', …) returns None.",
+   "possible_direction": "Decide whether 'creates in an outside service' counts as an outside action for now."
+  },
+  {
+   "id": "P7",
+   "title": "The pick costs a call even when no candidate could pass",
+   "severity": "low",
+   "status": "open",
+   "tasks": [
+    "r1-code-run",
+    "r1-xlsx",
+    "r1-full-chain"
+   ],
+   "evidence": [
+    {
+     "task": "r1-code-run",
+     "run": "e4669ee7-dfe1-48cf-a73d-c720a5b9b386",
+     "where": "eval/round2/runs/r1-code-run__e4669ee7-dfe1-48cf-a73d-c720a5b9b386/trace.jsonl",
+     "quote": "2 picks; all five candidates refused by vetting (paid, no_source, key, local ×2)"
+    },
+    {
+     "task": "r1-full-chain",
+     "run": "d8d1f39b-4808-4fb9-b378-2379a0cb0a7e",
+     "where": "eval/round2/runs/r1-full-chain__d8d1f39b-4808-4fb9-b378-2379a0cb0a7e/trace.jsonl",
+     "quote": "5 picks, 6,871 tokens; spreadsheet, docx and email lists had no passing candidate"
+    }
+   ],
+   "root_cause_hypothesis": "20 pick calls billed 29,364 tokens (8% of the round), mostly reasoning (250–2,045 per pick). 6 of the 20 picks had no candidate that vetting would accept (code-run ×2, xlsx, full-chain spreadsheet / docx / email).",
+   "confirm_by": "dryrun.json: requests whose five candidates are all refused.",
+   "possible_direction": "Falls out of P2 (vet first, no pick when nothing passes)."
+  },
+  {
+   "id": "P8",
+   "title": "A run writes into the shared pool cache",
+   "severity": "low",
+   "status": "open",
+   "tasks": [
+    "r1-weather",
+    "r1-deck"
+   ],
+   "evidence": [
+    {
+     "task": "r1-weather",
+     "run": "312bad05-4203-4863-bc25-91055e7fe382",
+     "where": "eval/round2/runs/r1-weather__312bad05-4203-4863-bc25-91055e7fe382/trace.jsonl, pool_pinned",
+     "quote": "weather-mcp: get_forecast, get_weather, version 0.1.0"
+    },
+    {
+     "task": "r1-deck",
+     "run": "b384d832-edb8-4550-90d4-8e9e09510dbb",
+     "where": "eval/round2/runs/r1-deck__b384d832-edb8-4550-90d4-8e9e09510dbb/trace.jsonl, pool_pinned",
+     "quote": "presentations-ai: 5 tools, version 1.0.0"
+    }
+   ],
+   "root_cause_hypothesis": "Intended (D56 trust on first use): data/pool/pins.json is written by the first run that connects. It is gitignored and not copied into the run folder, so a later round's result depends on which runs came first on this machine, and the pins are not in the evidence.",
+   "confirm_by": "data/pool/pins.json holds exactly these two entries after round 2.",
+   "possible_direction": "Copy the pins a run used into runs/<id>/ (or result.json)."
+  },
+  {
+   "id": "P9",
+   "title": "Numbers computed from a tool result carry the tool's source id",
+   "severity": "low",
+   "status": "open",
+   "tasks": [
+    "r1-weather"
+   ],
+   "evidence": [
+    {
+     "task": "r1-weather",
+     "run": "312bad05-4203-4863-bc25-91055e7fe382",
+     "where": "eval/round2/runs/r1-weather__312bad05-4203-4863-bc25-91055e7fe382/artifacts/step_1.md:1",
+     "quote": "\"(17.2 [S1] * 9/5) + 32 = 62.96°F\" — S1 gave Celsius"
+    },
+    {
+     "task": "r1-weather",
+     "run": "312bad05-4203-4863-bc25-91055e7fe382",
+     "where": "eval/round2/runs/r1-weather__312bad05-4203-4863-bc25-91055e7fe382/artifacts/step_2.md:3",
+     "quote": "\"62.96 [S1] | 17.20\" — a derived °F value cited as S1"
+    }
+   ],
+   "root_cause_hypothesis": "Hypothesis: plan_step's 'keep the [S#] tags of any input you reuse' is applied to derived values too; provenance counts them as cited (144 cited numbers). The source gave highs in °C, so step 1 converted to °F and step 2 back to °C. The current weather (R1, get_weather) was never fetched.",
+   "confirm_by": "Compare each [S1] number with the POOL DATA text: 62.96, 64.04, 67.28, 69.8 are not in it.",
+   "possible_direction": "A derived figure is tagged derived, with its inputs cited."
+  }
+ ],
+ "round1_issues": [
+  {
+   "id": "I1",
+   "status": "not re-observed",
+   "seen": "Box 1 is round 1's (draft reused)."
+  },
+  {
+   "id": "I2",
+   "status": "persists",
+   "seen": "web_search still not offered; the pool skips requests for installed tools (route: web_search → registered_tool), and no data request was filled by web_search."
+  },
+  {
+   "id": "I3",
+   "status": "persists, softened",
+   "seen": "0 skill requests again (same drafts). D58 cross-kind matching listed skills 7 times; the picker chose one (xlsx for spreadsheet_tool), refused has_scripts."
+  },
+  {
+   "id": "I4",
+   "status": "not re-observed",
+   "seen": "Box 2 reused."
+  },
+  {
+   "id": "I5",
+   "status": "not re-observed",
+   "seen": "Box 2 reused."
+  },
+  {
+   "id": "I6",
+   "status": "not re-observed",
+   "seen": "Box 2 reused."
+  },
+  {
+   "id": "I7",
+   "status": "persists",
+   "seen": "Same request names; the pool rank uses request words and aliases, so the gap now also shapes which candidates are listed."
+  },
+  {
+   "id": "I8",
+   "status": "persists",
+   "seen": "route step 1 'done' from memory (186/176/187 mi); deck step 2 'done' with an unused pool tool (P5)."
+  },
+  {
+   "id": "I9",
+   "status": "persists",
+   "seen": "deck brand invented again (#002D62, Gold #D4AF37). pdf-read did not invent this time (sampling, not the pool)."
+  },
+  {
+   "id": "I10",
+   "status": "not seen",
+   "seen": "chart cited no made-up source this time (sampling; nothing changed in provenance)."
+  },
+  {
+   "id": "I11",
+   "status": "persists",
+   "seen": "code-run: '# 0 [unverified], 1 [unverified]' in the code; xlsx: '[Formula 1 [unverified]]', row numbers tagged."
+  },
+  {
+   "id": "I12",
+   "status": "persists",
+   "seen": "xlsx totals dropped again; weather's fetched highs dropped (P4)."
+  },
+  {
+   "id": "I13",
+   "status": "persists",
+   "seen": "full-chain: 'Framework Data Table', 'Input Files', 'Star Count Chart' recorded as capabilities; weather 'Step 1 output'."
+  },
+  {
+   "id": "I14",
+   "status": "persists",
+   "seen": "rework in 6 of 10 runs (full-chain 3 + 2 stale), none changed a blocked step."
+  },
+  {
+   "id": "I15",
+   "status": "persists",
+   "seen": "fx-email: email_service not named; route: route_engine not named; deck: no gap named."
+  },
+  {
+   "id": "I16",
+   "status": "persists",
+   "seen": "code-run step 2 'PASS … verified' with no interpreter."
+  },
+  {
+   "id": "I17",
+   "status": "persists",
+   "seen": "calc 0 calls in code-run, fx-email, pdf-read, repo, full-chain."
+  },
+  {
+   "id": "I18",
+   "status": "persists",
+   "seen": "cost_usd still null (no Gemma price)."
+  },
+  {
+   "id": "I19",
+   "status": "handled by procedure",
+   "seen": "AMOEBA_* unset again; the Stop hook's page rebuilds cost 0 model tokens this round."
+  }
+ ]
+}

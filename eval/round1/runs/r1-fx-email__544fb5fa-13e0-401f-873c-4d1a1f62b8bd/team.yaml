@@ -1,0 +1,296 @@
+team_id: 24cae4af-c6c4-4996-b677-5fb0d9cbf553
+version: 1
+parent_version: null
+name: team-plan-r1-fx-em
+topology: plan
+agents:
+  2e3c5145-335a-4ac1-a771-a0e7629bce76:
+    agent_id: 2e3c5145-335a-4ac1-a771-a0e7629bce76
+    name: Currency Specialist
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in financial data retrieval and currency conversion. Responsible
+      for sourcing the most accurate current exchange rate and performing the initial
+      calculation.
+    role_prompt: 'You are a Senior Currency Specialist. 1. Use the currency_api to
+      fetch the current USD to INR exchange rate. 2. Use the calc tool to multiply
+      2,500 by that rate. 3. Output a memo containing: the exact rate found, the base
+      amount ($2,500), and the final result in INR.'
+    max_history: 5
+    missing_tools:
+    - currency_api
+    is_summariser: false
+    goal: Provide the current USD/INR rate and the converted value of $2,500.
+    skills:
+    - financial data sourcing
+    - currency conversion
+    outputs:
+    - artifact: conversion_data
+      format: 'memo: rate, base_amount, result'
+    success_criteria:
+    - Rate is current (today)
+    - Calculation is mathematically accurate
+    constraints:
+    - Must use a reliable financial source
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  a4b44d9b-b37c-4228-af81-56194dd72171:
+    agent_id: a4b44d9b-b37c-4228-af81-56194dd72171
+    name: Quality Auditor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in verification and validation. Ensures that the data
+      sourced is current and the arithmetic is flawless before delivery.
+    role_prompt: You are a Senior Quality Auditor. 1. Review the conversion_data provided.
+      2. Independently fetch the USD to INR rate using the currency_api to ensure
+      it matches or is within a reasonable margin of the Specialist's rate. 3. Re-calculate
+      2,500 * rate using the calc tool. 4. Output a list stating 'Pass' or 'Fail'
+      and the verified numbers.
+    max_history: 5
+    missing_tools:
+    - currency_api
+    is_summariser: false
+    goal: Verify the accuracy of the exchange rate and the conversion calculation.
+    skills:
+    - data verification
+    - arithmetic auditing
+    outputs:
+    - artifact: verification_report
+      format: 'list: status (Pass/Fail), verified_rate, verified_result'
+    success_criteria:
+    - Calculation is verified to be correct
+    - Rate is confirmed as current
+    constraints:
+    - Must not rely solely on the Specialist's output
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  d599d5c6-f6e3-4de6-824f-b3eb904f5e25:
+    agent_id: d599d5c6-f6e3-4de6-824f-b3eb904f5e25
+    name: Communications Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Responsible for the external delivery of the result. Ensures the
+      communication is professional and contains all required data points.
+    role_prompt: 'You are the Communications Lead. 1. Check the verification_report.
+      If it is ''Pass'', use the email_service to send an email to test@example.com.
+      2. The email must explicitly include: the base amount ($2,500 USD), the exchange
+      rate used, and the final converted amount in INR. 3. Output a memo confirming
+      the email status, the recipient, and the exact content sent.'
+    max_history: 5
+    missing_tools:
+    - email_service
+    is_summariser: false
+    goal: Email the verified conversion result to the client.
+    skills:
+    - professional communication
+    outputs:
+    - artifact: delivery_confirmation
+      format: 'memo: email_status, recipient, content_sent'
+    success_criteria:
+    - Email successfully sent to test@example.com
+    constraints:
+    - Only send email if Quality Auditor reports 'Pass'
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  9f2e7f55-6ebe-4abb-9d45-99e62c06875d:
+    agent_id: 9f2e7f55-6ebe-4abb-9d45-99e62c06875d
+    name: Project Summariser
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: The final writer who assembles the project outputs into a cohesive
+      summary for the user.
+    role_prompt: You are the Project Summariser. Your role is to assemble the final
+      report. 1. Review the delivery_confirmation and verification_report. 2. Create
+      a final memo stating the project status (Completed/Failed), the final conversion
+      result, and confirmation that the email was sent to test@example.com. Do not
+      perform any new calculations or analysis.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Provide a final summary of the completed task.
+    skills:
+    - technical writing
+    - synthesis
+    outputs:
+    - artifact: final_summary
+      format: 'memo: project_status, details'
+    success_criteria:
+    - Summary accurately reflects the work done without adding new analysis
+    constraints:
+    - Must not use any tools
+    - Must not create new analysis
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 2e3c5145-335a-4ac1-a771-a0e7629bce76
+  dst: a4b44d9b-b37c-4228-af81-56194dd72171
+  type: sequential
+  schema_id: text
+  condition: null
+- src: a4b44d9b-b37c-4228-af81-56194dd72171
+  dst: d599d5c6-f6e3-4de6-824f-b3eb904f5e25
+  type: sequential
+  schema_id: text
+  condition: null
+- src: d599d5c6-f6e3-4de6-824f-b3eb904f5e25
+  dst: 9f2e7f55-6ebe-4abb-9d45-99e62c06875d
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 2e3c5145-335a-4ac1-a771-a0e7629bce76
+exit: 9f2e7f55-6ebe-4abb-9d45-99e62c06875d
+plan:
+- index: 0
+  agent_ids:
+  - 2e3c5145-335a-4ac1-a771-a0e7629bce76
+  text: '[Currency Specialist]: Fetch and Convert'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on: []
+  do: '
+
+    - Fetch current USD to INR rate via currency_api
+
+    - Calculate 2,500 * rate using calc'
+  output: 'memo: rate, base_amount, result'
+  done_when: conversion_data is produced with a valid rate and result
+- index: 1
+  agent_ids:
+  - a4b44d9b-b37c-4228-af81-56194dd72171
+  text: '[Quality Auditor]: Verify Accuracy'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 1
+  do: '
+
+    - Independently fetch USD to INR rate
+
+    - Re-calculate 2,500 * rate
+
+    - Compare results with Step 1'
+  output: 'list: status (Pass/Fail), verified_rate, verified_result'
+  done_when: verification_report is produced
+- index: 2
+  agent_ids:
+  - d599d5c6-f6e3-4de6-824f-b3eb904f5e25
+  text: '[Communications Lead]: Email Result'
+  kind: work
+  covers:
+  - R3
+  depends_on:
+  - 2
+  do: '
+
+    - Confirm ''Pass'' status from Step 2
+
+    - Send email to test@example.com including base amount, rate, and result'
+  output: 'memo: email_status, recipient, content_sent'
+  done_when: delivery_confirmation is produced
+- index: 3
+  agent_ids:
+  - 9f2e7f55-6ebe-4abb-9d45-99e62c06875d
+  text: '[Project Summariser]: Final Assembly'
+  kind: work
+  covers: []
+  depends_on:
+  - 3
+  do: '
+
+    - Assemble the final summary from the previous steps'
+  output: 'memo: project_status, details'
+  done_when: final_summary is produced
+requirements:
+  R1: gather current USD to INR exchange rate
+  R2: convert $2,500 USD to INR
+  R3: email the result to test@example.com
+max_inner_turns: 3
+meta:
+  task_id: r1-fx-email
+  draft_rounds: 2
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: currency_api
+    for_role: Currency Specialist
+  - name: email_service
+    for_role: Communications Lead
+  - name: calc
+    for_role: Currency Specialist
+  - name: currency_api
+    for_role: Quality Auditor

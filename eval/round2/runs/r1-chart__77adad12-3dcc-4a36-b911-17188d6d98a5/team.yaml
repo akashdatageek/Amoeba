@@ -1,0 +1,226 @@
+team_id: a120ed85-76fc-4e66-ab2f-a47f092b6e96
+version: 1
+parent_version: null
+name: team-plan-r1-chart
+topology: plan
+agents:
+  76b847dc-e5fc-46f8-9f46-e19c7ed01fa1:
+    agent_id: 76b847dc-e5fc-46f8-9f46-e19c7ed01fa1
+    name: Data Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in data aggregation and financial calculations. Responsible
+      for transforming raw shipment metrics into total revenue figures.
+    role_prompt: You are a Senior Data Analyst. Your task is to calculate the total
+      revenue for each shipping lane. For each lane, multiply the number of loads
+      by the average revenue per load. Double-check your multiplication. Output the
+      results in a clean markdown table with columns 'Lane' and 'Total Revenue (USD)'.
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Produce an accurate table of total revenue per lane.
+    skills:
+    - arithmetic
+    - data aggregation
+    outputs:
+    - artifact: revenue table
+      format: 'markdown table: Lane x Total Revenue'
+    success_criteria:
+    - All 4 lanes are present
+    - Calculations are mathematically correct
+    constraints:
+    - Must use the provided average and load counts
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  23ecaabe-f758-48d5-978d-3989b5c3cbf6:
+    agent_id: 23ecaabe-f758-48d5-978d-3989b5c3cbf6
+    name: Visualization Engineer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in data visualization and Python-based charting. Responsible
+      for verifying data integrity and rendering the final image.
+    role_prompt: You are a Senior Visualization Engineer. First, verify the total
+      revenue calculations provided by the Data Analyst against the raw shipment data.
+      If they are correct, use Python (matplotlib or seaborn) to create a bar chart.
+      The X-axis should be the Lane and the Y-axis should be the Total Revenue. Ensure
+      the chart has a title 'Total Revenue per Lane' and clear axis labels. Save the
+      final output as a PNG file.
+    max_history: 5
+    missing_tools:
+    - code_interpreter
+    is_summariser: false
+    goal: Deliver a high-quality PNG bar chart of total revenue.
+    skills:
+    - data visualization
+    - Python
+    - matplotlib/seaborn
+    outputs:
+    - artifact: revenue chart
+      format: PNG file
+    success_criteria:
+    - Chart accurately reflects the verified totals
+    - Axes are clearly labeled
+    - File is in PNG format
+    constraints:
+    - Must verify numbers before plotting
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  3dfca273-7e06-431d-8db5-67d31c9ba420:
+    agent_id: 3dfca273-7e06-431d-8db5-67d31c9ba420
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Project lead responsible for final quality control and delivery of
+      the requested artifacts.
+    role_prompt: You are the Delivery Lead. Your role is to assemble the final output.
+      Take the PNG chart produced by the Visualization Engineer and present it to
+      the user. Ensure the final response is professional and confirms that the revenue
+      calculations were verified.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble and deliver the final PNG chart to the user.
+    skills:
+    - project delivery
+    - quality assurance
+    outputs:
+    - artifact: final delivery
+      format: message with PNG attachment
+    success_criteria:
+    - The PNG is delivered and matches the requested specifications
+    constraints:
+    - Must not perform new analysis
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 76b847dc-e5fc-46f8-9f46-e19c7ed01fa1
+  dst: 23ecaabe-f758-48d5-978d-3989b5c3cbf6
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 23ecaabe-f758-48d5-978d-3989b5c3cbf6
+  dst: 3dfca273-7e06-431d-8db5-67d31c9ba420
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 76b847dc-e5fc-46f8-9f46-e19c7ed01fa1
+exit: 3dfca273-7e06-431d-8db5-67d31c9ba420
+plan:
+- index: 0
+  agent_ids:
+  - 76b847dc-e5fc-46f8-9f46-e19c7ed01fa1
+  text: '[Data Analyst]: Calculate Total Revenue'
+  kind: work
+  covers:
+  - R1
+  depends_on: []
+  do: Multiply loads by average revenue for Lanes A, B, C, and D.
+  output: 'table: Lane x Total Revenue'
+  done_when: Table contains all 4 lanes with calculated totals.
+- index: 1
+  agent_ids:
+  - 23ecaabe-f758-48d5-978d-3989b5c3cbf6
+  text: '[Visualization Engineer]: Verify Revenue Totals'
+  kind: verify
+  covers:
+  - R1
+  depends_on:
+  - 1
+  do: Cross-reference the Data Analyst's table against the raw shipment data provided
+    in the task.
+  output: 'memo: Verification status (Pass/Fail)'
+  done_when: All 4 totals are confirmed as mathematically correct.
+- index: 2
+  agent_ids:
+  - 23ecaabe-f758-48d5-978d-3989b5c3cbf6
+  text: '[Visualization Engineer]: Generate Revenue Chart'
+  kind: work
+  covers:
+  - R2
+  - R3
+  depends_on:
+  - 2
+  do: Use a plotting library to create a bar chart of the verified totals and save
+    it as a PNG.
+  output: 'code: Python code to generate PNG'
+  done_when: A PNG file is successfully saved to the environment.
+- index: 3
+  agent_ids:
+  - 3dfca273-7e06-431d-8db5-67d31c9ba420
+  text: '[Delivery Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 3
+  do: Collect the PNG file and present it as the final deliverable.
+  output: 'memo: Final delivery message with PNG'
+  done_when: The PNG is delivered to the user.
+requirements:
+  R1: Calculate total revenue per lane.
+  R2: Make a bar chart of total revenue per lane.
+  R3: Save the bar chart as a PNG.
+max_inner_turns: 3
+meta:
+  task_id: r1-chart
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: code_interpreter
+    for_role: Visualization Engineer
