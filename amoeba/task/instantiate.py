@@ -78,7 +78,8 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
                          requirements=dict(draft.requirements))   # D35: the summariser's deliverable list
         cfg.meta["dependency_relinked"] = relinked
         # D32: who asked for what, so Box 3 can hand a role the tools that now exist for its request
-        cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role} for q in draft.capability_requests]
+        cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical}
+                                           for q in draft.capability_requests]
     else:
         raise ValueError(f"unknown topology {topology!r}")
 

@@ -2071,7 +2071,7 @@
   ]
  },
  "localtools": {
-  "checked_at": "30e73f9",
+  "checked_at": "f0b9d67",
   "facts": {
    "anchors": [
     {
@@ -2087,8 +2087,8 @@
       "candidates(self, q, top: int) -> list[tuple[int, dict]]",
       "vet(self, entry: dict) -> str | None",
       "register(self, reg, name: str) -> None",
-      "attach_tool(self, a: AgentSpec, name: str, reg) -> None",
-      "attach_skill(self, a: AgentSpec, entry: dict, reg) -> bool",
+      "attach_tool(self, a: AgentSpec, name: str, reg, request: str='') -> None",
+      "attach_skill(self, a: AgentSpec, entry: dict, reg, request: str='') -> bool",
       "begin_step(self, step: int, trace=None) -> None",
       "what(tool: str, args) -> str",
       "refuse(self, tool: str, reason: str, detail: str='', what: str='') -> str",
@@ -2243,6 +2243,12 @@
      "doc": "",
      "key": "amoeba/localtools/toolbox.py::load_local_config",
      "signature": "load_local_config(path: Path=CONFIG_FILE) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "D61 (P17): the content of a surrounding markdown code fence (```bash ... ```), else the text stripped.",
+     "key": "amoeba/localtools/toolbox.py::unfence",
+     "signature": "unfence(text: str) -> str"
     }
    ],
    "checks": [],
@@ -2270,7 +2276,7 @@
     [
      "correct",
      "if not any((p.get('name') == name for p in a.pool))",
-     "add {'kind': 'tool', 'id': name, 'name': name, 'source': 'local', 'text': TOOL_TEXT[name.removeprefix('local:')][1]}"
+     "add {'kind': 'tool', 'id': name, 'name': name, 'source': 'local', 'request': request, 'text': TOOL_TEXT[name.removeprefix('local:')][1]}"
     ],
     [
      "correct",
@@ -2316,6 +2322,11 @@
      "decide",
      "if self._error is not None",
      "set err = self._error"
+    ],
+    [
+     "decide",
+     "if self.book is not None and (not is_error)",
+     "set key = hashlib.sha256(f'{self.calls}:{tool}:{what}'.encode()).hexdigest()[:10]"
     ],
     [
      "decide",
@@ -2435,6 +2446,11 @@
     [
      "fallback",
      "f'\\n[… first {max_chars} of {len(body.strip())} characters]' if len(body.strip()) > max_chars else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "m.group(1).strip() if m else text",
      "choose value"
     ],
     [
@@ -2681,8 +2697,8 @@
    "prompts": {},
    "title": "Local toolbox (sandboxed)"
   },
-  "facts_hash": "ed1e69595bb9742b",
-  "seed_hash": "77c0b079d147092c",
+  "facts_hash": "473a8d04c5b90f02",
+  "seed_hash": "c3cfd084c207ca3b",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
   "source": "hand",
   "what": [
@@ -2690,7 +2706,8 @@
    "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); a Bash command runs from there, network commands are refused (network_command) and destructive or escaping ones too (unsafe_command).",
    "Limits (localtools.yaml): 60 s per call, 8,000 characters of output, 20 calls per step and 60 per run; a trace line for every call and every refusal.",
    "Skills are listed only from the kept anthropics/skills clone (D60: not the user's ~/.claude/skills); an attached skill's folder is copied to workspace/skills/<name>/ and its SKILL.md (frontmatter and first 5,000 characters) goes on the helper's card.",
-   "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first.",
+   "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first; any other local item goes first only if it matches at least as well as the best internet one (D61).",
+   "A successful call's result gets a source id [S#] in the run's one source list (D61); a command written inside a code fence runs without the fence.",
    "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the workspace is copied to artifacts/files/."
   ]
  },
@@ -3292,7 +3309,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "72d515e",
+  "checked_at": "f0b9d67",
   "facts": {
    "anchors": [
     {
@@ -3302,9 +3319,16 @@
       "amoeba/interp/plan_runner.py::PlanRunner._save",
       "amoeba/interp/plan_runner.py::PlanRunner._sources",
       "amoeba/interp/plan_runner.py::PlanRunner._text",
+      "amoeba/interp/plan_runner.py::PlanRunner.add_files_section",
       "amoeba/interp/plan_runner.py::PlanRunner.all_inputs_text",
+      "amoeba/interp/plan_runner.py::PlanRunner.answer_findings",
+      "amoeba/interp/plan_runner.py::PlanRunner.answer_gaps",
+      "amoeba/interp/plan_runner.py::PlanRunner.contract",
+      "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
+      "amoeba/interp/plan_runner.py::PlanRunner.contract_findings",
       "amoeba/interp/plan_runner.py::PlanRunner.critique",
       "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
+      "amoeba/interp/plan_runner.py::PlanRunner.files_of",
       "amoeba/interp/plan_runner.py::PlanRunner.inputs_text",
       "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
       "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
@@ -3320,8 +3344,12 @@
       "amoeba/interp/plan_runner.py::parse_verdict_block",
       "amoeba/interp/plan_runner.py::refine_counts",
       "amoeba/interp/plan_runner.py::step_checks",
+      "amoeba/interp/plan_runner.py::strip_not_needed",
       "amoeba/interp/provenance.py::check_provenance",
       "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/localtools/claims.py::claimed_files",
+      "amoeba/localtools/toolbox.py::LocalToolbox.begin_step",
+      "amoeba/localtools/toolbox.py::LocalToolbox.has_file",
       "amoeba/pool/mcp.py::PoolTools.begin_step",
       "amoeba/pool/mcp.py::SourceBook.begin_step",
       "amoeba/task/evaluate.py::normalise",
@@ -3333,7 +3361,8 @@
     },
     {
      "callees": [
-      "amoeba/interp/plan_runner.py::PlanRunner._turn"
+      "amoeba/interp/plan_runner.py::PlanRunner._turn",
+      "amoeba/interp/plan_runner.py::tool_ok"
      ],
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::PlanRunner._loop",
@@ -3402,7 +3431,7 @@
      ],
      "doc": "D50: one refine turn for the helper(s) of a finished step, with turns of its own (check_retry_turns, not",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.refine",
-     "signature": "refine(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: '_Work', template: str, checks: list[dict], prov: dict) -> dict | None"
+     "signature": "refine(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: '_Work', template: str, checks: list[dict], prov: dict, contract_items: list[str]=()) -> dict | None"
     },
     {
      "callees": [
@@ -3452,6 +3481,16 @@
     ],
     [
      "decide",
+     "if c and (c['needs'] or c['items'])",
+     "set items = [*(f'{x} (asked for, not available)' for x in c['needs']), *(f\"{x['name']} (given "
+    ],
+    [
+     "decide",
+     "if claimed is not None",
+     "set meta['claimed_files'], meta['claimed_files_missing'] = (claimed, missing)"
+    ],
+    [
+     "decide",
      "if failed",
      "set status, reason = ('incomplete', 'checks failed: ' + ', '.join(failed))"
     ],
@@ -3464,6 +3503,11 @@
      "decide",
      "if gaps",
      "set status = 'partial' if wrote else 'incomplete'"
+    ],
+    [
+     "decide",
+     "if missing",
+     "set status = 'incomplete'"
     ],
     [
      "decide",
@@ -3482,13 +3526,23 @@
     ],
     [
      "decide",
-     "if not prov_items",
+     "if not prov_items and (not contract_items)",
      "set note = RETRY_NOTE.format(failed='; '.join(check_items))"
     ],
     [
      "decide",
      "if not reason and mode == 'always'",
      "set reason = 'self_review'"
+    ],
+    [
+     "decide",
+     "if on",
+     "set text = strip_not_needed(text) or text"
+    ],
+    [
+     "decide",
+     "if produced is not None",
+     "set text = self.add_files_section(text, produced['files'])"
     ],
     [
      "decide",
@@ -3512,8 +3566,23 @@
     ],
     [
      "decide",
-     "if summarising",
+     "if self.local is not None",
+     "set claimed = claimed_files(text)"
+    ],
+    [
+     "decide",
+     "if summarising or (on and answer_step)",
      "set text, added = self.enforce_limitations(text)"
+    ],
+    [
+     "decide",
+     "if undeclared",
+     "set reason += '; not declared by the helper: ' + ', '.join(undeclared)"
+    ],
+    [
+     "decide",
+     "if unused",
+     "set status = 'partial' if status == 'done' else status"
     ],
     [
      "decide",
@@ -3543,6 +3612,11 @@
     [
      "fallback",
      "'REVISE' if 'REVISE' in word else 'AGREE' if 'AGREE' in word else 'UNREADABLE'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'partial' if status == 'done' else status",
      "choose value"
     ],
     [
@@ -3622,12 +3696,37 @@
     ],
     [
      "fallback",
+     "found['not_needed'] if found else []",
+     "choose value"
+    ],
+    [
+     "fallback",
      "issues if verdict == 'REVISE' else []",
      "choose value"
     ],
     [
      "fallback",
+     "len((self.contract_findings(found) if found else []) + (self.answer_findings(produced) if produced else [])) if on else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "len(contract_items) if self.opt.contract == 'on' else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "len(issues) if verdict == 'REVISE' else 0",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "list(dict.fromkeys((m['name'] for m in found['missing']))) if found else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "list(dict.fromkeys((u['name'] for u in found['unused']))) if found else []",
      "choose value"
     ],
     [
@@ -3662,7 +3761,37 @@
     ],
     [
      "fallback",
-     "self.all_inputs_text(n) if summarising else self.inputs_text(deps, n)",
+     "self.all_inputs_text(n) if summarising else self.inputs_text(deps, n, evidence=verifier)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.answer_findings(produced) if produced else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.answer_gaps(n, text) if on and answer_step else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.answer_gaps(n, text) if produced is not None else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.contract(writers) if on and (not summarising) else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.contract_check(contract, w, text) if contract else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.contract_findings(found) if found else []",
      "choose value"
     ],
     [
@@ -3677,12 +3806,22 @@
     ],
     [
      "filter",
+     "keep only if hit",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if normalise(n)[0] == 'web_search'",
      "drop the rest"
     ],
     [
      "filter",
      "keep only if not c['pass']",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not self.local.has_file(f)",
      "drop the rest"
     ],
     [
@@ -3758,23 +3897,21 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "db7a74d04a6a8a70",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "a2a98c0b6f8bc682",
-  "seed_hash": "bf908ddbf6af5ba0",
+  "facts_hash": "0601b6dc54c130e9",
+  "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "model: kept",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search also gets web_search and fetch_url.",
-   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most 2 rounds (--collab critique); the step keeps one output."
+   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most 2 rounds (--collab critique); the step keeps one output.",
+   "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
   ]
  },
  "plan_summary": {
-  "checked_at": "7126cfe",
+  "checked_at": "f0b9d67",
   "facts": {
    "anchors": [
     {
@@ -3802,6 +3939,8 @@
     {
      "callees": [
       "amoeba/interp/plan_runner.py::PlanRunner.blocked_capabilities",
+      "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations.named",
+      "amoeba/interp/plan_runner.py::PlanRunner.unused_items",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/tools/web.py::SearchProvider.search",
@@ -3821,7 +3960,9 @@
     },
     {
      "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.add_files_section",
       "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
+      "amoeba/interp/plan_runner.py::PlanRunner.files_of",
       "amoeba/interp/trace.py::TraceWriter.event"
      ],
      "doc": "D41: no summariser step to write the answer, so plain code puts the last wave's outputs under one heading",
@@ -3835,14 +3976,69 @@
      "doc": "D43: the first status of each figure in the run (cited / unverified / untagged / derived / given, and the",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.ledger_update",
      "signature": "ledger_update(self, n: int, figures: list[dict]) -> dict[str, int]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.files_of",
+      "amoeba/interp/provenance.py::numbers_in"
+     ],
+     "doc": "D61 (G5): work the team produced that the answer leaves out — files made, and figures a producer step",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.answer_gaps",
+     "signature": "answer_gaps(self, n: int, text: str) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/localtools/server.py::StdioServer.start",
+      "amoeba/localtools/toolbox.py::LocalToolbox.start",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D61: files still unnamed after the refine turn are listed by plain code, before the Limitations section.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.add_files_section",
+     "signature": "add_files_section(text: str, files: list[dict]) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.answer_findings",
+     "signature": "answer_findings(gaps: dict) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D61 (G2/G3): item attached to a helper -> the steps that left it unused and unaccounted for.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.unused_items",
+     "signature": "unused_items(self) -> dict[str, list[int]]"
     }
    ],
    "checks": [],
    "guards": [
     [
+     "correct",
+     "if gaps['figures']",
+     "add 'these figures were cited from a source by a step but are not in the answer: ' + ', '.join((f\"{g['figure']} [{', '.join(g['sources'])}] (step {g['step']})\" for g in gaps['figures'])) + '. Put in each one the task needs, with its [S#]; leave out the rest.'"
+    ],
+    [
+     "correct",
+     "if gaps['files']",
+     "add 'the team made these files but the answer does not name them: ' + ', '.join((f\"{f['path']} (step {f['step']})\" for f in gaps['files'])) + '. Name each file the task asks for and say what is in it.'"
+    ],
+    [
      "decide",
      "if e is None and f['status'] != 'inherited'",
      "set e = self.ledger[f['n']] = {'status': f['status'], 'step': n, 'as': f['as'], 'sources': f['"
+    ],
+    [
+     "decide",
+     "if lines",
+     "set body = '\\n'.join(lines)"
+    ],
+    [
+     "decide",
+     "if m.get('files_made')",
+     "set verdict += f\"; files made: {', '.join((f['path'] for f in m['files_made']))}\""
     ],
     [
      "decide",
@@ -3851,13 +4047,18 @@
     ],
     [
      "decide",
+     "if m.get('unused')",
+     "set verdict += f\"; given but unused: {', '.join(m['unused'])}\""
+    ],
+    [
+     "decide",
      "if m.get('verdict_after_rework')",
      "set verdict += f\" (after rework; first verdict {m['verdict_first']})\""
     ],
     [
      "decide",
-     "if missing",
-     "set lines = '\\n'.join((f'- BLOCKED: {c} (the team had no such capability; added by plain code)"
+     "if self.opt.contract == 'on'",
+     "set text = self.add_files_section(text, [f for f in self.files_of() if Path(f['path']).name no"
     ],
     [
      "fallback",
@@ -3886,7 +4087,7 @@
     ],
     [
      "fallback",
-     "f'{text.rstrip()}\\n\\n{lines}\\n' if m else f'{text.rstrip()}\\n\\n## Limitations\\n{lines}\\n'",
+     "f'{text.rstrip()}\\n\\n{body}\\n' if m else f'{text.rstrip()}\\n\\n## Limitations\\n{body}\\n'",
      "choose value"
     ],
     [
@@ -3900,6 +4101,21 @@
      "choose value"
     ],
     [
+     "fallback",
+     "{'unused_added_by_code': not_used} if unused else {}",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if Path(f['path']).name not in (text or '')",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if Path(f['path']).name not in text",
+     "drop the rest"
+    ],
+    [
      "filter",
      "keep only if a.is_summariser",
      "drop the rest"
@@ -3911,13 +4127,38 @@
     ],
     [
      "filter",
-     "keep only if not any((x.lower() in section.lower() for x in spell(c, names)))",
+     "keep only if e['status'] == 'cited' and e['step'] != n and (len(k.replace('.', '')) > 1) and (k not in have)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not named({c, *names})",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not named({u, re.sub('\\\\s*\\\\(.*\\\\)$', '', u)})",
      "drop the rest"
     ],
     [
      "filter",
      "keep only if s in statuses",
      "drop the rest"
+    ],
+    [
+     "stop",
+     "if m",
+     "return f'{text[:m.start()].rstrip()}\\n\\n{block}\\n{text[m.start():].lstrip()}'"
+    ],
+    [
+     "stop",
+     "if not files",
+     "return text"
+    ],
+    [
+     "stop",
+     "if x.lower() in section or re.sub('[\\\\s_-]+', ' ', bare.lower()) in flat",
+     "return True"
     ]
    ],
    "kind": "llm",
@@ -3931,14 +4172,15 @@
    },
    "title": "Summariser assembles"
   },
-  "facts_hash": "fee3c95e00d3c49f",
-  "seed_hash": "625b7e3f17220b51",
+  "facts_hash": "57ef60b301990925",
+  "seed_hash": "7fc06c7b031df24c",
   "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
   "source": "hand",
   "what": [
    "Sees every step's latest output with its status, missing capabilities, verdict and figure counts, and the deliverables the plan committed to (never the scoring rubric).",
    "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under Limitations when there are any.",
    "Code counts any number it adds, lists the answer's untagged and unverified figures, and appends a line for any missing capability it left out.",
+   "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code under 'Files made', and Limitations also name undeclared missing capabilities and attached items left unused (NOT USED).",
    "Each input is cut at {PlanOptions.max_input_chars} characters and all of them at {PlanOptions.max_summary_input_chars} (marked). When several final steps have no summariser step, code puts their outputs together under headings instead."
   ]
  },
@@ -4275,7 +4517,7 @@
   ]
  },
  "provenance": {
-  "checked_at": "7126cfe",
+  "checked_at": "f0b9d67",
   "facts": {
    "anchors": [
     {
@@ -4361,13 +4603,13 @@
    "title": "Where each figure came from"
   },
   "facts_hash": "42e593b70cb23441",
-  "seed_hash": "1d72cc742ec918a0",
+  "seed_hash": "00ba2a1fa7bdad55",
   "sentence": "Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
   "source": "hand",
   "what": [
    "A number is cited when its line carries a source id the step could have seen.",
    "Numbers from the task, from a calculation shown or run, and from the step's inputs are counted apart.",
-   "A source id the step never saw is counted as a made-up citation.",
+   "A source id the step never saw is counted as a made-up citation. A local tool's result has a source id too (D61), so a figure taken from it is cited.",
    "A run-wide ledger keeps each figure's first status and step, so a figure that entered untagged stays untagged however often later steps or the answer copy it.",
    "It only measures; nothing is rejected on these counts."
   ]
@@ -5203,7 +5445,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "7126cfe",
+  "checked_at": "c417c4e",
   "facts": {
    "anchors": [
     {
@@ -5288,6 +5530,81 @@
      "doc": "D34: on a FAIL verdict each producer step it checked is re-run once with the issues. Returns the steps",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.rework_producers",
      "signature": "rework_producers(self, n: int, deps: list[int], issues: str) -> list[int]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D61: before a step, what each of its helpers must account for — the capabilities it asked for that this",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.contract",
+     "signature": "contract(self, agents: list[AgentSpec]) -> dict[str, dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::blocked_marks",
+      "amoeba/interp/plan_runner.py::not_needed_marks"
+     ],
+     "doc": "D61: after a step, the evidence against the contract. A capability the helper lacked is accounted for by",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
+     "signature": "contract_check(self, contract: dict[str, dict], w: '_Work', text: str) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "D61: a tool call that returned something usable — not an error line, a refusal or an error result.",
+     "key": "amoeba/interp/plan_runner.py::tool_ok",
+     "signature": "tool_ok(result: str) -> bool"
+    },
+    {
+     "callees": [],
+     "doc": "D61: the names in 'NOT NEEDED: <name> — why' lines: a helper's reason for not using what it was given.",
+     "key": "amoeba/interp/plan_runner.py::not_needed_marks",
+     "signature": "not_needed_marks(text: str) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D61 (G4): what plain code recorded about a checked step, for its verifier.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.evidence_text",
+     "signature": "evidence_text(self, d: int) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.contract_findings",
+     "signature": "contract_findings(found: dict) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/localtools/toolbox.py::LocalToolbox.has_file"
+     ],
+     "doc": "D61: the files the team made in the workspace (of step n, or all), that still exist.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.files_of",
+     "signature": "files_of(self, n: int | None=None) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/task/evaluate.py::normalise"
+     ],
+     "doc": "A capability or tool name compared by its canonical form, without a pool:/local:/skill: prefix.",
+     "key": "amoeba/interp/plan_runner.py::cap_key",
+     "signature": "cap_key(name: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::cap_key"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::names_match",
+     "signature": "names_match(a: str, b: str) -> bool"
+    },
+    {
+     "callees": [],
+     "doc": "D61: NOT NEEDED lines are for plain code (kept in the step's metadata), not for later steps or the answer.",
+     "key": "amoeba/interp/plan_runner.py::strip_not_needed",
+     "signature": "strip_not_needed(text: str) -> str"
     }
    ],
    "checks": [],
@@ -5299,8 +5616,23 @@
     ],
     [
      "correct",
+     "if m.get('blocked') or m.get('unused')",
+     "add f\"- lacked: {', '.join(m.get('blocked', [])) or 'nothing'}; given but unused: {', '.join(m.get('unused', [])) or 'nothing'}\""
+    ],
+    [
+     "correct",
+     "if name and name.lower() not in (x.lower() for x in names)",
+     "add name"
+    ],
+    [
+     "correct",
      "if name and name.lower() not in names and (name.lower() not in ('none', 'n/a'))",
      "add name"
+    ],
+    [
+     "correct",
+     "if not said([need], blocked + declared)",
+     "add {'agent': who, 'name': need}"
     ],
     [
      "correct",
@@ -5309,12 +5641,37 @@
     ],
     [
      "decide",
+     "if local",
+     "set skills = [p['name'] for p in local if p['kind'] == 'skill']"
+    ],
+    [
+     "decide",
      "if markers",
      "set out += [_format_check(MARKERS[m], body) for m in markers]"
     ],
     [
      "fallback",
+     "'' if calls else ' (none)'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'every call to it failed' if u['tried'] else 'never called it'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'markers' if markers else 'keywords'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'ok' if c['ok'] else 'failed'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f\"skill {', '.join(skills)}\" if skills else LOCAL_TOOLS",
      "choose value"
     ],
     [
@@ -5329,6 +5686,11 @@
     ],
     [
      "filter",
+     "keep only if (n is None or v.get('step') == n) and self.local.has_file(p)",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if a.is_summariser",
      "drop the rest"
     ],
@@ -5338,13 +5700,53 @@
      "drop the rest"
     ],
     [
+     "filter",
+     "keep only if p.get('source') == 'local'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if p['kind'] == 'skill'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if p['kind'] == 'tool'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if p['kind'] == 'tool' and p.get('source') != 'local'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if q.get('for_role') == a.name and (not have(q))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if x['agent_id'] == c['agent_id']",
+     "drop the rest"
+    ],
+    [
      "loop cap",
      "while todo",
      "loop ends"
     ],
     [
      "reject",
+     "if any((x['ok'] and x['tool'] in it['tools'] for x in calls)) or said(it['aliases'], blocked + declared)",
+     "skip (continue)"
+    ],
+    [
+     "reject",
      "if d in self.reworked or self.artifacts[d]['meta'].get('verification')",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if self.artifacts[d]['meta'].get('causes') == ['capability']",
      "skip (continue)"
     ],
     [
@@ -5364,6 +5766,11 @@
     ],
     [
      "stop",
+     "if self.local is None",
+     "return []"
+    ],
+    [
+     "stop",
      "if set(step.agent_ids) <= summ or not step.depends_on",
      "return False"
     ]
@@ -5373,15 +5780,17 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "b56b9e7584c9d4ca",
-  "seed_hash": "85cae13a47c5c59a",
-  "sentence": "Checks each step's output against its output and done-when lines, reads verdicts and gaps.",
+  "facts_hash": "bca90df5640a8c7a",
+  "seed_hash": "4374f669ae6aaf94",
+  "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
   "source": "hand",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
    "A step the planner marked kind: verify must answer PASS or FAIL; a FAIL sends each step it checked back once, then it checks again. Steps that already used the old output are marked stale (--rerun-stale redoes them once).",
-   "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them."
+   "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them.",
+   "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, earns one refine turn and then makes the step partial (not declared / attached unused).",
+   "A verify step also sees each checked step's sources, tool calls, figure counts and files (D61). A producer whose only problem is a missing capability is not sent back (rework_skipped)."
   ]
  },
  "task_record": {
@@ -5651,7 +6060,7 @@
   ]
  },
  "toolbox": {
-  "checked_at": "30e73f9",
+  "checked_at": "f0b9d67",
   "facts": {
    "anchors": [
     {
@@ -5974,7 +6383,7 @@
     [
      "correct",
      "if entry['kind'] == 'tool'",
-     "add {'kind': 'tool', 'id': entry['id'], 'name': name, 'text': data_block(f'tool {name}', pool.description(name))}"
+     "add {'kind': 'tool', 'id': entry['id'], 'name': name, 'request': q.name, 'text': data_block(f'tool {name}', pool.description(name))}"
     ],
     [
      "correct",
@@ -6238,6 +6647,11 @@
     ],
     [
      "fallback",
+     "ranked[0][0] if ranked else 0",
+     "choose value"
+    ],
+    [
+     "fallback",
      "setup.env.get(a.get('env', '')) if a.get('env') else None",
      "choose value"
     ],
@@ -6334,6 +6748,16 @@
     [
      "filter",
      "keep only if t not in (q.name, q.canonical)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if x not in first",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if x[0] >= 100 or x[0] >= best",
      "drop the rest"
     ],
     [
@@ -6498,8 +6922,8 @@
    "prompts": {},
    "title": "Stock the toolbox"
   },
-  "facts_hash": "806e0bf4af1608c1",
-  "seed_hash": "6a26e347985b7739",
+  "facts_hash": "53d28ea7736d17c4",
+  "seed_hash": "0f6cd678df25d07a",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
   "source": "hand",
   "what": [
@@ -6509,7 +6933,8 @@
    "Vet: a tool must be read-only (nothing in its name or description that sends, posts, pays or deletes, or creates, updates, uploads, edits or writes anything in an outside service, D60) and not a pay-per-call host; it needs an HTTPS remote, a source repository, a pinned version, no key or its key in the environment, and an unchanged description (also re-checked against the server's tools/list at every connection); a skill must be instruction-only and at most 5,000 characters. At most {PoolLimits.max_calls_per_step} items per helper and 8 per run (pool.yaml).",
    "Attach: a tool becomes pool:<name> for the asking helper only; a skill's text goes on that helper's card. All pool text is shown inside marked data blocks, and the 'unavailable' line goes away.",
    "Every request's outcome and reason code is written to capability_requests.json and result.json; without a pool cache the run logs pool_unavailable and goes on as before.",
-   "With --local-tools on (D59) the local toolbox's items are candidates too, listed before the pool's, and a skill with scripts is no longer refused: it is copied into the run's workspace."
+   "With --local-tools on (D59) the local toolbox's items are candidates too — ahead of the pool's only when an alias names them or they match at least as well (D61) — and a skill with scripts is no longer refused: it is copied into the run's workspace.",
+   "What became of each request (filled or not) is handed to the plan runner for the step contract (D61)."
   ]
  },
  "tools": {

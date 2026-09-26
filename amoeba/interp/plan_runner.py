@@ -46,6 +46,12 @@ class PlanOptions:
     # The CLI default is critique; this library default keeps the earlier behaviour.
     collab: str = "concat"
     collab_rounds: int = 2           # D51: review rounds at most
+    # D61: on = the step contract — before a step plain code lists what each helper must account for (capabilities
+    # it asked for and lacks, tools and skills attached to it), after the step it checks the evidence (tool calls,
+    # BLOCKED / NOT NEEDED lines, files, sources) and sets the outcome; also the verifier's evidence, the answer's
+    # produced-work check and rework by cause. The CLI default is on; this library default keeps the earlier
+    # behaviour for callers that set nothing.
+    contract: str = "off"
 
 
 class PlanGraphError(ValueError):
@@ -198,9 +204,53 @@ def refine_findings(checks: list[dict], prov: dict) -> tuple[list[str], list[str
     return check_items, prov_items
 
 
-def refine_counts(checks: list[dict], prov: dict) -> dict:
-    return {"failed_checks": sum(not c["pass"] for c in checks), "untagged": prov.get("untagged", 0),
-            "hallucinated": len(prov.get("hallucinated_citations", []))}
+def refine_counts(checks: list[dict], prov: dict, contract: int | None = None) -> dict:
+    out = {"failed_checks": sum(not c["pass"] for c in checks), "untagged": prov.get("untagged", 0),
+           "hallucinated": len(prov.get("hallucinated_citations", []))}
+    return out if contract is None else {**out, "contract": contract}   # D61: when the step contract is on
+
+
+CONTRACT_LINE = ("Plain code checks this step's contract: {items}. For each one, either use it (call the tool) or put "
+                 "a line \"BLOCKED: <name> — <what could not be done without it>\" or \"NOT NEEDED: <name> — <why this "
+                 "step does not need it>\" in your Final Output. Never fill in from memory what it would have given.")
+LOCAL_TOOLS = "local tools"
+
+
+# box: step_check
+def tool_ok(result: str) -> bool:
+    """D61: a tool call that returned something usable — not an error line, a refusal or an error result."""
+    return not re.match(r"\s*(?:error\b|refused:|\[local:\w+ error\]|\[S\d+\][^\n]*returned an error)", result or "", re.I)
+
+
+# box: step_check
+def not_needed_marks(text: str) -> list[str]:
+    """D61: the names in 'NOT NEEDED: <name> — why' lines: a helper's reason for not using what it was given."""
+    names = []
+    for m in re.finditer(r"NOT\s+NEEDED\s*[:：]\s*`?((?:(?:pool|local|skill):)?[A-Za-z][\w ./+-]{0,60}?)`?\s*"
+                         r"(?:[—–:;,(\n]|-\s|$)", text or "", re.I):
+        name = m.group(1).strip(" .-")
+        if name and name.lower() not in (x.lower() for x in names):
+            names.append(name)
+    return names
+
+
+# box: step_check
+def strip_not_needed(text: str) -> str:
+    """D61: NOT NEEDED lines are for plain code (kept in the step's metadata), not for later steps or the answer."""
+    return re.sub(r"(?im)^[ \t>*-]*NOT\s+NEEDED\s*[:：].*(?:\n|$)", "", text or "").strip()
+
+
+# box: step_check
+def cap_key(name: str) -> str:
+    """A capability or tool name compared by its canonical form, without a pool:/local:/skill: prefix."""
+    bare = re.sub(r"^(?:pool|local|skill)\s*:\s*", "", (name or "").strip(), flags=re.I)
+    return re.sub(r"[\s-]+", "_", normalise(bare)[0].lower())
+
+
+# box: step_check
+def names_match(a: str, b: str) -> bool:
+    ka, kb = cap_key(a), cap_key(b)
+    return bool(ka and kb) and (ka == kb or (min(len(ka), len(kb)) >= 4 and (ka in kb or kb in ka)))
 
 
 class _Work:
@@ -213,6 +263,7 @@ class _Work:
         self.partial: dict[str, str] = {}       # agent_id -> what it wrote alongside BLOCKED
         self.contributions: list[dict] = []
         self.tool_results: list[str] = []       # what the step's tools returned (D33: their numbers count as derived)
+        self.calls: list[dict] = []             # D61: every tool call of the step: who, which tool, ok or not
         self.last_message = ""                  # D44: the last helper message, passed on when no Final Output came
 
 
@@ -352,6 +403,130 @@ class PlanRunner:
         self.web = getattr(interp.tools, "web", None)
         self.pool = getattr(interp.tools, "pool", None)   # D56: pool tools; their [S#] share web's list when it exists
         self.local = getattr(interp.tools, "local", None)  # D59: local tools (--local-tools on)
+        self.current_contract: dict[str, dict] = {}        # D61: the running step's contract, by helper name
+
+    # ---- D61: the step contract ---------------------------------------------------------------------------------
+    # box: step_check
+    def contract(self, agents: list[AgentSpec]) -> dict[str, dict]:
+        """D61: before a step, what each of its helpers must account for — the capabilities it asked for that this
+        run could not give it (its missing tools and its unfilled capability requests) and the items attached to it
+        (each pool tool; the local tools and local skills as one item, used by any local call). A pool skill is
+        text on the card and needs no call."""
+        asked = self.cfg.meta.get("capability_requests", [])
+        out = {}
+        for a in agents:
+            have = lambda q: q.get("status") == "filled" or any(
+                x and x in a.tools for x in (q["name"], q.get("canonical"), normalise(q["name"])[0]))
+            needs = list(dict.fromkeys([*a.missing_tools, *(q["name"] for q in asked
+                                                             if q.get("for_role") == a.name and not have(q))]))
+            items = [{"name": p["name"], "aliases": [p["name"], p.get("request", "")], "tools": [p["name"]]}
+                     for p in a.pool if p["kind"] == "tool" and p.get("source") != "local"]
+            local = [p for p in a.pool if p.get("source") == "local"]
+            if local:
+                skills = [p["name"] for p in local if p["kind"] == "skill"]
+                tools = [p["name"] for p in local if p["kind"] == "tool"]
+                label = (f"skill {', '.join(skills)}" if skills else LOCAL_TOOLS) + f" ({', '.join(tools)})"
+                items.append({"name": label, "aliases": [LOCAL_TOOLS, *skills, *tools,
+                                                         *(p.get("request", "") for p in local)], "tools": tools})
+            out[a.name] = {"agent_id": a.agent_id, "needs": needs, "items": items}
+        return out
+
+    # box: step_check
+    def contract_check(self, contract: dict[str, dict], w: "_Work", text: str) -> dict:
+        """D61: after a step, the evidence against the contract. A capability the helper lacked is accounted for by
+        a BLOCKED line (or a BLOCKED action) or a NOT NEEDED line; an attached item by a successful call, or by one
+        of those lines. What is left is `missing` (it ran without it and did not say so) and `unused`."""
+        blocked = [*blocked_marks(text), *w.blocked.values()]
+        declared = not_needed_marks(text)
+        said = lambda names, marks: any(names_match(x, m) for x in names if x for m in marks)
+        missing, unused = [], []
+        for who, c in contract.items():
+            calls = [x for x in w.calls if x["agent_id"] == c["agent_id"]]
+            for need in c["needs"]:
+                if not said([need], blocked + declared):
+                    missing.append({"agent": who, "name": need})
+            for it in c["items"]:
+                if any(x["ok"] and x["tool"] in it["tools"] for x in calls) or said(it["aliases"], blocked + declared):
+                    continue
+                unused.append({"agent": who, "name": it["name"], "tried": any(x["tool"] in it["tools"] for x in calls)})
+        return {"missing": missing, "unused": unused, "not_needed": declared}
+
+    # box: step_check
+    @staticmethod
+    def contract_findings(found: dict) -> list[str]:
+        out = [f"{m['agent']} asked for {m['name']}, which this run could not provide, and the output neither says "
+               f"what could not be done without it nor why it was not needed. If the step needed it, write "
+               f"\"BLOCKED: {m['name']} — <what could not be done>\" and remove anything filled in from memory in its "
+               f"place; if not, write \"NOT NEEDED: {m['name']} — <why>\"." for m in found["missing"]]
+        out += [f"{u['agent']} was given {u['name']} for this step but "
+                f"{'every call to it failed' if u['tried'] else 'never called it'}. Use it now, or write "
+                f"\"BLOCKED: {u['name']} — <what could not be done>\" or \"NOT NEEDED: {u['name']} — <why>\"."
+                for u in found["unused"]]
+        return out
+
+    # box: step_check
+    def files_of(self, n: int | None = None) -> list[dict]:
+        """D61: the files the team made in the workspace (of step n, or all), that still exist."""
+        if self.local is None:
+            return []
+        return [v for p, v in sorted(self.local.files.items())
+                if (n is None or v.get("step") == n) and self.local.has_file(p)]
+
+    # box: plan_summary
+    def answer_gaps(self, n: int, text: str) -> dict:
+        """D61 (G5): work the team produced that the answer leaves out — files made, and figures a producer step
+        cited from a source (two digits or more)."""
+        have = numbers_in(text)
+        files = [f for f in self.files_of() if Path(f["path"]).name not in (text or "")]
+        figs = [{"figure": e["as"], "step": e["step"], "sources": e["sources"]} for k, e in self.ledger.items()
+                if e["status"] == "cited" and e["step"] != n and len(k.replace(".", "")) > 1 and k not in have]
+        return {"files": files, "figures": figs[:12]}
+
+    # box: plan_summary
+    @staticmethod
+    def answer_findings(gaps: dict) -> list[str]:
+        out = []
+        if gaps["files"]:
+            out.append("the team made these files but the answer does not name them: " + ", ".join(
+                f"{f['path']} (step {f['step']})" for f in gaps["files"]) + ". Name each file the task asks for and "
+                "say what is in it.")
+        if gaps["figures"]:
+            out.append("these figures were cited from a source by a step but are not in the answer: " + ", ".join(
+                f"{g['figure']} [{', '.join(g['sources'])}] (step {g['step']})" for g in gaps["figures"]) + ". Put in "
+                "each one the task needs, with its [S#]; leave out the rest.")
+        return out
+
+    # box: plan_summary
+    @staticmethod
+    def add_files_section(text: str, files: list[dict]) -> str:
+        """D61: files still unnamed after the refine turn are listed by plain code, before the Limitations section."""
+        if not files:
+            return text
+        block = "## Files made\n" + "\n".join(f"- {f['path']} ({f['size']:,} bytes, made in step {f['step']}; listed by "
+                                               f"plain code)" for f in files) + "\n"
+        m = re.search(r"^\s*#+\s*limitations\b", text or "", re.I | re.M)
+        if m:
+            return f"{text[:m.start()].rstrip()}\n\n{block}\n{text[m.start():].lstrip()}"
+        return f"{(text or '').rstrip()}\n\n{block}"
+
+    # box: step_check
+    def evidence_text(self, d: int) -> str:
+        """D61 (G4): what plain code recorded about a checked step, for its verifier."""
+        m = self.artifacts[d]["meta"]
+        p = m["provenance"]
+        src = "; ".join(f"[{s['id']}] {s['title'][:80]} ({s['url'][:100]})" for s in m.get("sources", [])) or "none"
+        calls = m.get("tool_calls", [])
+        lines = [f"Evidence plain code recorded for step {d}:",
+                 f"- sources it fetched: {src}",
+                 f"- tool calls: {len(calls)}" + ("" if calls else " (none)"),
+                 *(f"  - {c['agent']} → {c['tool']} ({'ok' if c['ok'] else 'failed'}): {c['input'][:120]!r} → "
+                   f"{c['result'][:200]}" for c in calls[:8]),
+                 f"- figures: {p['cited']} cited, {p['unverified']} unverified, {p['untagged']} untagged",
+                 f"- files made: {', '.join(f['path'] for f in m.get('files_made', [])) or 'none'}"]
+        if m.get("blocked") or m.get("unused"):
+            lines.append(f"- lacked: {', '.join(m.get('blocked', [])) or 'nothing'}; given but unused: "
+                         f"{', '.join(m.get('unused', [])) or 'nothing'}")
+        return "\n".join(lines)
 
     # box: plan_step
     def grant_web_tools(self) -> None:
@@ -415,7 +590,10 @@ class PlanRunner:
         for n in last:
             title = re.sub(r"^\s*\[.*?\]\s*:\s*", "", self.steps[n].text).strip() or f"Step {n}"
             parts.append(f"## Step {n}: {title}\n\n{self.artifacts[n]['text'].strip()}")
-        text, added = self.enforce_limitations("\n\n".join(parts))
+        text = "\n\n".join(parts)
+        if self.opt.contract == "on":                      # D61 (G5): files made but named by no final step
+            text = self.add_files_section(text, [f for f in self.files_of() if Path(f["path"]).name not in text])
+        text, added = self.enforce_limitations(text)
         self.ep.answer_assembled_by_code = list(last)
         statuses = [self.artifacts[n]["meta"]["status"] for n in last]
         worst = next((s for s in ("incomplete", "partial") if s in statuses), "done")
@@ -437,7 +615,7 @@ class PlanRunner:
                                                "amoeba.chars": len(text), "amoeba.what": what})
         return f"{text[:limit].rstrip()}\n[... cut by plain code: first {limit:,} of {len(text):,} characters shown]"
 
-    def inputs_text(self, deps: list[int], n: int | None = None) -> str:
+    def inputs_text(self, deps: list[int], n: int | None = None, evidence: bool = False) -> str:
         if not deps:
             return "None: this step starts from the task alone."
         parts = []
@@ -448,6 +626,8 @@ class PlanRunner:
             stale = f", STALE (built on step(s) {', '.join(map(str, m['stale_because']))} before their rework)" \
                 if m.get("stale") else ""
             parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{stale}\n{body}")
+            if evidence and self.opt.contract == "on":          # D61 (G4): the verifier sees what the step used
+                parts[-1] += "\n\n" + self.evidence_text(d)
         return "\n\n".join(parts)
 
     # box: plan_step
@@ -456,8 +636,10 @@ class PlanRunner:
         n = number(step)
         agents = [self.agents[a] for a in step.agent_ids]
         summarising = self.is_summary_step(step)                                  # D35
-        inputs = self.all_inputs_text(n) if summarising else self.inputs_text(deps, n)
         verifier = self.is_verification(step) and not summarising
+        inputs = self.all_inputs_text(n) if summarising else self.inputs_text(deps, n, evidence=verifier)
+        on = self.opt.contract == "on"                                             # D61
+        answer_step = n == getattr(self, "answer_n", None)
         if self.web is not None:
             self.web.begin_step(n, self.i.trace)
         if self.pool is not None:
@@ -478,6 +660,11 @@ class PlanRunner:
         template = PROMPT.plan_summarise if summarising else PROMPT.plan_step
         # D51: with critique, the first role drafts and the others review; the step's output is the drafter's
         writers = agents[:1] if self.opt.collab == "critique" and len(agents) > 1 else agents
+        contract = self.contract(writers) if on and not summarising else {}       # D61: before the step
+        self.current_contract = contract
+        if contract:
+            self.i.trace.event("step_contract", {"amoeba.step": n, "amoeba.contract": {
+                who: {"needs": c["needs"], "items": [x["name"] for x in c["items"]]} for who, c in contract.items()}})
         self._loop(step, n, writers, inputs, extra, w, template)
         collab = self.critique(step, n, agents[0], agents[1:], inputs, extra, w, template) \
             if writers is not agents else None
@@ -486,13 +673,20 @@ class PlanRunner:
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
         own, visible = self._sources(n, deps)
         prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)   # D33
-        refine = self.refine(step, n, agents, inputs, extra, w, template, checks, prov)    # D42 / D50
+        found = self.contract_check(contract, w, text) if contract else None                # D61 (G1, G2)
+        produced = self.answer_gaps(n, text) if on and answer_step else None               # D61 (G5)
+        items = (self.contract_findings(found) if found else []) + (self.answer_findings(produced) if produced else [])
+        refine = self.refine(step, n, agents, inputs, extra, w, template, checks, prov, items)   # D42 / D50 / D61
         if refine:
             text = self._text(agents, w)
             checks = step_checks(step, text, deps, self.artifacts, verifier)
             own, visible = self._sources(n, deps)
             prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)
-            refine["after"] = refine_counts(checks, prov)
+            found = self.contract_check(contract, w, text) if contract else None
+            produced = self.answer_gaps(n, text) if produced is not None else None
+            refine["after"] = refine_counts(checks, prov, len((self.contract_findings(found) if found else [])
+                                                              + (self.answer_findings(produced) if produced else []))
+                                            if on else None)
             self.i.trace.event("refine", {"amoeba.step": n, "amoeba.reason": refine["reason"],
                                           "amoeba.findings": len(refine["findings"]),
                                           **{f"amoeba.before.{k}": v for k, v in refine["before"].items()},
@@ -501,9 +695,12 @@ class PlanRunner:
         retried = bool(refine)
         # D36: what the step could not do for lack of a capability — BLOCKED as an action or marked in the output.
         # D40: not for the answer step: its Limitations section names the producers' gaps on purpose
-        answer_step = n == getattr(self, "answer_n", None)
         mentions = blocked_marks(text)
         gaps = [] if answer_step else sorted(set(w.blocked.values()) | set(mentions))
+        # D61 (G1): a capability the helper lacked and did not account for is a gap, answer step included
+        undeclared = list(dict.fromkeys(m["name"] for m in found["missing"])) if found else []
+        gaps = sorted(set(gaps) | set(undeclared))
+        unused = list(dict.fromkeys(u["name"] for u in found["unused"])) if found else []   # D61 (G2)
         wrote = bool(w.done) or any(v for v in w.partial.values())
         finished = len(w.done) + len(w.blocked) == len(agents)
         if gaps:
@@ -515,6 +712,18 @@ class PlanRunner:
             status, reason = "incomplete", "checks failed: " + ", ".join(failed)
         else:
             status, reason = "done", ""
+        if undeclared:
+            reason += "; not declared by the helper: " + ", ".join(undeclared)
+        if unused:
+            status = "partial" if status == "done" else status
+            reason = "; ".join(x for x in (reason, "attached unused: " + ", ".join(unused)) if x)
+        if on:
+            text = strip_not_needed(text) or text
+        if found is not None:
+            self.i.trace.event("contract_check", {"amoeba.step": n, "amoeba.missing": undeclared,
+                                                  "amoeba.unused": unused, "amoeba.not_needed": found["not_needed"],
+                                                  "amoeba.tool_calls": len(w.calls),
+                                                  "amoeba.tool_calls_ok": sum(c["ok"] for c in w.calls)})
         claimed = missing = None
         if self.local is not None:                # D59: a file the step says it made must be in the workspace
             claimed = claimed_files(text)
@@ -523,6 +732,10 @@ class PlanRunner:
                 status = "incomplete"
                 reason = "; ".join(x for x in (reason, "claimed_file_missing: " + ", ".join(missing)) if x)
                 self.i.trace.event("claimed_file_missing", {"amoeba.step": n, "amoeba.files": missing})
+        # D61 (G6): what went wrong, for rework — a step that only lacked a capability cannot be fixed by a rework
+        causes = [c for c, hit in (("capability", bool(gaps)), ("checks", bool(failed)),
+                                   ("max_turns", not finished and not gaps), ("unused_tool", bool(unused)),
+                                   ("claimed_file_missing", bool(missing))) if hit]
         origins = self.ledger_update(n, prov.pop("figures"))                               # D43
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents_all], "covers": step.covers,
                 "collab": collab,
@@ -539,14 +752,25 @@ class PlanRunner:
                 "contributions": w.contributions}
         if claimed is not None:
             meta["claimed_files"], meta["claimed_files_missing"] = claimed, missing
+        if on:                                                                     # D61: contract and evidence
+            meta.update({"contract": {who: {"needs": c["needs"], "items": [x["name"] for x in c["items"]]}
+                                      for who, c in contract.items()},
+                         "contract_missing": undeclared, "unused": unused,
+                         "not_needed": found["not_needed"] if found else [], "causes": causes,
+                         "tool_calls": w.calls, "files_made": self.files_of(n)})
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
             # D38: both verdicts are kept; `verdict` is always the latest one
             meta["verdict_first"] = reverify["first_verdict"] if reverify else meta["verdict"]
             meta["verdict_after_rework"] = meta["verdict"] if reverify else None
-        if summarising:
-            text, added = self.enforce_limitations(text)                          # D36
+        if summarising or (on and answer_step):
+            if produced is not None:                                               # D61 (G5)
+                text = self.add_files_section(text, produced["files"])
+            text, added = self.enforce_limitations(text)                          # D36 / D61 (G3)
             meta["summary_check"] = {**self.summary_check(n, text), **added}
+            if produced is not None:
+                meta["summary_check"].update({"files_listed_by_code": [f["path"] for f in produced["files"]],
+                                              "cited_figures_left_out": [g["figure"] for g in produced["figures"]]})
         self._save(n, wave, text, meta, prov)
         if verifier and meta["verdict"] == "FAIL" and not reverify:
             reworked = self.rework_producers(n, deps, meta["issues"])
@@ -559,7 +783,8 @@ class PlanRunner:
 
     def _sources(self, n: int, deps: list[int]) -> tuple[list[dict], set[str]]:
         """The step's own sources and every source id it could have seen (its own and its inputs')."""
-        books = [b for b in (self.web, self.pool.book if self.pool is not None else None) if b is not None]
+        books = [b for b in (self.web, self.pool.book if self.pool is not None else None,
+                             getattr(self.local, "book", None)) if b is not None]      # D61 (G7): local results too
         books = [b for i, b in enumerate(books) if all(b is not c for c in books[:i])]   # one list when shared
         own = [{k: s[k] for k in ("id", "url", "title", "kind", "fetched_at")}
                for b in books for s in b.sources_for(n)]
@@ -639,17 +864,21 @@ class PlanRunner:
 
     # box: plan_step
     def refine(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work",
-               template: str, checks: list[dict], prov: dict) -> dict | None:
+               template: str, checks: list[dict], prov: dict, contract_items: list[str] = ()) -> dict | None:
         """D50: one refine turn for the helper(s) of a finished step, with turns of its own (check_retry_turns, not
         the step's cap). The helper is given exactly what plain code found: failed checks and — unless
         self_refine is "off" — untagged figures and citations of sources it never saw. With "always" and no
         finding it gets a self-review against done_when and its success criteria instead. Returns the reason, the
-        findings and the before-counts (the caller adds the after-counts), or None when there is no refine."""
+        findings and the before-counts (the caller adds the after-counts), or None when there is no refine.
+        D61: contract_items (what the step contract left unaccounted for, or what the answer leaves out) always
+        earn the turn, whatever self_refine says; they share it with the other findings."""
         mode = self.opt.self_refine
         check_items, prov_items = refine_findings(checks, prov)
         if mode == "off":
             prov_items = []
-        reason = "+".join(k for k, v in (("checks", check_items), ("provenance", prov_items)) if v)
+        contract_items = list(contract_items)
+        reason = "+".join(k for k, v in (("checks", check_items), ("provenance", prov_items),
+                                         ("contract", contract_items)) if v)
         if not reason and mode == "always":
             reason = "self_review"
         if not reason or not w.done:
@@ -661,15 +890,17 @@ class PlanRunner:
         if reason == "self_review":
             criteria = "; ".join(c for a in agents for c in a.success_criteria) or "none written"
             note = SELF_REVIEW_NOTE.format(done_when=step.done_when or "none written", criteria=criteria)
-        elif not prov_items:
+        elif not prov_items and not contract_items:
             note = RETRY_NOTE.format(failed="; ".join(check_items))
         else:
-            note = REFINE_NOTE.format(findings="\n".join(f"{i}. {x}" for i, x in enumerate(check_items + prov_items, 1)))
+            note = REFINE_NOTE.format(findings="\n".join(f"{i}. {x}" for i, x in
+                                                          enumerate(check_items + prov_items + contract_items, 1)))
         w.max_turns = w.turn + self.opt.check_retry_turns
         w.completed += note
         w.done.clear()
         self._loop(step, n, agents, inputs, extra, w, template)
-        return {"reason": reason, "findings": check_items + prov_items, "before": refine_counts(checks, prov)}
+        return {"reason": reason, "findings": check_items + prov_items + contract_items,
+                "before": refine_counts(checks, prov, len(contract_items) if self.opt.contract == "on" else None)}
 
     # box: step_check
     def mark_stale(self, reworked: list[int], verifier_step: int) -> None:
@@ -728,6 +959,10 @@ class PlanRunner:
             why = f" ({m['status_reason']})" if m.get("status_reason") else ""
             gaps = f"; lacked: {', '.join(m['blocked'])}" if m.get("blocked") else ""
             verdict = f"; verdict: {m['verdict']}" if m.get("verdict") else ""
+            if m.get("files_made"):                              # D61 (G5)
+                verdict += f"; files made: {', '.join(f['path'] for f in m['files_made'])}"
+            if m.get("unused"):
+                verdict += f"; given but unused: {', '.join(m['unused'])}"
             if m.get("stale"):
                 verdict += f"; STALE: built on step(s) {', '.join(map(str, m['stale_because']))} before their rework"
             if m.get("verdict_after_rework"):
@@ -775,32 +1010,54 @@ class PlanRunner:
         return out
 
     def blocked_capabilities(self) -> dict[str, list[str]]:
-        """D36: canonical capability -> the names the steps used for it, over every step's latest output."""
+        """D36: canonical capability -> the names the steps used for it, over every step's latest output. D61: the
+        answer step's own undeclared gaps (G1) count too; its BLOCKED mentions still do not (D40)."""
         out: dict[str, list[str]] = {}
         for d, a in self.artifacts.items():
-            if d == getattr(self, "answer_n", None):       # D40: producer steps only
-                continue
-            for g in a["meta"].get("blocked", []):
+            m = a["meta"]
+            names = m.get("contract_missing", []) if d == getattr(self, "answer_n", None) else m.get("blocked", [])
+            for g in names:
                 out.setdefault(normalise(g)[0], [])
                 if g not in out[normalise(g)[0]]:
                     out[normalise(g)[0]].append(g)
         return out
 
     # box: plan_summary
+    def unused_items(self) -> dict[str, list[int]]:
+        """D61 (G2/G3): item attached to a helper -> the steps that left it unused and unaccounted for."""
+        out: dict[str, list[int]] = {}
+        for d, a in sorted(self.artifacts.items()):
+            for u in a["meta"].get("unused", []):
+                out.setdefault(u, []).append(d)
+        return out
+
+    # box: plan_summary
     def enforce_limitations(self, text: str) -> tuple[str, dict]:
         """D36: the final answer's Limitations section must name every capability a step lacked. Names it leaves
-        out are appended by plain code (and recorded), so a gap is never silently dropped."""
-        caps = self.blocked_capabilities()
+        out are appended by plain code (and recorded), so a gap is never silently dropped. D61 (G3): also every
+        attached item a step left unused, and names are matched by their canonical form too (prefix and case
+        ignored, '_' or '-' as a space)."""
+        caps, unused = self.blocked_capabilities(), self.unused_items()
         m = re.search(r"^\s*#+\s*limitations\b.*$", text or "", re.I | re.M)
-        section = text[m.end():] if m else ""
-        spell = lambda c, names: {c, c.replace("_", " "), *names}
-        missing = sorted(c for c, names in caps.items()
-                         if not any(x.lower() in section.lower() for x in spell(c, names)))
-        if missing:
-            lines = "\n".join(f"- BLOCKED: {c} (the team had no such capability; added by plain code)" for c in missing)
-            text = f"{text.rstrip()}\n\n{lines}\n" if m else f"{text.rstrip()}\n\n## Limitations\n{lines}\n"
-            self.i.trace.event("limitations_added", {"amoeba.capabilities": missing})
-        return text, {"blocked_capabilities": sorted(caps), "limitations_added_by_code": missing}
+        section = (text[m.end():] if m else "").lower()
+        flat = re.sub(r"[\s_-]+", " ", section)
+        def named(names):
+            for x in names:
+                bare = re.sub(r"^(?:pool|local|skill)\s*:\s*", "", x.strip(), flags=re.I)
+                if x.lower() in section or re.sub(r"[\s_-]+", " ", bare.lower()) in flat:
+                    return True
+            return False
+        missing = sorted(c for c, names in caps.items() if not named({c, *names}))
+        not_used = sorted(u for u in unused if not named({u, re.sub(r"\s*\(.*\)$", "", u)}))
+        lines = [f"- BLOCKED: {c} (the team had no such capability; added by plain code)" for c in missing]
+        lines += [f"- NOT USED: {u} (given to the team for step {', '.join(map(str, unused[u]))} but never used; "
+                  f"added by plain code)" for u in not_used]
+        if lines:
+            body = "\n".join(lines)
+            text = f"{text.rstrip()}\n\n{body}\n" if m else f"{text.rstrip()}\n\n## Limitations\n{body}\n"
+            self.i.trace.event("limitations_added", {"amoeba.capabilities": missing, "amoeba.unused": not_used})
+        return text, {"blocked_capabilities": sorted(caps), "limitations_added_by_code": missing,
+                      **({"unused_added_by_code": not_used} if unused else {})}
 
     # box: step_check
     def is_verification(self, step: PlanStep) -> bool:
@@ -827,6 +1084,11 @@ class PlanRunner:
         for d in deps:
             if d in self.reworked or self.artifacts[d]["meta"].get("verification"):
                 continue
+            if self.artifacts[d]["meta"].get("causes") == ["capability"]:   # D61 (G6): a rework cannot add it
+                self.i.trace.event("rework_skipped", {"amoeba.step": d, "amoeba.by_step": n,
+                                                      "amoeba.reason": "capability_missing",
+                                                      "amoeba.lacked": self.artifacts[d]["meta"]["blocked"]})
+                continue
             self.reworked.add(d)
             done.append(d)
             self.i.trace.event("rework", {"amoeba.step": d, "amoeba.by_step": n, "amoeba.issues_chars": len(issues)})
@@ -852,6 +1114,8 @@ class PlanRunner:
                     w.completed += f">{agent.name} {BLOCKED}: {gap}\n{inp.strip()}\n"
                 elif act in agent.tools:
                     w.tool_results.append(resp)
+                    w.calls.append({"agent_id": agent.agent_id, "agent": agent.name, "tool": act, "ok": tool_ok(resp),
+                                    "input": inp.strip()[:200], "result": re.sub(r"\s+", " ", resp or "").strip()[:300]})
                     w.completed += f">{agent.name} ({act}):\n{inp.strip()}\n>Result:\n{resp.strip()}\n"
                 elif FINAL_OUTPUT in act:
                     w.done[agent.agent_id] = inp.strip()
@@ -904,6 +1168,11 @@ class PlanRunner:
                       tools=str(tools), turns_left=turns_left,
                       unavailable="\n".join([UNAVAILABLE.format(name=t) for t in agent.missing_tools]
                                              + pool_tool_notes(agent)))   # D56
+        c = self.current_contract.get(agent.name)
+        if c and (c["needs"] or c["items"]):     # D61: what plain code will check, on the helper's prompt
+            items = [*(f"{x} (asked for, not available)" for x in c["needs"]),
+                     *(f"{x['name']} (given to you)" for x in c["items"])]
+            user = user.replace("\n# Format\n", f"\n{CONTRACT_LINE.format(items='; '.join(items))}\n\n# Format\n", 1)
         system = render(PROMPT.plan_step_system, name=agent.name)
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name,
                                                 "amoeba.box": "plan_summary" if self.is_summary_step(step) else "plan_step",
