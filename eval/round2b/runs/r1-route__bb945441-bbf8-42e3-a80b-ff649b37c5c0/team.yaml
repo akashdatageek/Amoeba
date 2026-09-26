@@ -1,0 +1,267 @@
+team_id: 3dbc50f3-ae5e-4ee4-99be-34d0574732ba
+version: 1
+parent_version: null
+name: team-plan-r1-route
+topology: plan
+agents:
+  209fa4ab-bc1a-4169-aeb3-cd915fcb61d1:
+    agent_id: 209fa4ab-bc1a-4169-aeb3-cd915fcb61d1
+    name: Logistics Specialist
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in route optimization and transport logistics. Responsible
+      for determining the most efficient paths and calculating travel metrics.
+    role_prompt: 'You are a Senior Logistics Specialist. Your task is to plan the
+      driving route from Chicago to Indianapolis, then to Columbus, and finally to
+      Pittsburgh. For each leg, use a routing tool to find the most efficient highway
+      path. Provide the exact distance in miles and the estimated drive time. Output
+      the results in a markdown table with columns: Leg, Distance (mi), and Drive
+      Time. Ensure you are using the most direct highway routes.'
+    max_history: 5
+    missing_tools:
+    - route_engine
+    is_summariser: false
+    goal: Provide accurate distance and time metrics for the specified route legs.
+    skills:
+    - route optimization
+    - geospatial analysis
+    - logistics planning
+    outputs:
+    - artifact: route table
+      format: 'table: Leg | Distance (mi) | Drive Time (hrs/mins)'
+    success_criteria:
+    - Distances are accurate to within 5 miles of standard mapping tools
+    - Drive times reflect realistic highway speeds
+    constraints:
+    - Must follow the specific city sequence provided
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  14aaa464-6baf-4747-9e6f-351ff1b652bd:
+    agent_id: 14aaa464-6baf-4747-9e6f-351ff1b652bd
+    name: Cost Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in operational cost modeling and commodity pricing. Responsible
+      for fetching current market rates and calculating total expenditure.
+    role_prompt: 'You are a Senior Cost Analyst. First, use web search to find today''s
+      average US diesel price per gallon (preferably from EIA or AAA). Then, take
+      the total distance provided by the Logistics Specialist and calculate the total
+      fuel cost using the formula: (Total Distance / 6.5) * Diesel Price. Provide
+      a clear breakdown including the price per gallon used, the total gallons required,
+      and the final cost in USD.'
+    max_history: 5
+    missing_tools:
+    - web_search
+    is_summariser: false
+    goal: Provide a precise fuel cost estimate based on current diesel prices and
+      trip distance.
+    skills:
+    - cost modelling
+    - commodity price tracking
+    - arithmetic verification
+    outputs:
+    - artifact: fuel cost breakdown
+      format: 'memo: Diesel Price per Gallon, Total Gallons Needed, Total Estimated
+        Cost'
+    success_criteria:
+    - Diesel price is sourced from a reputable current average (EIA/AAA)
+    - Calculation is mathematically correct
+    constraints:
+    - Must use exactly 6.5 mpg
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  adca74d9-7126-4e45-a8c4-a8a945b6a5e9:
+    agent_id: adca74d9-7126-4e45-a8c4-a8a945b6a5e9
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Project lead responsible for quality assurance and final assembly
+      of deliverables.
+    role_prompt: You are the Delivery Lead. Your role is to assemble the final deliverable.
+      Take the route table (legs, distances, times) and the fuel cost breakdown (price,
+      gallons, total cost) and present them as a cohesive trip plan. Ensure the final
+      output is professional, concise, and directly answers the user's request.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble the route and cost data into a professional, final report.
+    skills:
+    - technical writing
+    - quality assurance
+    - project delivery
+    outputs:
+    - artifact: final trip plan
+      format: 'memo: Route Table followed by Fuel Cost Estimate'
+    success_criteria:
+    - All requirements are addressed
+    - Formatting is clean and professional
+    constraints:
+    - Do not add new analysis; only assemble and edit
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 209fa4ab-bc1a-4169-aeb3-cd915fcb61d1
+  dst: 14aaa464-6baf-4747-9e6f-351ff1b652bd
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 14aaa464-6baf-4747-9e6f-351ff1b652bd
+  dst: 209fa4ab-bc1a-4169-aeb3-cd915fcb61d1
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 209fa4ab-bc1a-4169-aeb3-cd915fcb61d1
+  dst: adca74d9-7126-4e45-a8c4-a8a945b6a5e9
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 14aaa464-6baf-4747-9e6f-351ff1b652bd
+  dst: adca74d9-7126-4e45-a8c4-a8a945b6a5e9
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 209fa4ab-bc1a-4169-aeb3-cd915fcb61d1
+exit: adca74d9-7126-4e45-a8c4-a8a945b6a5e9
+plan:
+- index: 0
+  agent_ids:
+  - 209fa4ab-bc1a-4169-aeb3-cd915fcb61d1
+  text: '[Logistics Specialist]: Route Mapping'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Determine the best highway route for Chicago $\rightarrow$ Indianapolis, Indianapolis
+    $\rightarrow$ Columbus, and Columbus $\rightarrow$ Pittsburgh.
+
+    - Extract distance and drive time for each leg.'
+  output: 'table: Leg | Distance (mi) | Drive Time (hrs/mins)'
+  done_when: All three legs have distances and times.
+- index: 1
+  agent_ids:
+  - 14aaa464-6baf-4747-9e6f-351ff1b652bd
+  text: '[Cost Analyst]: Fuel Costing'
+  kind: work
+  covers:
+  - R4
+  depends_on:
+  - 1
+  do: '
+
+    - Search for the current average US diesel price per gallon.
+
+    - Sum the distances from Step 1.
+
+    - Calculate total fuel cost: (Total Distance / 6.5) * Diesel Price.'
+  output: 'memo: Diesel Price per Gallon, Total Gallons Needed, Total Estimated Cost'
+  done_when: Total cost is calculated and price source is identified.
+- index: 2
+  agent_ids:
+  - 209fa4ab-bc1a-4169-aeb3-cd915fcb61d1
+  text: '[Logistics Specialist]: Verify Fuel Calculation'
+  kind: verify
+  covers:
+  - R4
+  depends_on:
+  - 2
+  do: '
+
+    - Independently re-calculate (Total Distance / 6.5) * Diesel Price using the numbers
+    provided by the Cost Analyst.
+
+    - Confirm the result matches.'
+  output: 'memo: verification result (Pass/Fail)'
+  done_when: Calculation is confirmed as correct.
+- index: 3
+  agent_ids:
+  - adca74d9-7126-4e45-a8c4-a8a945b6a5e9
+  text: '[Delivery Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  depends_on:
+  - 1
+  - 2
+  - 3
+  do: '
+
+    - Combine the route table and the cost breakdown into the final response.'
+  output: 'memo: Final Trip Plan'
+  done_when: All requirements are presented in the final output.
+requirements:
+  R1: Plan a driving route Chicago $\rightarrow$ Indianapolis $\rightarrow$ Columbus
+    $\rightarrow$ Pittsburgh.
+  R2: Provide distance for each leg.
+  R3: Provide drive time for each leg.
+  R4: Estimate fuel cost at 6.5 mpg using today's average US diesel price.
+max_inner_turns: 3
+meta:
+  task_id: r1-route
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: route_engine
+    for_role: Logistics Specialist
+  - name: web_search
+    for_role: Cost Analyst
