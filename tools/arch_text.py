@@ -275,6 +275,9 @@ def update_texts(boxes: list[dict], F, C: list[dict], prompts: dict[str, str], h
             log["hand"] += 1
         elif e["facts_hash"] == h:
             log["unchanged"] += 1
+        elif e.get("rejected_hash") == h:                             # asked already for these facts: no new call
+            log["stale"] += 1
+            log["stale_boxes"].append(b["id"])
         else:                                                        # the code under the box changed
             if client is None:
                 client = make_llm() if llm == "auto" else llm or False
@@ -314,6 +317,7 @@ def update_texts(boxes: list[dict], F, C: list[dict], prompts: dict[str, str], h
                         new = (s2, [w for w, _, _ in w2])
                 if r is None:
                     e["stale"] = "the model's reply was unusable or wrote a number the code does not hold"
+                    e["rejected_hash"] = h                           # not asked again until the facts change
                     log["rejected"] += 1
                     log["stale_boxes"].append(b["id"])
                 else:
@@ -326,6 +330,7 @@ def update_texts(boxes: list[dict], F, C: list[dict], prompts: dict[str, str], h
                         log["kept"] += 1
                     e.update(facts_hash=h, facts=facts, checked_at=commit, model=client.model)
                     e.pop("stale", None)
+                    e.pop("rejected_hash", None)
         cache[b["id"]] = e
         _publish(b, e, consts, h)
     for gone in set(cache) - {b["id"] for b in boxes}:
