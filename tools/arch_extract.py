@@ -401,7 +401,8 @@ BOXES: list[dict] = [
                   "amoeba/interp/plan_runner.py::PlanRunner.refine", "amoeba/interp/plan_runner.py::PlanRunner.critique",
                   "amoeba/interp/plan_runner.py::PlanRunner._review"]),
     dict(id="step_check", view="run", title="Check the step", kind="code", plan=None,
-         sentence="Checks each step's output against its output and done-when lines, reads verdicts and gaps.",
+         sentence="Checks each step's output against its output and done-when lines and, with the step contract, what "
+                  "its helpers lacked and used; reads verdicts and gaps.",
          what=["Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its "
                "output line (keywords only when there are none), and a real use of its inputs.",
                "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is "
