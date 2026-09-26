@@ -188,6 +188,7 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
         entries = [e for e in entries if e["kind"] != "skill"]
         reg = tools.copy()
         reg.local = local
+        local.book = getattr(tools, "web", None) or SourceBook()   # D61 (G7): one [S#] list with web and pool
     per_helper: dict[str, set[str]] = {}
     attached: set[str] = set()
     pins, pins_changed = _pins(setup), False
@@ -208,10 +209,15 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
             else:
                 top = int(lim["max_candidates"])
                 ranked = rank(q, entries, int(lim.get("vet_depth", 10 * top)))
-                if local is not None:         # D59: local candidates rank above internet ones
+                if local is not None:         # D59: local candidates join the internet ones
                     near = local.candidates(q, top)
                     ids = {e["id"] for _, e in near}
-                    ranked = near + [x for x in ranked if x[1]["id"] not in ids]
+                    ranked = [x for x in ranked if x[1]["id"] not in ids]
+                    # D61 (P14): a local item goes first only when an alias names it or it matches at least as
+                    # well as the best internet candidate; the rest take their place by score (internet first on a tie)
+                    best = ranked[0][0] if ranked else 0
+                    first = [x for x in near if x[0] >= 100 or x[0] >= best]
+                    ranked = first + sorted(ranked + [x for x in near if x not in first], key=lambda x: -x[0])
                 # D60: vet before the pick — the picker is shown only candidates that pass, the best `top` of them
                 shown, refused, verdicts = [], [], {}
                 for s, e in ranked:
@@ -253,7 +259,8 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                             pool = PoolTools(setup.connector or SdkConnector(float(lim["timeout_s"])),
                                              PoolLimits(int(lim["max_calls_per_step"]), float(lim["timeout_s"]),
                                                         int(lim["max_result_chars"])),
-                                             book=getattr(tools, "web", None) or SourceBook(), trace=trace)
+                                             book=getattr(local, "book", None) or getattr(tools, "web", None)
+                                             or SourceBook(), trace=trace)
                             reg.pool = pool
                         try:
                             listing = pool.connector.tools(entry, headers)
@@ -282,9 +289,9 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                         for a in takers:
                             if near:                  # D59: a local tool, or a local skill (folder copied)
                                 if entry["kind"] == "tool":
-                                    local.attach_tool(a, name, reg)
+                                    local.attach_tool(a, name, reg, request=q.name)
                                 else:
-                                    local.attach_skill(a, entry, reg)
+                                    local.attach_skill(a, entry, reg, request=q.name)
                                 a.missing_tools = [t for t in a.missing_tools if t not in (q.name, q.canonical)]
                             else:
                                 attach(a, entry, name, body, pool, q)
@@ -326,7 +333,7 @@ def attach(a: AgentSpec, entry: dict, name: str, body: str | None, pool: PoolToo
     if entry["kind"] == "tool":
         if name not in a.tools:
             a.tools.append(name)
-        a.pool.append({"kind": "tool", "id": entry["id"], "name": name,
+        a.pool.append({"kind": "tool", "id": entry["id"], "name": name, "request": q.name,
                        "text": data_block(f"tool {name}", pool.description(name))})
     else:
         label = f"Skill: {entry['name']} (from {entry.get('repo') or entry.get('source_repo')}@{entry.get('commit', '')[:12]})"

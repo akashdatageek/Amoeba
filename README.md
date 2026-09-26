@@ -98,13 +98,42 @@ ones become `local:<Name>` tools for the helper that asked, run through `ToolReg
 - 60 s per call, 8,000 characters of output, 20 calls per step and 60 per run; a trace line for every call and refusal;
 - python3 has openpyxl, python-docx, python-pptx, matplotlib and pypdf (installed beforehand, never at run time).
 
-Local tools and skills are toolbox candidates listed before the pool's (aliases: code runner → local:Bash, file
+Local tools and skills are toolbox candidates, ahead of the pool's when an alias names them or they match at least as
+well (D61; aliases: code runner → local:Bash, file
 writing → local:Write, excel/spreadsheet → xlsx, presentation → pptx, word document → docx, pdf reader → pdf). Skills
 come only from the kept anthropics/skills clone (D60: not from your own ~/.claude/skills); a skill with scripts is allowed now: its
 folder is copied to `workspace/skills/<name>/` and its SKILL.md (frontmatter and first 5,000 characters) goes on the
 helper's card. A step that says it saved a file the workspace does not hold ends `incomplete`
 (`claimed_file_missing`). result.json adds `files_created`, `local_tool_calls`, `local_refusals` and
 `skills_attached`, and the workspace is copied to `artifacts/files/`. With the flag off nothing of this runs.
+
+## The step contract (D61)
+
+Observer rounds 1–3 left the score near 35/50 because Box 3 recorded what happened (unfilled requests, tool calls,
+files, sources) but never used it to judge a step or build the answer (gaps G1–G7 on the as-built page). With
+`--step-contract on` (the CLI default; `off` gives the earlier runner for comparison) plain code closes them:
+
+- **Before a step** it lists what each helper must account for: every capability it asked for and did not get, and
+  every tool or skill attached to it. The list is on the helper's prompt.
+- **After the step** it checks the evidence: every tool call (who, which tool, ok or failed), `BLOCKED: <name> — …`
+  and `NOT NEEDED: <name> — <why>` lines. Anything left unaccounted for earns one refine turn naming it. If it is
+  still unaccounted for, the step is `partial`: "not declared by the helper" (G1) or "attached unused" (G2).
+  NOT NEEDED lines stay in the step's metadata and are removed from its text.
+- **The answer's Limitations** also name undeclared missing capabilities and attached items left unused (`NOT USED`),
+  matched by canonical name (G3).
+- **A verify step** sees each checked step's sources, tool calls, figure counts and files (G4).
+- **The answer step** is told which files each step made. Files and source-cited figures the answer leaves out earn one
+  refine turn, and files still unnamed are listed by plain code under "Files made" (G5).
+- **A producer whose only problem is a missing capability** is not sent back for rework (`rework_skipped`, G6).
+- **A successful local tool call** gets a source id `[S#]` in the run's one source list, so a figure from it counts as
+  cited (G7).
+
+It also fixes two local-tool problems from round 3:
+- A local item goes ahead of the internet candidates only when an alias names it or it matches at least as well (P14).
+- A command written inside a code fence runs without the fence (P17).
+
+result.json `refinement.contract` counts what the contract found. Each step_<n>.json has `contract`,
+`contract_missing`, `unused`, `not_needed`, `causes`, `tool_calls` and `files_made`.
 
 ## Cost controls (D45–D48)
 

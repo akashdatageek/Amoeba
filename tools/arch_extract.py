@@ -387,7 +387,10 @@ BOXES: list[dict] = [
                "With --web-tools, a role that asked for web search also gets web_search and fetch_url.",
                "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In "
                "a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at "
-               "most 2 rounds (--collab critique); the step keeps one output."],
+               "most 2 rounds (--collab critique); the step keeps one output.",
+               "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked "
+               "for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT "
+               "NEEDED with a reason."],
          proposes="One action and its input per turn; the step's output.",
          disposes="Plain code decides what the helper sees, runs the tools, and caps the turns.",
          prompts=["plan_step", "plan_step_system", "plan_critique"],
@@ -398,7 +401,8 @@ BOXES: list[dict] = [
                   "amoeba/interp/plan_runner.py::PlanRunner.refine", "amoeba/interp/plan_runner.py::PlanRunner.critique",
                   "amoeba/interp/plan_runner.py::PlanRunner._review"]),
     dict(id="step_check", view="run", title="Check the step", kind="code", plan=None,
-         sentence="Checks each step's output against its output and done-when lines, reads verdicts and gaps.",
+         sentence="Checks each step's output against its output and done-when lines and, with the step contract, what "
+                  "its helpers lacked and used; reads verdicts and gaps.",
          what=["Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its "
                "output line (keywords only when there are none), and a real use of its inputs.",
                "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is "
@@ -407,19 +411,31 @@ BOXES: list[dict] = [
                "back once, then it checks again. Steps that already used the old output are marked stale "
                "(--rerun-stale redoes them once).",
                "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is "
-               "never scanned for them."],
-         proposes="The step's output and verdict (from the helper).",
-         disposes="Plain code decides done, partial or incomplete, the retry and the rework.",
+               "never scanned for them.",
+               "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled "
+               "requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). "
+               "A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, "
+               "earns one refine turn and then makes the step partial (not declared / attached unused).",
+               "A verify step also sees each checked step's sources, tool calls, figure counts and files (D61). A "
+               "producer whose only problem is a missing capability is not sent back (rework_skipped)."],
+         proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
+         disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
+                  "the evidence.",
          anchors=["amoeba/interp/plan_runner.py::step_checks", "amoeba/interp/plan_runner.py::uses_inputs",
                   "amoeba/interp/plan_runner.py::output_markers", "amoeba/interp/plan_runner.py::PlanRunner.mark_stale",
                   "amoeba/interp/plan_runner.py::parse_verdict_block",
                   "amoeba/interp/plan_runner.py::blocked_marks", "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
-                  "amoeba/interp/plan_runner.py::PlanRunner.rework_producers"]),
+                  "amoeba/interp/plan_runner.py::PlanRunner.rework_producers",
+                  "amoeba/interp/plan_runner.py::PlanRunner.contract",
+                  "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
+                  "amoeba/interp/plan_runner.py::tool_ok", "amoeba/interp/plan_runner.py::not_needed_marks",
+                  "amoeba/interp/plan_runner.py::PlanRunner.evidence_text"]),
     dict(id="provenance", view="run", title="Where each figure came from", kind="code", plan=None,
          sentence="Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
          what=["A number is cited when its line carries a source id the step could have seen.",
                "Numbers from the task, from a calculation shown or run, and from the step's inputs are counted apart.",
-               "A source id the step never saw is counted as a made-up citation.",
+               "A source id the step never saw is counted as a made-up citation. A local tool's result has a source "
+               "id too (D61), so a figure taken from it is cited.",
                "A run-wide ledger keeps each figure's first status and step, so a figure that entered untagged stays "
                "untagged however often later steps or the answer copy it.",
                "It only measures; nothing is rejected on these counts."],
@@ -441,17 +457,23 @@ BOXES: list[dict] = [
                "Limitations when there are any.",
                "Code counts any number it adds, lists the answer's untagged and unverified figures, and appends a "
                "line for any missing capability it left out.",
+               "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn "
+               "one refine turn; files still unnamed are listed by code under 'Files made', and Limitations also name "
+               "undeclared missing capabilities and attached items left unused (NOT USED).",
                "Each input is cut at 6,000 characters and all of them at 30,000 (marked). When several final steps "
                "have no summariser step, code puts their outputs together under headings instead."],
          proposes="The final answer.",
-         disposes="Plain code counts new numbers and completes the Limitations section.",
+         disposes="Plain code counts new numbers, checks the answer against the work produced, and completes the "
+                  "Limitations section.",
          prompts=["plan_summarise", "plan_step_system"],
          anchors=["amoeba/interp/plan_runner.py::PlanRunner.all_inputs_text",
                   "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
                   "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
                   "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
                   "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
-                  "amoeba/interp/plan_runner.py::PlanRunner.ledger_update"]),
+                  "amoeba/interp/plan_runner.py::PlanRunner.ledger_update",
+                  "amoeba/interp/plan_runner.py::PlanRunner.answer_gaps",
+                  "amoeba/interp/plan_runner.py::PlanRunner.add_files_section"]),
     dict(id="trace", view="run", title="Every AI call → one trace line", kind="data",
          plan="Every AI call → one trace line",
          sentence="Writes one log line per AI call and tool call: who, which model, tokens and time. Nothing enforces a budget.",
@@ -513,8 +535,10 @@ BOXES: list[dict] = [
                "card. All pool text is shown inside marked data blocks, and the 'unavailable' line goes away.",
                "Every request's outcome and reason code is written to capability_requests.json and result.json; "
                "without a pool cache the run logs pool_unavailable and goes on as before.",
-               "With --local-tools on (D59) the local toolbox's items are candidates too, listed before the pool's, "
-               "and a skill with scripts is no longer refused: it is copied into the run's workspace."],
+               "With --local-tools on (D59) the local toolbox's items are candidates too — ahead of the pool's only "
+               "when an alias names them or they match at least as well (D61) — and a skill with scripts is no "
+               "longer refused: it is copied into the run's workspace.",
+               "What became of each request (filled or not) is handed to the plan runner for the step contract (D61)."],
          proposes="The picker names one candidate (or NONE).",
          disposes="Plain code ranks the candidates, rejects anything unsafe or over the caps, and attaches.",
          anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
@@ -534,7 +558,10 @@ BOXES: list[dict] = [
                "Skills are listed only from the kept anthropics/skills clone (D60: not the user's ~/.claude/skills); an attached "
                "skill's folder is copied to workspace/skills/<name>/ and its SKILL.md (frontmatter and first 5,000 "
                "characters) goes on the helper's card.",
-               "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first.",
+               "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first; any other "
+               "local item goes first only if it matches at least as well as the best internet one (D61).",
+               "A successful call's result gets a source id [S#] in the run's one source list (D61); a command "
+               "written inside a code fence runs without the fence.",
                "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); "
                "result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the "
                "workspace is copied to artifacts/files/."],
@@ -590,6 +617,7 @@ BOXES: list[dict] = [
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and
 # assembling the answer never reads. Drawn on the page as dashed red "missing wire" edges between existing boxes.
 # refs: (path::Qual, marker text or None) — "data" is where the information exists, "decides" where it is not read.
+# D61 closed all seven (the step contract): fixed_by / fix / fixed (where the wire now is); drawn solid green.
 GAPS = [
     dict(id="G1", src="toolbox", dst="step_check", title="Capability record → step status",
          missing="Which requests each helper asked for and did not get (capability_requests.json, missing_tools) never "
@@ -598,7 +626,13 @@ GAPS = [
          decides=[("amoeba/interp/plan_runner.py::PlanRunner.run_step", 'status, reason = "done", ""')],
          evidence=["r1-route, all rounds: distances from memory in a 'done' step with no routing tool",
                    "r1-code-run, round 2b: 'done' without the code being run"],
-         direction="A step whose helper has an unfilled request cannot be 'done' without saying what it did instead."),
+         direction="A step whose helper has an unfilled request cannot be 'done' without saying what it did instead.",
+         fixed_by="D61", fix=("D61: before the step plain code lists each helper's unfilled requests (step contract, shown on its "
+              'prompt); after it, one that is neither BLOCKED nor NOT NEEDED earns one refine turn, then makes the '
+              'step partial ("not declared by the helper").'),
+         fixed=[("amoeba/interp/plan_runner.py::PlanRunner.contract", None),
+                ("amoeba/interp/plan_runner.py::PlanRunner.contract_check", None),
+                ("amoeba/interp/plan_runner.py::PlanRunner.run_step", "undeclared = list(dict.fromkeys(")]),
     dict(id="G2", src="trace", dst="step_check", title="Tool-call trace → step status",
          missing="Whether the helper called the tool or skill attached for its request is logged (execute_tool, "
                  "local_call) but never read when the step is judged.",
@@ -607,22 +641,36 @@ GAPS = [
          decides=[("amoeba/interp/plan_runner.py::PlanRunner.run_step", 'status, reason = "done", ""')],
          evidence=["r1-deck, round 2: pool slide tool attached, 0 calls, step 'done'",
                    "r1-deck, round 3: pptx skill + local tools attached, 0 calls, step 'done'"],
-         direction="An attached item that was never called is recorded on the step, and the helper must say why."),
+         direction="An attached item that was never called is recorded on the step, and the helper must say why.",
+         fixed_by="D61", fix=('D61: every tool call of the step is recorded (who, tool, ok); an attached item with no successful '
+              'call and no BLOCKED / NOT NEEDED line earns one refine turn, then makes the step partial ("attached '
+              'unused").'),
+         fixed=[("amoeba/interp/plan_runner.py::PlanRunner._loop", "w.calls.append("),
+                ("amoeba/interp/plan_runner.py::tool_ok", None),
+                ("amoeba/interp/plan_runner.py::PlanRunner.contract_check", None)]),
     dict(id="G3", src="toolbox", dst="plan_summary", title="Capability record → Limitations",
          missing="Limitations are built only from the BLOCKED marks helpers wrote; the run's unfilled requests are "
                  "never compared with the answer.",
          data=[("amoeba/pool/stock.py::stock_toolbox", None)],
-         decides=[("amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations", "caps = self.blocked_capabilities()")],
+         decides=[("amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations", "caps, unused = self.blocked_capabilities()")],
          evidence=["r1-fx-email, all 4 rounds: the missing email sender is never named",
                    "r1-route: the missing routing tool is never named; r1-weather 2b: missing current conditions not named"],
-         direction="Every unfilled capability request appears in Limitations, whatever the helpers wrote."),
+         direction="Every unfilled capability request appears in Limitations, whatever the helpers wrote.",
+         fixed_by="D61", fix=('D61: Limitations also get every undeclared missing capability and every attached item left unused '
+              '(NOT USED lines), matched by canonical name.'),
+         fixed=[("amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations", None),
+                ("amoeba/interp/plan_runner.py::PlanRunner.unused_items", None)]),
     dict(id="G4", src="artifacts", dst="step_check", title="Checked step's sources → verifier",
          missing="A verify step sees only its declared inputs, not the tool results behind the step it checks.",
          data=[("amoeba/interp/plan_runner.py::PlanRunner.run_step", "own, visible = self._sources(n, deps)")],
          decides=[("amoeba/interp/plan_runner.py::PlanRunner.inputs_text", None)],
          evidence=["r1-weather, round 2: a real, cited forecast fetched in step 1; the verifier (depends on step 2 only) "
                    "wrote BLOCKED 'Step 1 output' and the answer said 'failed verification'"],
-         direction="A verifier also receives the sources of the steps it checks."),
+         direction="A verifier also receives the sources of the steps it checks.",
+         fixed_by="D61", fix=("D61: a verify step's inputs carry, per checked step, its sources, tool calls (ok or failed), figure "
+              'counts, files made and what it lacked or left unused.'),
+         fixed=[("amoeba/interp/plan_runner.py::PlanRunner.evidence_text", None),
+                ("amoeba/interp/plan_runner.py::PlanRunner.inputs_text", "self.evidence_text(d)")]),
     dict(id="G5", src="artifacts", dst="plan_summary", title="Produced work → answer check",
          missing="Figures and files produced upstream (figure ledger, files_created) are recorded but never checked "
                  "against the final answer; after a FAIL the summariser writes a status memo instead.",
@@ -630,20 +678,32 @@ GAPS = [
                ("amoeba/localtools/toolbox.py::LocalToolbox.finish", None)],
          decides=[("amoeba/interp/plan_runner.py::PlanRunner.summary_check", None)],
          evidence=["r1-xlsx, rounds 1–2b: lane totals, 79,800 and 1,855.81 computed in step 1, absent from every answer"],
-         direction="The answer carries every usable result produced upstream, next to what is missing."),
+         direction="The answer carries every usable result produced upstream, next to what is missing.",
+         fixed_by="D61", fix=('D61: the answer step is told which files each step made; files and source-cited figures the answer '
+              'leaves out earn one refine turn, and files still unnamed are listed by plain code.'),
+         fixed=[("amoeba/interp/plan_runner.py::PlanRunner.answer_gaps", None),
+                ("amoeba/interp/plan_runner.py::PlanRunner.add_files_section", None)]),
     dict(id="G6", src="toolbox", dst="step_check", title="Failure cause → rework",
          missing="On a FAIL verdict every checked producer is re-run, whatever the cause; a missing capability does "
                  "not change between attempts.",
          data=[("amoeba/pool/stock.py::stock_toolbox", None)],
          decides=[("amoeba/interp/plan_runner.py::PlanRunner.rework_producers", None)],
          evidence=["rework in 6 of 10 runs in round 2 and again in 2b; none changed a blocked step (r1-full-chain: 3 reworks, 2 stale)"],
-         direction="Skip rework when the producer's only problem is a capability it does not have."),
+         direction="Skip rework when the producer's only problem is a capability it does not have.",
+         fixed_by="D61", fix=('D61: each step records its causes; a producer whose only cause is a missing capability is not '
+              'reworked (rework_skipped).'),
+         fixed=[("amoeba/interp/plan_runner.py::PlanRunner.run_step", "causes = [c for c, hit in"),
+                ('amoeba/interp/plan_runner.py::PlanRunner.rework_producers', '"rework_skipped"')]),
     dict(id="G7", src="localtools", dst="provenance", title="Local tool result → source list",
          missing="A local tool's output gets no source id, so provenance cannot count a figure taken from it as cited.",
          data=[("amoeba/localtools/toolbox.py::LocalToolbox.call", 'return f"[local:{tool}')],
          decides=[("amoeba/pool/mcp.py::SourceBook", None)],
          evidence=["r1-code-run, round 3: the executed F50 = 12586269025 cited as '[S1]', counted as a made-up citation"],
-         direction="Give each local result a source id ('local run'), shared with the run's [S#] list."),
+         direction="Give each local result a source id ('local run'), shared with the run's [S#] list.",
+         fixed_by="D61", fix=("D61: a successful local call gets an [S#] in the run's one source list (kind local), and the step's "
+              'sources include it.'),
+         fixed=[('amoeba/localtools/toolbox.py::LocalToolbox.call', '"local_source"'),
+                ('amoeba/interp/plan_runner.py::PlanRunner._sources', 'getattr(self.local, "book", None)')]),
 ]
 
 
@@ -1177,6 +1237,8 @@ EVENT_BOX = {"capability_request": "capreq", "unknown_tool": "resolver", "blocke
              # D31–D36 plan runner events
              "plan_graph": "plan_graph", "dependency_relinked": "plan_graph", "step_input": "plan_step",
              "step_done": "step_check", "check_retry": "step_check", "rework": "step_check",
+             "step_contract": "step_check", "contract_check": "step_check", "rework_skipped": "step_check",   # D61
+             "local_source": "localtools",
              "provenance": "provenance", "summary_check": "plan_summary", "limitations_added": "plan_summary",
              "capability_mapped": "tools", "web_tools": "tools", "web_search": "tools", "fetch_url": "tools",
              "tool_error": "tools", "tool_limit": "tools"}
@@ -1677,8 +1739,9 @@ def main() -> int:
             "tags": tags, "defs": sorted(k for k, d in F.defs.items() if "." not in d["qual"]),
             "unassigned": unassigned(F, tags, prev_defs),
             "glossary": GLOSSARY, "text_log": text_log,
-            "gaps": [{**{k: v for k, v in g.items() if k not in ("data", "decides")},
-                      "data": gap_refs(F, g["data"]), "decides": gap_refs(F, g["decides"])} for g in GAPS]}
+            "gaps": [{**{k: v for k, v in g.items() if k not in ("data", "decides", "fixed")},
+                      "data": gap_refs(F, g["data"]), "decides": gap_refs(F, g["decides"]),
+                      "fixed": gap_refs(F, g.get("fixed", []))} for g in GAPS]}
     counts = {}
     for b in boxes:
         counts[b["status"]] = counts.get(b["status"], 0) + 1

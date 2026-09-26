@@ -379,3 +379,39 @@ def test_flag_off_touches_nothing_local(cache, tmp_path, envelope, monkeypatch):
     assert '"name": "local_' not in trace and "claimed_file" not in trace
     step1 = json.loads((run1 / "artifacts" / "step_1.json").read_text())
     assert "claimed_files" not in step1 and step1["status"] == "done"   # the same claim, not checked when off
+
+
+# ---- D61 -----------------------------------------------------------------------------------------------------------
+def test_a_local_result_is_a_source_the_helper_can_cite(box):
+    from amoeba.pool.mcp import SourceBook
+    box.book = SourceBook()
+    box.begin_step(2)
+    out = box.call("Bash", "echo 12586269025")
+    assert out.startswith("[local:Bash] [S1] (cite a fact from this result by its [S1])") and "12586269025" in out
+    [src] = box.book.sources_for(2)
+    assert (src["id"], src["kind"], src["title"]) == ("S1", "local", "local:Bash · echo 12586269025")
+    assert box.call("Bash", "curl https://example.com").startswith("refused:")     # a refusal is not a source
+    assert len(box.book.sources) == 1 and events(box, "local_source")[0]["amoeba.source_id"] == "S1"
+
+
+def test_a_fenced_command_runs_its_content(box):
+    assert box.arguments("Bash", "```bash\necho hi\n```") == {"command": "echo hi"}
+    assert box.arguments("Write", '```json\n{"file_path": "a.txt", "content": "x"}\n```')["file_path"] == "a.txt"
+    assert box.arguments("Bash", "echo `date`") == {"command": "echo `date`"}
+    assert "hi" in box.call("Bash", "```sh\necho hi\n```") and box.refusals == {}
+
+
+def test_a_weak_local_match_does_not_crowd_out_a_better_internet_one(skills, tmp_path, task, envelope):
+    d = tmp_path / "pool"
+    entries = [tool("io.example/weather", "Weather forecast: current weather and a daily forecast for any city")]
+    (d / "index.json").write_text(json.dumps({"refreshed_at": "2026-09-26T00:00:00+00:00", "entries": entries}))
+    cfg = draft_cfg(task, envelope, fx(CAP).replace("web_search", "weather_forecast"))
+    b = LocalToolbox(lsetup(skills), tmp_path / "run", TraceWriter(None))
+    llm = mock(pool_picker=lambda m, s: "NONE")
+    q = req("weather_forecast", what="current weather forecast for a city, saved to a csv file")
+    stock_toolbox([q], cfg, default_registry(), llm, b.trace, pool_setup(d), local=b)
+    cands = b.trace.events("pool_match")[0]["amoeba.pool.candidates"]
+    assert cands[0]["id"] == "io.example/weather"                         # the best match first (P14)
+    assert any(c.get("source") == "local" for c in cands[1:])             # the weak local ones follow, by score
+    assert [c["score"] for c in cands] == sorted((c["score"] for c in cands), reverse=True)
+    b.finish()

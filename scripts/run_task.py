@@ -89,6 +89,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         requests = [q.model_copy(deep=True) for q in draft.capability_requests]
         if pool is not None or box is not None:   # D56: Box 3 starts by stocking the toolbox, before the runner
             tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed, local=box)
+        # D61: what became of each request, for the step contract (an unfilled one is a capability the helper lacks)
+        cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical,
+                                            "status": q.status, "reason": q.reason} for q in requests]
         dump_yaml(cfg, run_dir / "team.yaml")
         ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options).run(cfg, task, seed)
         answer, error = ep.answer, ep.error
@@ -204,7 +207,7 @@ def refinement_of(ep, plan_options) -> dict:
     by: dict[str, int] = {}
     for r in refined:
         by[r["reason"]] = by.get(r["reason"], 0) + 1
-    tot = lambda key, when: sum(r[when][key] for r in refined if when in r)
+    tot = lambda key, when: sum(r[when].get(key, 0) for r in refined if when in r)
     out = {"self_refine": opt.get("self_refine"), "steps": len(latest), "steps_refined": len(refined),
            "by_reason": by,
            "before": {k: tot(k, "before") for k in ("failed_checks", "untagged", "hallucinated")},
@@ -214,6 +217,15 @@ def refinement_of(ep, plan_options) -> dict:
         out.update({"collab": opt["collab"], "collab_steps": len(collab),
                     "collab_agreed": sum(bool(c.get("agreed")) for c in collab),
                     "collab_rounds": sum(c.get("rounds", 0) for c in collab)})
+    if opt.get("contract") == "on":           # D61: what the step contract found (latest version of each step)
+        steps = list(latest.values())
+        out["contract"] = {"steps_lacking_undeclared": sum(bool(s.get("contract_missing")) for s in steps),
+                           "steps_with_unused": sum(bool(s.get("unused")) for s in steps),
+                           "not_needed_lines": sum(len(s.get("not_needed", [])) for s in steps),
+                           "tool_calls": sum(len(s.get("tool_calls", [])) for s in steps),
+                           "tool_calls_ok": sum(c["ok"] for s in steps for c in s.get("tool_calls", [])),
+                           "refine_findings_before": tot("contract", "before"),
+                           "refine_findings_after": tot("contract", "after")}
     return out
 
 
@@ -232,7 +244,7 @@ def cli_plan_options(args: argparse.Namespace):
     from amoeba.interp.plan_runner import PlanOptions
     return PlanOptions(rerun_stale=args.rerun_stale, max_input_chars=args.max_input_chars,
                        max_summary_input_chars=args.max_summary_input_chars, self_refine=args.self_refine,
-                       collab=args.collab)
+                       collab=args.collab, contract=args.step_contract)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -356,6 +368,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--collab", choices=["concat", "critique"], default="critique",
                    help="plan, multi-role steps: concat = each role writes, outputs joined; critique = the first role "
                         "drafts, the others AGREE or REVISE with numbered issues, it revises (max 2 rounds) (D51)")
+    p.add_argument("--step-contract", choices=["on", "off"], default="on",
+                   help="plan: plain code checks each step against its contract — every capability a helper lacked "
+                        "and every tool or skill attached to it is used, marked BLOCKED or marked NOT NEEDED, else "
+                        "the step is partial and the answer's Limitations say so; verifiers see each step's sources "
+                        "and tool calls; the answer is checked for files and cited figures it left out (D61)")
     p.add_argument("--interactive", action="store_true",
                    help="after Box 2, print the requirements, assumptions and open questions and wait for 'continue' "
                         "or an edited assumption (appended to the task as 'User clarification: ...', then one "

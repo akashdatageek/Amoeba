@@ -281,16 +281,22 @@ def gap_card(g: dict) -> str:
             f"<div class='ex'><span>the information exists here</span><ul>{refs(g['data'])}</ul>"
             f"<span>and is not read here</span><ul>{refs(g['decides'])}</ul>"
             f"<span>seen in the observer rounds</span><ul>{''.join(f'<li>{esc(x)}</li>' for x in g['evidence'])}</ul>"
-            f"<span>direction</span><div>{esc(g['direction'])}</div></div>")
+            f"<span>direction</span><div>{esc(g['direction'])}</div>"
+            + (f"<span>closed by {esc(g['fixed_by'])}</span><div>{esc(g['fix'])}</div><ul>{refs(g['fixed'])}</ul>"
+               if g.get("fixed_by") else "") + "</div>")
 
 
 def gap_svg(g: dict) -> str:
     d, lx, ly = GAP_PATHS[g["id"]]
     anchor = ' text-anchor="end"' if g["id"] == "G7" else ""
-    return (f'<g class="edge gap tip" tabindex="0" data-card="{esc(gap_card(g))}" data-from="{g["src"]}" data-to="{g["dst"]}" '
-            f'aria-label="missing wire {esc(g["id"])}: {esc(g["title"])}"><path d="{d}" class="arrow gapline" '
-            f'marker-end="url(#ahg)"/><path d="{d}" class="hitline"/>'
-            f'<text x="{lx}" y="{ly}" class="lbl gaplbl"{anchor}>{esc(g["id"])} {esc(g["title"])}</text></g>')
+    closed = bool(g.get("fixed_by"))              # D61: a closed gap is a wire now, drawn solid green
+    what = f"wire {g['id']} (closed by {g['fixed_by']})" if closed else f"missing wire {g['id']}"
+    label = f"{g['id']} {g['title']}" + (f" · {g['fixed_by']}" if closed else "")
+    return (f'<g class="edge gap{" closed" if closed else ""} tip" tabindex="0" data-card="{esc(gap_card(g))}" '
+            f'data-from="{g["src"]}" data-to="{g["dst"]}" aria-label="{esc(what)}: {esc(g["title"])}">'
+            f'<path d="{d}" class="arrow {"gapclosed" if closed else "gapline"}" '
+            f'marker-end="url(#{"ahc" if closed else "ahg"})"/><path d="{d}" class="hitline"/>'
+            f'<text x="{lx}" y="{ly}" class="lbl {"gapclosedlbl" if closed else "gaplbl"}"{anchor}>{esc(label)}</text></g>')
 
 
 def edge_svg(e, A) -> str:
@@ -395,7 +401,8 @@ rect.big{fill:var(--p1-fill);stroke:var(--p1);stroke-width:3}
 body.costmode .cost{display:inline}body.costmode .boxg.ai .src{display:none}
 .open{fill:var(--p1);font-size:10.5px;font-weight:600;letter-spacing:.05em}
 .arrow{stroke:var(--line);stroke-width:1.6;fill:none}.arrow.loop{stroke:var(--llm-line)}
-.arrow.gapline{stroke:var(--bad);stroke-dasharray:6 4}
+.arrow.gapline{stroke:var(--bad);stroke-dasharray:6 4}.arrow.gapclosed{stroke:var(--ok)}svg text.lbl.gapclosedlbl{fill:var(--ok);font-weight:600}
+.edge.gap.closed:hover .arrow,.edge.gap.closed:focus-visible .arrow{stroke:var(--ok);stroke-width:2.6}
 table.gaps{border-collapse:collapse;width:100%;font-size:13px}table.gaps td,table.gaps th{border-top:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left}svg text.lbl.gaplbl{fill:var(--bad);font-weight:600}
 .edge.gap:hover .arrow,.edge.gap:focus-visible .arrow{stroke:var(--bad);stroke-width:2.6}
 .hitline{stroke:transparent;stroke-width:12;fill:none;pointer-events:stroke}
@@ -900,14 +907,18 @@ def render() -> Path:
     real_option = (f'<option value="real">real run: {esc(rr["result"].get("task_id") or rr["run_id"][:8])} '
                    f'({esc((rr["result"].get("models") or {}).get("returned", ["?"])[0] if (rr["result"].get("models") or {}).get("returned") else rr["result"].get("profile") or "?")})</option>') if rr else ""
     gref = lambda rs: ", ".join(f"<code>{esc(r['path'])}:{r['line']}</code>" for r in rs)
+    n_closed = sum(bool(g.get("fixed_by")) for g in A.get("gaps", []))
     gaps_html = (
-        "<p class='sub'>Information a run already records that the code judging steps and assembling the answer never "
-        "reads (dashed red on the Box 3 view). Found in observer rounds 1–3 (docs/eval/round3/report.md): giving the "
-        "team more capabilities raised what it could do, but not whether it used them or reported gaps, because "
-        "these wires are missing.</p><table class='gaps'><thead><tr><th>Gap</th><th>Missing wire</th><th>Exists at"
-        "</th><th>Not read at</th><th>Seen in</th></tr></thead><tbody>"
+        "<p class='sub'>Information a run recorded that the code judging steps and assembling the answer did not read. "
+        "Found in observer rounds 1–3 (docs/eval/round3/report.md): giving the team more capabilities raised what it "
+        "could do, but not whether it used them or reported gaps, because these wires were missing. "
+        f"<b>{n_closed} of {len(A.get('gaps', []))} closed</b> (solid green on the Box 3 view; open gaps are dashed "
+        "red): D61, the step contract, lists before each step what every helper must account for and checks the "
+        "evidence after it.</p><table class='gaps'><thead><tr><th>Gap</th><th>Wire</th><th>Exists at"
+        "</th><th>Was not read at</th><th>Seen in</th><th>Closed by</th></tr></thead><tbody>"
         + "".join(f"<tr><td><b>{esc(g['id'])}</b></td><td><b>{esc(g['title'])}</b><br>{esc(g['missing'])}</td>"
-                  f"<td>{gref(g['data'])}</td><td>{gref(g['decides'])}</td><td>{esc('; '.join(g['evidence']))}</td></tr>"
+                  f"<td>{gref(g['data'])}</td><td>{gref(g['decides'])}</td><td>{esc('; '.join(g['evidence']))}</td>"
+                  f"<td>{(esc(g['fix']) + '<br>' + gref(g['fixed'])) if g.get('fixed_by') else 'open'}</td></tr>"
                   for g in A.get("gaps", []))
         + "</tbody></table>")
     un = A.get("unassigned", [])
@@ -933,7 +944,8 @@ def render() -> Path:
 <div class="legend">
 <span><i class="sw llm"></i>an AI writes text</span><span><i class="sw code"></i>plain code decides</span><span><i class="sw data"></i>a record passed along</span><span><i class="sw plain"></i>input / output</span>
 <span><svg width="14" height="16" style="min-width:0;display:inline"><path d="M7 1 l6 2.4 v4.4 c0 3.8 -2.7 6.4 -6 7.6 c-3.3 -1.2 -6 -3.8 -6 -7.6 v-4.4 z" fill="var(--code-line)"/></svg>plain code checks AI output here</span>
-<span><svg width="26" height="8" style="min-width:0;display:inline"><path d="M1 4 H25" stroke="var(--bad)" stroke-width="2" stroke-dasharray="5 3"/></svg>missing wire: a Box 3 gap (G1–G7)</span>
+<span><svg width="26" height="8" style="min-width:0;display:inline"><path d="M1 4 H25" stroke="var(--bad)" stroke-width="2" stroke-dasharray="5 3"/></svg>missing wire: an open Box 3 gap</span>
+<span><svg width="26" height="8" style="min-width:0;display:inline"><path d="M1 4 H25" stroke="var(--ok)" stroke-width="2"/></svg>closed gap: a Box 3 gap (G1–G7) wired by D61</span>
 <span>✦ changed since last build</span><span><code>task/draft.py:39</code> = where it lives in the code</span></div>
 <div class="tools">
 <button type="button" class="btn" id="replay" aria-pressed="false">▶ Replay sample run</button>
@@ -947,7 +959,7 @@ def render() -> Path:
 <svg width="0" height="0" style="position:absolute;min-width:0" aria-hidden="true"><defs>
 <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--line)"/></marker>
 <marker id="ahp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--llm-line)"/></marker>
-<marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker>
+<marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--bad)"/></marker><marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--ok)"/></marker>
 </defs></svg>
 <div class="panel">{"".join(views_svg)}</div>
 <p class="notes" id="note"></p>
@@ -955,7 +967,7 @@ def render() -> Path:
 <p class="sub" id="tlmeta"></p>
 <p class="sub" id="tlgaps"></p>
 <div class="timeline"><table><thead><tr><th>#</th><th>step</th><th>helper</th><th>log line</th><th>tokens</th><th>result</th></tr></thead><tbody id="tlbody"></tbody></table></div>
-<h2>Box 3 gaps: missing wires</h2>
+<h2>Box 3 gaps: the wires that were missing</h2>
 {gaps_html}
 <h2>What changed since the last build</h2>
 {changes_html}
