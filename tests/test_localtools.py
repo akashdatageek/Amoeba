@@ -30,8 +30,8 @@ SANDBOX = {"AMOEBA_SANDBOX": "1"}
 
 @pytest.fixture
 def skills(tmp_path):
-    """A Claude Code skill folder with scripts (xlsx) and a kept anthropics/skills clone (pptx)."""
-    user = tmp_path / "claude-skills"
+    """The kept anthropics/skills clone (D60: the only skill source): xlsx with scripts, pptx without."""
+    user = tmp_path / "pool" / "repos" / "anthropics_skills"
     (user / "xlsx" / "scripts").mkdir(parents=True)
     (user / "xlsx" / "SKILL.md").write_text("---\nname: xlsx\ndescription: Make Excel spreadsheets with formulas\n---\n"
                                             "# XLSX\nUse openpyxl. Run scripts/recalc.py after saving.\n" + "x" * 6000)
@@ -43,8 +43,7 @@ def skills(tmp_path):
 
 
 def lsetup(root: Path, env=SANDBOX, command=FAKE, **limits) -> LocalSetup:
-    cfg = copy.deepcopy(load_local_config())
-    cfg["skill_roots"] = [{"label": "claude-user", "path": str(root / "claude-skills")}]
+    cfg = copy.deepcopy(load_local_config())                          # D60: skill_roots [] — the clone only
     cfg["limits"].update(limits)
     return LocalSetup(config=cfg, command=command, pool_dir=root / "pool", env=env)
 
@@ -201,14 +200,15 @@ def req(name, kind="tool", role="Researcher", what="", **kw):
 
 def test_local_skills_are_listed_from_claude_code_and_the_kept_clone(box):
     ids = [s["id"] for s in box.skills]
-    assert ids == ["local:skill:claude-user/xlsx", "local:skill:anthropics_skills/pptx"]
-    assert box.skills[0]["has_scripts"] is True and box.skills[0]["source"] == "local"
+    assert ids == ["local:skill:anthropics_skills/pptx", "local:skill:anthropics_skills/xlsx"]
+    assert box.skills[1]["has_scripts"] is True and box.skills[1]["source"] == "local"
+    assert load_local_config()["skill_roots"] == []                    # D60: ~/.claude/skills is not listed
 
 
 @pytest.mark.parametrize("name,expected", [("python_interpreter", "local:Bash"), ("code_runner", "local:Bash"),
                                            ("file_writing", "local:Write"), ("save_file", "local:Write"),
-                                           ("excel_generator", "local:skill:claude-user/xlsx"),
-                                           ("spreadsheet_tool", "local:skill:claude-user/xlsx"),
+                                           ("excel_generator", "local:skill:anthropics_skills/xlsx"),
+                                           ("spreadsheet_tool", "local:skill:anthropics_skills/xlsx"),
                                            ("presentation-generator", "local:skill:anthropics_skills/pptx")])
 def test_aliases_put_the_local_item_first(box, name, expected):
     assert box.candidates(req(name), 5)[0][1]["id"] == expected
@@ -262,15 +262,18 @@ def test_a_skill_with_scripts_is_refused_with_the_flag_off(cache, task, envelope
     cfg = draft_cfg(task, envelope, fx(CAP).replace("web_search", "excel_generator"))
     q = req("excel_generator", what="makes an Excel spreadsheet")
     llm = mock(pool_picker=["anthropics/skills:xlsx"])
-    stock_toolbox([q], cfg, default_registry(), llm, TraceWriter(None), pool_setup(cache))
-    assert (q.status, q.reason) == ("unfilled", "has_scripts")
+    trace = TraceWriter(None)
+    stock_toolbox([q], cfg, default_registry(), llm, trace, pool_setup(cache))
+    assert (q.status, q.reason) == ("unfilled", "all_refused")          # D60: refused before the pick
+    assert {"id": "anthropics/skills:xlsx", "reason": "has_scripts"} in trace.events("pool_match")[0]["amoeba.pool.refused"]
+    assert llm.calls_of("pool_picker") == []
 
 
 def test_a_skill_with_scripts_is_attached_with_the_flag_on(cache, skills, tmp_path, task, envelope):
     cfg = draft_cfg(task, envelope, fx(CAP).replace("web_search", "excel_generator"))
     b = LocalToolbox(lsetup(skills), tmp_path / "run", TraceWriter(None))
     q = req("excel_generator", what="makes an Excel spreadsheet")
-    llm = mock(pool_picker=["local:skill:claude-user/xlsx"])
+    llm = mock(pool_picker=["local:skill:anthropics_skills/xlsx"])
     reg, summary = stock_toolbox([q], cfg, default_registry(), llm, b.trace, pool_setup(cache), local=b)
     assert (q.status, q.reason) == ("filled", "")
     assert (b.workspace / "skills" / "xlsx" / "scripts" / "recalc.py").is_file()   # the whole folder, scripts too
@@ -281,7 +284,7 @@ def test_a_skill_with_scripts_is_attached_with_the_flag_on(cache, skills, tmp_pa
     assert card.endswith("Full skill files are in skills/xlsx/; read them with local:Read if needed.")
     assert {"local:Read", "local:Bash", "local:Write", "local:Edit"} <= set(researcher.tools)
     out = b.finish()
-    assert out["skills_attached"] == [{"id": "local:skill:claude-user/xlsx", "name": "xlsx", "root": "claude-user",
+    assert out["skills_attached"] == [{"id": "local:skill:anthropics_skills/xlsx", "name": "xlsx", "root": "anthropics_skills",
                                        "path": "workspace/skills/xlsx", "helpers": ["Researcher"]}]
     assert out["files_created"] == []                                 # a copied skill is not a file the team made
 

@@ -275,6 +275,77 @@ def test_side_effect_tools_are_refused(cache, name, desc, hit):
     assert (vet(tool(name, desc), setup(cache))[0] == "side_effect") is hit
 
 
+@pytest.mark.parametrize("name,desc,hit", [
+    ("ai.presentations/presentations-ai", "Create designed slide decks from a topic", True),   # D60: creates
+    ("io.example/sheets", "Updating rows in your Google Sheet", True), ("io.example/drive", "Upload a file", True),
+    ("io.example/docs", "Edit a document in your account", True), ("io.example/db", "Insert records", True),
+    ("io.example/fs", "Rename files", True), ("io.example/forms", "Submits a form", True),
+    ("io.example/notes", "Writes notes to Notion", True),
+    ("io.example/markets", "Market share data and moving averages", False),
+    ("io.example/news", "Live updates on stocks, read only", False),
+    ("io.example/trains", "Train schedules for a station", False)])
+def test_tools_that_create_or_change_things_outside_are_refused(cache, name, desc, hit):
+    assert (vet(tool(name, desc), setup(cache))[0] == "side_effect") is hit
+
+
+def test_the_picker_sees_only_candidates_that_pass_vetting(cache, task, envelope, trace):
+    """D60: the refused look-alike (local package) is never shown; a passing lower match takes its place."""
+    llm = mock(planner=[fx(CAP)], pool_picker=picker)
+    cfg = instantiate(draft_team(task, llm, envelope, trace), "flat", task, envelope)
+    s = setup(cache, max_candidates=1)
+    q = req("web_search", what="search the web")
+    # make the look-alike (a local package) the best keyword match: before D60 it would be the one shown
+    idx = json.loads((cache / "index.json").read_text())
+    idx["entries"][1]["description"] = "Web search: searches the web for a query and returns titles, urls and snippets fast"
+    idx["entries"][1]["description_sha256"] = sha256(idx["entries"][1]["description"])
+    (cache / "index.json").write_text(json.dumps(idx))
+    stock_toolbox([q], cfg, default_registry(), llm, trace, s)
+    [match] = trace.events("pool_match")
+    assert [c["id"] for c in match["amoeba.pool.candidates"]] == [SEARCH]
+    assert {"id": "io.example/local-search", "reason": "not_remote"} in match["amoeba.pool.refused"]
+    prompt = llm.calls_of("pool_picker")[0]["messages"][-1]["content"]
+    assert "local-search" not in prompt and (q.status, q.pool_id) == ("filled", SEARCH)
+
+
+def test_no_pick_when_every_candidate_is_refused(cache, task, envelope, trace):
+    llm = mock(planner=[fx(CAP)], pool_picker=picker)
+    cfg = instantiate(draft_team(task, llm, envelope, trace), "flat", task, envelope)
+    q = req("web_search", what="search the web")
+    s = setup(cache)
+    s.config["paid_hosts"] = ["example.com"]                                  # every tool's host is now paid
+    stock_toolbox([q], cfg, default_registry(), llm, trace, s)
+    assert (q.status, q.reason) == ("unfilled", "all_refused") and llm.calls_of("pool_picker") == []
+    refused = trace.events("pool_match")[0]["amoeba.pool.refused"]
+    assert {"id": SEARCH, "reason": "paid_endpoint"} in refused
+
+
+def test_the_pick_gets_its_reply_room_and_one_retry_when_cut_off(cache, task, envelope, trace):
+    """D60: pick_max_tokens is sent; a reply cut off at it is asked once more with twice the room."""
+    from amoeba.llm.client import ChatResponse, LLMClient
+    from amoeba.interp.trace import NoopListener, TracedLLM
+    from amoeba.pool.stock import pick
+
+    class Cut(LLMClient):
+        model = "fake"
+
+        def __init__(self):
+            self.asked = []
+
+        def chat_messages(self, messages, seed=0, max_tokens=None):
+            self.asked.append(max_tokens)
+            if len(self.asked) == 1:
+                return ChatResponse("<thought>thinking and thinking", finish_reason="length")
+            return ChatResponse(f"<thought>ok</thought>{SEARCH}", finish_reason="stop")
+    fake = Cut()
+    entries = json.loads((cache / "index.json").read_text())["entries"]
+    chosen = pick(TracedLLM(fake, trace, NoopListener()), req("web_search"), "Researcher", "", entries[:1], 0,
+                  max_tokens=6000)
+    assert chosen == SEARCH and fake.asked == [6000, 12000]
+    assert trace.events("truncated")[0]["amoeba.retry"] is True
+    from amoeba.pool.index import load_pool_config
+    assert load_pool_config()["limits"]["pick_max_tokens"] == 6000               # shipped in pool.yaml
+
+
 def test_a_server_that_also_offers_an_acting_tool_is_refused_after_connecting(cache, task, envelope, trace):
     server = FakeServer()
     server.listing.append({"name": "send_email", "description": "Sends an email", "input_schema": {}})

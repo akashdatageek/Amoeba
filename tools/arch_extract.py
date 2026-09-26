@@ -497,9 +497,13 @@ BOXES: list[dict] = [
                "guess; the kind asked and the kind picked are logged), are ranked by the words they share with the "
                "request (its standard name and aliases, name, what it does, input and output); the best 5 "
                "(pool.yaml) are kept. None above zero: unfilled, no AI call.",
+               "Vet first (D60): the candidates are checked before the pick and the AI is shown only the best 5 that "
+               "pass (up to 50 matches are checked); if none pass, the request is unfilled (all_refused) with no AI call.",
                "Pick: one short AI call shows the request and those candidates and must answer exactly one listed id "
-               "or NONE; any other reply counts as NONE.",
-               "Vet: a tool must be read-only (nothing in its name or description that sends, posts, pays or deletes) "
+               "or NONE; any other reply counts as NONE. It gets 6,000 tokens of room, and once more with twice that "
+               "when the reply is cut off.",
+               "Vet: a tool must be read-only (nothing in its name or description that sends, posts, pays or deletes, "
+               "or creates, updates, uploads, edits or writes anything in an outside service, D60) "
                "and not a pay-per-call host; it needs an HTTPS remote, a source repository, a pinned version, no key or "
                "its key in the "
                "environment, and an unchanged description (also re-checked against the server's tools/list at every "
@@ -527,7 +531,7 @@ BOXES: list[dict] = [
                "Limits (localtools.yaml): 60 s per call, 8,000 characters of output, 20 calls per step and 60 "
                "per run; a trace line for every call and "
                "every refusal.",
-               "Skills are listed from Claude Code's skill folders and the kept anthropics/skills clone; an attached "
+               "Skills are listed only from the kept anthropics/skills clone (D60: not the user's ~/.claude/skills); an attached "
                "skill's folder is copied to workspace/skills/<name>/ and its SKILL.md (frontmatter and first 5,000 "
                "characters) goes on the helper's card.",
                "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first.",

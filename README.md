@@ -60,8 +60,12 @@ python -m scripts.run_task ... --no-pool                 # the step off (e.g. to
 
 Before the runner is chosen, every capability request Box 2 recorded is matched against the cached pool by keywords
 (plain code, the top 5, tools and skills alike: the requested kind is only the planner's guess, D58), one short AI call (role group `pool`, default the workers' model) picks one candidate or
-NONE, and plain code vets and attaches it. A tool must be read-only (no send / email / post / publish / pay / purchase /
-delete / "write to" in its name or description, nor in any tool the server lists) and not on a pay-per-call host
+NONE, and plain code vets and attaches it. D60: the candidates are vetted *before* the pick — the picker is shown only
+the best 5 that pass (up to 50 keyword matches are vetted to find them; none pass → `all_refused`, no AI call) — and
+the pick gets 6,000 tokens of reply room, asked once more with twice that when it is cut off. A tool must be read-only
+(no send / email / post / publish / pay / purchase / delete / "write to", and since D60 nothing that creates, updates,
+uploads, edits, inserts, removes, renames, submits or writes in an outside service — a deck, doc or sheet is made
+locally with local tools instead — in its name or description, nor in any tool the server lists) and not on a pay-per-call host
 (`paid_hosts` in pool.yaml), and needs an HTTPS remote, a source repository, a pinned version, no key or its key in
 the environment variable named in `amoeba/config/pool.yaml` (`auth_env`), and a description unchanged
 since the refresh and since it was first attached (`data/pool/pins.json`). It becomes `pool:<name>` for the asking
@@ -96,7 +100,7 @@ ones become `local:<Name>` tools for the helper that asked, run through `ToolReg
 
 Local tools and skills are toolbox candidates listed before the pool's (aliases: code runner → local:Bash, file
 writing → local:Write, excel/spreadsheet → xlsx, presentation → pptx, word document → docx, pdf reader → pdf). Skills
-come from Claude Code's skill folders and the kept anthropics/skills clone; a skill with scripts is allowed now: its
+come only from the kept anthropics/skills clone (D60: not from your own ~/.claude/skills); a skill with scripts is allowed now: its
 folder is copied to `workspace/skills/<name>/` and its SKILL.md (frontmatter and first 5,000 characters) goes on the
 helper's card. A step that says it saved a file the workspace does not hold ends `incomplete`
 (`claimed_file_missing`). result.json adds `files_created`, `local_tool_calls`, `local_refusals` and
