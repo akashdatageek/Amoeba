@@ -1,0 +1,1 @@
+BLOCKED: github_repo_reader — Unable to review the repository structure, analyze code logic, or identify architectural patterns without access to the codebase. Consequently, the Architecture Summary and verification log cannot be produced.

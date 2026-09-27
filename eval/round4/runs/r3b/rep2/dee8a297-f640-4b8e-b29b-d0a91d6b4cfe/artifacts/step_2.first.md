@@ -1,0 +1,1 @@
+BLOCKED: Framework Data Table — Step 1 failed to provide the necessary data (framework names, star counts, and release dates) due to a failure in the github_api_tool. Consequently, the .xlsx spreadsheet and .png chart could not be generated.

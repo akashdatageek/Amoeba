@@ -1,0 +1,1 @@
+BLOCKED: Framework Data Table — Step 1 failed to provide the necessary data (star counts and release dates) due to a tool failure, making it impossible to generate the .xlsx spreadsheet and .png chart.
