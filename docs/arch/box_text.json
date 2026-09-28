@@ -2636,7 +2636,7 @@
   ]
  },
  "localtools": {
-  "checked_at": "f0b9d67",
+  "checked_at": "9d24fbd",
   "facts": {
    "anchors": [
     {
@@ -2650,6 +2650,7 @@
       "entries(self) -> list[dict]",
       "alias_hits(self, q) -> list[dict]",
       "candidates(self, q, top: int) -> list[tuple[int, dict]]",
+      "format_skill(self, q) -> dict | None",
       "vet(self, entry: dict) -> str | None",
       "register(self, reg, name: str) -> None",
       "attach_tool(self, a: AgentSpec, name: str, reg, request: str='') -> None",
@@ -2728,7 +2729,8 @@
      "callees": [
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/skills.py::skill_roots",
-      "amoeba/pool/index.py::split_skill"
+      "amoeba/pool/index.py::split_skill",
+      "amoeba/pool/stock.py::SharedPicks.get"
      ],
      "doc": "One entry per <root>/**/<name>/SKILL.md: {id, name, title, description, kind skill, source local, root, path,",
      "key": "amoeba/localtools/skills.py::list_skills",
@@ -2743,6 +2745,25 @@
      "doc": "File names the text says were made, in order of first mention.",
      "key": "amoeba/localtools/claims.py::claimed_files",
      "signature": "claimed_files(text: str) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter.run",
+      "amoeba/localtools/office.py::soffice"
+     ],
+     "doc": "Open `path` in LibreOffice headless and save it again as .xlsx, so every formula cell holds its value.",
+     "key": "amoeba/localtools/office.py::recalc",
+     "signature": "recalc(path: str | Path, timeout_s: int=90) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/localtools/office.py::recalc"
+     ],
+     "doc": "A two-cell workbook (2 and 3, and =A1*A2) must come back from LibreOffice with the value 6.",
+     "key": "amoeba/localtools/office.py::office_check",
+     "signature": "office_check() -> dict"
     },
     {
      "callees": [],
@@ -2763,7 +2784,8 @@
     {
      "callees": [
       "amoeba/llm/cache.py::_Store.get",
-      "amoeba/localtools/gate.py::SandboxRequired"
+      "amoeba/localtools/gate.py::SandboxRequired",
+      "amoeba/pool/stock.py::SharedPicks.get"
      ],
      "doc": "--local-tools on runs only where AMOEBA_SANDBOX=1 is set.",
      "key": "amoeba/localtools/gate.py::require_sandbox",
@@ -2791,7 +2813,8 @@
     },
     {
      "callees": [
-      "amoeba/llm/cache.py::_Store.get"
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
      ],
      "doc": "(label, folder) for every place skills are listed from, in order: Claude Code's, then the kept clones.",
      "key": "amoeba/localtools/skills.py::skill_roots",
@@ -2880,6 +2903,11 @@
     ],
     [
      "decide",
+     "if not self.office['ok']",
+     "set note = f\"\\nNote from plain code: LibreOffice cannot recalculate formulas in this sandbox ("
+    ],
+    [
+     "decide",
      "if rec is None",
      "set rec = {'id': entry['id'], 'name': entry['name'], 'root': entry['root'], 'path': str(dest.r"
     ],
@@ -2892,6 +2920,11 @@
      "decide",
      "if self.book is not None and (not is_error)",
      "set key = hashlib.sha256(f'{self.calls}:{tool}:{what}'.encode()).hexdigest()[:10]"
+    ],
+    [
+     "decide",
+     "if self.office is None",
+     "set self.office = office_check()"
     ],
     [
      "decide",
@@ -3000,12 +3033,17 @@
     ],
     [
      "fallback",
+     "except subprocess.TimeoutExpired",
+     "return {'ok': False, 'detail': f'soffice timed out after {timeout_s} s'}"
+    ],
+    [
+     "fallback",
      "f' ({detail[:200]})' if detail else ''",
      "choose value"
     ],
     [
      "fallback",
-     "f'\\n[… first {cap} of {len(out)} characters]' if len(out) > cap else ''",
+     "f'\\n[shortened from {len(out)} characters: head, result lines and tail kept]' if len(out) > cap else ''",
      "choose value"
     ],
     [
@@ -3056,6 +3094,11 @@
     [
      "filter",
      "keep only if d.is_dir() and (not d.name.startswith('.'))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if e['kind'] == 'skill' and e['name'] == fmt and (self.vet(e) is None)",
      "drop the rest"
     ],
     [
@@ -3160,6 +3203,16 @@
     ],
     [
      "stop",
+     "if exe is None",
+     "return {'ok': False, 'detail': 'LibreOffice (soffice) is not installed'}"
+    ],
+    [
+     "stop",
+     "if fmt is None or self.server is None",
+     "return None"
+    ],
+    [
+     "stop",
      "if inside(p, workspace) is None",
      "return ('unsafe_command', f'path outside the workspace: {p[:80]}')"
     ],
@@ -3200,6 +3253,11 @@
     ],
     [
      "stop",
+     "if not r['ok']",
+     "return r"
+    ],
+    [
+     "stop",
      "if p is None",
      "return self.refuse(tool, 'outside_workspace', '', what)"
     ],
@@ -3207,6 +3265,11 @@
      "stop",
      "if p is not None and p.is_file()",
      "return True"
+    ],
+    [
+     "stop",
+     "if p.returncode != 0 or not made.exists()",
+     "return {'ok': False, 'detail': (p.stderr or p.stdout or 'no output').strip().splitlines()[-1][:200]}"
     ],
     [
      "stop",
@@ -3257,17 +3320,16 @@
    "kind": "code",
    "numbers": [
     "PoolLimits.timeout_s",
-    "WebLimits.timeout_s"
+    "WebLimits.timeout_s",
+    "recalc.timeout_s"
    ],
    "prompts": {},
    "title": "Local toolbox (sandboxed)"
   },
-  "facts_hash": "473a8d04c5b90f02",
-  "rejected_hash": "b5b259a01751c65f",
-  "seed_hash": "c3cfd084c207ca3b",
+  "facts_hash": "856b31540d52d643",
+  "seed_hash": "cf9559fad29b1143",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused and logged once. They become local:<Name> tools of the run.",
    "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); a Bash command runs from there, network commands are refused (network_command) and destructive or escaping ones too (unsafe_command).",
@@ -3275,7 +3337,8 @@
    "Skills are listed only from the kept anthropics/skills clone (D60: not the user's ~/.claude/skills); an attached skill's folder is copied to workspace/skills/<name>/ and its SKILL.md (frontmatter and first 5,000 characters) goes on the helper's card.",
    "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first; any other local item goes first only if it matches at least as well as the best internet one (D61).",
    "A successful call's result gets a source id [S#] in the run's one source list (D61); a command written inside a code fence runs without the fence.",
-   "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the workspace is copied to artifacts/files/."
+   "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the workspace is copied to artifacts/files/.",
+   "D71: LibreOffice Calc headless (scripts/setup_office.sh) recalculates spreadsheet formulas with a fresh profile and HOME; when the xlsx skill is attached, plain code checks once that a two-cell workbook comes back with its value, and if not the helper's card says recalc.py will fail."
   ]
  },
  "ov_leave": {
