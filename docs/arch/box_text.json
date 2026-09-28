@@ -3880,7 +3880,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "e62328f",
+  "checked_at": "e73ba86",
   "facts": {
    "anchors": [
     {
@@ -3894,6 +3894,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.all_inputs_text",
       "amoeba/interp/plan_runner.py::PlanRunner.answer_findings",
       "amoeba/interp/plan_runner.py::PlanRunner.answer_gaps",
+      "amoeba/interp/plan_runner.py::PlanRunner.checkable",
       "amoeba/interp/plan_runner.py::PlanRunner.contract",
       "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
       "amoeba/interp/plan_runner.py::PlanRunner.contract_findings",
@@ -3905,10 +3906,13 @@
       "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
       "amoeba/interp/plan_runner.py::PlanRunner.ledger_update",
       "amoeba/interp/plan_runner.py::PlanRunner.mark_stale",
+      "amoeba/interp/plan_runner.py::PlanRunner.raw_results_text",
       "amoeba/interp/plan_runner.py::PlanRunner.refine",
       "amoeba/interp/plan_runner.py::PlanRunner.rework_producers",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
       "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
+      "amoeba/interp/plan_runner.py::PlanRunner.upstream",
+      "amoeba/interp/plan_runner.py::PlanRunner.verifier_tools",
       "amoeba/interp/plan_runner.py::_Work",
       "amoeba/interp/plan_runner.py::blocked_marks",
       "amoeba/interp/plan_runner.py::number",
@@ -3917,6 +3921,7 @@
       "amoeba/interp/plan_runner.py::step_checks",
       "amoeba/interp/plan_runner.py::strip_not_needed",
       "amoeba/interp/provenance.py::check_provenance",
+      "amoeba/interp/shorten.py::shorten",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/localtools/claims.py::claimed_files",
       "amoeba/localtools/toolbox.py::LocalToolbox.begin_step",
@@ -4149,6 +4154,11 @@
     ],
     [
      "decide",
+     "if raw",
+     "set inputs += '\\n\\n' + raw"
+    ],
+    [
+     "decide",
      "if reason == 'self_review'",
      "set criteria = '; '.join((c for a in agents for c in a.success_criteria)) or 'none written'"
     ],
@@ -4184,6 +4194,11 @@
     ],
     [
      "decide",
+     "if unchecked",
+     "set status = 'partial' if status == 'done' else status"
+    ],
+    [
+     "decide",
      "if undeclared",
      "set reason += '; not declared by the helper: ' + ', '.join(undeclared)"
     ],
@@ -4206,6 +4221,11 @@
      "decide",
      "if verifier and meta['verdict'] == 'FAIL' and (not reverify)",
      "set reworked = self.rework_producers(n, deps, meta['issues'])"
+    ],
+    [
+     "decide",
+     "if verifier and on",
+     "set granted = self.verifier_tools(agents)"
     ],
     [
      "fallback",
@@ -4429,6 +4449,11 @@
     ],
     [
      "filter",
+     "keep only if c['ok']",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if getattr(step, k)",
      "drop the rest"
     ],
@@ -4555,11 +4580,11 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "405d06a58150b421",
+  "facts_hash": "4807fe0a176a2df2",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
@@ -6274,7 +6299,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "5c10844",
+  "checked_at": "e73ba86",
   "facts": {
    "anchors": [
     {
@@ -6398,6 +6423,33 @@
      "signature": "evidence_text(self, d: int) -> str"
     },
     {
+     "callees": [
+      "amoeba/localtools/toolbox.py::LocalToolbox.register",
+      "amoeba/tools/registry.py::ToolRegistry.register"
+     ],
+     "doc": "D65: a verify step's helpers get the tools to re-check what the earlier steps made: calc for numbers, web",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.verifier_tools",
+     "signature": "verifier_tools(self, agents: list[AgentSpec]) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.upstream",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D65: the raw tool results every upstream step used (not only their text), for a verify step.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.raw_results_text",
+     "signature": "raw_results_text(self, n: int) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.upstream",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D65: what the steps a verify step checks produced that a tool can re-check: code, files or cited",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.checkable",
+     "signature": "checkable(self, n: int) -> str"
+    },
+    {
      "callees": [],
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.contract_findings",
@@ -6411,6 +6463,15 @@
      "doc": "D61: the files the team made in the workspace (of step n, or all), that still exist.",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.files_of",
      "signature": "files_of(self, n: int | None=None) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D65: every step a step builds on, directly or through other steps, that has run (plan order).",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.upstream",
+     "signature": "upstream(self, n: int) -> list[int]"
     },
     {
      "callees": [
@@ -6446,6 +6507,11 @@
    "guards": [
     [
      "correct",
+     "if '```' in text or any((c['tool'].startswith('local:') for c in m.get('tool_calls', [])))",
+     "add f'code of step {d}'"
+    ],
+    [
+     "correct",
      "if deps",
      "add {'name': 'inputs_referenced', 'pass': uses_inputs(body, deps, artifacts), 'detail': 'the output uses nothing from the steps it depends on (no figure, source id, step or role name, or 8 words in a row from them)'}"
     ],
@@ -6453,6 +6519,16 @@
      "correct",
      "if m.get('blocked') or m.get('unused')",
      "add f\"- lacked: {', '.join(m.get('blocked', [])) or 'nothing'}; given but unused: {', '.join(m.get('unused', [])) or 'nothing'}\""
+    ],
+    [
+     "correct",
+     "if m.get('files_made')",
+     "add f'files of step {d}'"
+    ],
+    [
+     "correct",
+     "if m.get('provenance', {}).get('cited')",
+     "add f'cited figures of step {d}'"
     ],
     [
      "correct",
@@ -6471,6 +6547,11 @@
     ],
     [
      "correct",
+     "if t.removeprefix('local:') in getattr(self.local, 'exposed', []) and t not in names",
+     "add t"
+    ],
+    [
+     "correct",
      "if verifier",
      "add {'name': 'verdict', 'pass': parse_verdict_block(body)[0] is not None, 'detail': 'a verification step must start with \"Verdict: PASS\" or \"Verdict: FAIL\"'}"
     ],
@@ -6483,6 +6564,11 @@
      "decide",
      "if markers",
      "set out += [_format_check(MARKERS[m], body) for m in markers]"
+    ],
+    [
+     "decide",
+     "if new",
+     "set a.tools = [*a.tools, *new]"
     ],
     [
      "fallback",
@@ -6531,6 +6617,11 @@
     ],
     [
      "filter",
+     "keep only if d in self.artifacts",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if len(x.replace('.', '')) > 1",
      "drop the rest"
     ],
@@ -6557,6 +6648,16 @@
     [
      "filter",
      "keep only if q.get('for_role') == a.name and (not have(q))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t in reg",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t not in a.tools",
      "drop the rest"
     ],
     [
@@ -6601,6 +6702,11 @@
     ],
     [
      "stop",
+     "if not parts",
+     "return ''"
+    ],
+    [
+     "stop",
      "if self.local is None",
      "return []"
     ],
@@ -6615,18 +6721,18 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "9abc362ccf62af6c",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "4374f669ae6aaf94",
-  "sentence": "Checks each step's output against its requirements, missing inputs, and contract; reads verdicts and gaps to ensure helpers used what they were given.",
-  "source": "model: rewritten",
+  "facts_hash": "a499d544afdc101f",
+  "seed_hash": "13e802c0beb63a4e",
+  "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
+  "source": "hand",
   "what": [
-   "Checks what the planner said the step produces: the table:, list:, code:, memo: or missing input markers in its output line, and a real use of its inputs.",
+   "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
    "A step the planner marked kind: verify must answer PASS or FAIL; a FAIL sends each step it checked back once, then it checks again. Steps that already used the old output are marked stale (--rerun-stale redoes them once).",
    "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them.",
    "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, earns one refine turn and then makes the step partial (not declared / attached unused).",
-   "A verify step also sees each checked step's sources, tool calls, figure counts and files (D61). A producer whose only problem is a missing capability is not sent back (rework_skipped)."
+   "A verify step also sees each checked step's sources, tool calls, figure counts and files (D61). A producer whose only problem is a missing capability is not sent back (rework_skipped).",
+   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial."
   ]
  },
  "task_record": {
