@@ -222,6 +222,7 @@ class MockLLMClient(LLMClient):
     """
 
     SIGNATURES: dict[str, str | tuple[str, ...]] = {   # a kind may have several phrases (d19 and D24 prompts)
+        "replanner": "You are the Action Observer of a team",                                            # D63
         "planner": ("You are a manager and expert prompt engineer",
                     "delivery lead with 15+ years of experience running cross-functional projects"),        # D24
         "agent_observer": ("identifying issues in role design",

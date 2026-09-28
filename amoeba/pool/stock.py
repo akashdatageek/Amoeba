@@ -161,12 +161,14 @@ def _pins(setup: PoolSetup) -> dict:
 
 # box: toolbox
 def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, trace: TraceWriter,
-                  setup: PoolSetup | None, seed: int = 0, local=None) -> tuple[ToolRegistry, dict]:
+                  setup: PoolSetup | None, seed: int = 0, local=None, restock: bool = False) -> tuple[ToolRegistry, dict]:
     """Fill what it can of `requests` (Box 2's capability requests) from the cached pool. Changes cfg's helpers
     (tools, missing tools, pool items) and each request's status / pool_id / candidates / reason. Returns the run's
     registry (a copy holding the pool tools when any were attached) and a summary for result.json.
     local: D59 — a LocalToolbox (--local-tools on): its items are candidates too, ranked first; setup may then be
-    None (--no-pool: local items only)."""
+    None (--no-pool: local items only).
+    restock: D63 — a mid-run call for the requests an accepted re-plan made: the local server is already running
+    and the run's source list already set, so neither is started or replaced."""
     summary = {"status": "ran", "filled": 0, "unfilled": 0, "llm_calls": 0, "reasons": {}, "attached": []}
     index = load_index(setup.dir) if setup is not None else None
     if index is None and local is None:
@@ -184,11 +186,13 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
     traced = TracedLLM(llm, trace, NoopListener())
     reg, pool = tools, None
     if local is not None:                     # D59: start claude mcp serve; skills come from the local listing
-        local.start()
+        if not restock:
+            local.start()
         entries = [e for e in entries if e["kind"] != "skill"]
         reg = tools.copy()
         reg.local = local
-        local.book = getattr(tools, "web", None) or SourceBook()   # D61 (G7): one [S#] list with web and pool
+        if not (restock and local.book is not None):
+            local.book = getattr(tools, "web", None) or SourceBook()   # D61 (G7): one [S#] list with web and pool
     per_helper: dict[str, set[str]] = {}
     attached: set[str] = set()
     pins, pins_changed = _pins(setup), False

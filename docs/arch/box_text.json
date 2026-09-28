@@ -1,4 +1,508 @@
 {
+ "action_obs": {
+  "checked_at": "5c10844",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner._observer_call",
+      "amoeba/interp/plan_runner.py::PlanRunner.apply_decision",
+      "amoeba/interp/plan_runner.py::PlanRunner.replan_triggers",
+      "amoeba/interp/plan_runner.py::PlanRunner.validate_decision",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/plan_runner.py::parse_decision",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D63: after a wave, one planner call when plain code found a trigger and steps remain; the decision is",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.action_observer",
+     "signature": "action_observer(self, wave: int) -> None"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.held_items",
+      "amoeba/interp/plan_runner.py::missing_input_marks",
+      "amoeba/interp/plan_runner.py::names_match",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D63: what plain code found after a wave. Each trigger fires once per step (or item).",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.replan_triggers",
+     "signature": "replan_triggers(self, wave_steps: list[int]) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/plan_runner.py::step_field",
+      "amoeba/interp/plan_runner.py::waves",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/models.py::DraftedRole",
+      "amoeba/task/parsers.py::parse_json_objects",
+      "amoeba/task/parsers.py::parse_plan_d24",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D63: the Box 2 rules for a proposed change, and the change itself when they all hold. Finished steps are",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.validate_decision",
+     "signature": "validate_decision(self, dec: dict) -> tuple[list[str], dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
+      "amoeba/interp/plan_runner.py::PlanRunner.restock",
+      "amoeba/interp/plan_runner.py::PlanRunner.save_plan_version",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/models.py::CapabilityRequest",
+      "amoeba/tools/registry.py::ToolRegistry.names"
+     ],
+     "doc": "D63: an accepted decision takes effect: the new role joins the team, capability requests go through the",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.apply_decision",
+     "signature": "apply_decision(self, dec: dict, change: dict) -> None"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D63: each requirement's final status — met (a covering step is done, and no failing check says",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.requirement_status",
+     "signature": "requirement_status(self) -> dict[str, dict]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/parsers.py::parse_sections",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D63: the observer's reply → {decision, reason, steps, role, unmet, requests, readable}. A reply without a known",
+     "key": "amoeba/interp/plan_runner.py::parse_decision",
+     "signature": "parse_decision(raw: str) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "Each tool or skill a helper holds now -> the helpers holding it.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.held_items",
+     "signature": "held_items(self) -> dict[str, list[str]]"
+    },
+    {
+     "callees": [
+      "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/evaluate.py::normalise"
+     ],
+     "doc": "What the plan names: every role's drafted tools and missing tools and every capability request (name and",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.plan_items",
+     "signature": "plan_items(self) -> set[str]"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if bad",
+     "add f'step {num} depends on step(s) {bad}, which are neither finished nor new'"
+    ],
+    [
+     "correct",
+     "if key not in self.triggered",
+     "add t"
+    ],
+    [
+     "correct",
+     "if kind != 'REVISE_REMAINING' and num in unrun",
+     "add f'step {num} already exists; number new steps from {self.max_num + 1}'"
+    ],
+    [
+     "correct",
+     "if kind == 'ADD_ROLE' and new_role and (not any((new_role.name in s['roles'] for s in change['steps'])))",
+     "add f'no step for the new role {new_role.name!r}'"
+    ],
+    [
+     "correct",
+     "if later",
+     "add {'kind': 'new_tool', 'item': item, 'detail': f\"{', '.join(later)} now hold(s) {item}, which the plan never named\"}"
+    ],
+    [
+     "correct",
+     "if len(parsed) > 1",
+     "add 'ADD_STEP adds exactly one step'"
+    ],
+    [
+     "correct",
+     "if len(self.agents) + 1 > getattr(self.i, 'max_agents', 5)",
+     "add f\"the team would have {len(self.agents) + 1} roles (at most {getattr(self.i, 'max_agents', 5)})\""
+    ],
+    [
+     "correct",
+     "if m['status'] in ('partial', 'incomplete') and m.get('blocked')",
+     "add {'kind': 'missing_capability', 'step': n, 'detail': f\"step {n} is {m['status']}: lacked {', '.join(m['blocked'])}\"}"
+    ],
+    [
+     "correct",
+     "if missing",
+     "add f\"incomplete role card: no {', '.join(missing)}\""
+    ],
+    [
+     "correct",
+     "if new_role.name in roles",
+     "add f'role {new_role.name!r} already exists'"
+    ],
+    [
+     "correct",
+     "if not (new_role.prompt or new_role.description)",
+     "add 'prompt'"
+    ],
+    [
+     "correct",
+     "if not blobs",
+     "add 'ADD_ROLE without a role JSON blob'"
+    ],
+    [
+     "correct",
+     "if not parsed",
+     "add f'{kind} without steps in the Execution Plan format'"
+    ],
+    [
+     "correct",
+     "if not who",
+     "add f\"step {num} names no role on the team ({', '.join(names) or first[:40]!r})\""
+    ],
+    [
+     "correct",
+     "if num == self.answer_n",
+     "add f'step {num} writes the final answer and cannot be dropped'"
+    ],
+    [
+     "correct",
+     "if num in fields['depends_on']",
+     "add f'step {num} depends on itself'"
+    ],
+    [
+     "correct",
+     "if num in finished",
+     "add f'step {num} has already run; finished steps cannot change'"
+    ],
+    [
+     "correct",
+     "if num not in unrun",
+     "add f'step {num} is not waiting to run; only such a step can be dropped'"
+    ],
+    [
+     "correct",
+     "if num not in unrun",
+     "add f'step {num} is not waiting to run; only such a step can be reassigned'"
+    ],
+    [
+     "correct",
+     "if q.get('for_role') and q['for_role'] not in roles",
+     "add f\"capability request {q['name']!r} is for an unknown role {q['for_role']!r}\""
+    ],
+    [
+     "correct",
+     "if role not in roles",
+     "add f'role {role!r} is not on the team'"
+    ],
+    [
+     "correct",
+     "if self.added_steps + added > self.opt.max_added_steps",
+     "add f'{added} new step(s) would pass the cap of {self.opt.max_added_steps} added steps per run ({self.added_steps} added so far)'"
+    ],
+    [
+     "correct",
+     "if self.answer_n is not None and self.answer_n in change['drop']",
+     "add f'step {self.answer_n} writes the final answer and cannot be dropped'"
+    ],
+    [
+     "correct",
+     "if self.roles_added >= 1",
+     "add 'a role was already added in this run (at most one)'"
+    ],
+    [
+     "correct",
+     "if wrong",
+     "add f'feeds names step(s) {wrong} that are not waiting to run'"
+    ],
+    [
+     "decide",
+     "if change['kind'] != 'CONTINUE'",
+     "set old = {number(s): s for s in self.cfg.plan}"
+    ],
+    [
+     "decide",
+     "if change['new_role'] is not None",
+     "set r = change['new_role']"
+    ],
+    [
+     "decide",
+     "if kind == 'ADD_ROLE'",
+     "set blobs = parse_json_objects(dec['role'])"
+    ],
+    [
+     "decide",
+     "if kind == 'ADD_STEP'",
+     "set feeds = re.search('(?im)^\\\\s*feeds\\\\s*:\\\\s*(.+)$', dec['steps'])"
+    ],
+    [
+     "decide",
+     "if kind == 'DROP_STEP'",
+     "set num = step_field(dec['steps'], 'step')"
+    ],
+    [
+     "decide",
+     "if kind == 'REASSIGN_STEP'",
+     "set num, role = (step_field(dec['steps'], 'step'), (step_field(dec['steps'], 'role', as_text=T"
+    ],
+    [
+     "decide",
+     "if kind == 'REVISE_REMAINING'",
+     "set change['drop'] = sorted(unrun - batch)"
+    ],
+    [
+     "decide",
+     "if kind in ('REVISE_REMAINING', 'ADD_STEP', 'ADD_ROLE')",
+     "set parsed = parse_plan_d24(re.sub('(?im)^\\\\s*feeds\\\\s*:.*$', '', dec['steps']))"
+    ],
+    [
+     "decide",
+     "if m.get('verification') and m.get('verdict') == 'FAIL'",
+     "set again = ' after rework' if m.get('verdict_after_rework') else ' (no rework was possible)'"
+    ],
+    [
+     "decide",
+     "if new_nums",
+     "set change['feeds'] = {new_nums[0]: [t for t in targets if t in unrun]}"
+    ],
+    [
+     "decide",
+     "if not cover",
+     "set out[r]['why'] = 'no step that ran covers it'"
+    ],
+    [
+     "decide",
+     "if r in self.unmet",
+     "set out[r] = {'status': 'not met', 'steps': [], 'why': self.unmet[r]}"
+    ],
+    [
+     "fallback",
+     "' after rework' if m.get('verdict_after_rework') else ' (no rework was possible)'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'met' if done else 'partly' if cover else 'not met'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'partly' if cover else 'not met'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[] if dec['readable'] else ['unreadable reply: treated as CONTINUE']",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[int(x) for x in re.findall('\\\\d+', feeds.group(1))] if feeds else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[num] if num in unrun else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "change.get('summary', {}) if not errors else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except PlanGraphError",
+     "add f'the new plan is unusable: {e}'"
+    ],
+    [
+     "fallback",
+     "new_role.name if new_role else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "numbered[:len(parsed)] if len(numbered) >= len(parsed) else list(range(self.max_num + 1, self.max_num + 1 + len(parsed)))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "set(self.i.tools.names()) if hasattr(self.i.tools, 'names') else set()",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "word.group(1) if word else 'CONTINUE'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{new_role.name: 'NEW'} if new_role else {}",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if a.agent_id in unrun",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if d not in finished and d not in batch",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if h in holders",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if m['wave'] == wave",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n not in unrun",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not any((q.get('name') == t for q in change['requests']))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not getattr(new_role, k)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if number(s) not in finished",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if number(s) not in self.artifacts",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if p['kind'] == 'skill'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r in a['meta'].get('covers', [])",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r in names",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.replace('_', ' ') in first.split(':')[0]",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if s['number'] in unrun",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if s['number'] not in unrun",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if self.artifacts[n]['meta']['status'] == 'done' and self.artifacts[n]['meta'].get('verdict') != 'FAIL'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if str(q.get('name', '')).strip()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t in known",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t in unrun",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t not in known",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t not in unrun",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t not in {p['name'] for p in a.pool}",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if x",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if item in (PRINT, FINAL_OUTPUT) or any((names_match(item, k) for k in self.known))",
+     "skip (continue)"
+    ],
+    [
+     "stop",
+     "if not triggers",
+     "return None"
+    ],
+    [
+     "stop",
+     "if not unrun or len(self.replans) >= self.opt.max_replans",
+     "return None"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [
+    "PlanOptions.max_added_steps",
+    "PlanOptions.max_replans"
+   ],
+   "prompts": {
+    "plan_replan": "aa76a91e7034"
+   },
+   "title": "Action Observer (re-plan)"
+  },
+  "facts_hash": "9dbd4de1ddb0c977",
+  "seed_hash": "eab21b71f661e662",
+  "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code checks the change before it takes effect.",
+  "source": "hand",
+  "what": [
+   "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, or a tool the plan did not know about. No trigger, no call.",
+   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available and the budget left, and returns one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
+   "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met.",
+   "At most {PlanOptions.max_replans} re-plans and {PlanOptions.max_added_steps} added steps per run; an unreadable or invalid reply counts as CONTINUE. Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change."
+  ]
+ },
  "agent_obs": {
   "checked_at": "7126cfe",
   "facts": {
@@ -122,7 +626,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "07921c7",
+  "checked_at": "5c10844",
   "facts": {
    "anchors": [
     {
@@ -246,6 +750,7 @@
     "ChatResponse.latency_ms",
     "Draft.requests_dropped_by_observers",
     "Draft.requests_proposed",
+    "Envelope.max_agents",
     "Episode.latency_ms",
     "Episode.n_llm_calls",
     "Episode.seed",
@@ -257,7 +762,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "26ba1a49849511a0",
+  "facts_hash": "dc29941fd7077b9c",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -1990,7 +2495,7 @@
   ]
  },
  "interpreter": {
-  "checked_at": "07921c7",
+  "checked_at": "5c10844",
   "facts": {
    "anchors": [
     {
@@ -2001,7 +2506,7 @@
      ],
      "doc": "",
      "key": "amoeba/interp/runtime.py::Interpreter.__init__",
-     "signature": "__init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None=None, listener: NoopListener | None=None, run_dir: str | None=None, plan_options=None, equal_tools: bool=False)"
+     "signature": "__init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None=None, listener: NoopListener | None=None, run_dir: str | None=None, plan_options=None, equal_tools: bool=False, stock=None, max_agents: int=5)"
     },
     {
      "callees": [
@@ -2064,16 +2569,18 @@
    "numbers": [
     "ChatResponse.latency_ms",
     "EQUAL_MAX_TOKENS",
+    "Envelope.max_agents",
     "Episode.latency_ms",
     "Episode.seed",
     "Episode.team_version",
     "TeamConfig.version",
+    "__init__.max_agents",
     "run.seed"
    ],
    "prompts": {},
    "title": "Interpreter"
   },
-  "facts_hash": "f9f2473cf1ef4a4b",
+  "facts_hash": "9988ba937aa8432f",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "92a5bb70bcb60bb1",
   "sentence": "Reads the team's shape and hands the job to the matching runner.",
@@ -2726,7 +3233,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "07921c7",
+  "checked_at": "5c10844",
   "facts": {
    "anchors": [
     {
@@ -2776,6 +3283,7 @@
     "ChatResponse.latency_ms",
     "Draft.requests_dropped_by_observers",
     "Draft.requests_proposed",
+    "Envelope.max_agents",
     "Episode.latency_ms",
     "Episode.n_llm_calls",
     "Episode.seed",
@@ -2787,14 +3295,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "3a612a20b4a28b9b",
+  "facts_hash": "2cab7b841cc2df0c",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves seven files: the team, the draft, a log line per AI call, the tools or skills requested, a result summary, a capability report, and local server settings.",
-  "source": "model: kept",
+  "sentence": "Every run saves eight files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, and the agent limit.",
+  "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, and the configuration for local tools.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, and the maximum agent count ({Envelope.max_agents}).",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -2895,7 +3403,7 @@
   ]
  },
  "ov_run": {
-  "checked_at": "dce6368",
+  "checked_at": "5c10844",
   "facts": {
    "anchors": [
     {
@@ -2965,9 +3473,13 @@
      "callees": [
       "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
       "amoeba/interp/plan_runner.py::PlanRunner._max_turns",
+      "amoeba/interp/plan_runner.py::PlanRunner.action_observer",
       "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
       "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+      "amoeba/interp/plan_runner.py::PlanRunner.plan_items",
+      "amoeba/interp/plan_runner.py::PlanRunner.replan_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::PlanRunner.save_plan_version",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -3006,7 +3518,7 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "25f50c29ad1ff741",
+  "facts_hash": "7b624152b089b233",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call is logged.",
@@ -3098,7 +3610,7 @@
   ]
  },
  "plan_graph": {
-  "checked_at": "7126cfe",
+  "checked_at": "5c10844",
   "facts": {
    "anchors": [
     {
@@ -3130,9 +3642,13 @@
      "callees": [
       "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
       "amoeba/interp/plan_runner.py::PlanRunner._max_turns",
+      "amoeba/interp/plan_runner.py::PlanRunner.action_observer",
       "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
       "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+      "amoeba/interp/plan_runner.py::PlanRunner.plan_items",
+      "amoeba/interp/plan_runner.py::PlanRunner.replan_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::PlanRunner.save_plan_version",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -3162,6 +3678,16 @@
      "set nums = [number(s) for s in plan]"
     ],
     [
+     "decide",
+     "if replan",
+     "set self.ep.replan = self.replan_summary()"
+    ],
+    [
+     "decide",
+     "if replan",
+     "set self.known = self.plan_items()"
+    ],
+    [
      "fallback",
      "None if status == 'done' else status",
      "choose value"
@@ -3180,6 +3706,21 @@
      "filter",
      "keep only if n not in done and all((d in done for d in deps[n]))",
      "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n not in self.artifacts",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if x",
+     "drop the rest"
+    ],
+    [
+     "loop cap",
+     "while True",
+     "loop ends"
     ],
     [
      "loop cap",
@@ -3208,6 +3749,11 @@
     ],
     [
      "stop",
+     "if nums is None",
+     "stop (break)"
+    ],
+    [
+     "stop",
      "if self.answer_n is None",
      "return self.assemble_by_code(ws[-1])"
     ]
@@ -3219,10 +3765,11 @@
    "prompts": {},
    "title": "Step graph (depends_on)"
   },
-  "facts_hash": "5ec173bb47783394",
+  "facts_hash": "9a955ae3a082333e",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "15b138f4913a332f",
   "sentence": "Builds the order of work from each step's 'depends on' line and rejects a plan that loops.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Reads which earlier steps each step depends on; a plan with no such lines runs as a simple chain.",
    "A dependency on a step the planner wrote but Box 2 dropped is pointed at that step's own dependencies, and the change is logged.",
@@ -3920,9 +4467,11 @@
    "title": "Plan step helper(s)"
   },
   "facts_hash": "0601b6dc54c130e9",
+  "rejected_hash": "5b9080c337f51dfc",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
@@ -3933,7 +4482,7 @@
   ]
  },
  "plan_summary": {
-  "checked_at": "f0b9d67",
+  "checked_at": "5c10844",
   "facts": {
    "anchors": [
     {
@@ -3965,6 +4514,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.unused_items",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
      ],
@@ -4164,6 +4714,11 @@
     ],
     [
      "filter",
+     "keep only if not re.search(f'\\\\b{re.escape(r)}\\\\b[^\\\\n]*not met', section, re.I)",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if s in statuses",
      "drop the rest"
     ],
@@ -4194,15 +4749,16 @@
    },
    "title": "Summariser assembles"
   },
-  "facts_hash": "57ef60b301990925",
+  "facts_hash": "9ba2da4ce2d6bb3e",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "7fc06c7b031df24c",
   "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
-  "source": "hand",
+  "source": "model: rewritten",
   "what": [
    "Sees every step's latest output with its status, missing capabilities, verdict and figure counts, and the deliverables the plan committed to (never the scoring rubric).",
    "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under Limitations when there are any.",
    "Code counts any number it adds, lists the answer's untagged and unverified figures, and appends a line for any missing capability it left out.",
-   "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code under 'Files made', and Limitations also name undeclared missing capabilities and attached items left unused (NOT USED).",
+   "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code, and Limitations also name undeclared missing capabilities and attached items left unused (NOT USED).",
    "Each input is cut at {PlanOptions.max_input_chars} characters and all of them at {PlanOptions.max_summary_input_chars} (marked). When several final steps have no summariser step, code puts their outputs together under headings instead."
   ]
  },
@@ -4927,7 +5483,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "07921c7",
+  "checked_at": "5c10844",
   "facts": {
    "anchors": [
     {
@@ -5021,6 +5577,10 @@
       [
        "figure_ledger",
        "dict[str, dict]"
+      ],
+      [
+       "replan",
+       "dict"
       ],
       [
        "refinement",
@@ -5126,6 +5686,7 @@
     "ChatResponse.latency_ms",
     "Draft.requests_dropped_by_observers",
     "Draft.requests_proposed",
+    "Envelope.max_agents",
     "Episode.latency_ms",
     "Episode.n_llm_calls",
     "Episode.seed",
@@ -5137,15 +5698,15 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "732778bbd7d6ef25",
+  "facts_hash": "b2df573ceba7cb13",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bef6a71b78aeb520",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, and any pool or clarification details.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
-   "It also lists the steps that answered BLOCKED, every capability request, local tool usage, files created, and skills attached, while tracking pool usage and clarifications."
+   "It also lists the steps that answered BLOCKED, every capability request, local tool usage, files created, skills attached, replan details, and refinement data, while tracking pool usage and clarifications."
   ]
  },
  "scoring": {
@@ -5544,7 +6105,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "c417c4e",
+  "checked_at": "5c10844",
   "facts": {
    "anchors": [
     {
@@ -5690,6 +6251,12 @@
      "doc": "A capability or tool name compared by its canonical form, without a pool:/local:/skill: prefix.",
      "key": "amoeba/interp/plan_runner.py::cap_key",
      "signature": "cap_key(name: str) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "D63: the 'MISSING INPUT: <what>' lines of a step's output.",
+     "key": "amoeba/interp/plan_runner.py::missing_input_marks",
+     "signature": "missing_input_marks(text: str) -> list[str]"
     },
     {
      "callees": [
@@ -5879,12 +6446,13 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "bca90df5640a8c7a",
+  "facts_hash": "9abc362ccf62af6c",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "4374f669ae6aaf94",
-  "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
-  "source": "hand",
+  "sentence": "Checks each step's output against its requirements, missing inputs, and contract; reads verdicts and gaps to ensure helpers used what they were given.",
+  "source": "model: rewritten",
   "what": [
-   "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
+   "Checks what the planner said the step produces: the table:, list:, code:, memo: or missing input markers in its output line, and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
    "A step the planner marked kind: verify must answer PASS or FAIL; a FAIL sends each step it checked back once, then it checks again. Steps that already used the old output are marked stale (--rerun-stale redoes them once).",
    "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them.",
@@ -7022,9 +7590,11 @@
    "title": "Stock the toolbox"
   },
   "facts_hash": "53d28ea7736d17c4",
+  "rejected_hash": "54893a79ff3ef8a1",
   "seed_hash": "0f6cd678df25d07a",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
    "Vet first (D60): the candidates are checked before the pick and the AI is shown only the best {rank.top} that pass (up to 50 matches are checked); if none pass, the request is unfilled (all_refused) with no AI call.",

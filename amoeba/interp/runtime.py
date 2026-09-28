@@ -117,11 +117,13 @@ class Interpreter:
     # box: interpreter
     def __init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None = None,
                  listener: NoopListener | None = None, run_dir: str | None = None, plan_options=None,
-                 equal_tools: bool = False):
+                 equal_tools: bool = False, stock=None, max_agents: int = 5):
         self.run_dir = run_dir   # D31: the plan runner writes its step artifacts under <run_dir>/artifacts
         self.equal_tools = equal_tools   # D62: web grant for flat, tool calls for boss_reviewers, same reply room
         self.helper_max_tokens = EQUAL_MAX_TOKENS if equal_tools else None
         self.plan_options = plan_options   # D39+: PlanOptions for --topology plan (None = defaults)
+        self.stock = stock                 # D63: stock(requests, cfg, registry) -> (registry, summary), mid-run
+        self.max_agents = max_agents       # D63: the envelope's roster cap, for a role a re-plan adds
         self.trace = trace or TraceWriter(None)
         self.listener = listener or NoopListener()   # spec §12: Phase 3's monitor plugs in here; no-op now
         self.llm = TracedLLM(llm, self.trace, self.listener)

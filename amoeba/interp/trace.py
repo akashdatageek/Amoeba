@@ -35,6 +35,8 @@ EVENT_BOX = {
     "tool_error": "tools", "tool_limit": "tools", "pool_call": "tools",
     "pool_unavailable": "toolbox", "pool_match": "toolbox", "pool_vet": "toolbox", "pool_pinned": "toolbox",
     "pool_connect_failed": "toolbox", "pool_summary": "toolbox",
+    "replan_trigger": "action_obs", "replan_decision": "action_obs", "replan_validated": "action_obs",   # D63
+    "plan_version": "action_obs", "requirement_status": "action_obs",
 }
 BOX2_BOX = {"planner": "planner", "agent_observer": "agent_obs", "plan_observer": "plan_obs"}
 

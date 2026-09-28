@@ -141,6 +141,17 @@ result.json `refinement.contract` counts what the contract found. Each step_<n>.
 runner: the D32 web grant, tool calls for boss_reviewers' solver (which holds every tool the team was given) and
 critics, and the same 8,192-token reply room. Their logic is otherwise unchanged; they never get the step contract.
 
+## The Action Observer: mid-run re-plan (D63)
+
+`--replan on` (plan topology; default off) lets the plan change while the team works. After each wave plain code looks
+for a trigger: a step that lacked a capability, a verify step still failing after rework, a step that wrote
+`MISSING INPUT: ...`, or a tool the plan never named held by a helper whose step is still waiting. On a trigger, one
+planner call proposes one decision (CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE) for the
+steps that have not run. Plain code validates it (finished steps never change, Box 2 rules, no cycles, new capability
+requests through the toolbox step, at most 2 re-plans and 3 added steps per run, one added role) and applies it, or
+logs it as rejected. Each plan version is saved as `plan.v<k>.json` with its diff; result.json `replan` lists every
+decision and each requirement's final status (met / partly / not met).
+
 ## Cost controls (D45–D48)
 
 ```bash

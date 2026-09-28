@@ -93,8 +93,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical,
                                             "status": q.status, "reason": q.reason} for q in requests]
         dump_yaml(cfg, run_dir / "team.yaml")
-        ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options,
-                         equal_tools=equal_tools).run(cfg, task, seed)
+        restock = (lambda reqs, c, reg: stock_toolbox(reqs, c, reg, llm, trace, pool, seed, local=box, restock=True)) \
+            if (pool is not None or box is not None) else None                   # D63: requests a re-plan makes
+        ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
+                         stock=restock, max_agents=envelope.max_agents).run(cfg, task, seed)
         answer, error = ep.answer, ep.error
     except DraftError as e:
         error = f"draft: {e}"
@@ -145,6 +147,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         requests_proposed=draft.requests_proposed if draft else 0,
         requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0,
         clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace),
+        replan=ep.replan if ep else {},
         pool=pool_summary, **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=None if box else LOCAL_FIELDS),
@@ -245,7 +248,7 @@ def cli_plan_options(args: argparse.Namespace):
     from amoeba.interp.plan_runner import PlanOptions
     return PlanOptions(rerun_stale=args.rerun_stale, max_input_chars=args.max_input_chars,
                        max_summary_input_chars=args.max_summary_input_chars, self_refine=args.self_refine,
-                       collab=args.collab, contract=args.step_contract)
+                       collab=args.collab, contract=args.step_contract, replan=args.replan)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -374,6 +377,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "and every tool or skill attached to it is used, marked BLOCKED or marked NOT NEEDED, else "
                         "the step is partial and the answer's Limitations say so; verifiers see each step's sources "
                         "and tool calls; the answer is checked for files and cited figures it left out (D61)")
+    p.add_argument("--replan", choices=["on", "off"], default="off",
+                   help="plan: the Action Observer (D63) — after a wave in which a step lacked a capability, a verify "
+                        "step still failed, a step reported a missing input or the team got a tool the plan never "
+                        "named, one planner call may revise the steps that have not run; plain code validates the "
+                        "decision (max 2 re-plans and 3 added steps per run) and saves plan.v<k>.json")
     p.add_argument("--equal-tools", choices=["on", "off"], default="off",
                    help="flat and boss_reviewers get the plan runner's tool access: the D32 web grant, and (boss_reviewers) "
                         "tool calls for the solver and critics, the solver holding every tool the team was given (D62). "

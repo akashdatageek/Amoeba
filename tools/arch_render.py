@@ -27,7 +27,7 @@ VIEWS = {
              "note": "Nothing in this box calls an AI. The known answer is only used for scoring after Box 3."},
     "plan": {"h": 750, "label": "2 · Plan a new team", "heading": "INSIDE BOX 2 · PLAN A NEW TEAM",
              "note": "At most three rounds of three AI calls. Everything after the loop is plain code, and it is what keeps a sloppy draft out."},
-    "run": {"h": 1150, "label": "3 · Team runs the task", "heading": "INSIDE BOX 3 · TEAM RUNS THE TASK",
+    "run": {"h": 1320, "label": "3 · Team runs the task", "heading": "INSIDE BOX 3 · TEAM RUNS THE TASK",
             "note": "Three runners, chosen when the run starts: flat and boss + reviewers are the AutoAgents / AgentVerse "
                     "baselines; plan runs the step graph (ours, D31–D36). All write the same log and result record."},
 }
@@ -45,9 +45,10 @@ L = {  # id: (x, y, w, h)
     "solver": (510, 400, 195, 130), "critics": (730, 400, 205, 140), "disagree": (960, 400, 190, 140),
     "trace": (30, 175, 420, 95), "runresult": (30, 290, 420, 90),
     "tools": (30, 400, 420, 80), "client": (30, 530, 205, 128), "toymock": (245, 530, 205, 128),
-    "plan_graph": (510, 705, 180, 130), "plan_step": (715, 705, 215, 130), "step_check": (955, 705, 195, 130),
+    "plan_graph": (510, 705, 180, 130), "plan_step": (715, 705, 215, 130), "step_check": (955, 705, 195, 136),
     "artifacts": (510, 855, 180, 128), "provenance": (715, 855, 215, 128), "plan_summary": (955, 855, 195, 128),
     "toolbox": (30, 700, 205, 140), "localtools": (245, 700, 205, 140), "pool_index": (30, 860, 420, 90),
+    "action_obs": (715, 1145, 215, 160),
 }
 DECOR = {  # static enclosures, captions and loop arrows (text filled from data where it states a fact)
     "plan": [("group", 30, 56, 770, 320), ("lbl", 44, 76, "loop_plan"),
@@ -58,7 +59,8 @@ DECOR = {  # static enclosures, captions and loop arrows (text filled from data 
             ("loop", "M1055 540 V580 H607 V530", "loop_boss_cap", 830, 600),
             ("hd", 30, 518, "SHARED PARTS"),
             ("group", 490, 660, 670, 348), ("hd", 505, 682, "STEP GRAPH (plan) · ours, D31–D36 · --topology plan"),
-            ("lbl", 505, 1000, "loop_plan_run")],
+            ("lbl", 505, 1000, "loop_plan_run"),
+            ("hd", 715, 1138, "RE-PLAN AFTER A WAVE · D63 · --replan on")],
 }
 EDGES = [  # (view, from, to, path, label, data key, label x, label y)
     ("overview", "ov_task", "ov_plan", "M280 135 H365", "Task", "Task", 322, 127),
@@ -89,6 +91,7 @@ EDGES = [  # (view, from, to, path, label, data key, label x, label y)
     ("run", "plan_step", "step_check", "M930 770 H955", "", "worker_sections", 0, 0),
     ("run", "step_check", "plan_summary", "M1052 835 V855", "", "worker_sections", 0, 0),
     ("run", "step_check", "artifacts", "M990 835 V845 H600 V855", "", "worker_sections", 0, 0),
+    ("run", "action_obs", "plan_graph", "M715 1200 H498 V800 H510", "revised plan", "PlanStep", 560, 1193),
     ("run", "pool_index", "toolbox", "M130 860 V840", "cached pool", "PoolSetup", 136, 853),
     ("run", "localtools", "toolbox", "M245 770 H235", "", "LocalToolbox", 0, 0),
     ("run", "localtools", "tools", "M450 770 H468 V440 H450", "", "LocalToolbox", 0, 0),

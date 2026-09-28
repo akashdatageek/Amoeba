@@ -433,6 +433,28 @@ BOXES: list[dict] = [
                   "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
                   "amoeba/interp/plan_runner.py::tool_ok", "amoeba/interp/plan_runner.py::not_needed_marks",
                   "amoeba/interp/plan_runner.py::PlanRunner.evidence_text"]),
+    dict(id="action_obs", view="run", title="Action Observer (re-plan)", kind="llm", plan=None, ai="replanner",
+         sentence="With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps "
+                  "that have not run; plain code checks the change before it takes effect.",
+         what=["Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still "
+               "failing, a step reporting a missing input, or a tool the plan did not know about. No trigger, no call.",
+               "One planner call sees the task, the plan with each step's status, what the finished steps produced, "
+               "what is blocked, the tools really available and the budget left, and returns one decision: CONTINUE, "
+               "REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
+               "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a "
+               "team too large, a loop, or a new step that depends on a step that has not run. New capability "
+               "requests go through the normal toolbox step; a dropped requirement is listed as not met.",
+               "At most 2 re-plans and 3 added steps per run; an unreadable or invalid reply counts as CONTINUE. "
+               "Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change."],
+         proposes="One typed decision and its reason.",
+         disposes="Plain code decides when to call, validates the decision, applies it and records every version.",
+         prompts=["plan_replan"],
+         anchors=["amoeba/interp/plan_runner.py::PlanRunner.action_observer",
+                  "amoeba/interp/plan_runner.py::PlanRunner.replan_triggers",
+                  "amoeba/interp/plan_runner.py::PlanRunner.validate_decision",
+                  "amoeba/interp/plan_runner.py::PlanRunner.apply_decision",
+                  "amoeba/interp/plan_runner.py::PlanRunner.requirement_status",
+                  "amoeba/interp/plan_runner.py::parse_decision"]),
     dict(id="provenance", view="run", title="Where each figure came from", kind="code", plan=None,
          sentence="Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
          what=["A number is cited when its line carries a source id the step could have seen.",
