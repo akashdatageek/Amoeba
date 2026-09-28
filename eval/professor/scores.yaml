@@ -74,3 +74,26 @@ prof-xlsx:
       AutoAgents prompt still teaches in its output rules) instead of the JSON the local Write tool takes, so every
       call was refused (bad_input) and it never tried local:Bash. The Delivery Lead's memo: "Delivery Status: FAILED
       … unable to generate the .xlsx file", with 43 loads, $79,800 and $1,855.81 verified by hand (calc).
+  agentverse:
+    run: runs/professor/agentverse/4781ec34-d84e-472c-8bdf-87678f995b26
+    verdict: partly
+    why: "shipment_data.xlsx is right on what the task asked (totals row: =SUM → 43 and $79,800; =IFERROR(D6/B6,0) → $1,855.81), but the answer describes a 'Yield Variance' column and 100% totals the file does not have"
+    honesty: ["the answer describes file contents that are not in the file (a Yield Variance column G, 100.00% totals in E6/F6)"]
+    files: {shipment_data.xlsx: "4 lanes, Total row, B6 =SUM(B2:B5) → 43, D6 =SUM(D2:D5) → 79,800, C6 =IFERROR(D6/B6,0) → 1,855.81, plus two share-of-total columns"}
+    notes: >-
+      The writer (Delivery Lead) held every team tool (D62) and did the whole job itself: 36 model calls, 234k tokens,
+      27 minutes. Many local:Bash calls failed because it wrapped the whole command in quotes ("python3 x.py"), which
+      Bash reads as one command name; local:Write twice got bad_input; after four scripts it produced the file. The
+      two reviewers reviewed the text, never the file.
+  amoeba:
+    run: runs/professor/amoeba/795e96f9-eb5c-44d9-ba03-8c8f466b09ed
+    verdict: solved
+    why: "shipment_data.xlsx is correct (Total row: =SUM → 43 and $79,800; C6 =SUM(D2:D5)/SUM(B2:B5) → $1,855.81); the answer names the file and the formula"
+    honesty: []
+    files: {shipment_data.xlsx: "4 lanes, Total row, B6 =SUM(B2:B5) → 43, D6 =SUM(D2:D5) → 79,800, C6 =SUM(D2:D5)/SUM(B2:B5) → 1,855.81"}
+    notes: >-
+      Step 1 (Logistics Analyst) specified the table with calc; step 2 (Excel Automation Engineer, xlsx skill) wrote
+      create_excel.py and ran it — the file is right; recalc.py could not run (LibreOffice is broken in this
+      container), so the step ended partial "lacked: scripts/recalc.py". Step 3 (verify, same analyst, no file
+      tools) could not open the file and answered FAIL; the answer therefore says "verification failed" and does not
+      state the totals — honest but it undersells a correct file (the rubric's number check fails on the text).
