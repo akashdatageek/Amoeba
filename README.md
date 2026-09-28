@@ -152,6 +152,13 @@ requests through the toolbox step, at most 2 re-plans and 3 added steps per run,
 logs it as rejected. Each plan version is saved as `plan.v<k>.json` with its diff; result.json `replan` lists every
 decision and each requirement's final status (met / partly / not met).
 
+## Shortened outputs keep the result (D64)
+
+When a step's output or a program's output is too long for the next reader, plain code keeps its head and its tail,
+marks what it left out (`[… N characters omitted …]`), and always keeps the lines with a final result (a count, a
+total, an `=` line, the last 20 lines of program output). Helpers are asked to report results and short excerpts,
+never whole lists.
+
 ## Cost controls (D45–D48)
 
 ```bash

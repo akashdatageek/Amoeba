@@ -467,9 +467,10 @@ def test_long_inputs_are_cut_and_marked(task, envelope, trace, tools):
     opts = PlanOptions(max_input_chars=4000, max_summary_input_chars=6000)
     Interpreter(llm, tools, trace, plan_options=opts).run(cfg, task, seed=0)
     two = [c for c in llm.calls_of("plan_worker") if "(step 2)" in c["messages"][-1]["content"]][0]["messages"][-1]["content"]
-    assert "[... cut by plain code: first 4,000 of 12," in two
+    assert "[shortened by plain code from 12," in two and "characters omitted …]" in two      # D64: head and tail
+    assert two.count("OUT-1") == 1 and "second point" in two
     summ = llm.calls_of("plan_summariser")[0]["messages"][-1]["content"]
-    assert summ.count("[... cut by plain code: first 2,000 of") == 3            # 6,000 shared by three steps
+    assert summ.count("[shortened by plain code from") == 3                    # 6,000 shared by three steps
     evs = trace.events("input_truncated")
     assert {(e["amoeba.what"], e["amoeba.limit"]) for e in evs} == {("input", 4000), ("summary input", 2000)}
 

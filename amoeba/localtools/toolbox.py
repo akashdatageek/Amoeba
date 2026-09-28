@@ -26,6 +26,7 @@ from typing import Any
 import yaml
 
 from amoeba.config.schema import AgentSpec
+from amoeba.interp.shorten import shorten
 from amoeba.localtools.gate import in_workspace, inside, require_sandbox, screen_command
 from amoeba.localtools.server import StdioServer
 from amoeba.localtools.skills import card_text, copy_skill, list_skills
@@ -312,14 +313,14 @@ class LocalToolbox:
             out, is_error, timed_out = f"{type(e).__name__}: {e}"[:300], True, False
         new = self._scan()
         cap = int(self.lim["max_output_chars"])
-        cut = out[:cap]
+        cut = shorten(out, cap)                       # D64: head, result lines and the last lines of output kept
         self.trace.event("local_call", {"amoeba.box": "localtools", "amoeba.step": self.step,
                                         "gen_ai.tool.name": f"local:{tool}", "amoeba.input": what,
                                         "amoeba.decision": "allowed", "amoeba.chars": len(out),
                                         "amoeba.chars_passed": len(cut), "amoeba.is_error": is_error,
                                         "amoeba.timeout": timed_out, "amoeba.files": new,
                                         "amoeba.ms": int((time.perf_counter() - t0) * 1000)})
-        more = f"\n[… first {cap} of {len(out)} characters]" if len(out) > cap else ""
+        more = f"\n[shortened from {len(out)} characters: head, result lines and tail kept]" if len(out) > cap else ""
         src = ""
         if self.book is not None and not is_error:    # D61 (G7): a local result is a source the helper can cite
             key = hashlib.sha256(f"{self.calls}:{tool}:{what}".encode()).hexdigest()[:10]

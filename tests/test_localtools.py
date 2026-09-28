@@ -159,7 +159,7 @@ def test_output_and_call_caps(skills, tmp_path):
     b.start()
     b.begin_step(1)
     out = b.call("Bash", "python3 -c 'print(\"y\" * 50)'")
-    assert "[… first 10 of" in out
+    assert "characters omitted …]" in out and "[shortened from 100 characters" in out   # D64: head and tail
     b.call("Bash", "ls")
     assert b.call("Bash", "ls").startswith("refused: local:Bash — step_cap")
     b.begin_step(2)

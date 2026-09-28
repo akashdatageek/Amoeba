@@ -17,6 +17,7 @@ from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.provenance import check_provenance, claim_numbers, numbers_in
+from amoeba.interp.shorten import shorten
 from amoeba.llm.profiles import role_group
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.localtools.claims import claimed_files
@@ -641,12 +642,16 @@ class PlanRunner:
 
     # ---- one step -------------------------------------------------------------------------------------------
     def cap(self, text: str, limit: int, step: int, source: int, what: str) -> str:
-        """D44: the first `limit` characters of an input, with a marker saying how much was cut (and a trace event)."""
+        """D44: an input over `limit` characters is shortened, with a trace event. D64: head AND tail are kept with
+        "[… N characters omitted …]" marks, and so is every line with a final result (a count, a total, a result,
+        an "=" line) and the last lines of program output, so a result is never cut away."""
         if len(text) <= limit:
             return text
+        out = shorten(text, limit)
         self.i.trace.event("input_truncated", {"amoeba.step": step, "amoeba.from_step": source, "amoeba.limit": limit,
-                                               "amoeba.chars": len(text), "amoeba.what": what})
-        return f"{text[:limit].rstrip()}\n[... cut by plain code: first {limit:,} of {len(text):,} characters shown]"
+                                               "amoeba.chars": len(text), "amoeba.what": what,
+                                               "amoeba.chars_passed": len(out)})
+        return f"{out}\n[shortened by plain code from {len(text):,} characters: head, result lines and tail kept]"
 
     def inputs_text(self, deps: list[int], n: int | None = None, evidence: bool = False) -> str:
         if not deps:
