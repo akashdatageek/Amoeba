@@ -1,6 +1,7 @@
 """BOX 3 — Team runs the task (spec §6). Two explicit topology runners; plain code owns loops, caps, parsing, trace."""
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 
@@ -14,6 +15,8 @@ from amoeba.llm.limits import RunLimitReached
 from amoeba.llm.profiles import role_group
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.tools.registry import ToolError, ToolRegistry
+from amoeba.tools.web import WEB_TOOLS
+from amoeba.capabilities import normalise
 
 WORKER_SECTIONS = ["CurrentStep", "Action", "ActionInput"]           # custom_action.py:79-83
 SYNTHESIZE_HINT = "\n You should synthesize the responses of previous steps and provide the final feedback."  # group.py:83
@@ -36,6 +39,40 @@ def with_unavailable(agent: AgentSpec) -> str:
     each pool tool Box 3 attached to it (D56)."""
     lines = [UNAVAILABLE.format(name=t) for t in agent.missing_tools] + pool_tool_notes(agent)
     return "\n".join([agent.suggestions, *lines]) if lines else agent.suggestions
+
+
+# D62: equal tool access for the baselines (--equal-tools on). How a boss_reviewers agent calls a tool: it has no
+# Action section of its own (AgentVerse's solver and critics only write text), so a reply that starts with an
+# Action / ActionInput pair is run as a tool call and the result is handed back; any other reply is its answer.
+TOOL_LOOP_NOTE = """
+
+Tools you may use before you answer: {tools}.
+{notes}
+To use one, reply with exactly these two lines and nothing else:
+Action: <one tool name from the list>
+ActionInput: <its input>
+Its result comes back to you and you continue. When you are ready, reply with your answer as usual, with no Action
+line. You may make at most {n} tool calls."""
+EQUAL_MAX_TOKENS = 8192   # D62: the plan runner's reply room per helper call (PLAN_MAX_TOKENS, D27)
+TOOL_LOOP_LAST = "No more tool calls are allowed. Give your answer now, as usual."
+ACTION_RE = re.compile(r"^\s*(?:#+\s*)?Action\s*:\s*(.+?)\s*\n\s*(?:#+\s*)?ActionInput\s*:\s*(.*)$", re.S | re.I)
+
+
+# box: resolver
+def grant_web(cfg: TeamConfig, trace: TraceWriter) -> None:
+    """D62: the D32 rule (a role whose missing tools or capability requests normalise to web_search gets web_search
+    and fetch_url) for the flat and boss_reviewers runners, which never had it; the plan runner applies it itself."""
+    asked = cfg.meta.get("capability_requests", [])
+    for a in cfg.agents.values():
+        names = list(a.missing_tools) + [q["name"] for q in asked if q.get("for_role") == a.name]
+        hits = [n for n in names if normalise(n)[0] == "web_search"]
+        if not hits:
+            continue
+        a.tools = list(dict.fromkeys([*a.tools, *WEB_TOOLS]))
+        a.missing_tools = [t for t in a.missing_tools if t not in hits]
+        trace.event("capability_mapped", {"gen_ai.agent.id": a.agent_id, "gen_ai.agent.name": a.name,
+                                          "amoeba.requested": hits, "amoeba.canonical": "web_search",
+                                          "amoeba.granted": list(WEB_TOOLS), "amoeba.equal_tools": True})
 
 
 def _output_text(o) -> str:
@@ -70,8 +107,11 @@ def step_context(step: PlanStep) -> str:
 class Interpreter:
     # box: interpreter
     def __init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None = None,
-                 listener: NoopListener | None = None, run_dir: str | None = None, plan_options=None):
+                 listener: NoopListener | None = None, run_dir: str | None = None, plan_options=None,
+                 equal_tools: bool = False):
         self.run_dir = run_dir   # D31: the plan runner writes its step artifacts under <run_dir>/artifacts
+        self.equal_tools = equal_tools   # D62: web grant for flat, tool calls for boss_reviewers, same reply room
+        self.helper_max_tokens = EQUAL_MAX_TOKENS if equal_tools else None
         self.plan_options = plan_options   # D39+: PlanOptions for --topology plan (None = defaults)
         self.trace = trace or TraceWriter(None)
         self.listener = listener or NoopListener()   # spec §12: Phase 3's monitor plugs in here; no-op now
@@ -87,6 +127,8 @@ class Interpreter:
         with self.trace.span("invoke_workflow", {"gen_ai.workflow.name": cfg.name,
                                                  "gen_ai.conversation.id": ep.episode_id}):
             try:
+                if self.equal_tools and cfg.topology != "plan" and getattr(self.tools, "web", None) is not None:
+                    grant_web(cfg, self.trace)                   # D62 (the plan runner does D32 itself)
                 if cfg.topology == "flat":
                     ep.answer, ep.error = self.run_flat(cfg, task, ep)
                 elif cfg.topology == "plan":                 # D31
@@ -116,6 +158,7 @@ class Interpreter:
 
     def _llm_messages(self, agent: AgentSpec, messages: Messages, ep: Episode) -> str:
         resp = self.llm.chat_messages(messages, ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
+                                      max_tokens=self.helper_max_tokens,   # D62: None = the client default
                                       role=role_group(role=agent.role, is_summariser=agent.is_summariser))   # D54
         self._record(agent, ep, resp.content, resp.input_tokens, resp.output_tokens)
         return resp.content
@@ -124,7 +167,7 @@ class Interpreter:
                       ) -> tuple[str, dict[str, str]]:
         before = self.trace.n_llm_calls
         raw, sec = self.llm.chat_sections(system, user, keys, ep.seed, agent_id=agent.agent_id,
-                                          agent_name=agent.name,
+                                          agent_name=agent.name, max_tokens=self.helper_max_tokens,   # D62
                                           role=role_group(role=agent.role, is_summariser=agent.is_summariser))
         for rec in self.trace.spans("chat")[before:]:   # the repair call, if any, is a call too
             self._record(agent, ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
@@ -191,6 +234,25 @@ class Interpreter:
             return answer, None
         return published, "blocked" if last_step_blocked else "max_turns"   # D21: a blocked last step is not an answer
 
+    # box: solver
+    def _tool_loop(self, agent: AgentSpec, msgs: Messages, reply: str, ep: Episode) -> str:
+        """D62: a boss_reviewers agent's tool calls. A reply that is an Action / ActionInput pair naming one of its
+        tools is run (through _dispatch, like every other tool call) and the result is handed back; the first reply
+        that is not is the agent's answer. After max_turns calls it is asked once for its answer."""
+        for _ in range(agent.limits.max_turns):
+            m = ACTION_RE.match(reply or "")
+            if not m or m.group(1).strip().strip("`") not in agent.tools:
+                return reply
+            act, inp = m.group(1).strip().strip("`"), m.group(2).strip()
+            resp, _gap = self._dispatch(agent, act, inp, 0, ep)
+            msgs = [*msgs, {"role": "assistant", "content": reply},
+                    {"role": "user", "content": f"Result of {act}:\n{resp.strip()}"}]
+            reply = self._llm_messages(agent, msgs, ep)
+        if ACTION_RE.match(reply or ""):
+            reply = self._llm_messages(agent, [*msgs, {"role": "assistant", "content": reply},
+                                               {"role": "user", "content": TOOL_LOOP_LAST}], ep)
+        return reply
+
     # box: resolver, read_action
     def _dispatch(self, agent: AgentSpec, act: str, inp: str, step: int, ep: Episode) -> tuple[str, str | None]:
         """Route one "## Action". Returns (response, blocked tool or None). Original: a tool of the agent → SerpAPI,
@@ -240,18 +302,33 @@ class Interpreter:
             for a in [solver, *critics]:
                 memory[a.agent_id].extend(msgs)
 
+        if self.equal_tools:                                 # D62: the solver writes the whole answer, so it gets
+            for c in critics:                                # every tool and pool item the team was given
+                solver.tools = list(dict.fromkeys([*solver.tools, *c.tools]))
+                solver.pool = solver.pool + [p for p in c.pool if p not in solver.pool]
+            if getattr(self.tools, "pool", None) is not None:
+                self.tools.pool.begin_step(0, self.trace)
+            if getattr(self.tools, "local", None) is not None:
+                self.tools.local.begin_step(0, self.trace)
+
         # box: solver
         def call(agent: AgentSpec, kw: dict) -> str:         # solver.py:38-59 / critic.py:65-91 + llms/openai.py:436-446
             system = render(resolve(agent.prompt.system), **kw)          # prepend template
             if agent.role == "solver" and pool_skill_notes(agent):       # D56: the solver prompt has no card slot
                 system += "\n\n" + "\n".join(pool_skill_notes(agent))
+            if self.equal_tools and agent.tools:                         # D62
+                system += TOOL_LOOP_NOTE.format(tools=", ".join(agent.tools), n=agent.limits.max_turns,
+                                                notes="\n".join(pool_tool_notes(agent)))
             recent = memory[agent.agent_id][-agent.max_history:] if agent.max_history > 0 else []
             hist = [{"role": "assistant", "content": f"[{m.sender}]: {m.content}"} for m in recent]   # chat_history.py:102-107
             user = render(resolve(agent.prompt.user), **kw)              # append template
             with self.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name,
                                                   "amoeba.box": "critics" if agent.role == "critic" else "solver"}):
-                return self._llm_messages(agent, [{"role": "system", "content": system}, *hist,
-                                                  {"role": "user", "content": user}], ep)
+                msgs = [{"role": "system", "content": system}, *hist, {"role": "user", "content": user}]
+                reply = self._llm_messages(agent, msgs, ep)
+                if not (self.equal_tools and agent.tools):
+                    return reply
+                return self._tool_loop(agent, msgs, reply, ep)
             # This is why format="history+append": the plan and reviews reach agents as chat history, not placeholders.
 
         # box: solver

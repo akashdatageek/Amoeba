@@ -135,6 +135,12 @@ It also fixes two local-tool problems from round 3:
 result.json `refinement.contract` counts what the contract found. Each step_<n>.json has `contract`,
 `contract_missing`, `unused`, `not_needed`, `causes`, `tool_calls` and `files_made`.
 
+## Equal tools for the baselines (D62)
+
+`--equal-tools on` gives the flat (AutoAgents) and boss_reviewers (AgentVerse) runners the same tool access as the plan
+runner: the D32 web grant, tool calls for boss_reviewers' solver (which holds every tool the team was given) and
+critics, and the same 8,192-token reply room. Their logic is otherwise unchanged; they never get the step contract.
+
 ## Cost controls (D45–D48)
 
 ```bash

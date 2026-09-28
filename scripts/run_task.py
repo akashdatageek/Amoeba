@@ -49,7 +49,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
             max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
             saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
-            local: LocalSetup | None = None) -> RunResult:
+            local: LocalSetup | None = None, equal_tools: bool = False) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -93,7 +93,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical,
                                             "status": q.status, "reason": q.reason} for q in requests]
         dump_yaml(cfg, run_dir / "team.yaml")
-        ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options).run(cfg, task, seed)
+        ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options,
+                         equal_tools=equal_tools).run(cfg, task, seed)
         answer, error = ep.answer, ep.error
     except DraftError as e:
         error = f"draft: {e}"
@@ -373,6 +374,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "and every tool or skill attached to it is used, marked BLOCKED or marked NOT NEEDED, else "
                         "the step is partial and the answer's Limitations say so; verifiers see each step's sources "
                         "and tool calls; the answer is checked for files and cited figures it left out (D61)")
+    p.add_argument("--equal-tools", choices=["on", "off"], default="off",
+                   help="flat and boss_reviewers get the plan runner's tool access: the D32 web grant, and (boss_reviewers) "
+                        "tool calls for the solver and critics, the solver holding every tool the team was given (D62). "
+                        "Their logic is otherwise unchanged; they never get the step contract")
     p.add_argument("--interactive", action="store_true",
                    help="after Box 2, print the requirements, assumptions and open questions and wait for 'continue' "
                         "or an edited assumption (appended to the task as 'User clarification: ...', then one "
@@ -437,7 +442,8 @@ def main(argv: list[str] | None = None) -> int:
                     max_tokens=cli_token_limits(args), quality_gate=args.quality_gate,
                     plan_options=cli_plan_options(args), saved_draft=chosen,
                     limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
-                    ask=input if args.interactive else None, pool=pool, local=local)
+                    ask=input if args.interactive else None, pool=pool, local=local,
+                    equal_tools=args.equal_tools == "on")
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
