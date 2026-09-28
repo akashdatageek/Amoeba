@@ -15,13 +15,24 @@ class MissingSections(ParseError):
         self.missing, self.found = missing, found
 
 
+HASH = "\x00H\x00"
+
+
+# box: split
+def split_blocks(text: str) -> list[str]:
+    """common.py:33 splits on every '##'. DEVIATION D72: a '##' right after a written '\\n' is a heading inside a
+    JSON string (a role prompt's "Output format:\\n## Formula"), not a section break; before, such a prompt cut the
+    roles block apart and every role was lost."""
+    return [b.replace(HASH, "##") for b in re.sub(r"(?<=\\n)##", HASH, text).split("##")]
+
+
 # box: split
 def parse_sections(text: str, all_fences: bool = False) -> dict[str, str]:
     """AutoAgents OutputParser.parse_blocks + parse_code (system/utils/common.py:31-59).
     all_fences: DEVIATION D26 — join every fenced block of a section, in order, instead of keeping only the first
     (a model that puts each role in its own ```json block otherwise loses roles 2..n)."""
     out: dict[str, str] = {}
-    for block in text.split("##"):                                  # common.py:33
+    for block in split_blocks(text):                                # common.py:33 (DEVIATION D72)
         if not block.strip() or re.fullmatch(r"\s*-{3,}\s*", block):
             continue   # DEVIATION D23: a bare '---' fence (copied from the FORMAT_EXAMPLE) is not a section
         if "\n" in block:
