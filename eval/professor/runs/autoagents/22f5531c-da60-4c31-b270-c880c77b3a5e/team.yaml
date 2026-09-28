@@ -1,0 +1,244 @@
+team_id: 3069b1fa-9927-4748-ad05-4ae2533e56eb
+version: 1
+parent_version: null
+name: team-flat-prof-loa
+topology: flat
+agents:
+  9f8e241b-64c5-4b6f-b836-1b163633437a:
+    agent_id: 9f8e241b-64c5-4b6f-b836-1b163633437a
+    name: Financial Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in loan amortization and financial mathematics responsible
+      for the primary calculation.
+    role_prompt: "You are a Senior Financial Analyst. Your task is to calculate the\
+      \ monthly payment for a loan. \n1. Define the variables: P (Principal), r (Annual\
+      \ Rate), n (Total months), and i (Monthly Rate = r/12).\n2. State the standard\
+      \ amortization formula: M = P [ i(1+i)^n ] / [ (1+i)^n – 1 ].\n3. Execute the\
+      \ calculation step-by-step: \n   a. Calculate i.\n   b. Calculate (1+i)^n.\n\
+      \   c. Calculate the numerator P * i * (1+i)^n.\n   d. Calculate the denominator\
+      \ (1+i)^n - 1.\n   e. Divide the numerator by the denominator.\n4. Round the\
+      \ final monthly payment to two decimal places.\nOutput the result as a detailed\
+      \ memo."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide an accurate monthly payment amount and the corresponding mathematical
+      formula.
+    skills:
+    - financial mathematics
+    - amortization modelling
+    outputs:
+    - artifact: calculation_sheet
+      format: 'memo: including formula, variable definitions, intermediate steps,
+        and final result'
+    success_criteria:
+    - Calculation is mathematically sound
+    - Formula is clearly stated
+    - Precision is maintained to 8 decimal places during intermediate steps
+    constraints:
+    - Must use monthly compounding
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  79dbc5b1-0069-48ef-a322-c94b977d8850:
+    agent_id: 79dbc5b1-0069-48ef-a322-c94b977d8850
+    name: QA Reviewer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A detail-oriented auditor who verifies financial calculations to
+      ensure zero errors.
+    role_prompt: 'You are a Senior QA Auditor. Your task is to verify a loan calculation.
+
+      1. Take the inputs (P=250,000, APR=7%, Term=5yr) and the result provided by
+      the Analyst.
+
+      2. Independently re-calculate the monthly payment using the amortization formula:
+      M = P [ i(1+i)^n ] / [ (1+i)^n – 1 ].
+
+      3. Compare your result with the Analyst''s result.
+
+      4. If they match within $0.01, mark as ''Approved''. Otherwise, mark as ''Rejected''
+      and provide the correct value.
+
+      Output a brief verification memo.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the accuracy of the Financial Analyst's result.
+    skills:
+    - mathematical verification
+    - financial auditing
+    outputs:
+    - artifact: verification_report
+      format: 'memo: status (Approved/Rejected) and comparison of results'
+    success_criteria:
+    - Independent calculation matches Analyst's result within $0.01
+    constraints:
+    - Must not simply copy the Analyst's steps; must re-calculate from scratch
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  eac97714-f72e-462b-b61d-fc031223b5c7:
+    agent_id: eac97714-f72e-462b-b61d-fc031223b5c7
+    name: Technical Writer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in presenting technical and financial data clearly and
+      concisely.
+    role_prompt: 'You are a Technical Writer. Your task is to present the final answer
+      to the user.
+
+      1. Review the verified calculation and the formula.
+
+      2. Present the formula clearly using standard mathematical notation.
+
+      3. State the final monthly payment amount clearly.
+
+      4. Ensure the output is concise and directly answers the user''s request.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble the final answer for the user.
+    skills:
+    - technical communication
+    outputs:
+    - artifact: final_answer
+      format: 'memo: Formula and Monthly Payment'
+    success_criteria:
+    - Contains both the formula and the final payment
+    - No internal process notes included
+    constraints:
+    - Do not create new analysis; only assemble verified data
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+edges:
+- src: 9f8e241b-64c5-4b6f-b836-1b163633437a
+  dst: 79dbc5b1-0069-48ef-a322-c94b977d8850
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 79dbc5b1-0069-48ef-a322-c94b977d8850
+  dst: eac97714-f72e-462b-b61d-fc031223b5c7
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 9f8e241b-64c5-4b6f-b836-1b163633437a
+exit: eac97714-f72e-462b-b61d-fc031223b5c7
+plan:
+- index: 0
+  agent_ids:
+  - 9f8e241b-64c5-4b6f-b836-1b163633437a
+  text: '[Financial Analyst]: Calculate Payment and Formula'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on: []
+  do: '
+
+    - Define P=250000, r=0.07, n=60, i=0.07/12
+
+    - Apply amortization formula
+
+    - Document intermediate steps'
+  output: 'memo: calculation_sheet'
+  done_when: Formula and monthly payment are calculated and documented.
+- index: 1
+  agent_ids:
+  - 79dbc5b1-0069-48ef-a322-c94b977d8850
+  text: '[QA Reviewer]: Verify Calculation'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 1
+  do: '
+
+    - Independently re-calculate the payment using the same parameters
+
+    - Compare result with the calculation_sheet'
+  output: 'memo: verification_report'
+  done_when: Result is either Approved or Rejected with a correction.
+- index: 2
+  agent_ids:
+  - eac97714-f72e-462b-b61d-fc031223b5c7
+  text: '[Technical Writer]: Assemble Final Deliverable'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 2
+  do: '
+
+    - Extract the verified formula and payment amount
+
+    - Format as a clean final response'
+  output: 'memo: final_answer'
+  done_when: The final answer contains the formula and the monthly payment.
+requirements: {}
+max_inner_turns: 3
+meta:
+  task_id: prof-loan
+  draft_rounds: 1
+  consensus: true
+  capability_requests:
+  - name: Financial Mathematics
+    for_role: Financial Analyst
+    canonical: Financial Mathematics
+    status: unfilled
+    reason: side_effect

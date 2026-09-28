@@ -122,7 +122,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "bfb4dbf",
+  "checked_at": "07921c7",
   "facts": {
    "anchors": [
     {
@@ -235,7 +235,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False) -> RunResult"
     }
    ],
    "checks": [],
@@ -257,7 +257,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "360dbb3ab8955aaa",
+  "facts_hash": "26ba1a49849511a0",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -1284,7 +1284,7 @@
   ]
  },
  "disagree": {
-  "checked_at": "72d515e",
+  "checked_at": "dce6368",
   "facts": {
    "anchors": [
     {
@@ -1292,15 +1292,22 @@
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._llm_messages",
+      "amoeba/interp/runtime.py::Interpreter._tool_loop",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.broadcast",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.review",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
       "amoeba/interp/runtime.py::_Msg",
+      "amoeba/interp/runtime.py::strip_thought",
       "amoeba/interp/runtime.py::with_card",
       "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/localtools/toolbox.py::LocalToolbox.begin_step",
+      "amoeba/pool/mcp.py::PoolTools.begin_step",
+      "amoeba/pool/mcp.py::SourceBook.begin_step",
       "amoeba/pool/stock.py::pool_skill_notes",
-      "amoeba/task/parsers.py::parse_critic"
+      "amoeba/pool/stock.py::pool_tool_notes",
+      "amoeba/task/parsers.py::parse_critic",
+      "amoeba/tools/web.py::WebTools.begin_step"
      ],
      "doc": "",
      "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers",
@@ -1343,11 +1350,11 @@
    "prompts": {},
    "title": "Anyone disagree?"
   },
-  "facts_hash": "de6b61b4755b6654",
+  "facts_hash": "923a725a31460f2d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "5cd085c314ad94ee",
   "sentence": "Counts the objections: none ends the run; otherwise everyone sees them and the writer revises, up to three rounds.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "After each review round, plain code keeps only the disagreeing reviews that carry a reason.",
    "None left: the run ends and the current answer is the result.",
@@ -1983,7 +1990,7 @@
   ]
  },
  "interpreter": {
-  "checked_at": "72d515e",
+  "checked_at": "07921c7",
   "facts": {
    "anchors": [
     {
@@ -1994,7 +2001,7 @@
      ],
      "doc": "",
      "key": "amoeba/interp/runtime.py::Interpreter.__init__",
-     "signature": "__init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None=None, listener: NoopListener | None=None, run_dir: str | None=None, plan_options=None)"
+     "signature": "__init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None=None, listener: NoopListener | None=None, run_dir: str | None=None, plan_options=None, equal_tools: bool=False)"
     },
     {
      "callees": [
@@ -2003,6 +2010,7 @@
       "amoeba/interp/runtime.py::Interpreter.run",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers",
       "amoeba/interp/runtime.py::Interpreter.run_flat",
+      "amoeba/interp/runtime.py::grant_web",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/llm/client.py::api_error",
@@ -2028,6 +2036,11 @@
     ],
     [
      "fallback",
+     "EQUAL_MAX_TOKENS if equal_tools else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "except (ParseError, MissingSections)",
      "set ep.answer, ep.error = (None, f'parse: {e}')"
     ],
@@ -2050,6 +2063,7 @@
    "kind": "code",
    "numbers": [
     "ChatResponse.latency_ms",
+    "EQUAL_MAX_TOKENS",
     "Episode.latency_ms",
     "Episode.seed",
     "Episode.team_version",
@@ -2059,11 +2073,11 @@
    "prompts": {},
    "title": "Interpreter"
   },
-  "facts_hash": "6652e4c0821a9fe2",
+  "facts_hash": "f9f2473cf1ef4a4b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "92a5bb70bcb60bb1",
   "sentence": "Reads the team's shape and hands the job to the matching runner.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Opens the log entry for the whole run and picks the runner for the team's shape.",
    "If an AI reply cannot be read at all, the run ends with a parse error instead of crashing.",
@@ -2712,7 +2726,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "bfb4dbf",
+  "checked_at": "07921c7",
   "facts": {
    "anchors": [
     {
@@ -2746,7 +2760,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False) -> RunResult"
     }
    ],
    "checks": [
@@ -2773,11 +2787,11 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "1e1230c3cb33ccc4",
+  "facts_hash": "3a612a20b4a28b9b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
   "sentence": "Every run saves seven files: the team, the draft, a log line per AI call, the tools or skills requested, a result summary, a capability report, and local server settings.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Each run gets its own folder named by a random run id.",
    "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, and the configuration for local tools.",
@@ -2881,7 +2895,7 @@
   ]
  },
  "ov_run": {
-  "checked_at": "bfb4dbf",
+  "checked_at": "dce6368",
   "facts": {
    "anchors": [
     {
@@ -2891,6 +2905,7 @@
       "amoeba/interp/runtime.py::Interpreter.run",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers",
       "amoeba/interp/runtime.py::Interpreter.run_flat",
+      "amoeba/interp/runtime.py::grant_web",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/llm/client.py::api_error",
@@ -2925,15 +2940,22 @@
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._llm_messages",
+      "amoeba/interp/runtime.py::Interpreter._tool_loop",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.broadcast",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.review",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
       "amoeba/interp/runtime.py::_Msg",
+      "amoeba/interp/runtime.py::strip_thought",
       "amoeba/interp/runtime.py::with_card",
       "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/localtools/toolbox.py::LocalToolbox.begin_step",
+      "amoeba/pool/mcp.py::PoolTools.begin_step",
+      "amoeba/pool/mcp.py::SourceBook.begin_step",
       "amoeba/pool/stock.py::pool_skill_notes",
-      "amoeba/task/parsers.py::parse_critic"
+      "amoeba/pool/stock.py::pool_tool_notes",
+      "amoeba/task/parsers.py::parse_critic",
+      "amoeba/tools/web.py::WebTools.begin_step"
      ],
      "doc": "",
      "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers",
@@ -2984,7 +3006,7 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "3881ba95456520b8",
+  "facts_hash": "25f50c29ad1ff741",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call is logged.",
@@ -4757,7 +4779,7 @@
   ]
  },
  "resolver": {
-  "checked_at": "88d51dc",
+  "checked_at": "07921c7",
   "facts": {
    "anchors": [
     {
@@ -4795,6 +4817,17 @@
      "doc": "The agent's suggestions plus one line per tool its role named that is not registered (D21), and how to use",
      "key": "amoeba/interp/runtime.py::with_unavailable",
      "signature": "with_unavailable(agent: AgentSpec) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/task/evaluate.py::normalise"
+     ],
+     "doc": "D62: the D32 rule (a role whose missing tools or capability requests normalise to web_search gets web_search",
+     "key": "amoeba/interp/runtime.py::grant_web",
+     "signature": "grant_web(cfg: TeamConfig, trace: TraceWriter) -> None"
     }
    ],
    "checks": [],
@@ -4841,8 +4874,28 @@
     ],
     [
      "filter",
+     "keep only if normalise(n)[0] == 'web_search'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if q.get('for_role') == a.name",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if str(d.get(k, '')).strip()",
      "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t not in hits",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if not hits",
+     "skip (continue)"
     ],
     [
      "stop",
@@ -4860,10 +4913,11 @@
    "prompts": {},
    "title": "Tool resolver"
   },
-  "facts_hash": "92c41ab4883c3f1c",
+  "facts_hash": "56be7a1fb28b4b7b",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "4f1dc3213f08fd80",
   "sentence": "Keeps the tools that exist; a tool we lack is recorded as a request, never used and never silently dropped.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "After drafting: each helper's tools are split into the ones the registry has (kept) and the rest (its missing tools). Each missing one becomes a capability request unless the planner already asked for it.",
    "The planner's own Capability Requests part is read as JSON; entries without a name are ignored.",
@@ -4873,7 +4927,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "bfb4dbf",
+  "checked_at": "07921c7",
   "facts": {
    "anchors": [
     {
@@ -5056,7 +5110,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False) -> RunResult"
     }
    ],
    "checks": [
@@ -5083,11 +5137,11 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "cb98dfece5939099",
+  "facts_hash": "732778bbd7d6ef25",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bef6a71b78aeb520",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, and any pool or clarification details.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
@@ -5227,7 +5281,7 @@
   ]
  },
  "solver": {
-  "checked_at": "bfb4dbf",
+  "checked_at": "dce6368",
   "facts": {
    "anchors": [
     {
@@ -5250,12 +5304,25 @@
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._llm_messages",
+      "amoeba/interp/runtime.py::Interpreter._tool_loop",
+      "amoeba/interp/runtime.py::strip_thought",
       "amoeba/interp/trace.py::TraceWriter.span",
-      "amoeba/pool/stock.py::pool_skill_notes"
+      "amoeba/pool/stock.py::pool_skill_notes",
+      "amoeba/pool/stock.py::pool_tool_notes"
      ],
      "doc": "",
      "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
      "signature": "call(agent: AgentSpec, kw: dict) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/interp/runtime.py::Interpreter._dispatch",
+      "amoeba/interp/runtime.py::Interpreter._llm_messages",
+      "amoeba/interp/runtime.py::strip_thought"
+     ],
+     "doc": "D62: a boss_reviewers agent's tool calls. A reply that is an Action / ActionInput pair naming one of its",
+     "key": "amoeba/interp/runtime.py::Interpreter._tool_loop",
+     "signature": "_tool_loop(self, agent: AgentSpec, msgs: Messages, reply: str, ep: Episode) -> str"
     }
    ],
    "checks": [
@@ -5271,6 +5338,11 @@
    "guards": [
     [
      "decide",
+     "if ACTION_RE.match(strip_thought(reply))",
+     "set reply = self._llm_messages(agent, [*msgs, {'role': 'assistant', 'content': reply}, {'role'"
+    ],
+    [
+     "decide",
      "if agent.role == 'solver' and pool_skill_notes(agent)",
      "set system += '\\n\\n' + '\\n'.join(pool_skill_notes(agent))"
     ],
@@ -5278,6 +5350,11 @@
      "decide",
      "if not raw.strip()",
      "set raw = call(solver, kw)"
+    ],
+    [
+     "decide",
+     "if self.equal_tools and agent.tools",
+     "set system += TOOL_LOOP_NOTE.format(tools=', '.join(agent.tools), n=agent.limits.max_turns, no"
     ],
     [
      "fallback",
@@ -5288,11 +5365,32 @@
      "fallback",
      "memory[agent.agent_id][-agent.max_history:] if agent.max_history > 0 else []",
      "choose value"
+    ],
+    [
+     "fallback",
+     "self._tool_loop(agent, msgs, reply, ep) if agent.tools else reply",
+     "choose value"
+    ],
+    [
+     "loop cap",
+     "for _ in range(agent.limits.max_turns)",
+     "loop ends"
+    ],
+    [
+     "stop",
+     "if not m or m.group(1).strip().strip('`') not in agent.tools",
+     "return reply"
+    ],
+    [
+     "stop",
+     "if not self.equal_tools",
+     "return reply"
     ]
    ],
    "kind": "llm",
    "numbers": [
-    "AgentSpec.max_history"
+    "AgentSpec.max_history",
+    "Limits.max_turns"
    ],
    "prompts": {
     "agentverse_solver_append": "f66a80a5b169",
@@ -5300,15 +5398,16 @@
    },
    "title": "Solver"
   },
-  "facts_hash": "da21a051248f23f8",
+  "facts_hash": "2fcc7bb3ad989526",
   "model": "gemini-3.1-flash-lite",
-  "seed_hash": "64c34b6ba3d51870",
-  "sentence": "One AI writes the answer and rewrites it if reviewers object; if the reply is empty, it tries again, and it may consult specialized skill notes.",
+  "seed_hash": "c4b575287c60417e",
+  "sentence": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply triggers an immediate retry.",
   "source": "model: rewritten",
   "what": [
    "The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
    "It writes a full new answer each time it is asked.",
-   "It is asked at most four times: once, then once per review round with an objection."
+   "It is asked at most four times: once, then once per review round with an objection.",
+   "With the shared tools feature enabled, the writer holds every tool the team was given and may call them first (Action / ActionInput lines, at most {Limits.max_turns} calls); reviewers may call their own tools the same way."
   ]
  },
  "split": {
