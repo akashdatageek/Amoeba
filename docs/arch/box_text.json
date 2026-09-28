@@ -1,6 +1,6 @@
 {
  "action_obs": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "22aa4bb",
   "facts": {
    "anchors": [
     {
@@ -53,10 +53,12 @@
     },
     {
      "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
       "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
       "amoeba/interp/plan_runner.py::PlanRunner.restock",
       "amoeba/interp/plan_runner.py::PlanRunner.save_plan_version",
       "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/plan_runner.py::waves",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/models.py::CapabilityRequest",
@@ -87,6 +89,18 @@
      "doc": "D63: the observer's reply → {decision, reason, steps, role, unmet, requests, readable}. A reply without a known",
      "key": "amoeba/interp/plan_runner.py::parse_decision",
      "signature": "parse_decision(raw: str) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "Every step that builds on step n, directly or through other steps.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.dependants",
+     "signature": "dependants(by: dict[int, PlanStep], n: int) -> set[int]"
+    },
+    {
+     "callees": [],
+     "doc": "The step that writes the answer in a proposed plan: a revision may renumber it (the old answer step",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.final_step",
+     "signature": "final_step(self, by: dict[int, PlanStep]) -> int | None"
     },
     {
      "callees": [],
@@ -234,6 +248,11 @@
      "add f'feeds names step(s) {wrong} that are not waiting to run'"
     ],
     [
+     "correct",
+     "if x in s.depends_on and k not in out",
+     "add k"
+    ],
+    [
      "decide",
      "if change['kind'] != 'CONTINUE'",
      "set old = {number(s): s for s in self.cfg.plan}"
@@ -294,6 +313,11 @@
      "set out[r] = {'status': 'not met', 'steps': [], 'why': self.unmet[r]}"
     ],
     [
+     "decide",
+     "if self.answer_n not in self.artifacts",
+     "set self.answer_n = self._answer_step(waves(self.cfg.plan))"
+    ],
+    [
      "fallback",
      "' after rework' if m.get('verdict_after_rework') else ' (no rework was possible)'",
      "choose value"
@@ -345,6 +369,11 @@
     ],
     [
      "fallback",
+     "self.answer_n if self.answer_n in by else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "set(self.i.tools.names()) if hasattr(self.i.tools, 'names') else set()",
      "choose value"
     ],
@@ -365,6 +394,11 @@
     ],
     [
      "filter",
+     "keep only if a.is_summariser",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if d not in finished and d not in batch",
      "drop the rest"
     ],
@@ -380,7 +414,17 @@
     ],
     [
      "filter",
+     "keep only if n != self.answer_n",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if n not in unrun",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n not in used and summ & set(by[n].agent_ids)",
      "drop the rest"
     ],
     [
@@ -474,6 +518,11 @@
      "drop the rest"
     ],
     [
+     "loop cap",
+     "while todo",
+     "loop ends"
+    ],
+    [
      "reject",
      "if item in (PRINT, FINAL_OUTPUT) or any((names_match(item, k) for k in self.known))",
      "skip (continue)"
@@ -487,6 +536,11 @@
      "stop",
      "if not unrun or len(self.replans) >= self.opt.max_replans",
      "return None"
+    ],
+    [
+     "stop",
+     "if sinks",
+     "return sinks[-1]"
     ]
    ],
    "kind": "llm",
@@ -499,14 +553,14 @@
    },
    "title": "Action Observer (re-plan)"
   },
-  "facts_hash": "ba1c55bd6abf9294",
+  "facts_hash": "b5d746078a21e326",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "eab21b71f661e662",
   "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code checks the change before it takes effect.",
-  "source": "hand (model: still true)",
+  "source": "model: rewritten",
   "what": [
-   "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, or a tool the plan did not know about. No trigger, no call.",
-   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available and the budget left, and returns one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
+   "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, a tool the plan did not know about, or a missing answer step. No trigger, no call.",
+   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available, the budget left, and the final answer step, returning one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
    "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met.",
    "At most {PlanOptions.max_replans} re-plans and {PlanOptions.max_added_steps} added steps per run; an unreadable or invalid reply counts as CONTINUE. Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change."
   ]
@@ -2253,7 +2307,7 @@
   ]
  },
  "helper": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "22aa4bb",
   "facts": {
    "anchors": [
     {
@@ -2297,6 +2351,11 @@
      "fallback",
      "'\\n'.join([agent.suggestions, *lines]) if lines else agent.suggestions",
      "choose value"
+    ],
+    [
+     "filter",
+     "keep only if t not in agent.tools",
+     "drop the rest"
     ]
    ],
    "kind": "llm",
@@ -2307,7 +2366,7 @@
    },
    "title": "Helper(s) named in the step"
   },
-  "facts_hash": "9ca1753dd22cabfa",
+  "facts_hash": "46cac3502012f545",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "2abe057f94628663",
   "sentence": "The AI helper for a step reads the step, the earlier results and a shared scratchpad, then picks one action.",
@@ -2636,7 +2695,7 @@
   ]
  },
  "localtools": {
-  "checked_at": "9d24fbd",
+  "checked_at": "22aa4bb",
   "facts": {
    "anchors": [
     {
@@ -3188,6 +3247,11 @@
     ],
     [
      "stop",
+     "if any((Path(f).name == base for f in self._snapshot()))",
+     "return True"
+    ],
+    [
+     "stop",
      "if bad is not None",
      "return self.refuse(tool, 'bad_input', bad, what)"
     ],
@@ -3326,10 +3390,11 @@
    "prompts": {},
    "title": "Local toolbox (sandboxed)"
   },
-  "facts_hash": "856b31540d52d643",
+  "facts_hash": "85b54a790d6087c4",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "cf9559fad29b1143",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused and logged once. They become local:<Name> tools of the run.",
    "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); a Bash command runs from there, network commands are refused (network_command) and destructive or escaping ones too (unsafe_command).",
@@ -3999,7 +4064,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "22aa4bb",
   "facts": {
    "anchors": [
     {
@@ -4617,7 +4682,12 @@
     ],
     [
      "filter",
-     "keep only if t not in hits",
+     "keep only if t not in agent.tools",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t not in hits and t not in WEB_TOOLS",
      "drop the rest"
     ],
     [
@@ -4713,16 +4783,16 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "648fbb06400b9719",
+  "facts_hash": "5df340ec34073c2d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; up to {Limits.max_turns} turns per step.",
-   "With --web-tools, a role that asked for web search also gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information.",
+   "With --web-tools, a role that asked for web search or lacks specific tools gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information.",
    "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); the step keeps one output.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
   ]
@@ -5876,7 +5946,7 @@
   ]
  },
  "resolver": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "22aa4bb",
   "facts": {
    "anchors": [
     {
@@ -5994,7 +6064,12 @@
     ],
     [
      "filter",
-     "keep only if t not in hits",
+     "keep only if t not in agent.tools",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t not in hits and t not in WEB_TOOLS",
      "drop the rest"
     ],
     [
@@ -6018,7 +6093,7 @@
    "prompts": {},
    "title": "Tool resolver"
   },
-  "facts_hash": "361b95bd51951043",
+  "facts_hash": "b10bd7930e50ce85",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4f1dc3213f08fd80",
   "sentence": "Keeps the tools that exist; a tool we lack is recorded as a request, never used and never silently dropped.",
