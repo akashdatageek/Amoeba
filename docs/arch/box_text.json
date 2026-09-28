@@ -1284,7 +1284,7 @@
   ]
  },
  "disagree": {
-  "checked_at": "07921c7",
+  "checked_at": "dce6368",
   "facts": {
    "anchors": [
     {
@@ -1298,6 +1298,7 @@
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.review",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
       "amoeba/interp/runtime.py::_Msg",
+      "amoeba/interp/runtime.py::strip_thought",
       "amoeba/interp/runtime.py::with_card",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/localtools/toolbox.py::LocalToolbox.begin_step",
@@ -1349,7 +1350,7 @@
    "prompts": {},
    "title": "Anyone disagree?"
   },
-  "facts_hash": "23adebd45e2af5b8",
+  "facts_hash": "923a725a31460f2d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "5cd085c314ad94ee",
   "sentence": "Counts the objections: none ends the run; otherwise everyone sees them and the writer revises, up to three rounds.",
@@ -2894,7 +2895,7 @@
   ]
  },
  "ov_run": {
-  "checked_at": "07921c7",
+  "checked_at": "dce6368",
   "facts": {
    "anchors": [
     {
@@ -2945,6 +2946,7 @@
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.review",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
       "amoeba/interp/runtime.py::_Msg",
+      "amoeba/interp/runtime.py::strip_thought",
       "amoeba/interp/runtime.py::with_card",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/localtools/toolbox.py::LocalToolbox.begin_step",
@@ -3004,7 +3006,7 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "cddf1e1bc418b09a",
+  "facts_hash": "25f50c29ad1ff741",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call is logged.",
@@ -5279,7 +5281,7 @@
   ]
  },
  "solver": {
-  "checked_at": "07921c7",
+  "checked_at": "dce6368",
   "facts": {
    "anchors": [
     {
@@ -5303,6 +5305,7 @@
       "amoeba/config/prompts/__init__.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._llm_messages",
       "amoeba/interp/runtime.py::Interpreter._tool_loop",
+      "amoeba/interp/runtime.py::strip_thought",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/pool/stock.py::pool_skill_notes",
       "amoeba/pool/stock.py::pool_tool_notes"
@@ -5314,7 +5317,8 @@
     {
      "callees": [
       "amoeba/interp/runtime.py::Interpreter._dispatch",
-      "amoeba/interp/runtime.py::Interpreter._llm_messages"
+      "amoeba/interp/runtime.py::Interpreter._llm_messages",
+      "amoeba/interp/runtime.py::strip_thought"
      ],
      "doc": "D62: a boss_reviewers agent's tool calls. A reply that is an Action / ActionInput pair naming one of its",
      "key": "amoeba/interp/runtime.py::Interpreter._tool_loop",
@@ -5334,7 +5338,7 @@
    "guards": [
     [
      "decide",
-     "if ACTION_RE.match(reply or '')",
+     "if ACTION_RE.match(strip_thought(reply))",
      "set reply = self._llm_messages(agent, [*msgs, {'role': 'assistant', 'content': reply}, {'role'"
     ],
     [
@@ -5363,18 +5367,23 @@
      "choose value"
     ],
     [
+     "fallback",
+     "self._tool_loop(agent, msgs, reply, ep) if agent.tools else reply",
+     "choose value"
+    ],
+    [
      "loop cap",
      "for _ in range(agent.limits.max_turns)",
      "loop ends"
     ],
     [
      "stop",
-     "if not (self.equal_tools and agent.tools)",
+     "if not m or m.group(1).strip().strip('`') not in agent.tools",
      "return reply"
     ],
     [
      "stop",
-     "if not m or m.group(1).strip().strip('`') not in agent.tools",
+     "if not self.equal_tools",
      "return reply"
     ]
    ],
@@ -5389,15 +5398,16 @@
    },
    "title": "Solver"
   },
-  "facts_hash": "3e2360c279926de6",
+  "facts_hash": "2fcc7bb3ad989526",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4b575287c60417e",
-  "sentence": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply gets one retry.",
-  "source": "hand",
+  "sentence": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply triggers an immediate retry.",
+  "source": "model: rewritten",
   "what": [
    "The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
    "It writes a full new answer each time it is asked.",
    "It is asked at most four times: once, then once per review round with an objection.",
-   "With --equal-tools on (D62) the writer holds every tool the team was given and may call them first (Action / ActionInput lines, at most 5 calls); reviewers may call their own tools the same way."
+   "With the shared tools feature enabled, the writer holds every tool the team was given and may call them first (Action / ActionInput lines, at most {Limits.max_turns} calls); reviewers may call their own tools the same way."
   ]
  },
  "split": {
