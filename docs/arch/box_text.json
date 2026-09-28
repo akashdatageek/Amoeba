@@ -504,7 +504,7 @@
   ]
  },
  "agent_obs": {
-  "checked_at": "7126cfe",
+  "checked_at": "c52e3be",
   "facts": {
    "anchors": [
     {
@@ -536,7 +536,7 @@
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None) -> Draft"
     }
    ],
    "checks": [],
@@ -558,14 +558,15 @@
     "autoagents_check_roles": "31892d6a8895",
     "autoagents_check_roles_format": "d3e887b0c886",
     "d24_agent_observer_system": "24f644bcc595",
-    "d24_review_team": "722f2df9cebb"
+    "d24_review_team": "cb03dda90c1d"
    },
    "title": "Agent Observer"
   },
-  "facts_hash": "a653e430207d2c26",
+  "facts_hash": "a7d702cf6946fb9a",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "212a1f1f8d5da60e",
   "sentence": "A second AI checks the list of helpers and replies with suggestions, or 'No Suggestions'.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "The checking AI reads the job, the drafted helpers, the capability requests and every earlier helper suggestion.",
    "A helper using a tool we lack that is not requested gets 'add a Capability Request for it', never 'remove the tool'; a request may be questioned only if the job does not need that ability at all, not because an existing tool could work around it.",
@@ -626,7 +627,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "5c10844",
+  "checked_at": "c52e3be",
   "facts": {
    "anchors": [
     {
@@ -726,6 +727,7 @@
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
       "amoeba/pool/stock.py::stock_toolbox",
       "amoeba/task/draft.py::draft_team",
+      "amoeba/task/draft.py::toolbox_text",
       "amoeba/task/evaluate.py::rubric_score",
       "amoeba/task/evaluate.py::score",
       "amoeba/task/instantiate.py::instantiate",
@@ -762,7 +764,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "dc29941fd7077b9c",
+  "facts_hash": "6c7b9f095bc646be",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -777,7 +779,7 @@
   ]
  },
  "checks": {
-  "checked_at": "7126cfe",
+  "checked_at": "c52e3be",
   "facts": {
    "anchors": [
     {
@@ -809,7 +811,7 @@
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None) -> Draft"
     },
     {
      "callees": [],
@@ -1298,8 +1300,8 @@
    "prompts": {},
    "title": "Plain-code checks on the final draft"
   },
-  "facts_hash": "aad5d1e6588425b2",
-  "seed_hash": "122c285d7e3abf0c",
+  "facts_hash": "44e18fbcff5f86a9",
+  "seed_hash": "77d490c5eaf21975",
   "sentence": "Throws out broken or nameless helper entries, records tools we lack instead of dropping them, flags the summariser, and drops steps that name nobody.",
   "source": "hand",
   "what": [
@@ -1307,7 +1309,7 @@
    "Skips records that are not valid, have no name, or repeat a name; tools we lack go to the tool resolver below.",
    "Flags the summariser: the helper the planner marked, else the last helper of the last step (having no tools no longer decides it; nothing is appended). Then requires a team size in the allowed range.",
    "Matches each step's names to helpers (exact first, then by part of the name) and drops steps that match nobody; no steps left means drafting failed.",
-   "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one summariser, a checking step done by a helper that did not produce what it checks, and task coverage: every number in the task and every deliverable verb (deliver, estimate, assess, prototype, test, gather, build, plan) must reach a requirement or a given.",
+   "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one summariser, a checking step done by a helper that did not produce what it checks, and task coverage: every number in the task and every deliverable verb (deliver, estimate, assess, prototype, test, gather, build, plan, and since D68 run, convert, email, make, save, write, list, read, compute, compare and more) must reach a requirement or a given; a phrase ends at sentence punctuation, not inside an email address or a decimal.",
    "With the quality gate on, a draft failing a must-have check goes back to the planner for one more round with the failed checks listed, within the round cap."
   ]
  },
@@ -2144,7 +2146,7 @@
   ]
  },
  "handoff": {
-  "checked_at": "7126cfe",
+  "checked_at": "c52e3be",
   "facts": {
    "anchors": [
     {
@@ -2176,13 +2178,13 @@
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None) -> Draft"
     }
    ],
    "checks": [
     [
      "differs",
-     "The plan's call is draft_team(task, llm, envelope, trace); the code is draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=#, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft: an extra seed argument (default #) that is passed on to every AI call."
+     "The plan's call is draft_team(task, llm, envelope, trace); the code is draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=#, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None) -> Draft: an extra seed argument (default #) that is passed on to every AI call."
     ]
    ],
    "guards": [],
@@ -2204,10 +2206,11 @@
    "prompts": {},
    "title": "→ Box 2"
   },
-  "facts_hash": "0d0e7bde4c344d84",
+  "facts_hash": "0cd3b5fb782190b9",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "8a1ad7c906bf1b0d",
   "sentence": "Passes the job to the team planner, which reads only the job text.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "The job moves to the planning box.",
    "The planner sees the job text, never the known answer or the rubric (a test sends a rubric full of marker words through every prompt and checks none arrives)."
@@ -3235,7 +3238,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "5c10844",
+  "checked_at": "c52e3be",
   "facts": {
    "anchors": [
     {
@@ -3256,6 +3259,7 @@
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
       "amoeba/pool/stock.py::stock_toolbox",
       "amoeba/task/draft.py::draft_team",
+      "amoeba/task/draft.py::toolbox_text",
       "amoeba/task/evaluate.py::rubric_score",
       "amoeba/task/evaluate.py::score",
       "amoeba/task/instantiate.py::instantiate",
@@ -3297,19 +3301,19 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "2cab7b841cc2df0c",
+  "facts_hash": "0319defa72845b07",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves eight files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, and the agent limit.",
+  "sentence": "Every run saves nine files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, and the agent limit.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, and the maximum agent count ({Envelope.max_agents}).",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, and the maximum agent count ({Envelope.max_agents}).",
    "These files are the raw material later phases will learn from."
   ]
  },
  "ov_plan": {
-  "checked_at": "7126cfe",
+  "checked_at": "c52e3be",
   "facts": {
    "anchors": [
     {
@@ -3341,7 +3345,7 @@
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None) -> Draft"
     },
     {
      "callees": [
@@ -3393,10 +3397,11 @@
    "prompts": {},
    "title": "2 · Plan a new team"
   },
-  "facts_hash": "c51dfda3949e323b",
+  "facts_hash": "5f4d685870ce5c8e",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "a940602a52cfd22e",
   "sentence": "An AI drafts a team and a step plan, two AIs critique it, then plain code checks it and builds the team.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "A planning AI proposes a set of helpers and a numbered step plan for the job.",
    "Two checking AIs critique the helpers and the plan; the planner revises from their latest comments.",
@@ -3780,7 +3785,7 @@
   ]
  },
  "plan_obs": {
-  "checked_at": "7126cfe",
+  "checked_at": "c52e3be",
   "facts": {
    "anchors": [
     {
@@ -3812,7 +3817,7 @@
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None) -> Draft"
     }
    ],
    "checks": [],
@@ -3865,14 +3870,15 @@
     "autoagents_check_plans": "cc78a0e20f4a",
     "autoagents_check_plans_format": "ea1c8181119a",
     "d24_plan_observer_system": "3ee679d29976",
-    "d24_review_plan": "ca2f9255232d"
+    "d24_review_plan": "05278685ec72"
    },
    "title": "Plan Observer"
   },
-  "facts_hash": "bdb329e4a1353cfc",
+  "facts_hash": "b9af77620581d004",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "4a783811da20fbfc",
   "sentence": "A third AI checks the step plan; the loop stops when both checkers say 'No Suggestions' in one round.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "The plan-checking AI reads the job, the helpers, the step plan, the capability requests and every earlier plan suggestion; like the helper checker, it may question a request only on need.",
    "It lists problems with the plan, or writes 'No Suggestions'.",
@@ -5019,7 +5025,7 @@
   ]
  },
  "planner": {
-  "checked_at": "bfb4dbf",
+  "checked_at": "c52e3be",
   "facts": {
    "anchors": [
     {
@@ -5051,7 +5057,7 @@
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='') -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None) -> Draft"
     },
     {
      "callees": [
@@ -5071,6 +5077,14 @@
      "doc": "Wait for \"continue\" (None) or an edited assumption (returned). An empty line asks again; end of input is",
      "key": "scripts/run_task.py::ask_user",
      "signature": "ask_user(ask) -> str | None"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get"
+     ],
+     "doc": "D68: every tool Box 3 will really have, and how a role gets it, for the Planner and both observers.",
+     "key": "amoeba/task/draft.py::toolbox_text",
+     "signature": "toolbox_text(envelope: Envelope, web: bool=False, local: bool=False, pool: bool=False) -> str"
     }
    ],
    "checks": [
@@ -5080,6 +5094,11 @@
     ]
    ],
    "guards": [
+    [
+     "correct",
+     "if pool",
+     "add '- a tool pool: plain code matches every capability request against cached MCP servers and skills; a request may be filled or may stay unfilled, so a step must say what to do without it'"
+    ],
     [
      "correct",
      "if q",
@@ -5092,6 +5111,11 @@
     ],
     [
      "decide",
+     "if local",
+     "set lines += [\"- local tools, sandboxed in the run's own workspace, no network: Bash (runs Pyt"
+    ],
+    [
+     "decide",
      "if not q and a and out and (not out[-1]['assumption'])",
      "set out[-1]['assumption'] = a"
     ],
@@ -5099,6 +5123,11 @@
      "decide",
      "if rounds == 0",
      "set first_requests = section_requests(sec, envelope)"
+    ],
+    [
+     "decide",
+     "if web",
+     "set lines += ['- web_search: searches the web and returns snippets with their URLs (a role tha"
     ],
     [
      "fallback",
@@ -5114,6 +5143,11 @@
      "fallback",
      "except EOFError",
      "return None"
+    ],
+    [
+     "fallback",
+     "toolbox if toolbox and d24 else envelope.tool_catalog_string()",
+     "choose value"
     ],
     [
      "loop cap",
@@ -5157,24 +5191,24 @@
    "prompts": {
     "autoagents_create_roles": "f3c05bff6b72",
     "autoagents_create_roles_format": "5f8f573931b2",
-    "d24_create_team": "feef178fe14e",
+    "d24_create_team": "50bc75c90502",
     "d24_create_team_format": "ede25ecc3816",
     "d24_planner_system": "fbd5a10be5fa"
    },
    "title": "Planner"
   },
-  "facts_hash": "0b6abbd0d901fda4",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "3d5323ad3c92feaa",
+  "facts_hash": "56bb4ca88e73e4b6",
+  "seed_hash": "53bd3e0ee5bba97c",
   "sentence": "An AI writes the list of helpers and a numbered step plan; later rounds see only the latest critique.",
-  "source": "hand (model: still true)",
+  "source": "hand",
   "what": [
    "The planning AI reads the job and the tools that exist, then writes each helper as a small record and a numbered plan saying which helper does which step.",
    "From the second round on it also sees its own last draft and the checkers' latest suggestions.",
    "Its reply must contain five labelled parts; see Split sections for what happens if one is missing.",
    "It is told to prefer the tools that exist; a tool or skill it needs but we lack goes in an optional sixth part, Capability Requests, which costs no retry when absent.",
    "At most three rounds are run.",
-   "With our prompts (d24) it may also list Open Questions: each ambiguity in the job and the assumption it took. With --interactive the person sees the requirements, assumptions and open questions and types continue, or a correction that is added to the job before one more round."
+   "With our prompts (d24) it may also list Open Questions: each ambiguity in the job and the assumption it took. With --interactive the person sees the requirements, assumptions and open questions and types continue, or a correction that is added to the job before one more round.",
+   "D68: with our prompts it and both checkers are shown every tool the team will really have (calc, web search and fetch, the local tools and skills when on, and that a tool pool exists); a document format or a house style is a skill; what only the user can supply is an open question or a request."
   ]
  },
  "pool_index": {
@@ -5788,7 +5822,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "5c10844",
+  "checked_at": "c52e3be",
   "facts": {
    "anchors": [
     {
@@ -5962,6 +5996,7 @@
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
       "amoeba/pool/stock.py::stock_toolbox",
       "amoeba/task/draft.py::draft_team",
+      "amoeba/task/draft.py::toolbox_text",
       "amoeba/task/evaluate.py::rubric_score",
       "amoeba/task/evaluate.py::score",
       "amoeba/task/instantiate.py::instantiate",
@@ -6003,11 +6038,11 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "b2df573ceba7cb13",
+  "facts_hash": "12fea31d36a73226",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bef6a71b78aeb520",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, and any pool or clarification details.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
