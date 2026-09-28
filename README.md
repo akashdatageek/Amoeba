@@ -190,6 +190,13 @@ deliverable verbs and does not cut a phrase inside an email address or a decimal
 With `--local-tools on`, a capability request that names a document format (xlsx, docx, pptx, pdf) is filled with the
 vetted local skill for that format by plain code, with no AI pick. Other requests go to the picker as before.
 
+## Baseline harness fixes (D70)
+
+Fixes in our port, not in the baselines' design: AutoAgents' Write File block (`>>>file name` … `>>>END`) is turned
+into our Write call; the flat reader keeps an answer's sub-headings; thinking tags are removed wherever they stand, even
+malformed; a boss_reviewers reply that is only a tool request is not taken as the answer. `--picks-file FILE`
+(with a `--picks-only` pre-pass) makes one pool pick per task that all three architectures reuse.
+
 ## Cost controls (D45–D48)
 
 ```bash

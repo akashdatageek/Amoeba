@@ -84,6 +84,38 @@ class PoolSetup:
 
 
 # box: toolbox
+class SharedPicks:
+    """D70 (harness fix): one AI pick per task and request, shared by every run of the task (all three
+    architectures), so no architecture loses a tool by chance. A JSON file {task_id: {request key: choice}}, written
+    under a file lock; a choice is reused only when it is among the candidates that passed vetting in this run."""
+
+    def __init__(self, path: str | Path, task_id: str):
+        self.path, self.task_id = Path(path), task_id
+
+    @staticmethod
+    def key(q) -> str:
+        return f"{q.kind}|{(q.canonical or q.name).lower()}|{q.for_role}"
+
+    def _read(self) -> dict:
+        try:
+            return json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def get(self, q) -> str | None:
+        return self._read().get(self.task_id, {}).get(self.key(q))
+
+    def put(self, q, choice: str | None) -> None:
+        import fcntl
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.path.with_suffix(".lock"), "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            data = self._read()
+            data.setdefault(self.task_id, {}).setdefault(self.key(q), choice or NONE)
+            self.path.write_text(json.dumps(data, indent=1, sort_keys=True), encoding="utf-8")
+
+
+# box: toolbox
 def pick(llm: TracedLLM, q, helper: str, steps: str, candidates: list[dict], seed: int = 0,
          max_tokens: int | None = None) -> str | None:
     """The one AI call: the request and its candidates in, one listed id (or None) out. Parsed strictly.
@@ -161,7 +193,8 @@ def _pins(setup: PoolSetup) -> dict:
 
 # box: toolbox
 def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, trace: TraceWriter,
-                  setup: PoolSetup | None, seed: int = 0, local=None, restock: bool = False) -> tuple[ToolRegistry, dict]:
+                  setup: PoolSetup | None, seed: int = 0, local=None, restock: bool = False,
+                  picks: SharedPicks | None = None) -> tuple[ToolRegistry, dict]:
     """Fill what it can of `requests` (Box 2's capability requests) from the cached pool. Changes cfg's helpers
     (tools, missing tools, pool items) and each request's status / pool_id / candidates / reason. Returns the run's
     registry (a copy holding the pool tools when any were attached) and a summary for result.json.
@@ -249,9 +282,18 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                 else:
                     before = trace.n_llm_calls
                     # D69: a request that names a document format gets the vetted local skill for it, no AI pick
-                    chosen = fmt["id"] if fmt and shown else \
-                        pick(traced, q, ", ".join(a.name for a in helpers), steps_of(cfg, helpers),
-                             [e for _, e in shown], seed, max_tokens=int(lim.get("pick_max_tokens", 0)) or None)
+                    recorded = picks.get(q) if picks is not None and not fmt else None        # D70: shared pick
+                    if fmt and shown:
+                        chosen = fmt["id"]
+                    elif recorded is not None and (recorded == NONE or recorded in verdicts):
+                        chosen = None if recorded == NONE else recorded
+                        trace.event("pool_pick_reused", {"amoeba.capability": q.canonical or q.name,
+                                                         "amoeba.pool.id": recorded, "amoeba.picks": str(picks.path)})
+                    else:
+                        chosen = pick(traced, q, ", ".join(a.name for a in helpers), steps_of(cfg, helpers),
+                                      [e for _, e in shown], seed, max_tokens=int(lim.get("pick_max_tokens", 0)) or None)
+                        if picks is not None and not fmt:
+                            picks.put(q, chosen)
                     summary["llm_calls"] += trace.n_llm_calls - before
                     entry = next((e for _, e in shown if e["id"] == chosen), None)
                     out["pool_id"] = chosen or ""

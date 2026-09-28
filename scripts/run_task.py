@@ -36,7 +36,7 @@ from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
 from amoeba.tools.web import TavilyProvider, web_registry
-from amoeba.pool.stock import PoolSetup, stock_toolbox
+from amoeba.pool.stock import PoolSetup, SharedPicks, stock_toolbox
 from amoeba.localtools.gate import SandboxRequired, require_sandbox
 from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 
@@ -49,11 +49,14 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
             max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
             saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
-            local: LocalSetup | None = None, equal_tools: bool = False) -> RunResult:
+            local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
+            picks_only: bool = False) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
-    local: D59 — --local-tools on: Claude Code's tools and skills (claude mcp serve) in runs/<id>/workspace/."""
+    local: D59 — --local-tools on: Claude Code's tools and skills (claude mcp serve) in runs/<id>/workspace/.
+    picks_file: D70 — one pool pick per task and request, shared by every run of the task; picks_only: stop after
+    the toolbox step (a pre-pass that makes the picks before the architectures run)."""
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -89,17 +92,22 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         requests = [q.model_copy(deep=True) for q in draft.capability_requests]
+        picks = SharedPicks(picks_file, task.id) if picks_file else None           # D70
         if pool is not None or box is not None:   # D56: Box 3 starts by stocking the toolbox, before the runner
-            tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed, local=box)
+            tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed, local=box, picks=picks)
         # D61: what became of each request, for the step contract (an unfilled one is a capability the helper lacks)
         cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical,
                                             "status": q.status, "reason": q.reason} for q in requests]
         dump_yaml(cfg, run_dir / "team.yaml")
-        restock = (lambda reqs, c, reg: stock_toolbox(reqs, c, reg, llm, trace, pool, seed, local=box, restock=True)) \
+        restock = (lambda reqs, c, reg: stock_toolbox(reqs, c, reg, llm, trace, pool, seed, local=box, restock=True,
+                                                     picks=picks)) \
             if (pool is not None or box is not None) else None                   # D63: requests a re-plan makes
-        ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
-                         stock=restock, max_agents=envelope.max_agents).run(cfg, task, seed)
-        answer, error = ep.answer, ep.error
+        if picks_only:                                                             # D70: the picks pre-pass
+            answer, error = None, "picks_only"
+        else:
+            ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
+                             stock=restock, max_agents=envelope.max_agents).run(cfg, task, seed)
+            answer, error = ep.answer, ep.error
     except DraftError as e:
         error = f"draft: {e}"
         failed = e
@@ -402,6 +410,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--local-tools", choices=["on", "off"], default="off",
                    help="Box 3 may also borrow Claude Code's tools (Bash, Read, Write, Edit, Glob, Grep) and skills "
                         "through `claude mcp serve`, sandboxed in runs/<id>/workspace/ (D59). Needs AMOEBA_SANDBOX=1")
+    p.add_argument("--picks-file", default=None, metavar="FILE",
+                   help="D70: one pool pick per task and request, shared by every run that names the same file (the "
+                        "three architectures of a benchmark); a recorded pick is reused when it passed vetting again")
+    p.add_argument("--picks-only", action="store_true",
+                   help="D70: stop after the toolbox step (make the picks for --picks-file before the runs)")
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     add_client_args(p)
@@ -453,7 +466,7 @@ def main(argv: list[str] | None = None) -> int:
                     plan_options=cli_plan_options(args), saved_draft=chosen,
                     limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
                     ask=input if args.interactive else None, pool=pool, local=local,
-                    equal_tools=args.equal_tools == "on")
+                    equal_tools=args.equal_tools == "on", picks_file=args.picks_file, picks_only=args.picks_only)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

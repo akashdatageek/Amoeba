@@ -24,7 +24,7 @@ from amoeba.interp.shorten import shorten
 from amoeba.llm.profiles import role_group
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.localtools.claims import claimed_files
-from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
+from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text, full_action_input
 from amoeba.task.models import CapabilityRequest, DraftedRole, Episode, Task
 from amoeba.task.parsers import MissingSections, parse_json_objects, parse_plan_d24, parse_sections
 from amoeba.task.quality import VERIFY_WORDS
@@ -153,19 +153,6 @@ def plan_card(agent: AgentSpec) -> str:
 def step_detail(step: PlanStep) -> str:
     extra = [f"{k}: {getattr(step, k)}" for k in ("do", "output", "done_when") if getattr(step, k)]
     return "\n".join([step.text, *extra])
-
-
-# box: plan_step
-def full_action_input(raw: str, parsed: str) -> str:
-    """ActionInput is the last section, so it runs to the end of the reply. The AutoAgents parser splits on every
-    '##', which cuts a markdown answer at its first '##'/'###' heading (the flat baseline loses its answers
-    this way); the plan runner keeps the whole text."""
-    head = raw.rfind("## ActionInput")
-    if head < 0:
-        return parsed
-    rest = raw[head + len("## ActionInput"):].lstrip(":").strip()
-    rest = re.sub(r"\n-{3,}\s*$", "", rest).strip()        # a closing '---' fence of the format example
-    return rest if len(rest) >= len(parsed.strip()) else parsed
 
 
 VERIFY_NOTE = """

@@ -451,3 +451,26 @@ def test_a_request_that_names_no_format_still_goes_to_the_picker(cache, skills, 
                   pool_setup(cache), local=b)
     assert len(llm.calls_of("pool_picker")) == 1
     b.finish()
+
+
+# ---- D70: one pick per task, shared by every architecture --------------------------------------------------------
+def test_a_recorded_pick_is_reused_by_the_next_run_of_the_task(cache, skills, tmp_path, task, envelope):
+    from amoeba.pool.stock import SharedPicks
+    picks = tmp_path / "picks.json"
+    chosen = []
+    for run in ("autoagents", "agentverse", "amoeba"):
+        cfg = draft_cfg(task, envelope, fx(CAP).replace("web_search", "python_interpreter"))
+        b = LocalToolbox(lsetup(skills), tmp_path / run, TraceWriter(None))
+        llm = mock(pool_picker=["io.example/py-sandbox" if run == "autoagents" else "local:Bash"])
+        q = req("python_interpreter", what="runs python code")
+        stock_toolbox([q], cfg, default_registry(), llm, b.trace, pool_setup(cache), local=b,
+                      picks=SharedPicks(picks, task.id))
+        chosen.append((q.pool_id, len(llm.calls_of("pool_picker"))))
+        b.finish()
+    assert chosen == [("io.example/py-sandbox", 1), ("io.example/py-sandbox", 0), ("io.example/py-sandbox", 0)]
+    assert json.loads(picks.read_text()) == {task.id: {"tool|code_execution|Researcher": "io.example/py-sandbox"}}
+
+
+def test_the_cli_has_the_picks_flags():
+    a = parse_args(["--toy", "--picks-file", "p.json", "--picks-only"])
+    assert (a.picks_file, a.picks_only) == ("p.json", True)
