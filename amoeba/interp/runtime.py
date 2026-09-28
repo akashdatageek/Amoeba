@@ -53,6 +53,15 @@ Action: <one tool name from the list>
 ActionInput: <its input>
 Its result comes back to you and you continue. When you are ready, reply with your answer as usual, with no Action
 line. You may make at most {n} tool calls."""
+THOUGHT_RE = re.compile(r"^\s*<thought>.*?</thought>\s*", re.S | re.I)   # D62: Gemma's inline thinking block
+
+
+def strip_thought(text: str) -> str:
+    """D62: the reply without a leading <thought>…</thought> block (the flat and plan runners drop it by reading
+    only their ActionInput section; boss_reviewers takes the whole reply)."""
+    return THOUGHT_RE.sub("", text or "", count=1)
+
+
 EQUAL_MAX_TOKENS = 8192   # D62: the plan runner's reply room per helper call (PLAN_MAX_TOKENS, D27)
 TOOL_LOOP_LAST = "No more tool calls are allowed. Give your answer now, as usual."
 ACTION_RE = re.compile(r"^\s*(?:#+\s*)?Action\s*:\s*(.+?)\s*\n\s*(?:#+\s*)?ActionInput\s*:\s*(.*)$", re.S | re.I)
@@ -240,7 +249,7 @@ class Interpreter:
         tools is run (through _dispatch, like every other tool call) and the result is handed back; the first reply
         that is not is the agent's answer. After max_turns calls it is asked once for its answer."""
         for _ in range(agent.limits.max_turns):
-            m = ACTION_RE.match(reply or "")
+            m = ACTION_RE.match(strip_thought(reply))
             if not m or m.group(1).strip().strip("`") not in agent.tools:
                 return reply
             act, inp = m.group(1).strip().strip("`"), m.group(2).strip()
@@ -248,7 +257,7 @@ class Interpreter:
             msgs = [*msgs, {"role": "assistant", "content": reply},
                     {"role": "user", "content": f"Result of {act}:\n{resp.strip()}"}]
             reply = self._llm_messages(agent, msgs, ep)
-        if ACTION_RE.match(reply or ""):
+        if ACTION_RE.match(strip_thought(reply)):
             reply = self._llm_messages(agent, [*msgs, {"role": "assistant", "content": reply},
                                                {"role": "user", "content": TOOL_LOOP_LAST}], ep)
         return reply
@@ -326,9 +335,9 @@ class Interpreter:
                                                   "amoeba.box": "critics" if agent.role == "critic" else "solver"}):
                 msgs = [{"role": "system", "content": system}, *hist, {"role": "user", "content": user}]
                 reply = self._llm_messages(agent, msgs, ep)
-                if not (self.equal_tools and agent.tools):
+                if not self.equal_tools:
                     return reply
-                return self._tool_loop(agent, msgs, reply, ep)
+                return strip_thought(self._tool_loop(agent, msgs, reply, ep) if agent.tools else reply)
             # This is why format="history+append": the plan and reviews reach agents as chat history, not placeholders.
 
         # box: solver

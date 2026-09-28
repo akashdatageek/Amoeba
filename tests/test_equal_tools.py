@@ -68,3 +68,11 @@ def test_baseline_replies_get_the_plan_runners_room(task, envelope, trace, tools
     assert {c["max_tokens"] for c in llm.calls if c["kind"] in ("solver", "critic")} == {8192}
     llm, _, _ = boss(task, envelope, trace, tools, False, solver=["396"], critic=[fx("critic_agree")])
     assert {c["max_tokens"] for c in llm.calls if c["kind"] in ("solver", "critic")} != {8192}
+
+
+def test_a_leading_thought_block_is_dropped_before_the_action_and_from_the_answer(task, envelope, trace, tools):
+    _, _, ep = boss(task, envelope, trace, tools, True,
+                    solver=["<thought>let me compute</thought>Action: calc\nActionInput: 17 * 23 + 5",
+                            "<thought>done</thought>The answer is 396."], critic=[fx("critic_agree")])
+    assert [s["gen_ai.tool.name"] for s in trace.spans("execute_tool")] == ["calc"]
+    assert ep.answer == "The answer is 396."
