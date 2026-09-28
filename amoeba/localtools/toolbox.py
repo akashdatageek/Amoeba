@@ -28,6 +28,7 @@ import yaml
 from amoeba.config.schema import AgentSpec
 from amoeba.interp.shorten import shorten
 from amoeba.localtools.gate import in_workspace, inside, require_sandbox, screen_command
+from amoeba.localtools.office import office_check
 from amoeba.localtools.server import StdioServer
 from amoeba.localtools.skills import card_text, copy_skill, list_skills
 from amoeba.pool.match import document_format, rank
@@ -115,6 +116,7 @@ class LocalToolbox:
         self.skills_attached: list[dict] = []
         self.error: str | None = None
         self.book = None                             # D61 (G7): the run's [S#] list, set by stock_toolbox
+        self.office: dict | None = None              # D71: office_check(), run when the xlsx skill is attached
 
     # ---- the server -------------------------------------------------------------------------------------------
     def start(self) -> None:
@@ -224,10 +226,21 @@ class LocalToolbox:
             return False
         dest = copy_skill(entry, self.workspace)
         self._seen = self._snapshot()                 # the copied skill is input, not a file the team made
+        note = ""
+        if entry["name"] == "xlsx":                   # D71: can formulas be recalculated here? checked once per run
+            if self.office is None:
+                self.office = office_check()
+                self.trace.event("office_check", {"amoeba.box": "localtools", "amoeba.ok": self.office["ok"],
+                                                  "amoeba.detail": self.office["detail"]})
+            if not self.office["ok"]:
+                note = ("\nNote from plain code: LibreOffice cannot recalculate formulas in this sandbox "
+                        f"({self.office['detail']}), so scripts/recalc.py will fail; write the formulas and say what "
+                        "they compute.")
         a.pool.append({"kind": "skill", "id": entry["id"], "name": entry["name"], "source": "local", "request": request,
                        "text": f"Skill: {entry['name']} (local, from {entry['root']})\n"
                                f"{data_block('skill ' + entry['name'], body)}\n"
-                               f"Full skill files are in skills/{entry['name']}/; read them with local:Read if needed."})
+                               f"Full skill files are in skills/{entry['name']}/; read them with local:Read if needed."
+                               + note})
         for n in ("Read", "Bash", "Write", "Edit"):  # a skill is used by reading and running its files
             if n in self.exposed:
                 self.attach_tool(a, f"local:{n}", reg)

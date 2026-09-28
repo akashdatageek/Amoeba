@@ -32,6 +32,7 @@ EVENT_BOX = {
     "verifier_tools": "step_check",                                                                   # D65
     "freshness": "plan_summary",                                                                      # D67
     "file_block_adapted": "read_action", "not_an_answer": "solver",                                   # D70
+    "office_check": "localtools",                                                                     # D71
     "provenance": "provenance", "figure_ledger": "provenance",
     "summary_check": "plan_summary", "limitations_added": "plan_summary", "answer_assembled_by_code": "plan_summary",
     "capability_mapped": "tools", "web_tools": "tools", "web_search": "tools", "fetch_url": "tools",

@@ -197,6 +197,15 @@ into our Write call; the flat reader keeps an answer's sub-headings; thinking ta
 malformed; a boss_reviewers reply that is only a tool request is not taken as the answer. `--picks-file FILE`
 (with a `--picks-only` pre-pass) makes one pool pick per task that all three architectures reuse.
 
+## Office suite in the sandbox (D71)
+
+Spreadsheet formulas are recalculated with LibreOffice Calc headless. Install it once per machine or container:
+
+    sudo scripts/setup_office.sh      # apt-get install libreoffice-calc, then a two-cell check
+
+`amoeba/localtools/office.py` gives each call a fresh profile and HOME. With the xlsx skill attached, the local toolbox
+checks once that a two-cell workbook comes back with its computed value, and tells the helper when it does not.
+
 ## Cost controls (D45–D48)
 
 ```bash

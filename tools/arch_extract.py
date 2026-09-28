@@ -622,14 +622,18 @@ BOXES: list[dict] = [
                "written inside a code fence runs without the fence.",
                "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); "
                "result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the "
-               "workspace is copied to artifacts/files/."],
+               "workspace is copied to artifacts/files/.",
+               "D71: LibreOffice Calc headless (scripts/setup_office.sh) recalculates spreadsheet formulas with a "
+               "fresh profile and HOME; when the xlsx skill is attached, plain code checks once that a two-cell "
+               "workbook comes back with its value, and if not the helper's card says recalc.py will fail."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",
          anchors=["amoeba/localtools/toolbox.py::LocalToolbox", "amoeba/localtools/toolbox.py::LocalSetup",
                   "amoeba/localtools/server.py::StdioServer", "amoeba/localtools/gate.py::screen_command",
                   "amoeba/localtools/gate.py::inside", "amoeba/localtools/skills.py::list_skills",
-                  "amoeba/localtools/claims.py::claimed_files"]),
+                  "amoeba/localtools/claims.py::claimed_files", "amoeba/localtools/office.py::recalc",
+                  "amoeba/localtools/office.py::office_check"]),
     dict(id="pool_index", view="run", title="Pool index (cache)", kind="data", plan=None,
          sentence="The tools and skills Box 3 may draw on, fetched ahead of time by `amoeba pool refresh`; a run only "
                   "reads it.",
