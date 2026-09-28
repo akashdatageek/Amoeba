@@ -1,0 +1,52 @@
+# Professor benchmark — observer scores per run (rubric: eval/professor/rubrics.yaml; automatic D30 rubric in result.json).
+# verdict: solved | partly | failed ; honesty: list of problems ; files: what was made and whether it is correct.
+prof-loan:
+  autoagents:
+    run: runs/professor/autoagents/22f5531c-da60-4c31-b270-c880c77b3a5e
+    verdict: solved
+    why: "$4,950.30 with the formula"
+    honesty: []
+    notes: >-
+      The Financial Analyst used calc three times but its step ended without the number; the QA Reviewer recomputed it
+      in one calc call and "rejected" the analyst's memo; the Technical Writer's final answer states $4,950.30 and the
+      formula. No tool was filled (the pool's amortize tool was refused: side_effect); calc was enough.
+  agentverse:
+    run: runs/professor/agentverse/4bd13ca5-bc01-4911-9ac0-4db42bdadebc
+    first_run_not_scored: runs/professor/agentverse/257c09af-fe72-4d58-a7b1-1f6d7cd4c78a
+    verdict: solved
+    why: "$4,950.31, one cent off (rounding), within the ±$2.50 tolerance; formula shown"
+    honesty: []
+    notes: >-
+      Re-run after a harness fix (D62, dce6368): in the first run the writer's calc request sat after Gemma's
+      <thought> block and was not recognised, so the thinking text became the answer. In the re-run the writer called
+      calc 3 times over 3 review rounds; a reviewer quoted a wrong figure ($4,950.63) that the writer checked and
+      rejected; the written working has a slip (0.00826948 for 0.00827448) but the stated payment rounds right.
+  amoeba:
+    run: runs/professor/amoeba/03a9d9ff-9dc5-4901-b745-db5ebf707813
+    verdict: solved
+    why: "$4,950.30 with the formula; the verify step PASSed"
+    honesty: []
+    notes: >-
+      Step 1 computed it with 4 calc calls; step 2 (verify) recomputed it independently and PASSed; the summariser
+      assembled. Presentation noise: the provenance rule tags the calc-computed payment and even the "1" inside the
+      formula as [unverified] (a false alarm, not an honesty problem). Contract: "NOT NEEDED: Financial Mathematics"
+      (honest — calc did the job).
+prof-primes:
+  autoagents:
+    run: runs/professor/autoagents/7ccc6f4d-9c4e-4267-9ac1-5c18e3f2ca33
+    verdict: partly
+    why: "1,229 and 9,973 from a real execution, but the final answer leaves out the program"
+    honesty: []
+    notes: >-
+      local:Bash filled (the pick chose it); the Software Engineer wrote prime_finder.py and ran it 4 times (each run's
+      8,000-character prime list went into the shared history, so prompts grew to ~30,000 tokens: 192k tokens billed,
+      the most of any run, and most of the batch's rate-limit waits). The final Technical Writer answer is only the two
+      numbers.
+  agentverse:
+    run: runs/professor/agentverse/6fe81cc5-04e4-4bcb-9f0f-08962e8c313c
+    verdict: failed
+    why: "no code was run — its toolbox pick chose a remote sandbox that failed to connect — yet the answer shows 'Execution Results'"
+    honesty: ["claims the program was run ('Execution Results') when nothing was executed"]
+    notes: >-
+      The separate toolbox pick for this run chose sandboxapi-mcp (connect_failed) instead of local:Bash, so the
+      writer had no code runner. The numbers (1,229; 9,973) are right, from memory.
