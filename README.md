@@ -208,6 +208,12 @@ Spreadsheet formulas are recalculated with LibreOffice Calc headless. Install it
 `amoeba/localtools/office.py` gives each call a fresh profile and HOME. With the xlsx skill attached, the local toolbox
 checks once that a two-cell workbook comes back with its computed value, and tells the helper when it does not.
 
+
+## Headings inside role prompts (D72)
+
+Box 2 splits the Planner's reply into sections at `##`. A `##` that sits inside a JSON string (after a
+written `\n`, as in a role prompt's `Output format:\n## Formula`) no longer starts a section, so such roles are not
+lost.
 ## Cost controls (D45–D48)
 
 ```bash
