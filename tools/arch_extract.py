@@ -498,7 +498,9 @@ BOXES: list[dict] = [
                "Each input is shortened to 6,000 characters and all of them to 30,000; since D64 the head, the tail "
                "and every line with a result (a count, a total, an '=' line, the last lines of program output) are "
                "kept, with a mark for what was left out. When several final steps have no summariser step, code "
-               "puts their outputs together under headings instead."],
+               "puts their outputs together under headings instead.",
+               "D67: for a task that asks for today's, the current or the latest value, a figure whose as-of date "
+               "is more than 3 days old adds 'possibly not the latest' to Limitations."],
          proposes="The final answer.",
          disposes="Plain code counts new numbers, checks the answer against the work produced, and completes the "
                   "Limitations section.",
@@ -511,7 +513,8 @@ BOXES: list[dict] = [
                   "amoeba/interp/plan_runner.py::PlanRunner.ledger_update",
                   "amoeba/interp/plan_runner.py::PlanRunner.answer_gaps",
                   "amoeba/interp/plan_runner.py::PlanRunner.add_files_section",
-                  "amoeba/interp/shorten.py::shorten"]),
+                  "amoeba/interp/shorten.py::shorten", "amoeba/interp/freshness.py::stale_figure",
+                  "amoeba/interp/freshness.py::time_sensitive"]),
     dict(id="trace", view="run", title="Every AI call → one trace line", kind="data",
          plan="Every AI call → one trace line",
          sentence="Writes one log line per AI call and tool call: who, which model, tokens and time. Nothing enforces a budget.",

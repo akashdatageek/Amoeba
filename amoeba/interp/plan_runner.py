@@ -11,6 +11,7 @@ import json
 import re
 from uuid import uuid4
 from dataclasses import asdict, dataclass
+from datetime import date
 from pathlib import Path
 
 from amoeba.capabilities import normalise
@@ -18,6 +19,7 @@ from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_values, numbers_in,
                                       strip_unverified)
+from amoeba.interp.freshness import stale_figure, time_sensitive
 from amoeba.interp.shorten import shorten
 from amoeba.llm.profiles import role_group
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
@@ -177,6 +179,11 @@ Re-check with your tools, do not only read: re-run the code a step wrote or open
 re-check at least one cited figure against its source (fetch_url or web_search) or recompute it (calc). Your inputs end
 with the raw tool results the earlier steps used. Name in your output each re-check you ran and what it showed. A PASS
 with no re-check counts as an unverified check."""
+FRESH_NOTE = """
+
+This task asks for today's, the current or the latest value. Find the most recent official figure and write its date
+next to it ("as of <date>"). If the figure you found is dated before today, make one more search for a newer value
+before you use it, and say which date you settled on."""
 REWORK_NOTE = """
 
 REWORK: verification step {by} found issues with this step's earlier output. Fix them and give the whole corrected
@@ -763,6 +770,9 @@ class PlanRunner:
             self.i.trace.event("verifier_tools", {"amoeba.step": n, "amoeba.granted": granted,
                                                   "amoeba.upstream": self.upstream(n),
                                                   "amoeba.raw_results_chars": len(raw)})
+        if not summarising and time_sensitive(self.task.prompt) and any(set(WEB_TOOLS) & set(a.tools)
+                                                                       for a in agents):
+            extra += FRESH_NOTE                                                    # D67: the latest figure, dated
         if self.opt.replan == "on" and deps and not summarising:                  # D63: a missing input is a trigger
             extra += MISSING_INPUT_NOTE
         if reverify:
@@ -1199,11 +1209,20 @@ class PlanRunner:
                   for r, why in unmet.items()]
         lines += [f"- NOT USED: {u} (given to the team for step {', '.join(map(str, unused[u]))} but never used; "
                   f"added by plain code)" for u in not_used]
+        stale = None
+        if time_sensitive(self.task.prompt):                                     # D67: possibly not the latest
+            stale = stale_figure([a["text"] for a in self.artifacts.values()] + [text or ""],
+                                 getattr(self.i, "today", None) or date.today())
+            if stale and "possibly not the latest" not in section:
+                lines.append(f"- Possibly not the latest (dated {stale['as']}, {stale['days']} days before this run): a "
+                             f"newer figure may exist (added by plain code)")
+                self.i.trace.event("freshness", {"amoeba.dated": stale["date"], "amoeba.days": stale["days"]})
         if lines:
             body = "\n".join(lines)
             text = f"{text.rstrip()}\n\n{body}\n" if m else f"{text.rstrip()}\n\n## Limitations\n{body}\n"
             self.i.trace.event("limitations_added", {"amoeba.capabilities": missing, "amoeba.unused": not_used})
         return text, {"blocked_capabilities": sorted(caps), "limitations_added_by_code": missing,
+                      **({"stale_figure": stale} if stale else {}),
                       **({"unused_added_by_code": not_used} if unused else {})}
 
     # box: step_check

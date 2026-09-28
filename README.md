@@ -172,6 +172,12 @@ A number equal to a calc or local-tool result of the same step counts as derived
 it is removed by plain code. A number given in the task that carries only a web source tag stays "given" and is
 flagged for the refine turn.
 
+## Freshness (D67)
+
+For a task that asks for today's, the current or the latest value, research steps are asked for the most recent
+official figure with its date, and one more search when it is dated. When the newest as-of date in the outputs is more
+than 3 days before the run, plain code adds "Possibly not the latest (dated …)" to the answer's Limitations.
+
 ## Cost controls (D45–D48)
 
 ```bash
