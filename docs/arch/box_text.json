@@ -3880,12 +3880,13 @@
   ]
  },
  "plan_step": {
-  "checked_at": "1042b61",
+  "checked_at": "4a767e9",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/interp/freshness.py::time_sensitive",
       "amoeba/interp/plan_runner.py::PlanRunner._loop",
       "amoeba/interp/plan_runner.py::PlanRunner._save",
       "amoeba/interp/plan_runner.py::PlanRunner._sources",
@@ -4145,6 +4146,11 @@
      "decide",
      "if not reason and mode == 'always'",
      "set reason = 'self_review'"
+    ],
+    [
+     "decide",
+     "if not summarising and time_sensitive(self.task.prompt) and any((set(WEB_TOOLS) & set(a.tools) for a in agents))",
+     "set extra += FRESH_NOTE"
     ],
     [
      "decide",
@@ -4584,7 +4590,7 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "0f884ddf68cb1829",
+  "facts_hash": "dfcc1e837ffb000c",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
@@ -4593,13 +4599,13 @@
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; up to {Limits.max_turns} turns per step.",
-   "With --web-tools, a role that asked for web search also gets web_search and fetch_url.",
+   "With --web-tools, a role that asked for web search also gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information.",
    "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); the step keeps one output.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
   ]
  },
  "plan_summary": {
-  "checked_at": "e62328f",
+  "checked_at": "4a767e9",
   "facts": {
    "anchors": [
     {
@@ -4626,6 +4632,8 @@
     },
     {
      "callees": [
+      "amoeba/interp/freshness.py::stale_figure",
+      "amoeba/interp/freshness.py::time_sensitive",
       "amoeba/interp/plan_runner.py::PlanRunner.blocked_capabilities",
       "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations.named",
       "amoeba/interp/plan_runner.py::PlanRunner.unused_items",
@@ -4700,6 +4708,24 @@
      "signature": "shorten(text: str, limit: int) -> str"
     },
     {
+     "callees": [
+      "amoeba/interp/freshness.py::dates_in"
+     ],
+     "doc": "The newest as-of date the outputs give for a figure, when it is older than MAX_AGE_DAYS: {date, as, days}.",
+     "key": "amoeba/interp/freshness.py::stale_figure",
+     "signature": "stale_figure(texts: list[str], today: date) -> dict | None"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "The task asks for today's, the current or the latest value.",
+     "key": "amoeba/interp/freshness.py::time_sensitive",
+     "signature": "time_sensitive(task_text: str) -> bool"
+    },
+    {
      "callees": [],
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.answer_findings",
@@ -4730,6 +4756,11 @@
      "correct",
      "if prev != len(lines) - 1",
      "add MARK.format(n=sum((len(lines[j]) + 1 for j in range(prev + 1, len(lines)))))"
+    ],
+    [
+     "correct",
+     "if stale and 'possibly not the latest' not in section",
+     "add f\"- Possibly not the latest (dated {stale['as']}, {stale['days']} days before this run): a newer figure may exist (added by plain code)\""
     ],
     [
      "decide",
@@ -4780,6 +4811,11 @@
      "decide",
      "if self.opt.contract == 'on'",
      "set text = self.add_files_section(text, [f for f in self.files_of() if Path(f['path']).name no"
+    ],
+    [
+     "decide",
+     "if time_sensitive(self.task.prompt)",
+     "set stale = stale_figure([a['text'] for a in self.artifacts.values()] + [text or ''], getattr("
     ],
     [
      "fallback",
@@ -4838,6 +4874,16 @@
     ],
     [
      "fallback",
+     "{'date': d.isoformat(), 'as': s, 'days': age} if age > MAX_AGE_DAYS else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'stale_figure': stale} if stale else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
      "{'unused_added_by_code': not_used} if unused else {}",
      "choose value"
     ],
@@ -4864,6 +4910,11 @@
     [
      "filter",
      "keep only if d != n",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if d <= today",
      "drop the rest"
     ],
     [
@@ -4913,6 +4964,11 @@
     ],
     [
      "stop",
+     "if not found",
+     "return None"
+    ],
+    [
+     "stop",
      "if room - len(line) - 1 < 0",
      "stop (break)"
     ],
@@ -4939,6 +4995,7 @@
    ],
    "kind": "llm",
    "numbers": [
+    "MAX_AGE_DAYS",
     "PlanOptions.max_input_chars",
     "PlanOptions.max_summary_input_chars"
    ],
@@ -4948,8 +5005,8 @@
    },
    "title": "Summariser assembles"
   },
-  "facts_hash": "3583da0a638fda81",
-  "seed_hash": "fd650ade151855a9",
+  "facts_hash": "9214792e5c820685",
+  "seed_hash": "f8491f65001402a8",
   "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
   "source": "hand",
   "what": [
@@ -4957,7 +5014,8 @@
    "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under Limitations when there are any.",
    "Code counts any number it adds, lists the answer's untagged and unverified figures, and appends a line for any missing capability it left out.",
    "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code under 'Files made', and Limitations also name undeclared missing capabilities and attached items left unused (NOT USED).",
-   "Each input is shortened to {PlanOptions.max_input_chars} characters and all of them to {PlanOptions.max_summary_input_chars}; since D64 the head, the tail and every line with a result (a count, a total, an '=' line, the last lines of program output) are kept, with a mark for what was left out. When several final steps have no summariser step, code puts their outputs together under headings instead."
+   "Each input is shortened to {PlanOptions.max_input_chars} characters and all of them to {PlanOptions.max_summary_input_chars}; since D64 the head, the tail and every line with a result (a count, a total, an '=' line, the last lines of program output) are kept, with a mark for what was left out. When several final steps have no summariser step, code puts their outputs together under headings instead.",
+   "D67: for a task that asks for today's, the current or the latest value, a figure whose as-of date is more than {MAX_AGE_DAYS} days old adds 'possibly not the latest' to Limitations."
   ]
  },
  "planner": {
