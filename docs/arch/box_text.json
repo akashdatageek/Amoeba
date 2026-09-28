@@ -3222,7 +3222,7 @@
    "title": "Local toolbox (sandboxed)"
   },
   "facts_hash": "473a8d04c5b90f02",
-  "rejected_hash": "15ca29416e0615ce",
+  "rejected_hash": "44b908554679589c",
   "seed_hash": "c3cfd084c207ca3b",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
   "source": "hand",
@@ -7148,7 +7148,7 @@
   ]
  },
  "toolbox": {
-  "checked_at": "f0b9d67",
+  "checked_at": "141e0e1",
   "facts": {
    "anchors": [
     {
@@ -7162,6 +7162,7 @@
       "amoeba/localtools/toolbox.py::LocalToolbox.attach_skill",
       "amoeba/localtools/toolbox.py::LocalToolbox.attach_tool",
       "amoeba/localtools/toolbox.py::LocalToolbox.candidates",
+      "amoeba/localtools/toolbox.py::LocalToolbox.format_skill",
       "amoeba/localtools/toolbox.py::LocalToolbox.register",
       "amoeba/localtools/toolbox.py::LocalToolbox.start",
       "amoeba/localtools/toolbox.py::LocalToolbox.vet",
@@ -7189,7 +7190,7 @@
      ],
      "doc": "Fill what it can of `requests` (Box 2's capability requests) from the cached pool. Changes cfg's helpers",
      "key": "amoeba/pool/stock.py::stock_toolbox",
-     "signature": "stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, trace: TraceWriter, setup: PoolSetup | None, seed: int=0, local=None) -> tuple[ToolRegistry, dict]"
+     "signature": "stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, trace: TraceWriter, setup: PoolSetup | None, seed: int=0, local=None, restock: bool=False) -> tuple[ToolRegistry, dict]"
     },
     {
      "callees": [
@@ -7287,6 +7288,16 @@
       "call(self, entry: dict, headers: dict, tool: str, arguments: dict, check: Callable[[list[dict]], None]) -> tuple[str, bool]"
      ],
      "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D69: the document format a request names (in its name, standard name, what it does or its output), or None.",
+     "key": "amoeba/pool/match.py::document_format",
+     "signature": "document_format(q) -> str | None"
     },
     {
      "callees": [
@@ -7520,6 +7531,11 @@
     ],
     [
      "decide",
+     "if fmt",
+     "set ranked = [(100, fmt)]"
+    ],
+    [
+     "decide",
      "if len(listing) != 1",
      "set args = obj.get('arguments') or {}"
     ],
@@ -7542,6 +7558,11 @@
      "decide",
      "if near",
      "set a.missing_tools = [t for t in a.missing_tools if t not in (q.name, q.canonical)]"
+    ],
+    [
+     "decide",
+     "if not (restock and local.book is not None)",
+     "set local.book = getattr(tools, 'web', None) or SourceBook()"
     ],
     [
      "decide",
@@ -7645,6 +7666,11 @@
     ],
     [
      "fallback",
+     "[] if fmt else rank(q, entries, int(lim.get('vet_depth', 10 * top)))",
+     "choose value"
+    ],
+    [
+     "fallback",
      "[self.step] if self.step is not None else []",
      "choose value"
     ],
@@ -7715,12 +7741,22 @@
     ],
     [
      "fallback",
+     "fmt['id'] if fmt and shown else pick(traced, q, ', '.join((a.name for a in helpers)), steps_of(cfg, helpers), [e for _, e in shown], seed, max_tokens=int(lim.get('pick_max_tokens', 0)) or None)",
+     "choose value"
+    ],
+    [
+     "fallback",
      "json.loads(text) if text.startswith('{') else None",
      "choose value"
     ],
     [
      "fallback",
      "load_index(setup.dir) if setup is not None else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "local.format_skill(q) if local is not None else None",
      "choose value"
     ],
     [
@@ -7756,6 +7792,11 @@
     [
      "fallback",
      "w[:-1] if len(w) > 4 and w.endswith('s') and (not w.endswith('ss')) else w",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'amoeba.pool.format_skill': fmt['name']} if fmt else {}",
      "choose value"
     ],
     [
@@ -7890,6 +7931,11 @@
     ],
     [
      "stop",
+     "if any((re.search(f'\\\\b{re.escape(n)}\\\\b', text) for n in names))",
+     "return fmt"
+    ],
+    [
+     "stop",
      "if body is None",
      "return ('body_missing', {}, None)"
     ],
@@ -8010,12 +8056,10 @@
    "prompts": {},
    "title": "Stock the toolbox"
   },
-  "facts_hash": "53d28ea7736d17c4",
-  "rejected_hash": "54893a79ff3ef8a1",
-  "seed_hash": "0f6cd678df25d07a",
+  "facts_hash": "88c4b1f667bda726",
+  "seed_hash": "07a793f48d64b4e6",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
    "Vet first (D60): the candidates are checked before the pick and the AI is shown only the best {rank.top} that pass (up to 50 matches are checked); if none pass, the request is unfilled (all_refused) with no AI call.",
@@ -8024,7 +8068,8 @@
    "Attach: a tool becomes pool:<name> for the asking helper only; a skill's text goes on that helper's card. All pool text is shown inside marked data blocks, and the 'unavailable' line goes away.",
    "Every request's outcome and reason code is written to capability_requests.json and result.json; without a pool cache the run logs pool_unavailable and goes on as before.",
    "With --local-tools on (D59) the local toolbox's items are candidates too — ahead of the pool's only when an alias names them or they match at least as well (D61) — and a skill with scripts is no longer refused: it is copied into the run's workspace.",
-   "What became of each request (filled or not) is handed to the plan runner for the step contract (D61)."
+   "What became of each request (filled or not) is handed to the plan runner for the step contract (D61).",
+   "D69: a request that names a document format (xlsx, docx, pptx, pdf) gets the vetted local skill for it, chosen by plain code with no AI pick; an outside service that creates things stays refused."
   ]
  },
  "tools": {
