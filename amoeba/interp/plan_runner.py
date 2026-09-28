@@ -171,6 +171,11 @@ You are VERIFYING the outputs of the steps you depend on: re-check their numbers
 Your Final Output MUST start with a line "Verdict: PASS" or "Verdict: FAIL", then a line "Issues:" and one numbered
 issue per line (which step, what is wrong, how to fix it). Answer FAIL if any issue would change a number or a
 conclusion; PASS otherwise (then write "Issues: none")."""
+VERIFY_TOOLS_NOTE = """
+Re-check with your tools, do not only read: re-run the code a step wrote or open the file it made (local tools), and
+re-check at least one cited figure against its source (fetch_url or web_search) or recompute it (calc). Your inputs end
+with the raw tool results the earlier steps used. Name in your output each re-check you ran and what it showed. A PASS
+with no re-check counts as an unverified check."""
 REWORK_NOTE = """
 
 REWORK: verification step {by} found issues with this step's earlier output. Fix them and give the whole corrected
@@ -546,6 +551,63 @@ class PlanRunner:
                          f"{', '.join(m.get('unused', [])) or 'nothing'}")
         return "\n".join(lines)
 
+    # box: step_check
+    def checkable(self, n: int) -> str:
+        """D65: what the steps a verify step checks produced that a tool can re-check: code, files or cited
+        figures ("" when none)."""
+        what = []
+        for d in self.upstream(n):
+            m, text = self.artifacts[d]["meta"], self.artifacts[d]["text"]
+            if "```" in text or any(c["tool"].startswith("local:") for c in m.get("tool_calls", [])):
+                what.append(f"code of step {d}")
+            if m.get("files_made"):
+                what.append(f"files of step {d}")
+            if m.get("provenance", {}).get("cited"):
+                what.append(f"cited figures of step {d}")
+        return ", ".join(dict.fromkeys(what))
+
+    # box: step_check
+    def upstream(self, n: int) -> list[int]:
+        """D65: every step a step builds on, directly or through other steps, that has run (plan order)."""
+        deps = dependencies(self.cfg.plan)
+        seen, todo = set(), list(deps.get(n, []))
+        while todo:
+            d = todo.pop()
+            if d not in seen:
+                seen.add(d)
+                todo.extend(deps.get(d, []))
+        return [d for d in sorted(seen) if d in self.artifacts]
+
+    # box: step_check
+    def raw_results_text(self, n: int) -> str:
+        """D65: the raw tool results every upstream step used (not only their text), for a verify step."""
+        parts = []
+        for d in self.upstream(n):
+            for r in self.artifacts[d]["meta"].get("tool_results", []):
+                parts.append(f"### Step {d} · {r['agent']} → {r['tool']} ({r['input'][:120]!r})\n{r['result']}")
+        if not parts:
+            return ""
+        return "## Raw tool results of the steps you check (plain code copied them)\n" + "\n\n".join(parts)
+
+    # box: step_check
+    def verifier_tools(self, agents: list[AgentSpec]) -> list[str]:
+        """D65: a verify step's helpers get the tools to re-check what the earlier steps made: calc for numbers, web
+        for cited facts, local run/read for code and files (the same sandbox gate as every local call)."""
+        reg = self.i.tools
+        names = [t for t in ("calc", *WEB_TOOLS, "local:Bash", "local:Read") if t in reg]
+        if self.local is not None:
+            for t in ("local:Bash", "local:Read"):
+                if t.removeprefix("local:") in getattr(self.local, "exposed", []) and t not in names:
+                    self.local.register(reg, t)
+                    names.append(t)
+        granted = []
+        for a in agents:
+            new = [t for t in names if t not in a.tools]
+            if new:
+                a.tools = [*a.tools, *new]
+                granted.append({"agent": a.name, "tools": new})
+        return granted
+
     # box: plan_step
     def grant_web_tools(self) -> None:
         """D32: a role whose missing tools or capability requests normalise to web_search gets web_search and
@@ -688,6 +750,15 @@ class PlanRunner:
                                           "amoeba.received": deps, "amoeba.input_chars": len(inputs),
                                           "amoeba.verification": verifier, "amoeba.rework": bool(rework)})
         extra = VERIFY_NOTE if verifier else ""
+        if verifier and on:                        # D65: a check step gets the tools and the raw results to re-check
+            granted = self.verifier_tools(agents)
+            extra += VERIFY_TOOLS_NOTE
+            raw = self.raw_results_text(n)
+            if raw:
+                inputs += "\n\n" + raw
+            self.i.trace.event("verifier_tools", {"amoeba.step": n, "amoeba.granted": granted,
+                                                  "amoeba.upstream": self.upstream(n),
+                                                  "amoeba.raw_results_chars": len(raw)})
         if self.opt.replan == "on" and deps and not summarising:                  # D63: a missing input is a trigger
             extra += MISSING_INPUT_NOTE
         if reverify:
@@ -757,6 +828,12 @@ class PlanRunner:
         if unused:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "attached unused: " + ", ".join(unused)) if x)
+        unchecked = verifier and on and parse_verdict_block(text)[0] == "PASS" and not w.calls \
+            and self.checkable(n)                      # D65: a PASS that re-checked nothing is an unverified check
+        if unchecked:
+            status = "partial" if status == "done" else status
+            reason = "; ".join(x for x in (reason, "unverified check: PASS with no re-checking tool call on "
+                                                   + self.checkable(n)) if x)
         if on:
             text = strip_not_needed(text) or text
         if found is not None:
@@ -797,7 +874,12 @@ class PlanRunner:
                                       for who, c in contract.items()},
                          "contract_missing": undeclared, "unused": unused,
                          "not_needed": found["not_needed"] if found else [], "causes": causes,
-                         "tool_calls": w.calls, "files_made": self.files_of(n)})
+                         "tool_calls": w.calls, "files_made": self.files_of(n),
+                         # D65: what the step's tools returned, for the steps that check it
+                         "tool_results": [{"agent": c["agent"], "tool": c["tool"], "input": c["input"],
+                                           "result": shorten(r or "", 1500)}
+                                          for c, r in zip(w.calls, w.tool_results) if c["ok"]][:8],
+                         "unverified_check": bool(unchecked)})
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
             # D38: both verdicts are kept; `verdict` is always the latest one

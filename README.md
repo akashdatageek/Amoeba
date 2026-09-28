@@ -159,6 +159,13 @@ marks what it left out (`[… N characters omitted …]`), and always keeps the 
 total, an `=` line, the last 20 lines of program output). Helpers are asked to report results and short excerpts,
 never whole lists.
 
+## Check steps can re-check (D65)
+
+With `--step-contract on`, a verify step gets calc, the web tools and local run / read (same sandbox gate) and the raw
+tool results of every step it builds on. It is asked to re-run code, open files and re-check at least one cited
+figure. A PASS with no re-checking tool call on code, files or cited figures is recorded as an unverified check and
+makes the step partial.
+
 ## Cost controls (D45–D48)
 
 ```bash

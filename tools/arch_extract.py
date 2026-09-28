@@ -420,7 +420,10 @@ BOXES: list[dict] = [
                "A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, "
                "earns one refine turn and then makes the step partial (not declared / attached unused).",
                "A verify step also sees each checked step's sources, tool calls, figure counts and files (D61). A "
-               "producer whose only problem is a missing capability is not sent back (rework_skipped)."],
+               "producer whose only problem is a missing capability is not sent back (rework_skipped).",
+               "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, "
+               "through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no "
+               "re-checking tool call on code, files or cited figures is an unverified check and makes it partial."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",
@@ -432,7 +435,10 @@ BOXES: list[dict] = [
                   "amoeba/interp/plan_runner.py::PlanRunner.contract",
                   "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
                   "amoeba/interp/plan_runner.py::tool_ok", "amoeba/interp/plan_runner.py::not_needed_marks",
-                  "amoeba/interp/plan_runner.py::PlanRunner.evidence_text"]),
+                  "amoeba/interp/plan_runner.py::PlanRunner.evidence_text",
+                  "amoeba/interp/plan_runner.py::PlanRunner.verifier_tools",
+                  "amoeba/interp/plan_runner.py::PlanRunner.raw_results_text",
+                  "amoeba/interp/plan_runner.py::PlanRunner.checkable"]),
     dict(id="action_obs", view="run", title="Action Observer (re-plan)", kind="llm", plan=None, ai="replanner",
          sentence="With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps "
                   "that have not run; plain code checks the change before it takes effect.",

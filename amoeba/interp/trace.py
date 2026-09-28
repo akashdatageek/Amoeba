@@ -29,6 +29,7 @@ EVENT_BOX = {
     "step_done": "step_check", "check_retry": "step_check", "rework": "step_check", "reverify": "step_check",
     "stale": "step_check", "refine": "step_check", "verification_inferred": "step_check",
     "step_contract": "step_check", "contract_check": "step_check", "rework_skipped": "step_check",   # D61
+    "verifier_tools": "step_check",                                                                   # D65
     "provenance": "provenance", "figure_ledger": "provenance",
     "summary_check": "plan_summary", "limitations_added": "plan_summary", "answer_assembled_by_code": "plan_summary",
     "capability_mapped": "tools", "web_tools": "tools", "web_search": "tools", "fetch_url": "tools",
