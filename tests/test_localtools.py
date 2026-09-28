@@ -476,3 +476,17 @@ def test_a_recorded_pick_is_reused_by_the_next_run_of_the_task(cache, skills, tm
 def test_the_cli_has_the_picks_flags():
     a = parse_args(["--toy", "--picks-file", "p.json", "--picks-only"])
     assert (a.picks_file, a.picks_only) == ("p.json", True)
+
+
+def test_a_skill_script_the_step_ran_is_not_a_missing_claimed_file(tmp_path):
+    """Smoke-run defect: 'recalc.py was run and the file saved' named the xlsx skill's own script; it lives under
+    workspace/skills (left out of the team's files), so the step was marked incomplete for a file it never claimed
+    to make."""
+    from amoeba.localtools.toolbox import LocalToolbox
+    box = LocalToolbox.__new__(LocalToolbox)
+    box.workspace = tmp_path
+    (tmp_path / "skills" / "xlsx" / "scripts").mkdir(parents=True)
+    (tmp_path / "skills" / "xlsx" / "scripts" / "recalc.py").write_text("#")
+    (tmp_path / "fuel.xlsx").write_text("x")
+    box._snapshot = lambda: ["fuel.xlsx"]
+    assert box.has_file("recalc.py") and box.has_file("fuel.xlsx") and not box.has_file("other.xlsx")

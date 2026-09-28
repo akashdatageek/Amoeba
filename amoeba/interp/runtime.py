@@ -38,7 +38,7 @@ class _Msg:
 def with_unavailable(agent: AgentSpec) -> str:
     """The agent's suggestions plus one line per tool its role named that is not registered (D21), and how to use
     each pool tool Box 3 attached to it (D56)."""
-    lines = [UNAVAILABLE.format(name=t) for t in agent.missing_tools] + pool_tool_notes(agent)
+    lines = [UNAVAILABLE.format(name=t) for t in agent.missing_tools if t not in agent.tools] + pool_tool_notes(agent)
     return "\n".join([agent.suggestions, *lines]) if lines else agent.suggestions
 
 
@@ -118,7 +118,7 @@ def grant_web(cfg: TeamConfig, trace: TraceWriter) -> None:
         if not hits:
             continue
         a.tools = list(dict.fromkeys([*a.tools, *WEB_TOOLS]))
-        a.missing_tools = [t for t in a.missing_tools if t not in hits]
+        a.missing_tools = [t for t in a.missing_tools if t not in hits and t not in WEB_TOOLS]
         trace.event("capability_mapped", {"gen_ai.agent.id": a.agent_id, "gen_ai.agent.name": a.name,
                                           "amoeba.requested": hits, "amoeba.canonical": "web_search",
                                           "amoeba.granted": list(WEB_TOOLS), "amoeba.equal_tools": True})

@@ -209,3 +209,39 @@ def test_parse_decision_and_the_cli_flag():
     assert (d["decision"], d["reason"], d["steps"], d["readable"]) == ("ADD_STEP", "because", "", True)
     assert parse_decision("nothing")["decision"] == "CONTINUE"
     assert parse_args(["--toy"]).replan == "off" and cli_plan_options(parse_args(["--toy", "--replan", "on"])).replan == "on"
+
+
+REVISE_RENUMBERED = (   # the smoke run's shape: the old answer step 4 becomes a work step, the writer moves to 5
+    "2. [Cost Analyst]: Confirm the prices\n   kind: work\n   covers: R2\n   depends_on: 1\n   do: re-check\n"
+    "   output: prices\n   done_when: confirmed\n\n"
+    "3. [Schema Engineer]: Prototype and test\n   kind: work\n   covers: R3\n   depends_on: 2\n   do: test\n"
+    "   output: report\n   done_when: tested\n\n"
+    "4. [Cost Analyst]: Cross-check numbers\n   kind: verify\n   covers: R2, R3\n   depends_on: 3\n   do: check\n"
+    "   output: verdict\n   done_when: checked\n\n"
+    "5. [Memo Writer]: Assemble the memo\n   kind: work\n   covers: R1, R2, R3, R4\n   depends_on: 4\n"
+    "   do: assemble\n   output: memo\n   done_when: written")
+
+
+def test_a_revision_that_moves_the_answer_step_is_accepted_and_its_new_step_writes_the_answer(
+        task, envelope, trace, tools, tmp_path):
+    """Smoke-run defect: the old answer step 4 was made to wait for the new step 5, which waits for 4 — a cycle,
+    and the revision was rejected. The answer step is now found again in the proposed plan."""
+    llm, cfg, ep = run(task, envelope, trace, tools, tmp_path, worker(lambda n: BLOCKED_1 if n == "1" else ""),
+                       [decision("REVISE_REMAINING", REVISE_RENUMBERED), decision("CONTINUE")])
+    [val, *_] = trace.events("replan_validated")
+    assert val["amoeba.accepted"], val["amoeba.errors"]
+    assert [s["step"] for s in ep.steps] == [1, 2, 3, 4, 5]
+    assert ep.answer.startswith("OUT-5") and len(llm.calls_of("plan_summariser")) == 1
+    assert ep.replan["requirements"]["R2"]["steps"] == [2, 4]          # the producers, not the answer step
+
+
+def test_a_granted_web_tool_is_never_announced_as_unavailable(task, envelope, trace, tools, tmp_path):
+    """Smoke-run defect: fetch_url was granted (D32) but still on the role's missing tools, so the prompt said it
+    was unavailable and the helper wrote BLOCKED: fetch_url."""
+    from amoeba.tools.web import WEB_TOOLS
+    llm, cfg, ep = run(task, envelope, trace, tools, tmp_path, worker(), [decision("CONTINUE")])
+    for a in cfg.agents.values():
+        a.missing_tools = [*a.missing_tools, "fetch_url"]
+        a.tools = [*a.tools, *WEB_TOOLS]
+    from amoeba.interp.runtime import with_unavailable
+    assert all("fetch_url is unavailable" not in with_unavailable(a) for a in cfg.agents.values())

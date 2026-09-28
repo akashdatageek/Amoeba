@@ -377,7 +377,10 @@ class LocalToolbox:
         if p is not None and p.is_file():
             return True
         base = Path(name).name
-        return any(Path(f).name == base for f in self._snapshot())
+        if any(Path(f).name == base for f in self._snapshot()):
+            return True
+        skills = self.workspace / "skills"                # a skill's own script the step ran (recalc.py) is no lie
+        return skills.is_dir() and any(f.is_file() for f in skills.rglob(base))
 
     def finish(self) -> dict:
         """Copy the workspace to runs/<id>/artifacts/files/ (skills/ left out), close the server, and report."""

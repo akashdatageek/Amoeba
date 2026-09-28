@@ -438,7 +438,7 @@ class PlanRunner:
         for a in agents:
             have = lambda q: q.get("status") == "filled" or any(
                 x and x in a.tools for x in (q["name"], q.get("canonical"), normalise(q["name"])[0]))
-            needs = list(dict.fromkeys([*a.missing_tools, *(q["name"] for q in asked
+            needs = list(dict.fromkeys([*(t for t in a.missing_tools if t not in a.tools), *(q["name"] for q in asked
                                                              if q.get("for_role") == a.name and not have(q))]))
             items = [{"name": p["name"], "aliases": [p["name"], p.get("request", "")], "tools": [p["name"]]}
                      for p in a.pool if p["kind"] == "tool" and p.get("source") != "local"]
@@ -617,7 +617,7 @@ class PlanRunner:
             if not hits:
                 continue
             a.tools = list(dict.fromkeys([*a.tools, *WEB_TOOLS]))
-            a.missing_tools = [t for t in a.missing_tools if t not in hits]
+            a.missing_tools = [t for t in a.missing_tools if t not in hits and t not in WEB_TOOLS]
             self.i.trace.event("capability_mapped", {"gen_ai.agent.id": a.agent_id, "gen_ai.agent.name": a.name,
                                                      "amoeba.requested": hits, "amoeba.canonical": "web_search",
                                                      "amoeba.granted": list(WEB_TOOLS)})
@@ -1319,7 +1319,8 @@ class PlanRunner:
         user = render(template or PROMPT.plan_step, task=self.task.prompt, deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
                       step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
                       tools=str(tools), turns_left=turns_left,
-                      unavailable="\n".join([UNAVAILABLE.format(name=t) for t in agent.missing_tools]
+                      unavailable="\n".join([UNAVAILABLE.format(name=t) for t in agent.missing_tools
+                                              if t not in agent.tools]
                                              + pool_tool_notes(agent)))   # D56
         c = self.current_contract.get(agent.name)
         if c and (c["needs"] or c["items"]):     # D61: what plain code will check, on the helper's prompt
@@ -1629,12 +1630,40 @@ class PlanRunner:
         for n, targets in change.get("feeds", {}).items():
             for t in targets:
                 by[t] = by[t].model_copy(update={"depends_on": list(dict.fromkeys([*by[t].depends_on, n]))})
-        if self.answer_n is not None and self.answer_n in by and self.answer_n not in self.artifacts:
-            a = by[self.answer_n]                       # the answer step waits for every new step
-            by[self.answer_n] = a.model_copy(update={"depends_on": list(dict.fromkeys([*a.depends_on, *sorted(new)]))})
+        final = self.final_step(by)
+        if final is not None and final not in self.artifacts:
+            later = self.dependants(by, final)           # the answer step waits for every new step not built on it
+            a = by[final]
+            add = [n for n in sorted(new) if n != final and n not in later]
+            by[final] = a.model_copy(update={"depends_on": list(dict.fromkeys([*a.depends_on, *add]))})
         plan = [by[n] for n in sorted(by)]
         plan, _ = relink(plan, written)
         return plan
+
+    # box: action_obs
+    def final_step(self, by: dict[int, PlanStep]) -> int | None:
+        """The step that writes the answer in a proposed plan: a revision may renumber it (the old answer step
+        rewritten as another step, the summariser's step moved to a new number), so it is found again: the
+        summariser's step that no other step builds on, else the old answer step."""
+        summ = {a.agent_id for a in self.agents.values() if a.is_summariser}
+        used = {d for s in by.values() for d in s.depends_on}
+        sinks = [n for n in sorted(by) if n not in used and summ & set(by[n].agent_ids)]
+        if sinks:
+            return sinks[-1]
+        return self.answer_n if self.answer_n in by else None
+
+    # box: action_obs
+    @staticmethod
+    def dependants(by: dict[int, PlanStep], n: int) -> set[int]:
+        """Every step that builds on step n, directly or through other steps."""
+        out, todo = set(), [n]
+        while todo:
+            x = todo.pop()
+            for k, s in by.items():
+                if x in s.depends_on and k not in out:
+                    out.add(k)
+                    todo.append(k)
+        return out
 
     # box: action_obs
     def apply_decision(self, dec: dict, change: dict) -> None:
@@ -1669,6 +1698,8 @@ class PlanRunner:
             self.steps = {number(s): s for s in self.cfg.plan}
             self.max_num = max(self.max_num, *self.steps)
             self.added_steps += change.get("added", 0)
+            if self.answer_n not in self.artifacts:      # a revision may have moved the answer step
+                self.answer_n = self._answer_step(waves(self.cfg.plan))
             for r, why in change.get("unmet", {}).items():
                 self.unmet[r] = why
             for n in change["drop"]:                     # a requirement only the dropped step covered is not met
@@ -1721,13 +1752,15 @@ class PlanRunner:
     def requirement_status(self) -> dict[str, dict]:
         """D63: each requirement's final status — met (a covering step is done, and no failing check says
         otherwise), partly (only partial or incomplete covering steps), not met (no covering step ran, or a re-plan
-        dropped it) — and the step(s) that met it."""
+        dropped it) — and the step(s) that met it. The answer step counts only when no other step covers it."""
         out = {}
         for r in self.cfg.requirements or {}:
             if r in self.unmet:
                 out[r] = {"status": "not met", "steps": [], "why": self.unmet[r]}
                 continue
             cover = [n for n, a in sorted(self.artifacts.items()) if r in a["meta"].get("covers", [])]
+            made = [n for n in cover if n != self.answer_n]   # the answer step only restates: a producer counts first
+            cover = made or cover
             done = [n for n in cover if self.artifacts[n]["meta"]["status"] == "done"
                     and self.artifacts[n]["meta"].get("verdict") != "FAIL"]
             out[r] = {"status": "met" if done else "partly" if cover else "not met", "steps": done or cover}

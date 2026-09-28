@@ -150,7 +150,9 @@ planner call proposes one decision (CONTINUE, REVISE_REMAINING, ADD_STEP, REASSI
 steps that have not run. Plain code validates it (finished steps never change, Box 2 rules, no cycles, new capability
 requests through the toolbox step, at most 2 re-plans and 3 added steps per run, one added role) and applies it, or
 logs it as rejected. Each plan version is saved as `plan.v<k>.json` with its diff; result.json `replan` lists every
-decision and each requirement's final status (met / partly / not met).
+decision and each requirement's final status (met / partly / not met; the answer step counts only when no other
+step covers it). A revision may renumber the step that writes the answer; plain code finds it again in the
+proposed plan, so such a revision is not rejected as a cycle.
 
 ## Shortened outputs keep the result (D64)
 
