@@ -178,6 +178,13 @@ For a task that asks for today's, the current or the latest value, research step
 official figure with its date, and one more search when it is dated. When the newest as-of date in the outputs is more
 than 3 days before the run, plain code adds "Possibly not the latest (dated …)" to the answer's Limitations.
 
+## Box 2 sees the real toolbox (D68)
+
+With the d24 prompts, the Planner and both observers are shown every tool Box 3 will have (installed tools, web tools,
+local tools and document skills, the pool) and how a role gets each. A document format or a house style is a skill;
+anything only the user can supply is an open question or a capability request. The intake check knows more
+deliverable verbs and does not cut a phrase inside an email address or a decimal.
+
 ## Cost controls (D45–D48)
 
 ```bash

@@ -31,9 +31,20 @@ DELIVERABLE_VERBS = {
     "assess": r"assess(?:es|ed|ing|ment|ments)?", "prototype": r"prototyp(?:e|es|ed|ing)",
     "test": r"test(?:s|ed|ing)?", "gather": r"gather(?:s|ed|ing)?", "build": r"(?:build(?:s|ing)?|built)",
     "plan": r"plan(?:s|ned|ning)?",
+    # D68: the verbs of everyday deliverables too
+    "run": r"(?:run(?:s|ning)?|ran)", "convert": r"convert(?:s|ed|ing)?", "email": r"e-?mail(?:s|ed|ing)?",
+    "make": r"(?:make(?:s)?|making|made)", "save": r"sav(?:e|es|ed|ing)", "write": r"(?:writ(?:e|es|ing)|wrote|written)",
+    "list": r"list(?:s|ed|ing)?", "read": r"read(?:s|ing)?", "compute": r"comput(?:e|es|ed|ing)",
+    "compare": r"compar(?:e|es|ed|ing)", "find": r"(?:find(?:s|ing)?|found)", "calculate": r"calculat(?:e|es|ed|ing)",
+    "report": r"report(?:s|ed|ing)?", "create": r"creat(?:e|es|ed|ing)", "draft": r"draft(?:s|ed|ing)?",
+    "send": r"(?:send(?:s|ing)?|sent)", "summarise": r"summari[sz](?:e|es|ed|ing)", "cite": r"cit(?:e|es|ed|ing)",
+    "turn": r"turn(?:s|ed|ing)?", "put": r"put(?:s|ting)?", "show": r"show(?:s|ed|ing|n)?",
 }
-_VERB = re.compile(r"\b(" + "|".join(DELIVERABLE_VERBS.values()) + r")\b", re.I)
-_OBJECT_END = re.compile(r"[.;:!?,\n(]|\b(?:and|then|or|but|so)\b", re.I)
+# D68: a word inside a file name, address or path ("report.xlsx", "anna@report.com") is not a verb
+_VERB = re.compile(r"(?<![.@/-])\b(" + "|".join(DELIVERABLE_VERBS.values()) + r")\b(?![.@/-]\w)", re.I)
+# D68: a phrase ends at sentence punctuation (followed by a space or the end), a comma followed by a space, a new line,
+# a bracket or a joining word; not at the dot of an email address or a decimal, nor the comma of 1,850
+_OBJECT_END = re.compile(r"[.;:!?](?=\s|$)|,(?=\s)|\n|\(|\b(?:and|then|or|but|so)\b", re.I)
 STOP = set("a an the of to in on at by as for with from into over per and or is are be it its this that these "
            "those each both all any our your their we you they them which what how".split())
 OBJECT_WORDS = 6

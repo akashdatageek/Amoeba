@@ -24,7 +24,7 @@ from amoeba.interp.trace import TraceWriter
 from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, describe_api_error
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
-from amoeba.task.draft import DraftError, draft_team
+from amoeba.task.draft import DraftError, draft_team, toolbox_text
 from amoeba.task.evaluate import rubric_score, score
 from amoeba.task.instantiate import instantiate
 from amoeba.task.models import RunResult, Task
@@ -73,8 +73,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             draft = saved_draft.draft
             trace.event("draft_reused", {"amoeba.draft_source": saved_draft.source, "amoeba.task_id": task.id})
         else:
+            toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None)
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
-                               quality_gate=quality_gate)
+                               quality_gate=quality_gate, toolbox=toolbox)                     # D68
             if ask is not None:       # D53: the user reads the draft's intake before Box 3 runs
                 print(intake_text(draft))
                 clarification = ask_user(ask)
@@ -83,7 +84,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     (run_dir / "plan.first.json").write_text(draft.model_dump_json(indent=2), encoding="utf-8")
                     task = task.model_copy(update={"prompt": f"{task.prompt}\n\nUser clarification: {clarification}"})
                     draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
-                                       quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft)
+                                       quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
+                                       toolbox=toolbox)
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         requests = [q.model_copy(deep=True) for q in draft.capability_requests]

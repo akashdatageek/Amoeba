@@ -152,7 +152,10 @@ BOXES: list[dict] = [
                "At most three rounds are run.",
                "With our prompts (d24) it may also list Open Questions: each ambiguity in the job and the assumption "
                "it took. With --interactive the person sees the requirements, assumptions and open questions and "
-               "types continue, or a correction that is added to the job before one more round."],
+               "types continue, or a correction that is added to the job before one more round.",
+               "D68: with our prompts it and both checkers are shown every tool the team will really have (calc, web "
+               "search and fetch, the local tools and skills when on, and that a tool pool exists); a document format "
+               "or a house style is a skill; what only the user can supply is an open question or a request."],
          proposes="Helpers (name, description, tools, suggestions, instructions), the step plan, and replies to the "
                   "checkers' feedback.",
          disposes="Nothing is accepted yet: the draft goes to the two checkers, and only the last draft is cleaned "
@@ -162,7 +165,8 @@ BOXES: list[dict] = [
          alt_prompts=["d24_planner_system", "d24_create_team", "d24_create_team_format"],
          output_checks=["amoeba/task/draft.py::_sections", "amoeba/interp/trace.py::TracedLLM.chat_sections", "amoeba/task/parsers.py::require"], ai_entry="amoeba/task/draft.py::_sections",
          anchors=[("amoeba/task/draft.py::draft_team", None, "# state 1"),
-                  "amoeba/task/parsers.py::parse_open_questions", "scripts/run_task.py::ask_user"]),
+                  "amoeba/task/parsers.py::parse_open_questions", "scripts/run_task.py::ask_user",
+                  "amoeba/task/draft.py::toolbox_text"]),
     dict(id="split", view="plan", title="Split sections", kind="code", plan="Split sections",
          sentence="Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
          what=["Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts.",
@@ -222,7 +226,9 @@ BOXES: list[dict] = [
                "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one "
                "summariser, a checking step done by a helper that did not produce what it checks, and task "
                "coverage: every number in the task and every deliverable verb (deliver, estimate, assess, prototype, "
-               "test, gather, build, plan) must reach a requirement or a given.",
+               "test, gather, build, plan, and since D68 run, convert, email, make, save, write, list, read, "
+               "compute, compare and more) must reach a requirement or a given; a phrase ends at sentence "
+               "punctuation, not inside an email address or a decimal.",
                "With the quality gate on, a draft failing a must-have check goes back to the planner for one more "
                "round with the failed checks listed, within the round cap."],
          proposes="The final draft text.",
