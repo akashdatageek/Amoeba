@@ -3880,7 +3880,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "e73ba86",
+  "checked_at": "1042b61",
   "facts": {
    "anchors": [
     {
@@ -3895,6 +3895,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.answer_findings",
       "amoeba/interp/plan_runner.py::PlanRunner.answer_gaps",
       "amoeba/interp/plan_runner.py::PlanRunner.checkable",
+      "amoeba/interp/plan_runner.py::PlanRunner.computed_results",
       "amoeba/interp/plan_runner.py::PlanRunner.contract",
       "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
       "amoeba/interp/plan_runner.py::PlanRunner.contract_findings",
@@ -3913,6 +3914,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
       "amoeba/interp/plan_runner.py::PlanRunner.upstream",
       "amoeba/interp/plan_runner.py::PlanRunner.verifier_tools",
+      "amoeba/interp/plan_runner.py::PlanRunner.web_ids",
       "amoeba/interp/plan_runner.py::_Work",
       "amoeba/interp/plan_runner.py::blocked_marks",
       "amoeba/interp/plan_runner.py::number",
@@ -3921,6 +3923,8 @@
       "amoeba/interp/plan_runner.py::step_checks",
       "amoeba/interp/plan_runner.py::strip_not_needed",
       "amoeba/interp/provenance.py::check_provenance",
+      "amoeba/interp/provenance.py::computed_values",
+      "amoeba/interp/provenance.py::strip_unverified",
       "amoeba/interp/shorten.py::shorten",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/localtools/claims.py::claimed_files",
@@ -4165,7 +4169,7 @@
     [
      "decide",
      "if refine",
-     "set text = self._text(agents, w)"
+     "set exact = computed_values(self.computed_results(w))"
     ],
     [
      "decide",
@@ -4575,22 +4579,22 @@
    ],
    "prompts": {
     "plan_critique": "404c588e8d12",
-    "plan_step": "954dae673ae6",
+    "plan_step": "54bff1232658",
     "plan_step_system": "daf8cf4bba11"
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "4807fe0a176a2df2",
+  "facts_hash": "0f884ddf68cb1829",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search also gets web_search and fetch_url.",
-   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most 2 rounds (--collab critique); the step keeps one output.",
+   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); the step keeps one output.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
   ]
  },
@@ -5289,7 +5293,7 @@
   ]
  },
  "provenance": {
-  "checked_at": "f0b9d67",
+  "checked_at": "1042b61",
   "facts": {
    "anchors": [
     {
@@ -5297,11 +5301,13 @@
       "amoeba/interp/provenance.py::_derived",
       "amoeba/interp/provenance.py::_line_numbers",
       "amoeba/interp/provenance.py::_norm",
+      "amoeba/interp/provenance.py::computed_values",
+      "amoeba/interp/provenance.py::equals_computed",
       "amoeba/interp/provenance.py::numbers_in"
      ],
-     "doc": "",
+     "doc": "computed_results: D66 — the step's calc and local-tool results (a number equal to one is derived, whatever",
      "key": "amoeba/interp/provenance.py::check_provenance",
-     "signature": "check_provenance(text: str, allowed_ids: set[str], task_text: str='', inputs_text: str='', tool_results: list[str] | None=None) -> dict"
+     "signature": "check_provenance(text: str, allowed_ids: set[str], task_text: str='', inputs_text: str='', tool_results: list[str] | None=None, computed_results: list[str] | None=None, web_ids: set[str] | None=None) -> dict"
     },
     {
      "callees": [
@@ -5319,6 +5325,22 @@
      "doc": "The numbers a text states as figures: list markers, [S#] tags and labels (step 3, R2, p95) left out.",
      "key": "amoeba/interp/provenance.py::claim_numbers",
      "signature": "claim_numbers(text: str) -> set[str]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/provenance.py::equals_computed"
+     ],
+     "doc": "D66: remove an [unverified] tag that stands right after a number equal to a calc or local-tool result of the",
+     "key": "amoeba/interp/provenance.py::strip_unverified",
+     "signature": "strip_unverified(text: str, values: list[float]) -> tuple[str, int]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/provenance.py::_float"
+     ],
+     "doc": "D66: every number in the calc and local-tool results of a step, as floats.",
+     "key": "amoeba/interp/provenance.py::computed_values",
+     "signature": "computed_values(results: list[str] | None) -> list[float]"
     }
    ],
    "checks": [],
@@ -5330,8 +5352,23 @@
     ],
     [
      "decide",
+     "if equals_computed(m.group(1), values)",
+     "set n += 1"
+    ],
+    [
+     "decide",
+     "if equals_computed(tok, exact)",
+     "set st = 'derived'"
+    ],
+    [
+     "decide",
      "if good",
      "set st = 'cited'"
+    ],
+    [
+     "decide",
+     "if good and n in given and (n not in computed) and (set(good) <= web_ids)",
+     "set st = 'given'"
     ],
     [
      "decide",
@@ -5347,6 +5384,11 @@
      "decide",
      "if n in inherited",
      "set st = 'inherited'"
+    ],
+    [
+     "fallback",
+     "m.group(2) if m.group(2).strip() else ''",
+     "choose value"
     ],
     [
      "fallback",
@@ -5367,6 +5409,16 @@
      "filter",
      "keep only if t.lower() != '[unverified]'",
      "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if v is not None",
+     "drop the rest"
+    ],
+    [
+     "stop",
+     "if not values",
+     "return (text, 0)"
     ]
    ],
    "kind": "code",
@@ -5374,8 +5426,8 @@
    "prompts": {},
    "title": "Where each figure came from"
   },
-  "facts_hash": "42e593b70cb23441",
-  "seed_hash": "00ba2a1fa7bdad55",
+  "facts_hash": "5cd862a6f762b83f",
+  "seed_hash": "487cebdbfb5a1b8a",
   "sentence": "Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
   "source": "hand",
   "what": [
@@ -5383,6 +5435,7 @@
    "Numbers from the task, from a calculation shown or run, and from the step's inputs are counted apart.",
    "A source id the step never saw is counted as a made-up citation. A local tool's result has a source id too (D61), so a figure taken from it is cited.",
    "A run-wide ledger keeps each figure's first status and step, so a figure that entered untagged stays untagged however often later steps or the answer copy it.",
+   "D66: a number equal to a calc or local-tool result of the same step counts as derived even when tagged [unverified], and plain code removes that tag; a number given in the task with only a web source tag stays 'given' and is flagged for the refine turn.",
    "It only measures; nothing is rejected on these counts."
   ]
  },
