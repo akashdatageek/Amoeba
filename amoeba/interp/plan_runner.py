@@ -16,7 +16,8 @@ from pathlib import Path
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
-from amoeba.interp.provenance import check_provenance, claim_numbers, numbers_in
+from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_values, numbers_in,
+                                      strip_unverified)
 from amoeba.interp.shorten import shorten
 from amoeba.llm.profiles import role_group
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
@@ -212,6 +213,9 @@ def refine_findings(checks: list[dict], prov: dict) -> tuple[list[str], list[str
         prov_items.append(f"{prov['untagged']} figure(s) carry no [S#] or [unverified] tag: "
                           f"{', '.join(prov.get('untagged_examples', [])[:10])}. Tag each: [S#] for a tool result you "
                           f"have, [unverified] for your own knowledge, or show the calculation.")
+    if prov.get("given_with_web_tag"):                                              # D66
+        prov_items.append(f"these numbers are given in the task, not found in a web source: "
+                          f"{', '.join(prov['given_with_web_tag'][:10])}. Write them without a source tag.")
     if prov.get("hallucinated_citations"):
         prov_items.append(f"these citations name sources you never saw: {', '.join(prov['hallucinated_citations'])}. "
                           f"Cite only [S#] ids from your tool results or your inputs, or mark the figure [unverified].")
@@ -780,19 +784,24 @@ class PlanRunner:
         collab = self.critique(step, n, agents[0], agents[1:], inputs, extra, w, template) \
             if writers is not agents else None
         agents_all, agents = agents, writers
-        text = self._text(agents, w)
+        exact = computed_values(self.computed_results(w))                          # D66
+        text, removed = strip_unverified(self._text(agents, w), exact)
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
         own, visible = self._sources(n, deps)
-        prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)   # D33
+        prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,   # D33
+                                self.computed_results(w), self.web_ids())
         found = self.contract_check(contract, w, text) if contract else None                # D61 (G1, G2)
         produced = self.answer_gaps(n, text) if on and answer_step else None               # D61 (G5)
         items = (self.contract_findings(found) if found else []) + (self.answer_findings(produced) if produced else [])
         refine = self.refine(step, n, agents, inputs, extra, w, template, checks, prov, items)   # D42 / D50 / D61
         if refine:
-            text = self._text(agents, w)
+            exact = computed_values(self.computed_results(w))
+            text, again = strip_unverified(self._text(agents, w), exact)
+            removed += again
             checks = step_checks(step, text, deps, self.artifacts, verifier)
             own, visible = self._sources(n, deps)
-            prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)
+            prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,
+                                    self.computed_results(w), self.web_ids())
             found = self.contract_check(contract, w, text) if contract else None
             produced = self.answer_gaps(n, text) if produced is not None else None
             refine["after"] = refine_counts(checks, prov, len((self.contract_findings(found) if found else [])
@@ -863,6 +872,7 @@ class PlanRunner:
                 "blocked_canonical": sorted({normalise(g)[0] for g in gaps}), "sources": own,
                 "visible_source_ids": sorted(visible), "provenance": prov, "figure_origins": origins,
                 "checks": checks, "retried": retried, "refine": refine,
+                "unverified_tags_removed": removed,                                # D66
                 "refine_reason": refine["reason"] if refine else "",
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
                 "stale": False, "stale_because": [],
@@ -902,6 +912,17 @@ class PlanRunner:
                                                           "first_issues": meta["issues"], "reworked": reworked})
                 self.mark_stale(reworked, verifier_step=n)                           # D39
         return self.artifacts[n]
+
+    @staticmethod
+    def computed_results(w: "_Work") -> list[str]:
+        """D66: what the step's calc and local tools returned (a number equal to one of them is derived)."""
+        return [r for c, r in zip(w.calls, w.tool_results) if c["ok"] and (c["tool"] == "calc"
+                                                                          or c["tool"].startswith("local:"))]
+
+    def web_ids(self) -> set[str]:
+        """D66: the ids of search and fetched-page sources in the run."""
+        books = [b for b in (self.web, getattr(self.pool, "book", None), getattr(self.local, "book", None)) if b]
+        return {x["id"] for b in books for x in getattr(b, "sources", []) if x.get("kind") in ("search", "fetch")}
 
     def _sources(self, n: int, deps: list[int]) -> tuple[list[dict], set[str]]:
         """The step's own sources and every source id it could have seen (its own and its inputs')."""

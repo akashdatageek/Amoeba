@@ -469,10 +469,14 @@ BOXES: list[dict] = [
                "id too (D61), so a figure taken from it is cited.",
                "A run-wide ledger keeps each figure's first status and step, so a figure that entered untagged stays "
                "untagged however often later steps or the answer copy it.",
+               "D66: a number equal to a calc or local-tool result of the same step counts as derived even when "
+               "tagged [unverified], and plain code removes that tag; a number given in the task with only a web "
+               "source tag stays 'given' and is flagged for the refine turn.",
                "It only measures; nothing is rejected on these counts."],
          proposes="Nothing.", disposes="Plain code counts; the totals go to result.json.",
          anchors=["amoeba/interp/provenance.py::check_provenance", "amoeba/interp/provenance.py::total",
-                  "amoeba/interp/provenance.py::claim_numbers"]),
+                  "amoeba/interp/provenance.py::claim_numbers", "amoeba/interp/provenance.py::strip_unverified",
+                  "amoeba/interp/provenance.py::computed_values"]),
     dict(id="artifacts", view="run", title="Step artifacts", kind="data", plan=None,
          sentence="Each step's output saved as a file, with who wrote it, what it saw, its status and its sources.",
          what=["runs/<id>/artifacts/step_<n>.md holds the text; step_<n>.json the step, wave, roles, inputs, "

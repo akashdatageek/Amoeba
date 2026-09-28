@@ -166,6 +166,12 @@ tool results of every step it builds on. It is asked to re-run code, open files 
 figure. A PASS with no re-checking tool call on code, files or cited figures is recorded as an unverified check and
 makes the step partial.
 
+## Provenance fixes (D66)
+
+A number equal to a calc or local-tool result of the same step counts as derived, and an `[unverified]` tag next to
+it is removed by plain code. A number given in the task that carries only a web source tag stays "given" and is
+flagged for the refine turn.
+
 ## Cost controls (D45–D48)
 
 ```bash
