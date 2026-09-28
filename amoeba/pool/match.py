@@ -55,3 +55,20 @@ def rank(q, entries: list[dict], top: int = 5) -> list[tuple[int, dict]]:
             scored.append((score, e))
     scored.sort(key=lambda x: (-x[0], x[1]["id"]))
     return scored[:top]
+
+
+# D69: document formats a vetted local skill exists for, and the words that name each in a request
+FORMATS = {"pptx": ("pptx", "powerpoint", "presentation", "slide", "slides", "deck", "slideshow"),
+           "xlsx": ("xlsx", "excel", "spreadsheet", "workbook"),
+           "docx": ("docx", "word document", "word doc", "word file"),
+           "pdf": ("pdf",)}
+
+
+# box: toolbox
+def document_format(q) -> str | None:
+    """D69: the document format a request names (in its name, standard name, what it does or its output), or None."""
+    text = " ".join([q.name, q.canonical, q.what_it_does, q.output]).lower().replace("_", " ").replace("-", " ")
+    for fmt, names in FORMATS.items():
+        if any(re.search(rf"\b{re.escape(n)}\b", text) for n in names):
+            return fmt
+    return None

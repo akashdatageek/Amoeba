@@ -212,8 +212,11 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                 out["reason"] = "no_helper"
             else:
                 top = int(lim["max_candidates"])
-                ranked = rank(q, entries, int(lim.get("vet_depth", 10 * top)))
-                if local is not None:         # D59: local candidates join the internet ones
+                fmt = local.format_skill(q) if local is not None else None     # D69: a document format's skill
+                ranked = [] if fmt else rank(q, entries, int(lim.get("vet_depth", 10 * top)))
+                if fmt:
+                    ranked = [(100, fmt)]
+                elif local is not None:       # D59: local candidates join the internet ones
                     near = local.candidates(q, top)
                     ids = {e["id"] for _, e in near}
                     ranked = [x for x in ranked if x[1]["id"] not in ids]
@@ -239,13 +242,16 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                                            "amoeba.pool.candidates": [{"id": e["id"], "kind": e["kind"], "score": s}
                                                                       | ({"source": "local"} if e.get("source") == "local"
                                                                          else {}) for s, e in shown],
-                                           "amoeba.pool.refused": refused})
+                                           "amoeba.pool.refused": refused}
+                           | ({"amoeba.pool.format_skill": fmt["name"]} if fmt else {}))
                 if not shown:
                     out["reason"] = "all_refused" if ranked else "no_candidates"   # no AI call either way
                 else:
                     before = trace.n_llm_calls
-                    chosen = pick(traced, q, ", ".join(a.name for a in helpers), steps_of(cfg, helpers),
-                                  [e for _, e in shown], seed, max_tokens=int(lim.get("pick_max_tokens", 0)) or None)
+                    # D69: a request that names a document format gets the vetted local skill for it, no AI pick
+                    chosen = fmt["id"] if fmt and shown else \
+                        pick(traced, q, ", ".join(a.name for a in helpers), steps_of(cfg, helpers),
+                             [e for _, e in shown], seed, max_tokens=int(lim.get("pick_max_tokens", 0)) or None)
                     summary["llm_calls"] += trace.n_llm_calls - before
                     entry = next((e for _, e in shown if e["id"] == chosen), None)
                     out["pool_id"] = chosen or ""

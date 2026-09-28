@@ -415,3 +415,39 @@ def test_a_weak_local_match_does_not_crowd_out_a_better_internet_one(skills, tmp
     assert any(c.get("source") == "local" for c in cands[1:])             # the weak local ones follow, by score
     assert [c["score"] for c in cands] == sorted((c["score"] for c in cands), reverse=True)
     b.finish()
+
+
+# ---- D69: a document format's local skill first ------------------------------------------------------------------
+def test_the_deck_request_gets_the_pptx_skill_without_an_ai_pick(tmp_path, skills, task, envelope):
+    """Round-1 deck: 'presentation-generator' (a tool request) was filled by an outside slide service that creates
+    decks in its own account (refused: side_effect). The vetted local pptx skill is now chosen by plain code."""
+    d = tmp_path / "pool"
+    entries = [tool("dev.slideforge/slideforge", "SlideForge: presentation generator, turns an outline into slides")]
+    (d / "index.json").write_text(json.dumps({"refreshed_at": "2026-09-26T00:00:00+00:00", "entries": entries}))
+    cfg = draft_cfg(task, envelope, fx(CAP).replace("web_search", "presentation-generator"))
+    b = LocalToolbox(lsetup(skills), tmp_path / "run", TraceWriter(None))
+    llm = mock(pool_picker=["dev.slideforge/slideforge"])
+    q = req("presentation-generator", what="builds a 5-slide PowerPoint deck with a chart and speaker notes")
+    reg, summary = stock_toolbox([q], cfg, default_registry(), llm, b.trace, pool_setup(d), local=b)
+    assert (q.status, q.pool_id) == ("filled", "local:skill:anthropics_skills/pptx")
+    assert llm.calls_of("pool_picker") == []                                   # plain code chose it
+    [match] = b.trace.events("pool_match")
+    assert match["amoeba.pool.format_skill"] == "pptx"
+    assert [c["id"] for c in match["amoeba.pool.candidates"]] == ["local:skill:anthropics_skills/pptx"]
+    researcher = next(a for a in cfg.agents.values() if a.name == "Researcher")
+    assert any(p["name"] == "pptx" for p in researcher.pool) and "local:Bash" in researcher.tools
+    b.finish()
+
+
+def test_a_request_that_names_no_format_still_goes_to_the_picker(cache, skills, tmp_path, task, envelope):
+    from amoeba.pool.match import document_format
+    assert document_format(req("python_interpreter", what="runs python code")) is None
+    assert document_format(req("excel_generator", what="makes a spreadsheet")) == "xlsx"
+    assert document_format(req("pdf_reader")) == "pdf" and document_format(req("word document writer")) == "docx"
+    cfg = draft_cfg(task, envelope, fx(CAP).replace("web_search", "python_interpreter"))
+    b = LocalToolbox(lsetup(skills), tmp_path / "run", TraceWriter(None))
+    llm = mock(pool_picker=["local:Bash"])
+    stock_toolbox([req("python_interpreter", what="runs python code")], cfg, default_registry(), llm, b.trace,
+                  pool_setup(cache), local=b)
+    assert len(llm.calls_of("pool_picker")) == 1
+    b.finish()

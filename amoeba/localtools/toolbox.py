@@ -30,7 +30,7 @@ from amoeba.interp.shorten import shorten
 from amoeba.localtools.gate import in_workspace, inside, require_sandbox, screen_command
 from amoeba.localtools.server import StdioServer
 from amoeba.localtools.skills import card_text, copy_skill, list_skills
-from amoeba.pool.match import rank
+from amoeba.pool.match import document_format, rank
 from amoeba.pool.mcp import SourceBook, data_block
 
 CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "localtools.yaml"
@@ -188,6 +188,14 @@ class LocalToolbox:
                 out.append((s, e))
                 seen.add(e["id"])
         return out[:top]
+
+    def format_skill(self, q) -> dict | None:
+        """D69: the vetted local skill for the document format a request names (xlsx, docx, pptx, pdf), or None."""
+        fmt = document_format(q)
+        if fmt is None or self.server is None:
+            return None
+        return next((e for e in self.entries() if e["kind"] == "skill" and e["name"] == fmt and self.vet(e) is None),
+                    None)
 
     def vet(self, entry: dict) -> str | None:
         if self.server is None:

@@ -185,6 +185,11 @@ local tools and document skills, the pool) and how a role gets each. A document 
 anything only the user can supply is an open question or a capability request. The intake check knows more
 deliverable verbs and does not cut a phrase inside an email address or a decimal.
 
+## Document formats go to the local skill (D69)
+
+With `--local-tools on`, a capability request that names a document format (xlsx, docx, pptx, pdf) is filled with the
+vetted local skill for that format by plain code, with no AI pick. Other requests go to the picker as before.
+
 ## Cost controls (D45–D48)
 
 ```bash

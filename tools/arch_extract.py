@@ -585,11 +585,14 @@ BOXES: list[dict] = [
                "With --local-tools on (D59) the local toolbox's items are candidates too — ahead of the pool's only "
                "when an alias names them or they match at least as well (D61) — and a skill with scripts is no "
                "longer refused: it is copied into the run's workspace.",
-               "What became of each request (filled or not) is handed to the plan runner for the step contract (D61)."],
+               "What became of each request (filled or not) is handed to the plan runner for the step contract (D61).",
+               "D69: a request that names a document format (xlsx, docx, pptx, pdf) gets the vetted local skill for "
+               "it, chosen by plain code with no AI pick; an outside service that creates things stays refused."],
          proposes="The picker names one candidate (or NONE).",
          disposes="Plain code ranks the candidates, rejects anything unsafe or over the caps, and attaches.",
          anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
-                  "amoeba/pool/match.py::rank", "amoeba/pool/mcp.py::PoolTools", "amoeba/pool/mcp.py::SdkConnector"]),
+                  "amoeba/pool/match.py::rank", "amoeba/pool/mcp.py::PoolTools", "amoeba/pool/mcp.py::SdkConnector",
+                  "amoeba/pool/match.py::document_format"]),
     dict(id="localtools", view="run", title="Local toolbox (sandboxed)", kind="code", plan=None,
          sentence="With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp "
                   "serve`, inside a workspace folder of the run.",
