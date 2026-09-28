@@ -95,6 +95,7 @@ class Episode(BaseModel):
     steps: list[dict] = Field(default_factory=list)   # D31 plan runner: one record per step (wave, inputs, status)
     answer_assembled_by_code: list[int] = Field(default_factory=list)   # D41: the final steps code put together
     figure_ledger: dict[str, dict] = Field(default_factory=dict)        # D43: figure -> first status and step
+    replan: dict = Field(default_factory=dict)   # D63 --replan on: observer calls, decisions, requirement status
 
 
 class Answer(BaseModel):
@@ -285,6 +286,7 @@ class RunResult(BaseModel):
     unmapped_capabilities: list[str] = Field(default_factory=list)   # D29: names aliases.yaml does not know yet
     answer_assembled_by_code: list[int] = Field(default_factory=list)   # D41: final steps assembled by code
     figure_ledger: dict[str, dict] = Field(default_factory=dict)        # D43: figure -> first status and step
+    replan: dict = Field(default_factory=dict)   # D63 --replan on: observer calls, decisions, requirement status
     refinement: dict = Field(default_factory=dict)   # D50/D51: modes and what refinement and collaboration did
     blocked_capabilities: dict[str, int] = Field(default_factory=dict)   # D36: canonical -> steps that lacked it
     summary_check: dict = Field(default_factory=dict)   # D35 plan runner: new_number_in_summary, limitations_section

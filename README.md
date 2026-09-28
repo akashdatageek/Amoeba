@@ -141,6 +141,73 @@ result.json `refinement.contract` counts what the contract found. Each step_<n>.
 runner: the D32 web grant, tool calls for boss_reviewers' solver (which holds every tool the team was given) and
 critics, and the same 8,192-token reply room. Their logic is otherwise unchanged; they never get the step contract.
 
+## The Action Observer: mid-run re-plan (D63)
+
+`--replan on` (plan topology; default off) lets the plan change while the team works. After each wave plain code looks
+for a trigger: a step that lacked a capability, a verify step still failing after rework, a step that wrote
+`MISSING INPUT: ...`, or a tool the plan never named held by a helper whose step is still waiting. On a trigger, one
+planner call proposes one decision (CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE) for the
+steps that have not run. Plain code validates it (finished steps never change, Box 2 rules, no cycles, new capability
+requests through the toolbox step, at most 2 re-plans and 3 added steps per run, one added role) and applies it, or
+logs it as rejected. Each plan version is saved as `plan.v<k>.json` with its diff; result.json `replan` lists every
+decision and each requirement's final status (met / partly / not met; the answer step counts only when no other
+step covers it). A revision may renumber the step that writes the answer; plain code finds it again in the
+proposed plan, so such a revision is not rejected as a cycle.
+
+## Shortened outputs keep the result (D64)
+
+When a step's output or a program's output is too long for the next reader, plain code keeps its head and its tail,
+marks what it left out (`[… N characters omitted …]`), and always keeps the lines with a final result (a count, a
+total, an `=` line, the last 20 lines of program output). Helpers are asked to report results and short excerpts,
+never whole lists.
+
+## Check steps can re-check (D65)
+
+With `--step-contract on`, a verify step gets calc, the web tools and local run / read (same sandbox gate) and the raw
+tool results of every step it builds on. It is asked to re-run code, open files and re-check at least one cited
+figure. A PASS with no re-checking tool call on code, files or cited figures is recorded as an unverified check and
+makes the step partial.
+
+## Provenance fixes (D66)
+
+A number equal to a calc or local-tool result of the same step counts as derived, and an `[unverified]` tag next to
+it is removed by plain code. A number given in the task that carries only a web source tag stays "given" and is
+flagged for the refine turn.
+
+## Freshness (D67)
+
+For a task that asks for today's, the current or the latest value, research steps are asked for the most recent
+official figure with its date, and one more search when it is dated. When the newest as-of date in the outputs is more
+than 3 days before the run, plain code adds "Possibly not the latest (dated …)" to the answer's Limitations.
+
+## Box 2 sees the real toolbox (D68)
+
+With the d24 prompts, the Planner and both observers are shown every tool Box 3 will have (installed tools, web tools,
+local tools and document skills, the pool) and how a role gets each. A document format or a house style is a skill;
+anything only the user can supply is an open question or a capability request. The intake check knows more
+deliverable verbs and does not cut a phrase inside an email address or a decimal.
+
+## Document formats go to the local skill (D69)
+
+With `--local-tools on`, a capability request that names a document format (xlsx, docx, pptx, pdf) is filled with the
+vetted local skill for that format by plain code, with no AI pick. Other requests go to the picker as before.
+
+## Baseline harness fixes (D70)
+
+Fixes in our port, not in the baselines' design: AutoAgents' Write File block (`>>>file name` … `>>>END`) is turned
+into our Write call; the flat reader keeps an answer's sub-headings; thinking tags are removed wherever they stand, even
+malformed; a boss_reviewers reply that is only a tool request is not taken as the answer. `--picks-file FILE`
+(with a `--picks-only` pre-pass) makes one pool pick per task that all three architectures reuse.
+
+## Office suite in the sandbox (D71)
+
+Spreadsheet formulas are recalculated with LibreOffice Calc headless. Install it once per machine or container:
+
+    sudo scripts/setup_office.sh      # apt-get install libreoffice-calc, then a two-cell check
+
+`amoeba/localtools/office.py` gives each call a fresh profile and HOME. With the xlsx skill attached, the local toolbox
+checks once that a two-cell workbook comes back with its computed value, and tells the helper when it does not.
+
 ## Cost controls (D45–D48)
 
 ```bash

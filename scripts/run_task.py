@@ -24,7 +24,7 @@ from amoeba.interp.trace import TraceWriter
 from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, describe_api_error
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
-from amoeba.task.draft import DraftError, draft_team
+from amoeba.task.draft import DraftError, draft_team, toolbox_text
 from amoeba.task.evaluate import rubric_score, score
 from amoeba.task.instantiate import instantiate
 from amoeba.task.models import RunResult, Task
@@ -36,7 +36,7 @@ from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
 from amoeba.tools.web import TavilyProvider, web_registry
-from amoeba.pool.stock import PoolSetup, stock_toolbox
+from amoeba.pool.stock import PoolSetup, SharedPicks, stock_toolbox
 from amoeba.localtools.gate import SandboxRequired, require_sandbox
 from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 
@@ -49,11 +49,14 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
             max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
             saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
-            local: LocalSetup | None = None, equal_tools: bool = False) -> RunResult:
+            local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
+            picks_only: bool = False) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
-    local: D59 — --local-tools on: Claude Code's tools and skills (claude mcp serve) in runs/<id>/workspace/."""
+    local: D59 — --local-tools on: Claude Code's tools and skills (claude mcp serve) in runs/<id>/workspace/.
+    picks_file: D70 — one pool pick per task and request, shared by every run of the task; picks_only: stop after
+    the toolbox step (a pre-pass that makes the picks before the architectures run)."""
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -73,8 +76,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             draft = saved_draft.draft
             trace.event("draft_reused", {"amoeba.draft_source": saved_draft.source, "amoeba.task_id": task.id})
         else:
+            toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None)
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
-                               quality_gate=quality_gate)
+                               quality_gate=quality_gate, toolbox=toolbox)                     # D68
             if ask is not None:       # D53: the user reads the draft's intake before Box 3 runs
                 print(intake_text(draft))
                 clarification = ask_user(ask)
@@ -83,19 +87,27 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     (run_dir / "plan.first.json").write_text(draft.model_dump_json(indent=2), encoding="utf-8")
                     task = task.model_copy(update={"prompt": f"{task.prompt}\n\nUser clarification: {clarification}"})
                     draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
-                                       quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft)
+                                       quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
+                                       toolbox=toolbox)
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         requests = [q.model_copy(deep=True) for q in draft.capability_requests]
+        picks = SharedPicks(picks_file, task.id) if picks_file else None           # D70
         if pool is not None or box is not None:   # D56: Box 3 starts by stocking the toolbox, before the runner
-            tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed, local=box)
+            tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed, local=box, picks=picks)
         # D61: what became of each request, for the step contract (an unfilled one is a capability the helper lacks)
         cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical,
                                             "status": q.status, "reason": q.reason} for q in requests]
         dump_yaml(cfg, run_dir / "team.yaml")
-        ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options,
-                         equal_tools=equal_tools).run(cfg, task, seed)
-        answer, error = ep.answer, ep.error
+        restock = (lambda reqs, c, reg: stock_toolbox(reqs, c, reg, llm, trace, pool, seed, local=box, restock=True,
+                                                     picks=picks)) \
+            if (pool is not None or box is not None) else None                   # D63: requests a re-plan makes
+        if picks_only:                                                             # D70: the picks pre-pass
+            answer, error = None, "picks_only"
+        else:
+            ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
+                             stock=restock, max_agents=envelope.max_agents).run(cfg, task, seed)
+            answer, error = ep.answer, ep.error
     except DraftError as e:
         error = f"draft: {e}"
         failed = e
@@ -145,6 +157,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         requests_proposed=draft.requests_proposed if draft else 0,
         requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0,
         clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace),
+        replan=ep.replan if ep else {},
         pool=pool_summary, **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=None if box else LOCAL_FIELDS),
@@ -245,7 +258,7 @@ def cli_plan_options(args: argparse.Namespace):
     from amoeba.interp.plan_runner import PlanOptions
     return PlanOptions(rerun_stale=args.rerun_stale, max_input_chars=args.max_input_chars,
                        max_summary_input_chars=args.max_summary_input_chars, self_refine=args.self_refine,
-                       collab=args.collab, contract=args.step_contract)
+                       collab=args.collab, contract=args.step_contract, replan=args.replan)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -374,6 +387,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "and every tool or skill attached to it is used, marked BLOCKED or marked NOT NEEDED, else "
                         "the step is partial and the answer's Limitations say so; verifiers see each step's sources "
                         "and tool calls; the answer is checked for files and cited figures it left out (D61)")
+    p.add_argument("--replan", choices=["on", "off"], default="off",
+                   help="plan: the Action Observer (D63) — after a wave in which a step lacked a capability, a verify "
+                        "step still failed, a step reported a missing input or the team got a tool the plan never "
+                        "named, one planner call may revise the steps that have not run; plain code validates the "
+                        "decision (max 2 re-plans and 3 added steps per run) and saves plan.v<k>.json")
     p.add_argument("--equal-tools", choices=["on", "off"], default="off",
                    help="flat and boss_reviewers get the plan runner's tool access: the D32 web grant, and (boss_reviewers) "
                         "tool calls for the solver and critics, the solver holding every tool the team was given (D62). "
@@ -392,6 +410,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--local-tools", choices=["on", "off"], default="off",
                    help="Box 3 may also borrow Claude Code's tools (Bash, Read, Write, Edit, Glob, Grep) and skills "
                         "through `claude mcp serve`, sandboxed in runs/<id>/workspace/ (D59). Needs AMOEBA_SANDBOX=1")
+    p.add_argument("--picks-file", default=None, metavar="FILE",
+                   help="D70: one pool pick per task and request, shared by every run that names the same file (the "
+                        "three architectures of a benchmark); a recorded pick is reused when it passed vetting again")
+    p.add_argument("--picks-only", action="store_true",
+                   help="D70: stop after the toolbox step (make the picks for --picks-file before the runs)")
     p.add_argument("--rerun-stale", action="store_true",
                    help="plan: re-run once each step that used a step's output before that step was reworked (D39)")
     add_client_args(p)
@@ -443,7 +466,7 @@ def main(argv: list[str] | None = None) -> int:
                     plan_options=cli_plan_options(args), saved_draft=chosen,
                     limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
                     ask=input if args.interactive else None, pool=pool, local=local,
-                    equal_tools=args.equal_tools == "on")
+                    equal_tools=args.equal_tools == "on", picks_file=args.picks_file, picks_only=args.picks_only)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

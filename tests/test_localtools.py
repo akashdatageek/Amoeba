@@ -159,7 +159,7 @@ def test_output_and_call_caps(skills, tmp_path):
     b.start()
     b.begin_step(1)
     out = b.call("Bash", "python3 -c 'print(\"y\" * 50)'")
-    assert "[… first 10 of" in out
+    assert "characters omitted …]" in out and "[shortened from 100 characters" in out   # D64: head and tail
     b.call("Bash", "ls")
     assert b.call("Bash", "ls").startswith("refused: local:Bash — step_cap")
     b.begin_step(2)
@@ -281,7 +281,9 @@ def test_a_skill_with_scripts_is_attached_with_the_flag_on(cache, skills, tmp_pa
     [card] = [p["text"] for p in researcher.pool if p["kind"] == "skill"]
     assert "name: xlsx" in card and "Use openpyxl." in card                          # frontmatter + body
     assert "[… first 5000 of" in card and "x" * 5001 not in card
-    assert card.endswith("Full skill files are in skills/xlsx/; read them with local:Read if needed.")
+    assert "Full skill files are in skills/xlsx/; read them with local:Read if needed." in card
+    # D71: the office note follows only where LibreOffice cannot recalculate (for example CI)
+    assert ("LibreOffice cannot recalculate formulas" in card) == (not b.office["ok"])
     assert {"local:Read", "local:Bash", "local:Write", "local:Edit"} <= set(researcher.tools)
     out = b.finish()
     assert out["skills_attached"] == [{"id": "local:skill:anthropics_skills/xlsx", "name": "xlsx", "root": "anthropics_skills",
@@ -415,3 +417,76 @@ def test_a_weak_local_match_does_not_crowd_out_a_better_internet_one(skills, tmp
     assert any(c.get("source") == "local" for c in cands[1:])             # the weak local ones follow, by score
     assert [c["score"] for c in cands] == sorted((c["score"] for c in cands), reverse=True)
     b.finish()
+
+
+# ---- D69: a document format's local skill first ------------------------------------------------------------------
+def test_the_deck_request_gets_the_pptx_skill_without_an_ai_pick(tmp_path, skills, task, envelope):
+    """Round-1 deck: 'presentation-generator' (a tool request) was filled by an outside slide service that creates
+    decks in its own account (refused: side_effect). The vetted local pptx skill is now chosen by plain code."""
+    d = tmp_path / "pool"
+    entries = [tool("dev.slideforge/slideforge", "SlideForge: presentation generator, turns an outline into slides")]
+    (d / "index.json").write_text(json.dumps({"refreshed_at": "2026-09-26T00:00:00+00:00", "entries": entries}))
+    cfg = draft_cfg(task, envelope, fx(CAP).replace("web_search", "presentation-generator"))
+    b = LocalToolbox(lsetup(skills), tmp_path / "run", TraceWriter(None))
+    llm = mock(pool_picker=["dev.slideforge/slideforge"])
+    q = req("presentation-generator", what="builds a 5-slide PowerPoint deck with a chart and speaker notes")
+    reg, summary = stock_toolbox([q], cfg, default_registry(), llm, b.trace, pool_setup(d), local=b)
+    assert (q.status, q.pool_id) == ("filled", "local:skill:anthropics_skills/pptx")
+    assert llm.calls_of("pool_picker") == []                                   # plain code chose it
+    [match] = b.trace.events("pool_match")
+    assert match["amoeba.pool.format_skill"] == "pptx"
+    assert [c["id"] for c in match["amoeba.pool.candidates"]] == ["local:skill:anthropics_skills/pptx"]
+    researcher = next(a for a in cfg.agents.values() if a.name == "Researcher")
+    assert any(p["name"] == "pptx" for p in researcher.pool) and "local:Bash" in researcher.tools
+    b.finish()
+
+
+def test_a_request_that_names_no_format_still_goes_to_the_picker(cache, skills, tmp_path, task, envelope):
+    from amoeba.pool.match import document_format
+    assert document_format(req("python_interpreter", what="runs python code")) is None
+    assert document_format(req("excel_generator", what="makes a spreadsheet")) == "xlsx"
+    assert document_format(req("pdf_reader")) == "pdf" and document_format(req("word document writer")) == "docx"
+    cfg = draft_cfg(task, envelope, fx(CAP).replace("web_search", "python_interpreter"))
+    b = LocalToolbox(lsetup(skills), tmp_path / "run", TraceWriter(None))
+    llm = mock(pool_picker=["local:Bash"])
+    stock_toolbox([req("python_interpreter", what="runs python code")], cfg, default_registry(), llm, b.trace,
+                  pool_setup(cache), local=b)
+    assert len(llm.calls_of("pool_picker")) == 1
+    b.finish()
+
+
+# ---- D70: one pick per task, shared by every architecture --------------------------------------------------------
+def test_a_recorded_pick_is_reused_by_the_next_run_of_the_task(cache, skills, tmp_path, task, envelope):
+    from amoeba.pool.stock import SharedPicks
+    picks = tmp_path / "picks.json"
+    chosen = []
+    for run in ("autoagents", "agentverse", "amoeba"):
+        cfg = draft_cfg(task, envelope, fx(CAP).replace("web_search", "python_interpreter"))
+        b = LocalToolbox(lsetup(skills), tmp_path / run, TraceWriter(None))
+        llm = mock(pool_picker=["io.example/py-sandbox" if run == "autoagents" else "local:Bash"])
+        q = req("python_interpreter", what="runs python code")
+        stock_toolbox([q], cfg, default_registry(), llm, b.trace, pool_setup(cache), local=b,
+                      picks=SharedPicks(picks, task.id))
+        chosen.append((q.pool_id, len(llm.calls_of("pool_picker"))))
+        b.finish()
+    assert chosen == [("io.example/py-sandbox", 1), ("io.example/py-sandbox", 0), ("io.example/py-sandbox", 0)]
+    assert json.loads(picks.read_text()) == {task.id: {"tool|code_execution|Researcher": "io.example/py-sandbox"}}
+
+
+def test_the_cli_has_the_picks_flags():
+    a = parse_args(["--toy", "--picks-file", "p.json", "--picks-only"])
+    assert (a.picks_file, a.picks_only) == ("p.json", True)
+
+
+def test_a_skill_script_the_step_ran_is_not_a_missing_claimed_file(tmp_path):
+    """Smoke-run defect: 'recalc.py was run and the file saved' named the xlsx skill's own script; it lives under
+    workspace/skills (left out of the team's files), so the step was marked incomplete for a file it never claimed
+    to make."""
+    from amoeba.localtools.toolbox import LocalToolbox
+    box = LocalToolbox.__new__(LocalToolbox)
+    box.workspace = tmp_path
+    (tmp_path / "skills" / "xlsx" / "scripts").mkdir(parents=True)
+    (tmp_path / "skills" / "xlsx" / "scripts" / "recalc.py").write_text("#")
+    (tmp_path / "fuel.xlsx").write_text("x")
+    box._snapshot = lambda: ["fuel.xlsx"]
+    assert box.has_file("recalc.py") and box.has_file("fuel.xlsx") and not box.has_file("other.xlsx")

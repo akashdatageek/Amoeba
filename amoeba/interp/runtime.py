@@ -1,6 +1,7 @@
 """BOX 3 — Team runs the task (spec §6). Two explicit topology runners; plain code owns loops, caps, parsing, trace."""
 from __future__ import annotations
 
+import json
 import re
 import time
 from dataclasses import dataclass
@@ -37,7 +38,7 @@ class _Msg:
 def with_unavailable(agent: AgentSpec) -> str:
     """The agent's suggestions plus one line per tool its role named that is not registered (D21), and how to use
     each pool tool Box 3 attached to it (D56)."""
-    lines = [UNAVAILABLE.format(name=t) for t in agent.missing_tools] + pool_tool_notes(agent)
+    lines = [UNAVAILABLE.format(name=t) for t in agent.missing_tools if t not in agent.tools] + pool_tool_notes(agent)
     return "\n".join([agent.suggestions, *lines]) if lines else agent.suggestions
 
 
@@ -53,13 +54,52 @@ Action: <one tool name from the list>
 ActionInput: <its input>
 Its result comes back to you and you continue. When you are ready, reply with your answer as usual, with no Action
 line. You may make at most {n} tool calls."""
-THOUGHT_RE = re.compile(r"^\s*<thought>.*?</thought>\s*", re.S | re.I)   # D62: Gemma's inline thinking block
+THOUGHT_RE = re.compile(r"<(thought|think|thinking)\b[^>\n]*>?.*?</\1\s*>\s*", re.S | re.I)   # D62, D70
+ORPHAN_CLOSE = re.compile(r"^.*?</(?:thought|think|thinking)\s*>\s*", re.S | re.I)
 
 
+# box: read_action
 def strip_thought(text: str) -> str:
-    """D62: the reply without a leading <thought>…</thought> block (the flat and plan runners drop it by reading
-    only their ActionInput section; boss_reviewers takes the whole reply)."""
-    return THOUGHT_RE.sub("", text or "", count=1)
+    """D62: the reply without Gemma's inline thinking. D70: every <thought>…</thought> block wherever it stands,
+    also a malformed opening tag ("<thought" with no ">") and a closing tag whose opening was lost (everything
+    before it is thinking); <think> and <thinking> too."""
+    out = THOUGHT_RE.sub("", text or "")
+    if re.search(r"</(?:thought|think|thinking)\s*>", out, re.I):
+        out = ORPHAN_CLOSE.sub("", out, count=1)
+    return out.strip() if out != (text or "") else out
+
+
+# box: read_action, plan_step
+def full_action_input(raw: str, parsed: str) -> str:
+    """ActionInput is the last section, so it runs to the end of the reply. The AutoAgents parser splits on every
+    '##', which cuts a markdown answer at its first '##'/'###' heading; the plan runner (and since D70 the flat
+    runner) keeps the whole text."""
+    head = (raw or "").rfind("## ActionInput")
+    if head < 0:
+        return parsed
+    rest = raw[head + len("## ActionInput"):].lstrip(":").strip()
+    rest = re.sub(r"\n-{3,}\s*$", "", rest).strip()        # a closing '---' fence of the format example
+    return rest if len(rest) >= len((parsed or "").strip()) else parsed
+
+
+FILE_BLOCK = re.compile(r">>>\s*([^\n]+?)\s*\r?\n([\s\S]*?)(?:\n?>>>\s*END\b|\Z)")
+WRITE_ACTIONS = ("local:Write", "Write File", "Write", "write file")
+
+
+# box: read_action
+def file_block_write(act: str, inp: str, tools: list[str]) -> tuple[str, str] | None:
+    """D70 (harness fix): AutoAgents' own prompt teaches a Write File block ('>>>file name' / content / '>>>END',
+    custom_action.py:41-45); our Write tool takes JSON. A block written for local:Write (or AutoAgents' 'Write File')
+    by a helper that holds local:Write becomes that JSON call. None when it is not such a block."""
+    if "local:Write" not in tools or act.strip().strip("`") not in WRITE_ACTIONS or ">>>" not in (inp or ""):
+        return None
+    body = re.sub(r"^\s*```[\w-]*\s*\n?", "", inp.strip())
+    m = FILE_BLOCK.search(body)
+    if not m:
+        return None
+    name = m.group(1).strip().strip("`'\"")
+    content = re.sub(r"\n?```\s*$", "", m.group(2).rstrip()) + "\n"
+    return "local:Write", json.dumps({"file_path": name, "content": content}, ensure_ascii=False)
 
 
 EQUAL_MAX_TOKENS = 8192   # D62: the plan runner's reply room per helper call (PLAN_MAX_TOKENS, D27)
@@ -78,7 +118,7 @@ def grant_web(cfg: TeamConfig, trace: TraceWriter) -> None:
         if not hits:
             continue
         a.tools = list(dict.fromkeys([*a.tools, *WEB_TOOLS]))
-        a.missing_tools = [t for t in a.missing_tools if t not in hits]
+        a.missing_tools = [t for t in a.missing_tools if t not in hits and t not in WEB_TOOLS]
         trace.event("capability_mapped", {"gen_ai.agent.id": a.agent_id, "gen_ai.agent.name": a.name,
                                           "amoeba.requested": hits, "amoeba.canonical": "web_search",
                                           "amoeba.granted": list(WEB_TOOLS), "amoeba.equal_tools": True})
@@ -117,11 +157,13 @@ class Interpreter:
     # box: interpreter
     def __init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None = None,
                  listener: NoopListener | None = None, run_dir: str | None = None, plan_options=None,
-                 equal_tools: bool = False):
+                 equal_tools: bool = False, stock=None, max_agents: int = 5):
         self.run_dir = run_dir   # D31: the plan runner writes its step artifacts under <run_dir>/artifacts
         self.equal_tools = equal_tools   # D62: web grant for flat, tool calls for boss_reviewers, same reply room
         self.helper_max_tokens = EQUAL_MAX_TOKENS if equal_tools else None
         self.plan_options = plan_options   # D39+: PlanOptions for --topology plan (None = defaults)
+        self.stock = stock                 # D63: stock(requests, cfg, registry) -> (registry, summary), mid-run
+        self.max_agents = max_agents       # D63: the envelope's roster cap, for a role a re-plan adds
         self.trace = trace or TraceWriter(None)
         self.listener = listener or NoopListener()   # spec §12: Phase 3's monitor plugs in here; no-op now
         self.llm = TracedLLM(llm, self.trace, self.listener)
@@ -214,8 +256,10 @@ class Interpreter:
                                   format_example=PROMPT.autoagents_custom_action_format)  # its "[{tool}]" stays literal
                     with self.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id,
                                                           "gen_ai.agent.name": agent.name, "amoeba.box": "helper"}):
-                        _, sec = self._llm_sections(agent, resolve(agent.prompt.system), user, WORKER_SECTIONS, ep)
-                        act, inp = sec["Action"], sec["ActionInput"]
+                        raw, sec = self._llm_sections(agent, resolve(agent.prompt.system), user, WORKER_SECTIONS, ep)
+                        # D70 (harness fix): the whole ActionInput, not cut at its first '##' sub-heading, and no
+                        # thinking blocks
+                        act, inp = sec["Action"].strip(), strip_thought(full_action_input(raw, sec["ActionInput"]))
                         resp, gap = self._dispatch(agent, act, inp, step.index, ep)
                     if gap is not None:                      # D21: the helper answered BLOCKED: X — done for this step
                         info = f"\n## Step\n{step.text}\n## Response\n{completed_steps}>>>> {BLOCKED}: {gap}\n{resp}\n>>>>"
@@ -266,6 +310,11 @@ class Interpreter:
     def _dispatch(self, agent: AgentSpec, act: str, inp: str, step: int, ep: Episode) -> tuple[str, str | None]:
         """Route one "## Action". Returns (response, blocked tool or None). Original: a tool of the agent → SerpAPI,
         anything else → echo the input (custom_action.py:207-213). D21: BLOCKED and unknown actions are recorded."""
+        adapted = file_block_write(act, inp, agent.tools)     # D70: AutoAgents' Write File block → local:Write
+        if adapted is not None:
+            self.trace.event("file_block_adapted", {"gen_ai.agent.name": agent.name, "amoeba.step": step,
+                                                    "amoeba.action": act, "amoeba.file": json.loads(adapted[1])["file_path"]})
+            act, inp = adapted
         if act in agent.tools:                               # :207 exact membership; original always calls SerpAPI (D7)
             return self._tool(agent, act, inp), None
         if act.strip().upper().startswith(BLOCKED) or inp.strip().startswith(f"{BLOCKED}:"):
@@ -337,7 +386,12 @@ class Interpreter:
                 reply = self._llm_messages(agent, msgs, ep)
                 if not self.equal_tools:
                     return reply
-                return strip_thought(self._tool_loop(agent, msgs, reply, ep) if agent.tools else reply)
+                out = strip_thought(self._tool_loop(agent, msgs, reply, ep) if agent.tools else reply)
+                if agent.tools and (not out.strip() or ACTION_RE.match(out)):    # D70: a tool request is no answer
+                    self.trace.event("not_an_answer", {"gen_ai.agent.name": agent.name, "amoeba.chars": len(out)})
+                    out = strip_thought(self._llm_messages(agent, [*msgs, {"role": "assistant", "content": reply},
+                                                                   {"role": "user", "content": TOOL_LOOP_LAST}], ep))
+                return out
             # This is why format="history+append": the plan and reviews reach agents as chat history, not placeholders.
 
         # box: solver
@@ -371,4 +425,6 @@ class Interpreter:
             broadcast(nonempty)                              # :67 — only the disagreements, to everyone
             plan = solve()                                   # :68
             broadcast([plan])                                # :70
+        if self.equal_tools and (not plan.content.strip() or ACTION_RE.match(plan.content)):
+            return plan.content, "no_answer"                 # D70: the solver ended on an unexecuted tool request
         return plan.content, None                            # :71-72 → answer. NB the last revision is never reviewed.

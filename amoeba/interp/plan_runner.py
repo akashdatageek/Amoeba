@@ -9,19 +9,24 @@ from __future__ import annotations
 
 import json
 import re
+from uuid import uuid4
 from dataclasses import asdict, dataclass
+from datetime import date
 from pathlib import Path
 
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
-from amoeba.interp.provenance import check_provenance, claim_numbers, numbers_in
+from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_values, numbers_in,
+                                      strip_unverified)
+from amoeba.interp.freshness import stale_figure, time_sensitive
+from amoeba.interp.shorten import shorten
 from amoeba.llm.profiles import role_group
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.localtools.claims import claimed_files
-from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text
-from amoeba.task.models import Episode, Task
-from amoeba.task.parsers import MissingSections
+from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text, full_action_input
+from amoeba.task.models import CapabilityRequest, DraftedRole, Episode, Task
+from amoeba.task.parsers import MissingSections, parse_json_objects, parse_plan_d24, parse_sections
 from amoeba.task.quality import VERIFY_WORDS
 from amoeba.tools.web import WEB_TOOLS
 
@@ -52,6 +57,13 @@ class PlanOptions:
     # produced-work check and rework by cause. The CLI default is on; this library default keeps the earlier
     # behaviour for callers that set nothing.
     contract: str = "off"
+    # D63: on = the Action Observer — after each wave plain code looks for a trigger (a step that lacked a
+    # capability, a verify step still failing, a missing upstream input, a tool the plan did not know about); on one,
+    # a single planner call proposes one typed decision for the steps that have not run, and plain code validates
+    # it before anything changes. The CLI default is off.
+    replan: str = "off"
+    max_replans: int = 2             # D63: observer calls per run
+    max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
 
 
 class PlanGraphError(ValueError):
@@ -143,25 +155,22 @@ def step_detail(step: PlanStep) -> str:
     return "\n".join([step.text, *extra])
 
 
-# box: plan_step
-def full_action_input(raw: str, parsed: str) -> str:
-    """ActionInput is the last section, so it runs to the end of the reply. The AutoAgents parser splits on every
-    '##', which cuts a markdown answer at its first '##'/'###' heading (the flat baseline loses its answers
-    this way); the plan runner keeps the whole text."""
-    head = raw.rfind("## ActionInput")
-    if head < 0:
-        return parsed
-    rest = raw[head + len("## ActionInput"):].lstrip(":").strip()
-    rest = re.sub(r"\n-{3,}\s*$", "", rest).strip()        # a closing '---' fence of the format example
-    return rest if len(rest) >= len(parsed.strip()) else parsed
-
-
 VERIFY_NOTE = """
 
 You are VERIFYING the outputs of the steps you depend on: re-check their numbers, sources and test results.
 Your Final Output MUST start with a line "Verdict: PASS" or "Verdict: FAIL", then a line "Issues:" and one numbered
 issue per line (which step, what is wrong, how to fix it). Answer FAIL if any issue would change a number or a
 conclusion; PASS otherwise (then write "Issues: none")."""
+VERIFY_TOOLS_NOTE = """
+Re-check with your tools, do not only read: re-run the code a step wrote or open the file it made (local tools), and
+re-check at least one cited figure against its source (fetch_url or web_search) or recompute it (calc). Your inputs end
+with the raw tool results the earlier steps used. Name in your output each re-check you ran and what it showed. A PASS
+with no re-check counts as an unverified check."""
+FRESH_NOTE = """
+
+This task asks for today's, the current or the latest value. Find the most recent official figure and write its date
+next to it ("as of <date>"). If the figure you found is dated before today, make one more search for a newer value
+before you use it, and say which date you settled on."""
 REWORK_NOTE = """
 
 REWORK: verification step {by} found issues with this step's earlier output. Fix them and give the whole corrected
@@ -198,6 +207,9 @@ def refine_findings(checks: list[dict], prov: dict) -> tuple[list[str], list[str
         prov_items.append(f"{prov['untagged']} figure(s) carry no [S#] or [unverified] tag: "
                           f"{', '.join(prov.get('untagged_examples', [])[:10])}. Tag each: [S#] for a tool result you "
                           f"have, [unverified] for your own knowledge, or show the calculation.")
+    if prov.get("given_with_web_tag"):                                              # D66
+        prov_items.append(f"these numbers are given in the task, not found in a web source: "
+                          f"{', '.join(prov['given_with_web_tag'][:10])}. Write them without a source tag.")
     if prov.get("hallucinated_citations"):
         prov_items.append(f"these citations name sources you never saw: {', '.join(prov['hallucinated_citations'])}. "
                           f"Cite only [S#] ids from your tool results or your inputs, or mark the figure [unverified].")
@@ -404,6 +416,15 @@ class PlanRunner:
         self.pool = getattr(interp.tools, "pool", None)   # D56: pool tools; their [S#] share web's list when it exists
         self.local = getattr(interp.tools, "local", None)  # D59: local tools (--local-tools on)
         self.current_contract: dict[str, dict] = {}        # D61: the running step's contract, by helper name
+        self.run_dir = Path(run_dir) if run_dir else None
+        # D63: the Action Observer's state
+        self.replans: list[dict] = []                     # every observer call: triggers, decision, verdict
+        self.added_steps = 0
+        self.roles_added = 0
+        self.plan_version = 1
+        self.triggered: set[tuple] = set()                # (kind, step or item) already shown to the observer
+        self.unmet: dict[str, str] = {}                   # requirement id -> why a re-plan left it unmet
+        self.max_num = max((number(s) for s in cfg.plan), default=0)
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
     # box: step_check
@@ -417,7 +438,7 @@ class PlanRunner:
         for a in agents:
             have = lambda q: q.get("status") == "filled" or any(
                 x and x in a.tools for x in (q["name"], q.get("canonical"), normalise(q["name"])[0]))
-            needs = list(dict.fromkeys([*a.missing_tools, *(q["name"] for q in asked
+            needs = list(dict.fromkeys([*(t for t in a.missing_tools if t not in a.tools), *(q["name"] for q in asked
                                                              if q.get("for_role") == a.name and not have(q))]))
             items = [{"name": p["name"], "aliases": [p["name"], p.get("request", "")], "tools": [p["name"]]}
                      for p in a.pool if p["kind"] == "tool" and p.get("source") != "local"]
@@ -528,6 +549,63 @@ class PlanRunner:
                          f"{', '.join(m.get('unused', [])) or 'nothing'}")
         return "\n".join(lines)
 
+    # box: step_check
+    def checkable(self, n: int) -> str:
+        """D65: what the steps a verify step checks produced that a tool can re-check: code, files or cited
+        figures ("" when none)."""
+        what = []
+        for d in self.upstream(n):
+            m, text = self.artifacts[d]["meta"], self.artifacts[d]["text"]
+            if "```" in text or any(c["tool"].startswith("local:") for c in m.get("tool_calls", [])):
+                what.append(f"code of step {d}")
+            if m.get("files_made"):
+                what.append(f"files of step {d}")
+            if m.get("provenance", {}).get("cited"):
+                what.append(f"cited figures of step {d}")
+        return ", ".join(dict.fromkeys(what))
+
+    # box: step_check
+    def upstream(self, n: int) -> list[int]:
+        """D65: every step a step builds on, directly or through other steps, that has run (plan order)."""
+        deps = dependencies(self.cfg.plan)
+        seen, todo = set(), list(deps.get(n, []))
+        while todo:
+            d = todo.pop()
+            if d not in seen:
+                seen.add(d)
+                todo.extend(deps.get(d, []))
+        return [d for d in sorted(seen) if d in self.artifacts]
+
+    # box: step_check
+    def raw_results_text(self, n: int) -> str:
+        """D65: the raw tool results every upstream step used (not only their text), for a verify step."""
+        parts = []
+        for d in self.upstream(n):
+            for r in self.artifacts[d]["meta"].get("tool_results", []):
+                parts.append(f"### Step {d} · {r['agent']} → {r['tool']} ({r['input'][:120]!r})\n{r['result']}")
+        if not parts:
+            return ""
+        return "## Raw tool results of the steps you check (plain code copied them)\n" + "\n\n".join(parts)
+
+    # box: step_check
+    def verifier_tools(self, agents: list[AgentSpec]) -> list[str]:
+        """D65: a verify step's helpers get the tools to re-check what the earlier steps made: calc for numbers, web
+        for cited facts, local run/read for code and files (the same sandbox gate as every local call)."""
+        reg = self.i.tools
+        names = [t for t in ("calc", *WEB_TOOLS, "local:Bash", "local:Read") if t in reg]
+        if self.local is not None:
+            for t in ("local:Bash", "local:Read"):
+                if t.removeprefix("local:") in getattr(self.local, "exposed", []) and t not in names:
+                    self.local.register(reg, t)
+                    names.append(t)
+        granted = []
+        for a in agents:
+            new = [t for t in names if t not in a.tools]
+            if new:
+                a.tools = [*a.tools, *new]
+                granted.append({"agent": a.name, "tools": new})
+        return granted
+
     # box: plan_step
     def grant_web_tools(self) -> None:
         """D32: a role whose missing tools or capability requests normalise to web_search gets web_search and
@@ -539,7 +617,7 @@ class PlanRunner:
             if not hits:
                 continue
             a.tools = list(dict.fromkeys([*a.tools, *WEB_TOOLS]))
-            a.missing_tools = [t for t in a.missing_tools if t not in hits]
+            a.missing_tools = [t for t in a.missing_tools if t not in hits and t not in WEB_TOOLS]
             self.i.trace.event("capability_mapped", {"gen_ai.agent.id": a.agent_id, "gen_ai.agent.name": a.name,
                                                      "amoeba.requested": hits, "amoeba.canonical": "web_search",
                                                      "amoeba.granted": list(WEB_TOOLS)})
@@ -558,9 +636,25 @@ class PlanRunner:
         self.i.trace.event("plan_graph", {"amoeba.waves": ws, "amoeba.depends_on": {str(k): v for k, v in deps.items()},
                                           "amoeba.max_turns": self._max_turns(), "amoeba.max_tokens": PLAN_MAX_TOKENS,
                                           **{f"amoeba.options.{k}": v for k, v in asdict(self.opt).items()}})
-        for w, nums in enumerate(ws, 1):
+        replan = self.opt.replan == "on"
+        if replan:
+            self.known = self.plan_items()                                  # D63: what the plan knew of at the start
+            self.save_plan_version(None)
+        w = 0
+        while True:     # D63: the waves are recomputed after each wave, so an accepted re-plan takes effect
+            nums = next((x for x in ([n for n in wave if n not in self.artifacts] for wave in waves(self.cfg.plan))
+                         if x), None)
+            if nums is None:
+                break
+            w += 1
+            deps = dependencies(self.cfg.plan)
             for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
                 self.run_step(self.steps[n], w, deps[n])
+            if replan:
+                self.action_observer(w)
+        ws = waves(self.cfg.plan)
+        if replan:
+            self.ep.replan = self.replan_summary()
         self.ep.figure_ledger = self.ledger
         counts: dict[str, int] = {}
         for e in self.ledger.values():
@@ -608,12 +702,16 @@ class PlanRunner:
 
     # ---- one step -------------------------------------------------------------------------------------------
     def cap(self, text: str, limit: int, step: int, source: int, what: str) -> str:
-        """D44: the first `limit` characters of an input, with a marker saying how much was cut (and a trace event)."""
+        """D44: an input over `limit` characters is shortened, with a trace event. D64: head AND tail are kept with
+        "[… N characters omitted …]" marks, and so is every line with a final result (a count, a total, a result,
+        an "=" line) and the last lines of program output, so a result is never cut away."""
         if len(text) <= limit:
             return text
+        out = shorten(text, limit)
         self.i.trace.event("input_truncated", {"amoeba.step": step, "amoeba.from_step": source, "amoeba.limit": limit,
-                                               "amoeba.chars": len(text), "amoeba.what": what})
-        return f"{text[:limit].rstrip()}\n[... cut by plain code: first {limit:,} of {len(text):,} characters shown]"
+                                               "amoeba.chars": len(text), "amoeba.what": what,
+                                               "amoeba.chars_passed": len(out)})
+        return f"{out}\n[shortened by plain code from {len(text):,} characters: head, result lines and tail kept]"
 
     def inputs_text(self, deps: list[int], n: int | None = None, evidence: bool = False) -> str:
         if not deps:
@@ -650,6 +748,20 @@ class PlanRunner:
                                           "amoeba.received": deps, "amoeba.input_chars": len(inputs),
                                           "amoeba.verification": verifier, "amoeba.rework": bool(rework)})
         extra = VERIFY_NOTE if verifier else ""
+        if verifier and on:                        # D65: a check step gets the tools and the raw results to re-check
+            granted = self.verifier_tools(agents)
+            extra += VERIFY_TOOLS_NOTE
+            raw = self.raw_results_text(n)
+            if raw:
+                inputs += "\n\n" + raw
+            self.i.trace.event("verifier_tools", {"amoeba.step": n, "amoeba.granted": granted,
+                                                  "amoeba.upstream": self.upstream(n),
+                                                  "amoeba.raw_results_chars": len(raw)})
+        if not summarising and time_sensitive(self.task.prompt) and any(set(WEB_TOOLS) & set(a.tools)
+                                                                       for a in agents):
+            extra += FRESH_NOTE                                                    # D67: the latest figure, dated
+        if self.opt.replan == "on" and deps and not summarising:                  # D63: a missing input is a trigger
+            extra += MISSING_INPUT_NOTE
         if reverify:
             extra += REVERIFY_NOTE.format(steps=", ".join(map(str, reverify["reworked"])),
                                           issues=reverify["first_issues"].strip())
@@ -669,19 +781,24 @@ class PlanRunner:
         collab = self.critique(step, n, agents[0], agents[1:], inputs, extra, w, template) \
             if writers is not agents else None
         agents_all, agents = agents, writers
-        text = self._text(agents, w)
+        exact = computed_values(self.computed_results(w))                          # D66
+        text, removed = strip_unverified(self._text(agents, w), exact)
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
         own, visible = self._sources(n, deps)
-        prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)   # D33
+        prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,   # D33
+                                self.computed_results(w), self.web_ids())
         found = self.contract_check(contract, w, text) if contract else None                # D61 (G1, G2)
         produced = self.answer_gaps(n, text) if on and answer_step else None               # D61 (G5)
         items = (self.contract_findings(found) if found else []) + (self.answer_findings(produced) if produced else [])
         refine = self.refine(step, n, agents, inputs, extra, w, template, checks, prov, items)   # D42 / D50 / D61
         if refine:
-            text = self._text(agents, w)
+            exact = computed_values(self.computed_results(w))
+            text, again = strip_unverified(self._text(agents, w), exact)
+            removed += again
             checks = step_checks(step, text, deps, self.artifacts, verifier)
             own, visible = self._sources(n, deps)
-            prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results)
+            prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,
+                                    self.computed_results(w), self.web_ids())
             found = self.contract_check(contract, w, text) if contract else None
             produced = self.answer_gaps(n, text) if produced is not None else None
             refine["after"] = refine_counts(checks, prov, len((self.contract_findings(found) if found else [])
@@ -717,6 +834,12 @@ class PlanRunner:
         if unused:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "attached unused: " + ", ".join(unused)) if x)
+        unchecked = verifier and on and parse_verdict_block(text)[0] == "PASS" and not w.calls \
+            and self.checkable(n)                      # D65: a PASS that re-checked nothing is an unverified check
+        if unchecked:
+            status = "partial" if status == "done" else status
+            reason = "; ".join(x for x in (reason, "unverified check: PASS with no re-checking tool call on "
+                                                   + self.checkable(n)) if x)
         if on:
             text = strip_not_needed(text) or text
         if found is not None:
@@ -746,6 +869,7 @@ class PlanRunner:
                 "blocked_canonical": sorted({normalise(g)[0] for g in gaps}), "sources": own,
                 "visible_source_ids": sorted(visible), "provenance": prov, "figure_origins": origins,
                 "checks": checks, "retried": retried, "refine": refine,
+                "unverified_tags_removed": removed,                                # D66
                 "refine_reason": refine["reason"] if refine else "",
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
                 "stale": False, "stale_because": [],
@@ -757,7 +881,12 @@ class PlanRunner:
                                       for who, c in contract.items()},
                          "contract_missing": undeclared, "unused": unused,
                          "not_needed": found["not_needed"] if found else [], "causes": causes,
-                         "tool_calls": w.calls, "files_made": self.files_of(n)})
+                         "tool_calls": w.calls, "files_made": self.files_of(n),
+                         # D65: what the step's tools returned, for the steps that check it
+                         "tool_results": [{"agent": c["agent"], "tool": c["tool"], "input": c["input"],
+                                           "result": shorten(r or "", 1500)}
+                                          for c, r in zip(w.calls, w.tool_results) if c["ok"]][:8],
+                         "unverified_check": bool(unchecked)})
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
             # D38: both verdicts are kept; `verdict` is always the latest one
@@ -780,6 +909,17 @@ class PlanRunner:
                                                           "first_issues": meta["issues"], "reworked": reworked})
                 self.mark_stale(reworked, verifier_step=n)                           # D39
         return self.artifacts[n]
+
+    @staticmethod
+    def computed_results(w: "_Work") -> list[str]:
+        """D66: what the step's calc and local tools returned (a number equal to one of them is derived)."""
+        return [r for c, r in zip(w.calls, w.tool_results) if c["ok"] and (c["tool"] == "calc"
+                                                                          or c["tool"].startswith("local:"))]
+
+    def web_ids(self) -> set[str]:
+        """D66: the ids of search and fetched-page sources in the run."""
+        books = [b for b in (self.web, getattr(self.pool, "book", None), getattr(self.local, "book", None)) if b]
+        return {x["id"] for b in books for x in getattr(b, "sources", []) if x.get("kind") in ("search", "fetch")}
 
     def _sources(self, n: int, deps: list[int]) -> tuple[list[dict], set[str]]:
         """The step's own sources and every source id it could have seen (its own and its inputs')."""
@@ -1050,13 +1190,26 @@ class PlanRunner:
         missing = sorted(c for c, names in caps.items() if not named({c, *names}))
         not_used = sorted(u for u in unused if not named({u, re.sub(r"\s*\(.*\)$", "", u)}))
         lines = [f"- BLOCKED: {c} (the team had no such capability; added by plain code)" for c in missing]
+        unmet = {r: why for r, why in getattr(self, "unmet", {}).items()           # D63: dropped by a re-plan
+                 if not re.search(rf"\b{re.escape(r)}\b[^\n]*not met", section, re.I)}
+        lines += [f"- NOT MET: {r} — {self.cfg.requirements.get(r, '')} ({why}; added by plain code)"
+                  for r, why in unmet.items()]
         lines += [f"- NOT USED: {u} (given to the team for step {', '.join(map(str, unused[u]))} but never used; "
                   f"added by plain code)" for u in not_used]
+        stale = None
+        if time_sensitive(self.task.prompt):                                     # D67: possibly not the latest
+            stale = stale_figure([a["text"] for a in self.artifacts.values()] + [text or ""],
+                                 getattr(self.i, "today", None) or date.today())
+            if stale and "possibly not the latest" not in section:
+                lines.append(f"- Possibly not the latest (dated {stale['as']}, {stale['days']} days before this run): a "
+                             f"newer figure may exist (added by plain code)")
+                self.i.trace.event("freshness", {"amoeba.dated": stale["date"], "amoeba.days": stale["days"]})
         if lines:
             body = "\n".join(lines)
             text = f"{text.rstrip()}\n\n{body}\n" if m else f"{text.rstrip()}\n\n## Limitations\n{body}\n"
             self.i.trace.event("limitations_added", {"amoeba.capabilities": missing, "amoeba.unused": not_used})
         return text, {"blocked_capabilities": sorted(caps), "limitations_added_by_code": missing,
+                      **({"stale_figure": stale} if stale else {}),
                       **({"unused_added_by_code": not_used} if unused else {})}
 
     # box: step_check
@@ -1166,7 +1319,8 @@ class PlanRunner:
         user = render(template or PROMPT.plan_step, task=self.task.prompt, deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
                       step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
                       tools=str(tools), turns_left=turns_left,
-                      unavailable="\n".join([UNAVAILABLE.format(name=t) for t in agent.missing_tools]
+                      unavailable="\n".join([UNAVAILABLE.format(name=t) for t in agent.missing_tools
+                                              if t not in agent.tools]
                                              + pool_tool_notes(agent)))   # D56
         c = self.current_contract.get(agent.name)
         if c and (c["needs"] or c["items"]):     # D61: what plain code will check, on the helper's prompt
@@ -1187,3 +1341,486 @@ class PlanRunner:
             act, inp = sec["Action"].strip(), full_action_input(raw, sec["ActionInput"])
             resp, gap = self.i._dispatch(agent, act, inp, step.index, self.ep)
         return act, inp, resp, gap
+
+    # ---- D63: the Action Observer (mid-run re-plan) ----------------------------------------------------------------
+    # box: action_obs
+    def plan_items(self) -> set[str]:
+        """What the plan names: every role's drafted tools and missing tools and every capability request (name and
+        standard name); not the items the toolbox step attached. web_search stands for both web tools (D32 grants them
+        together)."""
+        names = {t for a in self.agents.values() for t in (*a.tools, *a.missing_tools)
+                 if t not in {p["name"] for p in a.pool}}          # what the toolbox step attached is not the plan's
+        for q in self.cfg.meta.get("capability_requests", []):
+            names.update(x for x in (q.get("name"), q.get("canonical")) if x)
+        if any(normalise(n)[0] == "web_search" for n in names):
+            names.update(WEB_TOOLS)
+        return names
+
+    # box: action_obs
+    def held_items(self) -> dict[str, list[str]]:
+        """Each tool or skill a helper holds now -> the helpers holding it."""
+        out: dict[str, list[str]] = {}
+        for a in self.agents.values():
+            for t in [*a.tools, *(p["name"] for p in a.pool if p["kind"] == "skill")]:
+                out.setdefault(t, []).append(a.name)
+        return out
+
+    # box: action_obs
+    def replan_triggers(self, wave_steps: list[int]) -> list[dict]:
+        """D63: what plain code found after a wave. Each trigger fires once per step (or item)."""
+        out = []
+        for n in wave_steps:
+            m = self.artifacts[n]["meta"]
+            if m["status"] in ("partial", "incomplete") and m.get("blocked"):
+                out.append({"kind": "missing_capability", "step": n, "detail": f"step {n} is {m['status']}: lacked "
+                                                                                f"{', '.join(m['blocked'])}"})
+            if m.get("verification") and m.get("verdict") == "FAIL":
+                again = " after rework" if m.get("verdict_after_rework") else " (no rework was possible)"
+                out.append({"kind": "verify_fail", "step": n, "detail": f"verify step {n} still says FAIL{again}: "
+                                                                          f"{(m.get('issues') or '')[:300]}"})
+            for miss in missing_input_marks(self.artifacts[n]["text"]):
+                out.append({"kind": "missing_input", "step": n, "detail": f"step {n} reports a missing input: {miss}"})
+        unrun = {a for s in self.cfg.plan if number(s) not in self.artifacts for a in s.agent_ids}
+        holders = {a.name for a in self.agents.values() if a.agent_id in unrun}
+        for item, who in sorted(self.held_items().items()):
+            if item in (PRINT, FINAL_OUTPUT) or any(names_match(item, k) for k in self.known):
+                continue
+            later = [h for h in who if h in holders]
+            if later:
+                out.append({"kind": "new_tool", "item": item, "detail": f"{', '.join(later)} now hold(s) {item}, "
+                                                                        f"which the plan never named"})
+        fresh = []
+        for t in out:
+            key = (t["kind"], t.get("step"), t.get("item"))
+            if key not in self.triggered:
+                self.triggered.add(key)
+                fresh.append(t)
+        return fresh
+
+    # box: action_obs
+    def action_observer(self, wave: int) -> None:
+        """D63: after a wave, one planner call when plain code found a trigger and steps remain; the decision is
+        validated and applied by code, or recorded as rejected (then the plan stays as it is)."""
+        wave_steps = [m["step"] for m in self.ep.steps if m["wave"] == wave]
+        triggers = self.replan_triggers(list(dict.fromkeys(wave_steps)))
+        unrun = [number(s) for s in self.cfg.plan if number(s) not in self.artifacts]
+        if not triggers:
+            return
+        self.i.trace.event("replan_trigger", {"amoeba.wave": wave, "amoeba.triggers": [t["detail"] for t in triggers],
+                                              "amoeba.kinds": [t["kind"] for t in triggers],
+                                              "amoeba.called": bool(unrun) and len(self.replans) < self.opt.max_replans})
+        if not unrun or len(self.replans) >= self.opt.max_replans:
+            return
+        record = {"wave": wave, "triggers": triggers}
+        raw = self._observer_call(triggers)
+        dec = parse_decision(raw)
+        record["decision"], record["reason"] = dec["decision"], dec["reason"]
+        self.i.trace.event("replan_decision", {"amoeba.wave": wave, "amoeba.decision": dec["decision"],
+                                               "amoeba.reason": dec["reason"][:300], "amoeba.readable": dec["readable"]})
+        if dec["decision"] == "CONTINUE":
+            record.update(accepted=True, errors=[] if dec["readable"] else ["unreadable reply: treated as CONTINUE"],
+                          changes={})
+        else:
+            errors, change = self.validate_decision(dec)
+            record.update(accepted=not errors, errors=errors, changes=change.get("summary", {}) if not errors else {})
+            if not errors:
+                self.apply_decision(dec, change)
+        self.i.trace.event("replan_validated", {"amoeba.wave": wave, "amoeba.decision": dec["decision"],
+                                                "amoeba.accepted": record["accepted"], "amoeba.errors": record["errors"],
+                                                "amoeba.changes": record["changes"]})
+        self.replans.append(record)
+
+    def _observer_call(self, triggers: list[dict]) -> str:
+        user = render(PROMPT.plan_replan, task=self.task.prompt, requirements=self.deliverables_text(),
+                      triggers="\n".join(f"- {t['detail']}" for t in triggers), plan=self.plan_text(),
+                      outputs=self.finished_text(), blocked=self.blocked_text(), tools=self.tools_text(),
+                      roles=self.roles_text(),
+                      left=(f"{self.opt.max_replans - len(self.replans) - 1} more re-plan(s) after this one; "
+                              f"{self.opt.max_added_steps - self.added_steps} step(s) may still be added; "
+                              f"{'no' if self.roles_added else 'one'} new role may still be added"),
+                      next=str(self.max_num + 1))
+        with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "action_observer", "amoeba.box": "action_obs"}):
+            resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
+                                            agent_name="action_observer", max_tokens=PLAN_MAX_TOKENS, role="planner")
+        self.ep.total_tokens += resp.input_tokens + resp.output_tokens
+        self.ep.n_llm_calls += 1
+        return resp.content or ""
+
+    # ---- what the observer is shown --------------------------------------------------------------------------------
+    def plan_text(self) -> str:
+        lines = []
+        for s in self.cfg.plan:
+            n = number(s)
+            st = self.artifacts[n]["meta"]["status"] if n in self.artifacts else "not run"
+            roles = ", ".join(self.agents[a].name for a in s.agent_ids)
+            head = re.sub(r"^\s*\[.*?\]\s*:\s*", "", s.text).strip()
+            lines.append(f"{n}. [{roles}]: {head} — status: {st}; kind: {s.kind or 'work'}; covers: "
+                         f"{', '.join(s.covers) or '-'}; depends_on: {', '.join(map(str, s.depends_on)) or 'none'}")
+        return "\n".join(lines)
+
+    def finished_text(self) -> str:
+        parts = []
+        for n, a in sorted(self.artifacts.items()):
+            m = a["meta"]
+            src = "; ".join(f"[{x['id']}] {x['title'][:60]} ({x['url'][:80]})" for x in m.get("sources", [])[:5])
+            files = ", ".join(f["path"] for f in m.get("files_made", []) or self.files_of(n))
+            parts.append(f"## Step {n}, status {m['status']}{' (' + m['status_reason'] + ')' if m['status_reason'] else ''}"
+                         f"{'; verdict ' + m['verdict'] if m.get('verdict') else ''}\n"
+                         f"{head_tail(a['text'], 700)}\nsources: {src or 'none'}; files: {files or 'none'}")
+        return "\n\n".join(parts) or "None yet."
+
+    def blocked_text(self) -> str:
+        lines = [f"- step {n}: lacked {', '.join(a['meta']['blocked'])}" for n, a in sorted(self.artifacts.items())
+                 if a["meta"].get("blocked")]
+        asked = [q for q in self.cfg.meta.get("capability_requests", []) if q.get("status") == "unfilled"]
+        lines += [f"- request {q['name']} for {q['for_role']}: unfilled ({q.get('reason') or 'no reason'})" for q in asked]
+        return "\n".join(lines) or "Nothing."
+
+    def tools_text(self) -> str:
+        held = self.held_items()
+        lines = [f"- {t}: held by {', '.join(w)}" for t, w in sorted(held.items())]
+        spare = [t for t in self.i.tools.names() if t not in held] if hasattr(self.i.tools, "names") else []
+        if spare:
+            lines.append(f"- in this run but held by no role (a step can use them if its role gets them): "
+                         f"{', '.join(sorted(spare))}")
+        if self.local is not None and getattr(self.local, "exposed", None):
+            lines.append(f"- local tools a new request can be filled with: "
+                         f"{', '.join('local:' + n for n in self.local.exposed)}; local skills: "
+                         f"{', '.join(s['name'] for s in getattr(self.local, 'skills', [])[:20]) or 'none'}")
+        if self.pool is not None or getattr(self.i, "stock", None):
+            lines.append("- a tool pool exists: a capability request is tried against it by plain code")
+        return "\n".join(lines)
+
+    def roles_text(self) -> str:
+        return "\n".join(f"- {a.name}{' (writes the final answer)' if a.is_summariser else ''}: {a.goal or a.description[:120]}"
+                         for a in self.agents.values())
+
+    # ---- validation and application -------------------------------------------------------------------------------
+    # box: action_obs
+    def validate_decision(self, dec: dict) -> tuple[list[str], dict]:
+        """D63: the Box 2 rules for a proposed change, and the change itself when they all hold. Finished steps are
+        never touched; new steps may depend only on finished or new steps; roles must exist (or be the one role this
+        decision adds, with a complete card); the team stays within its size; the graph has no cycle; at most 3 added
+        steps per run and one added role."""
+        errors: list[str] = []
+        finished = set(self.artifacts)
+        unrun = {number(s) for s in self.cfg.plan if number(s) not in finished}
+        kind = dec["decision"]
+        roles = {a.name: a.agent_id for a in self.agents.values()}
+        new_role = None
+        if kind == "ADD_ROLE":
+            if self.roles_added >= 1:
+                errors.append("a role was already added in this run (at most one)")
+            blobs = parse_json_objects(dec["role"])
+            if not blobs:
+                errors.append("ADD_ROLE without a role JSON blob")
+            else:
+                new_role = DraftedRole(**blobs[0])
+                missing = [k for k in ("name", "goal", "outputs", "success_criteria") if not getattr(new_role, k)]
+                if not (new_role.prompt or new_role.description):
+                    missing.append("prompt")
+                if missing:
+                    errors.append(f"incomplete role card: no {', '.join(missing)}")
+                if new_role.name in roles:
+                    errors.append(f"role {new_role.name!r} already exists")
+                if len(self.agents) + 1 > getattr(self.i, "max_agents", 5):
+                    errors.append(f"the team would have {len(self.agents) + 1} roles (at most "
+                                  f"{getattr(self.i, 'max_agents', 5)})")
+                roles = {**roles, new_role.name: "NEW"}
+        requests = [q for q in parse_json_objects(dec["requests"]) if str(q.get("name", "")).strip()]
+        for q in requests:
+            if q.get("for_role") and q["for_role"] not in roles:
+                errors.append(f"capability request {q['name']!r} is for an unknown role {q['for_role']!r}")
+        change: dict = {"kind": kind, "new_role": new_role, "requests": requests, "steps": [], "drop": [],
+                        "reassign": None, "feeds": {}}
+        if kind in ("REVISE_REMAINING", "ADD_STEP", "ADD_ROLE"):
+            parsed = parse_plan_d24(re.sub(r"(?im)^\s*feeds\s*:.*$", "", dec["steps"]))
+            if not parsed:
+                errors.append(f"{kind} without steps in the Execution Plan format")
+            numbered = [int(x) for x in re.findall(r"(?m)^\s*(\d+)\.\s", "\n" + dec["steps"])]
+            new_nums = numbered[:len(parsed)] if len(numbered) >= len(parsed) else \
+                list(range(self.max_num + 1, self.max_num + 1 + len(parsed)))
+            batch = set(new_nums)
+            for num, (names, first, fields) in zip(new_nums, parsed):
+                who = [r for r in roles if r in names] or [r for r in roles if r.replace("_", " ") in first.split(":")[0]]
+                if not who:
+                    errors.append(f"step {num} names no role on the team ({', '.join(names) or first[:40]!r})")
+                if num in finished:
+                    errors.append(f"step {num} has already run; finished steps cannot change")
+                if kind != "REVISE_REMAINING" and num in unrun:
+                    errors.append(f"step {num} already exists; number new steps from {self.max_num + 1}")
+                bad = [d for d in fields["depends_on"] if d not in finished and d not in batch]
+                if bad:
+                    errors.append(f"step {num} depends on step(s) {bad}, which are neither finished nor new")
+                if num in fields["depends_on"]:
+                    errors.append(f"step {num} depends on itself")
+                change["steps"].append({"number": num, "roles": who, "text": first.strip(), "fields": fields})
+            if kind == "ADD_STEP":
+                if len(parsed) > 1:
+                    errors.append("ADD_STEP adds exactly one step")
+                feeds = re.search(r"(?im)^\s*feeds\s*:\s*(.+)$", dec["steps"])
+                targets = [int(x) for x in re.findall(r"\d+", feeds.group(1))] if feeds else []
+                wrong = [t for t in targets if t not in unrun]
+                if wrong:
+                    errors.append(f"feeds names step(s) {wrong} that are not waiting to run")
+                if new_nums:
+                    change["feeds"] = {new_nums[0]: [t for t in targets if t in unrun]}
+            if kind == "ADD_ROLE" and new_role and not any(new_role.name in s["roles"] for s in change["steps"]):
+                errors.append(f"no step for the new role {new_role.name!r}")
+            added = len([n for n in batch if n not in unrun])
+            if self.added_steps + added > self.opt.max_added_steps:
+                errors.append(f"{added} new step(s) would pass the cap of {self.opt.max_added_steps} added steps per run "
+                              f"({self.added_steps} added so far)")
+            if kind == "REVISE_REMAINING":
+                change["drop"] = sorted(unrun - batch)
+            change["added"] = added
+        elif kind == "REASSIGN_STEP":
+            num, role = step_field(dec["steps"], "step"), (step_field(dec["steps"], "role", as_text=True) or "").strip()
+            if num not in unrun:
+                errors.append(f"step {num} is not waiting to run; only such a step can be reassigned")
+            if role not in roles:
+                errors.append(f"role {role!r} is not on the team")
+            change["reassign"] = (num, role)
+        elif kind == "DROP_STEP":
+            num = step_field(dec["steps"], "step")
+            if num not in unrun:
+                errors.append(f"step {num} is not waiting to run; only such a step can be dropped")
+            elif num == self.answer_n:
+                errors.append(f"step {num} writes the final answer and cannot be dropped")
+            else:
+                reqs = re.findall(r"R\d+", dec["unmet"]) or list(self.steps[num].covers)
+                change["unmet"] = {r: re.sub(r"\s+", " ", dec["unmet"]).strip()[:200] or dec["reason"][:200] for r in reqs}
+            change["drop"] = [num] if num in unrun else []
+        else:
+            errors.append(f"unknown decision {kind!r}")
+        if not errors and kind in ("REVISE_REMAINING", "ADD_STEP", "ADD_ROLE", "DROP_STEP"):
+            if self.answer_n is not None and self.answer_n in change["drop"]:
+                errors.append(f"step {self.answer_n} writes the final answer and cannot be dropped")
+            else:
+                try:
+                    waves(self.proposed_plan(change, {**{a.name: a.agent_id for a in self.agents.values()},
+                                                      **({new_role.name: "NEW"} if new_role else {})}))
+                except PlanGraphError as e:
+                    errors.append(f"the new plan is unusable: {e}")
+        change["summary"] = {"steps_added": sorted(s["number"] for s in change["steps"] if s["number"] not in unrun),
+                             "steps_rewritten": sorted(s["number"] for s in change["steps"] if s["number"] in unrun),
+                             "steps_dropped": change["drop"], "reassigned": change["reassign"],
+                             "role_added": new_role.name if new_role else None,
+                             "requests": [q["name"] for q in requests]}
+        return errors, change
+
+    def proposed_plan(self, change: dict, ids: dict[str, str]) -> list[PlanStep]:
+        """The plan after `change` (steps sorted by number; a dropped step's dependants point at its dependencies)."""
+        drop = set(change["drop"])
+        written = {number(s): list(s.depends_on) for s in self.cfg.plan}
+        by = {number(s): s for s in self.cfg.plan if number(s) not in drop}
+        for s in change["steps"]:
+            f = s["fields"]
+            text = re.sub(r"^\s*\d+\.\s*", "", s["text"])
+            by[s["number"]] = PlanStep(index=s["number"] - 1, agent_ids=[ids[r] for r in s["roles"]], text=text,
+                                       kind=f.get("kind", ""), covers=f.get("covers", []),
+                                       depends_on=f.get("depends_on", []), do=f.get("do", ""),
+                                       output=f.get("output", ""), done_when=f.get("done_when", ""))
+        if change.get("reassign"):
+            num, role = change["reassign"]
+            s = by[num]
+            text = re.sub(r"^\s*\[.*?\]", f"[{role}]", s.text) if s.text.lstrip().startswith("[") else s.text
+            by[num] = s.model_copy(update={"agent_ids": [ids[role]], "text": text})
+        new = {s["number"] for s in change["steps"] if s["number"] not in {number(x) for x in self.cfg.plan}}
+        for n, targets in change.get("feeds", {}).items():
+            for t in targets:
+                by[t] = by[t].model_copy(update={"depends_on": list(dict.fromkeys([*by[t].depends_on, n]))})
+        final = self.final_step(by)
+        if final is not None and final not in self.artifacts:
+            later = self.dependants(by, final)           # the answer step waits for every new step not built on it
+            a = by[final]
+            add = [n for n in sorted(new) if n != final and n not in later]
+            by[final] = a.model_copy(update={"depends_on": list(dict.fromkeys([*a.depends_on, *add]))})
+        plan = [by[n] for n in sorted(by)]
+        plan, _ = relink(plan, written)
+        return plan
+
+    # box: action_obs
+    def final_step(self, by: dict[int, PlanStep]) -> int | None:
+        """The step that writes the answer in a proposed plan: a revision may renumber it (the old answer step
+        rewritten as another step, the summariser's step moved to a new number), so it is found again: the
+        summariser's step that no other step builds on, else the old answer step."""
+        summ = {a.agent_id for a in self.agents.values() if a.is_summariser}
+        used = {d for s in by.values() for d in s.depends_on}
+        sinks = [n for n in sorted(by) if n not in used and summ & set(by[n].agent_ids)]
+        if sinks:
+            return sinks[-1]
+        return self.answer_n if self.answer_n in by else None
+
+    # box: action_obs
+    @staticmethod
+    def dependants(by: dict[int, PlanStep], n: int) -> set[int]:
+        """Every step that builds on step n, directly or through other steps."""
+        out, todo = set(), [n]
+        while todo:
+            x = todo.pop()
+            for k, s in by.items():
+                if x in s.depends_on and k not in out:
+                    out.add(k)
+                    todo.append(k)
+        return out
+
+    # box: action_obs
+    def apply_decision(self, dec: dict, change: dict) -> None:
+        """D63: an accepted decision takes effect: the new role joins the team, capability requests go through the
+        normal toolbox step, the plan is replaced (finished steps unchanged), a dropped requirement is recorded as
+        not met, and the new version of the plan is saved with its diff."""
+        ids = {a.name: a.agent_id for a in self.agents.values()}
+        if change["new_role"] is not None:
+            r = change["new_role"]
+            known = set(self.i.tools.names()) if hasattr(self.i.tools, "names") else set()
+            have, lack = [t for t in r.tools if t in known], [t for t in r.tools if t not in known]
+            template = next(iter(self.agents.values()))
+            aid = str(uuid4())
+            agent = template.model_copy(deep=True, update={
+                "agent_id": aid, "name": r.name, "tools": have, "missing_tools": lack, "is_summariser": False,
+                "goal": r.goal, "skills": list(r.skills), "outputs": list(r.outputs),
+                "success_criteria": list(r.success_criteria), "constraints": list(r.constraints),
+                "role_prompt": r.prompt or r.description, "description": r.description or r.prompt,
+                "suggestions": r.suggestions, "pool": [], "created_by": "drafter"})
+            self.agents[aid] = agent
+            self.cfg.agents[aid] = agent.model_copy(deep=True)
+            ids[r.name] = aid
+            self.roles_added += 1
+            change["requests"] += [{"name": t, "kind": "tool", "for_role": r.name,
+                                    "what_it_does": "named in the new role's tools; no such tool is registered"}
+                                   for t in lack if not any(q.get("name") == t for q in change["requests"])]
+        if change["requests"]:
+            self.restock([CapabilityRequest(**{**q, "source": "planner"}) for q in change["requests"]])
+        if change["kind"] != "CONTINUE":
+            old = {number(s): s for s in self.cfg.plan}
+            self.cfg.plan = self.proposed_plan(change, ids)
+            self.steps = {number(s): s for s in self.cfg.plan}
+            self.max_num = max(self.max_num, *self.steps)
+            self.added_steps += change.get("added", 0)
+            if self.answer_n not in self.artifacts:      # a revision may have moved the answer step
+                self.answer_n = self._answer_step(waves(self.cfg.plan))
+            for r, why in change.get("unmet", {}).items():
+                self.unmet[r] = why
+            for n in change["drop"]:                     # a requirement only the dropped step covered is not met
+                for r in old[n].covers:
+                    if not any(r in s.covers for s in self.cfg.plan):
+                        self.unmet.setdefault(r, f"step {n} was dropped by a re-plan: {dec['reason'][:160]}")
+            self.save_plan_version(change["summary"])
+
+    def restock(self, requests: list) -> None:
+        """D63: new capability requests go through the normal toolbox step (pool and local tools), mid-run."""
+        stock = getattr(self.i, "stock", None)
+        cfg = self.cfg.model_copy(update={"agents": self.agents})
+        if stock is None:
+            for q in requests:
+                q.status, q.reason = "unfilled", "no_toolbox"
+        else:
+            reg, summary = stock(requests, cfg, self.i.tools)
+            self.i.tools = reg
+            self.pool = getattr(reg, "pool", None)
+            self.local = getattr(reg, "local", None)
+        for q in requests:
+            self.cfg.meta.setdefault("capability_requests", []).append(
+                {"name": q.name, "for_role": q.for_role, "canonical": q.canonical, "status": q.status,
+                 "reason": q.reason, "source": "replan"})
+            self.known.update(x for x in (q.name, q.canonical) if x)
+        if self.web is not None:
+            self.grant_web_tools()
+        for a in self.agents.values():                  # what the toolbox step attached is known to the plan now
+            self.known.update(a.tools)
+            self.known.update(p["name"] for p in a.pool)
+
+    def save_plan_version(self, diff: dict | None) -> None:
+        """plan.v1.json is the plan the run started with; each accepted re-plan writes the next version and its diff."""
+        if diff is not None:
+            self.plan_version += 1
+        rec = {"version": self.plan_version, "diff": diff,
+               "roles": [{"name": a.name, "tools": a.tools, "missing_tools": a.missing_tools} for a in self.agents.values()],
+               "steps": [{"number": number(s), "roles": [self.agents[x].name for x in s.agent_ids], "text": s.text,
+                          "kind": s.kind, "covers": s.covers, "depends_on": s.depends_on, "do": s.do,
+                          "output": s.output, "done_when": s.done_when,
+                          "status": self.artifacts[number(s)]["meta"]["status"] if number(s) in self.artifacts
+                          else "not run"} for s in self.cfg.plan]}
+        self.i.trace.event("plan_version", {"amoeba.version": self.plan_version, "amoeba.diff": diff})
+        if self.run_dir is not None:
+            self.run_dir.mkdir(parents=True, exist_ok=True)
+            (self.run_dir / f"plan.v{self.plan_version}.json").write_text(json.dumps(rec, indent=2, ensure_ascii=False),
+                                                                          encoding="utf-8")
+
+    # box: action_obs
+    def requirement_status(self) -> dict[str, dict]:
+        """D63: each requirement's final status — met (a covering step is done, and no failing check says
+        otherwise), partly (only partial or incomplete covering steps), not met (no covering step ran, or a re-plan
+        dropped it) — and the step(s) that met it. The answer step counts only when no other step covers it."""
+        out = {}
+        for r in self.cfg.requirements or {}:
+            if r in self.unmet:
+                out[r] = {"status": "not met", "steps": [], "why": self.unmet[r]}
+                continue
+            cover = [n for n, a in sorted(self.artifacts.items()) if r in a["meta"].get("covers", [])]
+            made = [n for n in cover if n != self.answer_n]   # the answer step only restates: a producer counts first
+            cover = made or cover
+            done = [n for n in cover if self.artifacts[n]["meta"]["status"] == "done"
+                    and self.artifacts[n]["meta"].get("verdict") != "FAIL"]
+            out[r] = {"status": "met" if done else "partly" if cover else "not met", "steps": done or cover}
+            if not cover:
+                out[r]["why"] = "no step that ran covers it"
+        return out
+
+    def replan_summary(self) -> dict:
+        status = self.requirement_status()
+        for r, v in status.items():
+            self.i.trace.event("requirement_status", {"amoeba.requirement": r, "amoeba.status": v["status"],
+                                                      "amoeba.steps": v["steps"]})
+        return {"calls": len(self.replans), "accepted": sum(1 for x in self.replans if x["accepted"]
+                                                            and x["decision"] != "CONTINUE"),
+                "rejected": sum(1 for x in self.replans if not x["accepted"]),
+                "decisions": [{k: x.get(k) for k in ("wave", "decision", "reason", "accepted", "errors", "changes")}
+                              | {"triggers": [t["detail"] for t in x["triggers"]]} for x in self.replans],
+                "steps_added": self.added_steps, "roles_added": self.roles_added, "plan_versions": self.plan_version,
+                "requirements": status}
+
+
+MISSING_INPUT_NOTE = """
+
+If an input this step needs is missing from your inputs (a step you depend on did not deliver it), do what you can and
+put a line "MISSING INPUT: <what> — <which step should have given it>" in your Final Output."""
+DECISIONS = ("CONTINUE", "REVISE_REMAINING", "ADD_STEP", "REASSIGN_STEP", "DROP_STEP", "ADD_ROLE")
+
+
+# box: step_check
+def missing_input_marks(text: str) -> list[str]:
+    """D63: the 'MISSING INPUT: <what>' lines of a step's output."""
+    return [m.group(1).strip() for m in re.finditer(r"MISSING\s+INPUT\s*[:：]\s*(.+)", text or "", re.I)]
+
+
+def head_tail(text: str, limit: int) -> str:
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit // 2].rstrip()}\n[… {len(text) - limit:,} characters omitted …]\n{text[-limit // 2:].lstrip()}"
+
+
+def step_field(body: str, key: str, as_text: bool = False):
+    """'step: 3' / 'role: Analyst' lines of a REASSIGN or DROP decision."""
+    m = re.search(rf"(?im)^\s*[-*]?\s*{key}\s*:\s*(.+)$", body or "")
+    if not m:
+        return None
+    if as_text:
+        return m.group(1).strip().strip("[]`\"'")
+    d = re.search(r"\d+", m.group(1))
+    return int(d.group(0)) if d else None
+
+
+# box: action_obs
+def parse_decision(raw: str) -> dict:
+    """D63: the observer's reply → {decision, reason, steps, role, unmet, requests, readable}. A reply without a known
+    decision is unreadable and counts as CONTINUE."""
+    body = re.sub(r"<(thought|think|thinking)\b[^>]*>.*?</\1\s*>", "", raw or "", flags=re.S | re.I)
+    sec = {k.lower().rstrip(":").strip(): v for k, v in parse_sections(body).items()}
+    word = re.search(r"\b(" + "|".join(DECISIONS) + r")\b", (sec.get("decision") or "").upper())
+    none = lambda v: "" if re.fullmatch(r"\s*(none\.?|n/a|-)?\s*", v or "", re.I) else (v or "").strip()
+    return {"decision": word.group(1) if word else "CONTINUE", "readable": bool(word),
+            "reason": none(sec.get("reason")), "steps": none(sec.get("steps")), "role": none(sec.get("role")),
+            "unmet": none(sec.get("unmet")), "requests": none(sec.get("capability requests"))}

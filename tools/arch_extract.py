@@ -152,7 +152,10 @@ BOXES: list[dict] = [
                "At most three rounds are run.",
                "With our prompts (d24) it may also list Open Questions: each ambiguity in the job and the assumption "
                "it took. With --interactive the person sees the requirements, assumptions and open questions and "
-               "types continue, or a correction that is added to the job before one more round."],
+               "types continue, or a correction that is added to the job before one more round.",
+               "D68: with our prompts it and both checkers are shown every tool the team will really have (calc, web "
+               "search and fetch, the local tools and skills when on, and that a tool pool exists); a document format "
+               "or a house style is a skill; what only the user can supply is an open question or a request."],
          proposes="Helpers (name, description, tools, suggestions, instructions), the step plan, and replies to the "
                   "checkers' feedback.",
          disposes="Nothing is accepted yet: the draft goes to the two checkers, and only the last draft is cleaned "
@@ -162,7 +165,8 @@ BOXES: list[dict] = [
          alt_prompts=["d24_planner_system", "d24_create_team", "d24_create_team_format"],
          output_checks=["amoeba/task/draft.py::_sections", "amoeba/interp/trace.py::TracedLLM.chat_sections", "amoeba/task/parsers.py::require"], ai_entry="amoeba/task/draft.py::_sections",
          anchors=[("amoeba/task/draft.py::draft_team", None, "# state 1"),
-                  "amoeba/task/parsers.py::parse_open_questions", "scripts/run_task.py::ask_user"]),
+                  "amoeba/task/parsers.py::parse_open_questions", "scripts/run_task.py::ask_user",
+                  "amoeba/task/draft.py::toolbox_text"]),
     dict(id="split", view="plan", title="Split sections", kind="code", plan="Split sections",
          sentence="Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
          what=["Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts.",
@@ -222,7 +226,9 @@ BOXES: list[dict] = [
                "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one "
                "summariser, a checking step done by a helper that did not produce what it checks, and task "
                "coverage: every number in the task and every deliverable verb (deliver, estimate, assess, prototype, "
-               "test, gather, build, plan) must reach a requirement or a given.",
+               "test, gather, build, plan, and since D68 run, convert, email, make, save, write, list, read, "
+               "compute, compare and more) must reach a requirement or a given; a phrase ends at sentence "
+               "punctuation, not inside an email address or a decimal.",
                "With the quality gate on, a draft failing a must-have check goes back to the planner for one more "
                "round with the failed checks listed, within the round cap."],
          proposes="The final draft text.",
@@ -326,19 +332,25 @@ BOXES: list[dict] = [
                "ends the run with error 'blocked'.",
                "A tool the helper does not have is not run: it gets a notice and the log an 'unknown_tool' line.",
                "On the last allowed turn a 'please synthesize' hint is added to the scratchpad.",
-               "If turns run out, the last reply is kept and the run is marked as having hit the turn limit."],
+               "If turns run out, the last reply is kept and the run is marked as having hit the turn limit.",
+               "D70 (harness fixes): the action input is read to the end of the reply, so an answer is never cut at "
+               "its first sub-heading; thinking tags are dropped wherever they stand, malformed ones too; AutoAgents' "
+               "own Write File block ('>>>file name' … '>>>END') is turned into our local Write call."],
          proposes="The action name and input.",
          disposes="Plain code checks the action against the helper's own tool list and counts turns.",
          anchors=[("amoeba/interp/runtime.py::Interpreter.run_flat", "while sum(consensus)", "for i, agent in"),
                   ("amoeba/interp/runtime.py::Interpreter.run_flat", "act, inp = sec", "published = response"),
-                  "amoeba/interp/runtime.py::Interpreter._dispatch", "amoeba/interp/runtime.py::Interpreter._tool"]),
+                  "amoeba/interp/runtime.py::Interpreter._dispatch", "amoeba/interp/runtime.py::Interpreter._tool",
+                  "amoeba/interp/runtime.py::file_block_write", "amoeba/interp/runtime.py::strip_thought"]),
     dict(id="solver", view="run", title="Solver", kind="llm", plan="Solver", ai="solver",
          sentence="One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply gets one retry.",
          what=["The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
                "It writes a full new answer each time it is asked.",
                "It is asked at most four times: once, then once per review round with an objection.",
                "With --equal-tools on (D62) the writer holds every tool the team was given and may call them first "
-               "(Action / ActionInput lines, at most 5 calls); reviewers may call their own tools the same way."],
+               "(Action / ActionInput lines, at most 5 calls); reviewers may call their own tools the same way.",
+               "D70: a reply that is only a tool request is no answer: the writer is asked once more for its "
+               "answer, and a run whose last answer is still a tool request ends with error 'no_answer'."],
          proposes="The answer text (and, with D62, tool calls).",
          disposes="Plain code decides when it is asked again and takes its last answer as the result.",
          prompts=["agentverse_solver_prepend", "agentverse_solver_append"],
@@ -399,7 +411,7 @@ BOXES: list[dict] = [
          prompts=["plan_step", "plan_step_system", "plan_critique"],
          anchors=["amoeba/interp/plan_runner.py::PlanRunner.run_step", "amoeba/interp/plan_runner.py::PlanRunner._loop",
                   "amoeba/interp/plan_runner.py::PlanRunner._turn", "amoeba/interp/plan_runner.py::plan_card",
-                  "amoeba/interp/plan_runner.py::step_detail", "amoeba/interp/plan_runner.py::full_action_input",
+                  "amoeba/interp/plan_runner.py::step_detail", "amoeba/interp/runtime.py::full_action_input",
                   "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
                   "amoeba/interp/plan_runner.py::PlanRunner.refine", "amoeba/interp/plan_runner.py::PlanRunner.critique",
                   "amoeba/interp/plan_runner.py::PlanRunner._review"]),
@@ -420,7 +432,10 @@ BOXES: list[dict] = [
                "A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, "
                "earns one refine turn and then makes the step partial (not declared / attached unused).",
                "A verify step also sees each checked step's sources, tool calls, figure counts and files (D61). A "
-               "producer whose only problem is a missing capability is not sent back (rework_skipped)."],
+               "producer whose only problem is a missing capability is not sent back (rework_skipped).",
+               "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, "
+               "through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no "
+               "re-checking tool call on code, files or cited figures is an unverified check and makes it partial."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",
@@ -432,7 +447,32 @@ BOXES: list[dict] = [
                   "amoeba/interp/plan_runner.py::PlanRunner.contract",
                   "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
                   "amoeba/interp/plan_runner.py::tool_ok", "amoeba/interp/plan_runner.py::not_needed_marks",
-                  "amoeba/interp/plan_runner.py::PlanRunner.evidence_text"]),
+                  "amoeba/interp/plan_runner.py::PlanRunner.evidence_text",
+                  "amoeba/interp/plan_runner.py::PlanRunner.verifier_tools",
+                  "amoeba/interp/plan_runner.py::PlanRunner.raw_results_text",
+                  "amoeba/interp/plan_runner.py::PlanRunner.checkable"]),
+    dict(id="action_obs", view="run", title="Action Observer (re-plan)", kind="llm", plan=None, ai="replanner",
+         sentence="With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps "
+                  "that have not run; plain code checks the change before it takes effect.",
+         what=["Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still "
+               "failing, a step reporting a missing input, or a tool the plan did not know about. No trigger, no call.",
+               "One planner call sees the task, the plan with each step's status, what the finished steps produced, "
+               "what is blocked, the tools really available and the budget left, and returns one decision: CONTINUE, "
+               "REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
+               "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a "
+               "team too large, a loop, or a new step that depends on a step that has not run. New capability "
+               "requests go through the normal toolbox step; a dropped requirement is listed as not met.",
+               "At most 2 re-plans and 3 added steps per run; an unreadable or invalid reply counts as CONTINUE. "
+               "Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change."],
+         proposes="One typed decision and its reason.",
+         disposes="Plain code decides when to call, validates the decision, applies it and records every version.",
+         prompts=["plan_replan"],
+         anchors=["amoeba/interp/plan_runner.py::PlanRunner.action_observer",
+                  "amoeba/interp/plan_runner.py::PlanRunner.replan_triggers",
+                  "amoeba/interp/plan_runner.py::PlanRunner.validate_decision",
+                  "amoeba/interp/plan_runner.py::PlanRunner.apply_decision",
+                  "amoeba/interp/plan_runner.py::PlanRunner.requirement_status",
+                  "amoeba/interp/plan_runner.py::parse_decision"]),
     dict(id="provenance", view="run", title="Where each figure came from", kind="code", plan=None,
          sentence="Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
          what=["A number is cited when its line carries a source id the step could have seen.",
@@ -441,10 +481,14 @@ BOXES: list[dict] = [
                "id too (D61), so a figure taken from it is cited.",
                "A run-wide ledger keeps each figure's first status and step, so a figure that entered untagged stays "
                "untagged however often later steps or the answer copy it.",
+               "D66: a number equal to a calc or local-tool result of the same step counts as derived even when "
+               "tagged [unverified], and plain code removes that tag; a number given in the task with only a web "
+               "source tag stays 'given' and is flagged for the refine turn.",
                "It only measures; nothing is rejected on these counts."],
          proposes="Nothing.", disposes="Plain code counts; the totals go to result.json.",
          anchors=["amoeba/interp/provenance.py::check_provenance", "amoeba/interp/provenance.py::total",
-                  "amoeba/interp/provenance.py::claim_numbers"]),
+                  "amoeba/interp/provenance.py::claim_numbers", "amoeba/interp/provenance.py::strip_unverified",
+                  "amoeba/interp/provenance.py::computed_values"]),
     dict(id="artifacts", view="run", title="Step artifacts", kind="data", plan=None,
          sentence="Each step's output saved as a file, with who wrote it, what it saw, its status and its sources.",
          what=["runs/<id>/artifacts/step_<n>.md holds the text; step_<n>.json the step, wave, roles, inputs, "
@@ -463,8 +507,12 @@ BOXES: list[dict] = [
                "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn "
                "one refine turn; files still unnamed are listed by code under 'Files made', and Limitations also name "
                "undeclared missing capabilities and attached items left unused (NOT USED).",
-               "Each input is cut at 6,000 characters and all of them at 30,000 (marked). When several final steps "
-               "have no summariser step, code puts their outputs together under headings instead."],
+               "Each input is shortened to 6,000 characters and all of them to 30,000; since D64 the head, the tail "
+               "and every line with a result (a count, a total, an '=' line, the last lines of program output) are "
+               "kept, with a mark for what was left out. When several final steps have no summariser step, code "
+               "puts their outputs together under headings instead.",
+               "D67: for a task that asks for today's, the current or the latest value, a figure whose as-of date "
+               "is more than 3 days old adds 'possibly not the latest' to Limitations."],
          proposes="The final answer.",
          disposes="Plain code counts new numbers, checks the answer against the work produced, and completes the "
                   "Limitations section.",
@@ -476,7 +524,9 @@ BOXES: list[dict] = [
                   "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
                   "amoeba/interp/plan_runner.py::PlanRunner.ledger_update",
                   "amoeba/interp/plan_runner.py::PlanRunner.answer_gaps",
-                  "amoeba/interp/plan_runner.py::PlanRunner.add_files_section"]),
+                  "amoeba/interp/plan_runner.py::PlanRunner.add_files_section",
+                  "amoeba/interp/shorten.py::shorten", "amoeba/interp/freshness.py::stale_figure",
+                  "amoeba/interp/freshness.py::time_sensitive"]),
     dict(id="trace", view="run", title="Every AI call → one trace line", kind="data",
          plan="Every AI call → one trace line",
          sentence="Writes one log line per AI call and tool call: who, which model, tokens and time. Nothing enforces a budget.",
@@ -541,11 +591,16 @@ BOXES: list[dict] = [
                "With --local-tools on (D59) the local toolbox's items are candidates too — ahead of the pool's only "
                "when an alias names them or they match at least as well (D61) — and a skill with scripts is no "
                "longer refused: it is copied into the run's workspace.",
-               "What became of each request (filled or not) is handed to the plan runner for the step contract (D61)."],
+               "What became of each request (filled or not) is handed to the plan runner for the step contract (D61).",
+               "D69: a request that names a document format (xlsx, docx, pptx, pdf) gets the vetted local skill for "
+               "it, chosen by plain code with no AI pick; an outside service that creates things stays refused.",
+               "D70: with --picks-file every run of a task reuses the task's first pick for a request (all three "
+               "architectures), when it passes vetting again; --picks-only makes the picks in a pre-pass."],
          proposes="The picker names one candidate (or NONE).",
          disposes="Plain code ranks the candidates, rejects anything unsafe or over the caps, and attaches.",
          anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
-                  "amoeba/pool/match.py::rank", "amoeba/pool/mcp.py::PoolTools", "amoeba/pool/mcp.py::SdkConnector"]),
+                  "amoeba/pool/match.py::rank", "amoeba/pool/mcp.py::PoolTools", "amoeba/pool/mcp.py::SdkConnector",
+                  "amoeba/pool/match.py::document_format", "amoeba/pool/stock.py::SharedPicks"]),
     dict(id="localtools", view="run", title="Local toolbox (sandboxed)", kind="code", plan=None,
          sentence="With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp "
                   "serve`, inside a workspace folder of the run.",
@@ -567,14 +622,18 @@ BOXES: list[dict] = [
                "written inside a code fence runs without the fence.",
                "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); "
                "result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the "
-               "workspace is copied to artifacts/files/."],
+               "workspace is copied to artifacts/files/.",
+               "D71: LibreOffice Calc headless (scripts/setup_office.sh) recalculates spreadsheet formulas with a "
+               "fresh profile and HOME; when the xlsx skill is attached, plain code checks once that a two-cell "
+               "workbook comes back with its value, and if not the helper's card says recalc.py will fail."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",
          anchors=["amoeba/localtools/toolbox.py::LocalToolbox", "amoeba/localtools/toolbox.py::LocalSetup",
                   "amoeba/localtools/server.py::StdioServer", "amoeba/localtools/gate.py::screen_command",
                   "amoeba/localtools/gate.py::inside", "amoeba/localtools/skills.py::list_skills",
-                  "amoeba/localtools/claims.py::claimed_files"]),
+                  "amoeba/localtools/claims.py::claimed_files", "amoeba/localtools/office.py::recalc",
+                  "amoeba/localtools/office.py::office_check"]),
     dict(id="pool_index", view="run", title="Pool index (cache)", kind="data", plan=None,
          sentence="The tools and skills Box 3 may draw on, fetched ahead of time by `amoeba pool refresh`; a run only "
                   "reads it.",

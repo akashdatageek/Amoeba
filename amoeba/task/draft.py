@@ -174,15 +174,16 @@ def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
 # box: ov_plan, handoff, planner, agent_obs, plan_obs, checks
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
                prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False,
-               max_rounds: int = MAX_ROUNDS, history: str = "") -> Draft:
+               max_rounds: int = MAX_ROUNDS, history: str = "", toolbox: str | None = None) -> Draft:
     """history: the previous draft the Planner revises (manager.py:26 roles_plan; "" at first). D53 --interactive
-    re-drafts once: max_rounds=1, history = the draft the user clarified."""
+    re-drafts once: max_rounds=1, history = the draft the user clarified. toolbox: D68 — what Box 3 will really
+    have (toolbox_text), shown to the d24 Planner and both observers instead of the installed-tool list."""
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
     d24 = prompts == D24
     limits = token_limits(max_tokens)                 # D27: per role, CLI > env > 8192
     tl = TracedLLM(llm, trace)
-    tools = envelope.tool_catalog_string()
+    tools = toolbox if (toolbox and d24) else envelope.tool_catalog_string()
     ctx = f"[Question/Task: {task.prompt}]"          # manager.py:32 str(important_memory) — keep the bracketed form
     sugg_roles, sugg_plan = "", ""                    # manager.py:26 — cumulative strings
     suggestions = ""                                  # manager.py:27 — what the planner sees: LATEST round only
@@ -247,7 +248,8 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                 rec.plan_observer_raw, s = _observer_sections(tl, "plan_observer", render(
                     PROMPT.d24_review_plan, context=task.prompt, requirements=requirements_text(sec),
                     roles=sec["Selected Roles List"] + sec["Created Roles List"], plan=sec["Execution Plan"],
-                    risks=sec["Risks and Decisions"], capability_requests=requests_text, history=hist_plan),
+                    risks=sec["Risks and Decisions"], capability_requests=requests_text, history=hist_plan,
+                    tools=tools),                                                       # D68: the real toolbox
                     seed, log, system=PROMPT.d24_plan_observer_system.strip(),
                     max_tokens=limits["plan_observer"])
                 rec.plan_verdict = parse_verdict(s) or "REVISE"
@@ -295,6 +297,27 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                                   "amoeba.quality.failed": d.quality["failed"],
                                   "amoeba.quality.failed_checks": ",".join(d.quality["failed_checks"]) or None})
     return d
+
+
+# box: planner
+def toolbox_text(envelope: Envelope, web: bool = False, local: bool = False, pool: bool = False) -> str:
+    """D68: every tool Box 3 will really have, and how a role gets it, for the Planner and both observers."""
+    lines = [f"- {n}: {envelope.tool_descriptions.get(n, '')} (installed)" for n in envelope.allowed_tool_names]
+    if web:
+        lines += ["- web_search: searches the web and returns snippets with their URLs (a role that lists web_search "
+                  "or asks for it gets it)",
+                  "- fetch_url: fetches the text of a web page (given together with web_search)"]
+    if local:
+        lines += ["- local tools, sandboxed in the run's own workspace, no network: Bash (runs Python 3 or a shell "
+                  "command; python3 has openpyxl, python-docx, python-pptx, matplotlib, pypdf), Read, Write and Edit "
+                  "(files). A role gets them through a capability request for the ability (e.g. python_interpreter, "
+                  "file writing)",
+                  "- local skills for document formats: xlsx, docx, pptx, pdf (a skill request for the format gives "
+                  "the role the skill's instructions and the local tools)"]
+    if pool:
+        lines.append("- a tool pool: plain code matches every capability request against cached MCP servers and "
+                     "skills; a request may be filled or may stay unfilled, so a step must say what to do without it")
+    return "\n".join(lines) or "None"
 
 
 # box: checks

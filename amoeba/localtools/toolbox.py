@@ -26,10 +26,12 @@ from typing import Any
 import yaml
 
 from amoeba.config.schema import AgentSpec
+from amoeba.interp.shorten import shorten
 from amoeba.localtools.gate import in_workspace, inside, require_sandbox, screen_command
+from amoeba.localtools.office import office_check
 from amoeba.localtools.server import StdioServer
 from amoeba.localtools.skills import card_text, copy_skill, list_skills
-from amoeba.pool.match import rank
+from amoeba.pool.match import document_format, rank
 from amoeba.pool.mcp import SourceBook, data_block
 
 CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "localtools.yaml"
@@ -114,6 +116,7 @@ class LocalToolbox:
         self.skills_attached: list[dict] = []
         self.error: str | None = None
         self.book = None                             # D61 (G7): the run's [S#] list, set by stock_toolbox
+        self.office: dict | None = None              # D71: office_check(), run when the xlsx skill is attached
 
     # ---- the server -------------------------------------------------------------------------------------------
     def start(self) -> None:
@@ -188,6 +191,14 @@ class LocalToolbox:
                 seen.add(e["id"])
         return out[:top]
 
+    def format_skill(self, q) -> dict | None:
+        """D69: the vetted local skill for the document format a request names (xlsx, docx, pptx, pdf), or None."""
+        fmt = document_format(q)
+        if fmt is None or self.server is None:
+            return None
+        return next((e for e in self.entries() if e["kind"] == "skill" and e["name"] == fmt and self.vet(e) is None),
+                    None)
+
     def vet(self, entry: dict) -> str | None:
         if self.server is None:
             return "local_unavailable"
@@ -215,10 +226,21 @@ class LocalToolbox:
             return False
         dest = copy_skill(entry, self.workspace)
         self._seen = self._snapshot()                 # the copied skill is input, not a file the team made
+        note = ""
+        if entry["name"] == "xlsx":                   # D71: can formulas be recalculated here? checked once per run
+            if self.office is None:
+                self.office = office_check()
+                self.trace.event("office_check", {"amoeba.box": "localtools", "amoeba.ok": self.office["ok"],
+                                                  "amoeba.detail": self.office["detail"]})
+            if not self.office["ok"]:
+                note = ("\nNote from plain code: LibreOffice cannot recalculate formulas in this sandbox "
+                        f"({self.office['detail']}), so scripts/recalc.py will fail; write the formulas and say what "
+                        "they compute.")
         a.pool.append({"kind": "skill", "id": entry["id"], "name": entry["name"], "source": "local", "request": request,
                        "text": f"Skill: {entry['name']} (local, from {entry['root']})\n"
                                f"{data_block('skill ' + entry['name'], body)}\n"
-                               f"Full skill files are in skills/{entry['name']}/; read them with local:Read if needed."})
+                               f"Full skill files are in skills/{entry['name']}/; read them with local:Read if needed."
+                               + note})
         for n in ("Read", "Bash", "Write", "Edit"):  # a skill is used by reading and running its files
             if n in self.exposed:
                 self.attach_tool(a, f"local:{n}", reg)
@@ -312,14 +334,14 @@ class LocalToolbox:
             out, is_error, timed_out = f"{type(e).__name__}: {e}"[:300], True, False
         new = self._scan()
         cap = int(self.lim["max_output_chars"])
-        cut = out[:cap]
+        cut = shorten(out, cap)                       # D64: head, result lines and the last lines of output kept
         self.trace.event("local_call", {"amoeba.box": "localtools", "amoeba.step": self.step,
                                         "gen_ai.tool.name": f"local:{tool}", "amoeba.input": what,
                                         "amoeba.decision": "allowed", "amoeba.chars": len(out),
                                         "amoeba.chars_passed": len(cut), "amoeba.is_error": is_error,
                                         "amoeba.timeout": timed_out, "amoeba.files": new,
                                         "amoeba.ms": int((time.perf_counter() - t0) * 1000)})
-        more = f"\n[… first {cap} of {len(out)} characters]" if len(out) > cap else ""
+        more = f"\n[shortened from {len(out)} characters: head, result lines and tail kept]" if len(out) > cap else ""
         src = ""
         if self.book is not None and not is_error:    # D61 (G7): a local result is a source the helper can cite
             key = hashlib.sha256(f"{self.calls}:{tool}:{what}".encode()).hexdigest()[:10]
@@ -355,7 +377,10 @@ class LocalToolbox:
         if p is not None and p.is_file():
             return True
         base = Path(name).name
-        return any(Path(f).name == base for f in self._snapshot())
+        if any(Path(f).name == base for f in self._snapshot()):
+            return True
+        skills = self.workspace / "skills"                # a skill's own script the step ran (recalc.py) is no lie
+        return skills.is_dir() and any(f.is_file() for f in skills.rglob(base))
 
     def finish(self) -> dict:
         """Copy the workspace to runs/<id>/artifacts/files/ (skills/ left out), close the server, and report."""
