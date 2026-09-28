@@ -281,7 +281,9 @@ def test_a_skill_with_scripts_is_attached_with_the_flag_on(cache, skills, tmp_pa
     [card] = [p["text"] for p in researcher.pool if p["kind"] == "skill"]
     assert "name: xlsx" in card and "Use openpyxl." in card                          # frontmatter + body
     assert "[… first 5000 of" in card and "x" * 5001 not in card
-    assert card.endswith("Full skill files are in skills/xlsx/; read them with local:Read if needed.")
+    assert "Full skill files are in skills/xlsx/; read them with local:Read if needed." in card
+    # D71: the office note follows only where LibreOffice cannot recalculate (for example CI)
+    assert ("LibreOffice cannot recalculate formulas" in card) == (not b.office["ok"])
     assert {"local:Read", "local:Bash", "local:Write", "local:Edit"} <= set(researcher.tools)
     out = b.finish()
     assert out["skills_attached"] == [{"id": "local:skill:anthropics_skills/xlsx", "name": "xlsx", "root": "anthropics_skills",
