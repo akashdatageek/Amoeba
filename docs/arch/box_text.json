@@ -3219,9 +3219,11 @@
    "title": "Local toolbox (sandboxed)"
   },
   "facts_hash": "473a8d04c5b90f02",
+  "rejected_hash": "15ca29416e0615ce",
   "seed_hash": "c3cfd084c207ca3b",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused and logged once. They become local:<Name> tools of the run.",
    "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); a Bash command runs from there, network commands are refused (network_command) and destructive or escaping ones too (unsafe_command).",
@@ -3878,7 +3880,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "f0b9d67",
+  "checked_at": "e62328f",
   "facts": {
    "anchors": [
     {
@@ -4029,6 +4031,18 @@
      "doc": "D51: one reviewer's verdict and numbered issues. An unreadable reply counts as AGREE (recorded).",
      "key": "amoeba/interp/plan_runner.py::PlanRunner._review",
      "signature": "_review(self, rv: AgentSpec, step: PlanStep, n: int, drafter: AgentSpec, draft: str, inputs: str) -> tuple[str, list[str]]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/shorten.py::_cut_line",
+      "amoeba/interp/shorten.py::_output_tails",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "The text within about `limit` characters: head, the result lines of the middle, tail. Unchanged when it",
+     "key": "amoeba/interp/shorten.py::shorten",
+     "signature": "shorten(text: str, limit: int) -> str"
     }
    ],
    "checks": [],
@@ -4037,6 +4051,11 @@
      "correct",
      "if act in agent.tools",
      "add resp"
+    ],
+    [
+     "correct",
+     "if prev != len(lines) - 1",
+     "add MARK.format(n=sum((len(lines[j]) + 1 for j in range(prev + 1, len(lines)))))"
     ],
     [
      "correct",
@@ -4072,6 +4091,21 @@
      "decide",
      "if gaps",
      "set status = 'partial' if wrote else 'incomplete'"
+    ],
+    [
+     "decide",
+     "if i != prev + 1",
+     "set skipped = sum((len(lines[j]) + 1 for j in range(prev + 1, i)))"
+    ],
+    [
+     "decide",
+     "if last_head < i < first_tail",
+     "set line = _cut_line(lines[i], 300)"
+    ],
+    [
+     "decide",
+     "if limit < 400",
+     "set half = max(1, limit // 2)"
     ],
     [
      "decide",
@@ -4137,6 +4171,11 @@
      "decide",
      "if self.local is not None",
      "set claimed = claimed_files(text)"
+    ],
+    [
+     "decide",
+     "if self.opt.replan == 'on' and deps and (not summarising)",
+     "set extra += MISSING_INPUT_NOTE"
     ],
     [
      "decide",
@@ -4215,6 +4254,11 @@
     ],
     [
      "fallback",
+     "_cut_line(lines[i], 300) if i in middle else lines[i]",
+     "choose value"
+    ],
+    [
+     "fallback",
      "agents[:1] if self.opt.collab == 'critique' and len(agents) > 1 else agents",
      "choose value"
     ],
@@ -4266,6 +4310,11 @@
     [
      "fallback",
      "found['not_needed'] if found else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "head[-1] if head else -1",
      "choose value"
     ],
     [
@@ -4369,6 +4418,16 @@
      "choose value"
     ],
     [
+     "fallback",
+     "tail[0] if tail else len(lines)",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if KEY_LINE.search(l)",
+     "drop the rest"
+    ],
+    [
      "filter",
      "keep only if getattr(step, k)",
      "drop the rest"
@@ -4415,6 +4474,11 @@
     ],
     [
      "loop cap",
+     "for i in range(len(lines) - 1, head[-1] if head else -1, -1)",
+     "loop ends"
+    ],
+    [
+     "loop cap",
      "for rnd in range(1, self.opt.collab_rounds + 1)",
      "loop ends"
     ],
@@ -4440,6 +4504,11 @@
     ],
     [
      "stop",
+     "if len(text) <= limit",
+     "return text"
+    ],
+    [
+     "stop",
      "if not draft",
      "stop (break)"
     ],
@@ -4447,6 +4516,26 @@
      "stop",
      "if not reason or not w.done",
      "return None"
+    ],
+    [
+     "stop",
+     "if room - len(line) - 1 < 0",
+     "stop (break)"
+    ],
+    [
+     "stop",
+     "if sum((len(l) + 1 for l in lines)) <= limit",
+     "return '\\n'.join(lines)"
+    ],
+    [
+     "stop",
+     "if used + len(l) + 1 > head_room",
+     "stop (break)"
+    ],
+    [
+     "stop",
+     "if used + len(lines[i]) + 1 > tail_room",
+     "stop (break)"
     ]
    ],
    "kind": "llm",
@@ -4461,17 +4550,16 @@
    ],
    "prompts": {
     "plan_critique": "404c588e8d12",
-    "plan_step": "2e61b39e6900",
+    "plan_step": "954dae673ae6",
     "plan_step_system": "daf8cf4bba11"
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "0601b6dc54c130e9",
-  "rejected_hash": "5b9080c337f51dfc",
+  "facts_hash": "405d06a58150b421",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand (model: still true)",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
@@ -4482,7 +4570,7 @@
   ]
  },
  "plan_summary": {
-  "checked_at": "5c10844",
+  "checked_at": "e62328f",
   "facts": {
    "anchors": [
     {
@@ -4571,6 +4659,18 @@
      "signature": "add_files_section(text: str, files: list[dict]) -> str"
     },
     {
+     "callees": [
+      "amoeba/interp/shorten.py::_cut_line",
+      "amoeba/interp/shorten.py::_output_tails",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "The text within about `limit` characters: head, the result lines of the middle, tail. Unchanged when it",
+     "key": "amoeba/interp/shorten.py::shorten",
+     "signature": "shorten(text: str, limit: int) -> str"
+    },
+    {
      "callees": [],
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.answer_findings",
@@ -4598,9 +4698,29 @@
      "add 'the team made these files but the answer does not name them: ' + ', '.join((f\"{f['path']} (step {f['step']})\" for f in gaps['files'])) + '. Name each file the task asks for and say what is in it.'"
     ],
     [
+     "correct",
+     "if prev != len(lines) - 1",
+     "add MARK.format(n=sum((len(lines[j]) + 1 for j in range(prev + 1, len(lines)))))"
+    ],
+    [
      "decide",
      "if e is None and f['status'] != 'inherited'",
      "set e = self.ledger[f['n']] = {'status': f['status'], 'step': n, 'as': f['as'], 'sources': f['"
+    ],
+    [
+     "decide",
+     "if i != prev + 1",
+     "set skipped = sum((len(lines[j]) + 1 for j in range(prev + 1, i)))"
+    ],
+    [
+     "decide",
+     "if last_head < i < first_tail",
+     "set line = _cut_line(lines[i], 300)"
+    ],
+    [
+     "decide",
+     "if limit < 400",
+     "set half = max(1, limit // 2)"
     ],
     [
      "decide",
@@ -4639,6 +4759,11 @@
     ],
     [
      "fallback",
+     "_cut_line(lines[i], 300) if i in middle else lines[i]",
+     "choose value"
+    ],
+    [
+     "fallback",
      "e['status'] if e else 'inherited'",
      "choose value"
     ],
@@ -4664,7 +4789,17 @@
     ],
     [
      "fallback",
+     "head[-1] if head else -1",
+     "choose value"
+    ],
+    [
+     "fallback",
      "self.opt.max_input_chars if total <= self.opt.max_summary_input_chars else max(500, self.opt.max_summary_input_chars // max(1, len(items)))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "tail[0] if tail else len(lines)",
      "choose value"
     ],
     [
@@ -4676,6 +4811,11 @@
      "fallback",
      "{'unused_added_by_code': not_used} if unused else {}",
      "choose value"
+    ],
+    [
+     "filter",
+     "keep only if KEY_LINE.search(l)",
+     "drop the rest"
     ],
     [
      "filter",
@@ -4723,6 +4863,16 @@
      "drop the rest"
     ],
     [
+     "loop cap",
+     "for i in range(len(lines) - 1, head[-1] if head else -1, -1)",
+     "loop ends"
+    ],
+    [
+     "stop",
+     "if len(text) <= limit",
+     "return text"
+    ],
+    [
      "stop",
      "if m",
      "return f'{text[:m.start()].rstrip()}\\n\\n{block}\\n{text[m.start():].lstrip()}'"
@@ -4731,6 +4881,26 @@
      "stop",
      "if not files",
      "return text"
+    ],
+    [
+     "stop",
+     "if room - len(line) - 1 < 0",
+     "stop (break)"
+    ],
+    [
+     "stop",
+     "if sum((len(l) + 1 for l in lines)) <= limit",
+     "return '\\n'.join(lines)"
+    ],
+    [
+     "stop",
+     "if used + len(l) + 1 > head_room",
+     "stop (break)"
+    ],
+    [
+     "stop",
+     "if used + len(lines[i]) + 1 > tail_room",
+     "stop (break)"
     ],
     [
      "stop",
@@ -4749,17 +4919,16 @@
    },
    "title": "Summariser assembles"
   },
-  "facts_hash": "9ba2da4ce2d6bb3e",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "7fc06c7b031df24c",
+  "facts_hash": "3583da0a638fda81",
+  "seed_hash": "fd650ade151855a9",
   "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
-  "source": "model: rewritten",
+  "source": "hand",
   "what": [
    "Sees every step's latest output with its status, missing capabilities, verdict and figure counts, and the deliverables the plan committed to (never the scoring rubric).",
    "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under Limitations when there are any.",
    "Code counts any number it adds, lists the answer's untagged and unverified figures, and appends a line for any missing capability it left out.",
-   "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code, and Limitations also name undeclared missing capabilities and attached items left unused (NOT USED).",
-   "Each input is cut at {PlanOptions.max_input_chars} characters and all of them at {PlanOptions.max_summary_input_chars} (marked). When several final steps have no summariser step, code puts their outputs together under headings instead."
+   "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code under 'Files made', and Limitations also name undeclared missing capabilities and attached items left unused (NOT USED).",
+   "Each input is shortened to {PlanOptions.max_input_chars} characters and all of them to {PlanOptions.max_summary_input_chars}; since D64 the head, the tail and every line with a result (a count, a total, an '=' line, the last lines of program output) are kept, with a mark for what was left out. When several final steps have no summariser step, code puts their outputs together under headings instead."
   ]
  },
  "planner": {
