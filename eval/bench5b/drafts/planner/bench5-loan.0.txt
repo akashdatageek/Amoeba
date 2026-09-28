@@ -1,0 +1,174 @@
+## Thought
+The task is a straightforward financial calculation requiring the application of the standard amortization formula. To ensure accuracy, I will employ a Financial Analyst to perform the calculation and a QA Reviewer to verify the numbers independently. A Summarizer will then package the formula and the result into the final response. I will use the `calc` tool for basic arithmetic or the `python_interpreter` for higher precision.
+
+## Requirements:
+R1: Calculate the monthly payment on a $250,000 equipment loan.
+R2: Show the formula used for the calculation.
+
+## Givens and Assumptions:
+- given: Principal ($P$) = $250,000
+- given: Annual Percentage Rate ($APR$) = 7% (0.07)
+- given: Loan Term = 5 years
+- given: Payment Frequency = Monthly
+- derived: Monthly Interest Rate ($r$) = $0.07 / 12 \approx 0.00583333$
+- derived: Total Number of Payments ($n$) = $5 \times 12 = 60$
+- assumption: The loan is a standard fixed-rate amortizing loan.
+- assumption: Payments are made at the end of each period (ordinary annuity).
+
+## Open Questions:
+None
+
+## Selected Roles List:
+```
+None
+```
+
+## Created Roles List:
+```
+[
+  {
+    "name": "Financial Analyst",
+    "seniority": "senior",
+    "description": "Expert in loan amortization and financial mathematics. Responsible for the primary calculation and formula derivation.",
+    "goal": "Provide the exact monthly payment and the mathematical formula used to derive it.",
+    "responsibilities": [
+      "Identify the correct amortization formula",
+      "Perform the step-by-step calculation using the given loan parameters",
+      "Document the variables and the final result"
+    ],
+    "skills": ["financial mathematics", "loan amortization"],
+    "tools": ["calc", "python_interpreter"],
+    "inputs": ["Task parameters from the prompt"],
+    "outputs": [
+      {
+        "artifact": "calculation_sheet",
+        "format": "memo: Formula, Variable Definitions, Step-by-step calculation, Final Result"
+      }
+    ],
+    "success_criteria": ["The formula is mathematically correct", "The calculation is precise to two decimal places"],
+    "constraints": ["Must use the standard amortization formula"],
+    "covers": ["R1", "R2"],
+    "is_summariser": false,
+    "prompt": "You are a Senior Financial Analyst. Your task is to calculate the monthly payment for a fixed-rate equipment loan. \n1. State the standard amortization formula: M = P [ r(1 + r)^n ] / [ (1 + r)^n – 1 ].\n2. Define all variables (P, r, n) based on the provided inputs ($250,000, 7% APR, 5 years).\n3. Calculate the monthly interest rate (r = APR / 12) and total payments (n = years * 12).\n4. Execute the calculation step-by-step. Use a calculator or Python for precision.\n5. Provide the final monthly payment rounded to two decimal places.\n\nOutput format:\n## Formula\n[Formula]\n## Variables\n- P = ...\n- r = ...\n- n = ...\n## Calculation\n[Step-by-step work]\n## Result\nMonthly Payment: $[Amount]"
+  },
+  {
+    "name": "QA Reviewer",
+    "seniority": "senior",
+    "description": "Detail-oriented auditor who verifies financial calculations for accuracy.",
+    "goal": "Verify that the Financial Analyst's calculation is correct.",
+    "responsibilities": [
+      "Independently re-calculate the monthly payment",
+      "Verify the formula application",
+      "Flag any rounding errors or formulaic mistakes"
+    ],
+    "skills": ["financial auditing", "mathematical verification"],
+    "tools": ["calc", "python_interpreter"],
+    "inputs": ["calculation_sheet from Financial Analyst"],
+    "outputs": [
+      {
+        "artifact": "verification_report",
+        "format": "memo: Verification status (Pass/Fail), Independent calculation result, Discrepancy notes"
+      }
+    ],
+    "success_criteria": ["Independent calculation matches the analyst's result within $0.01"],
+    "constraints": ["Must not simply copy the analyst's work; must re-calculate from scratch"],
+    "covers": ["R1"],
+    "is_summariser": false,
+    "prompt": "You are a Senior QA Reviewer. You will receive a calculation sheet for a loan payment. Your job is to verify its accuracy.\n1. Take the original inputs: $250,000 principal, 7% APR, 5 years.\n2. Independently calculate the monthly payment using the amortization formula or a financial function (e.g., numpy.pmt in Python).\n3. Compare your result with the analyst's result.\n4. If they match, mark as 'Pass'. If not, explain the discrepancy.\n\nOutput format:\n## Verification Status\n[Pass/Fail]\n## Independent Calculation\n[Your work]\n## Comparison\n[Analyst Result] vs [Your Result]"
+  },
+  {
+    "name": "Technical Writer",
+    "seniority": "mid",
+    "description": "Specialist in presenting technical and financial data clearly and concisely.",
+    "goal": "Assemble the final answer for the user.",
+    "responsibilities": [
+      "Extract the formula and final result from the verified analysis",
+      "Format the response for maximum readability"
+    ],
+    "skills": ["technical communication", "formatting"],
+    "tools": [],
+    "inputs": ["calculation_sheet from Financial Analyst", "verification_report from QA Reviewer"],
+    "outputs": [
+      {
+        "artifact": "final_answer",
+        "format": "memo: Formula and Monthly Payment"
+      }
+    ],
+    "success_criteria": ["The final answer contains both the formula and the correct monthly payment", "No internal process notes are included"],
+    "constraints": ["Do not add new analysis; only summarize verified findings"],
+    "covers": ["R1", "R2"],
+    "is_summariser": true,
+    "prompt": "You are a Technical Writer. Your goal is to provide the user with the final answer based on the verified financial analysis.\n1. Review the calculation sheet and the verification report.\n2. Present the formula clearly using LaTeX or standard mathematical notation.\n3. State the final monthly payment clearly.\n\nOutput format:\n**Formula:**\n[Formula]\n\n**Monthly Payment:**\n$[Amount]"
+  }
+]
+```
+
+## Execution Plan:
+1. [Financial Analyst]: Calculate payment and document formula
+   kind: work
+   covers: R1, R2
+   depends_on: none
+   do:
+     - Define the amortization formula
+     - Calculate monthly rate and total periods
+     - Compute the monthly payment using the formula
+   output: memo: Formula, Variable Definitions, Step-by-step calculation, Final Result
+   done_when: The calculation is complete and the formula is explicitly stated.
+
+2. [QA Reviewer]: Verify calculation accuracy
+   kind: verify
+   covers: R1
+   depends_on: 1
+   do:
+     - Independently re-calculate the payment using the same inputs
+     - Compare the result with the Financial Analyst's output
+   output: memo: Verification status, Independent calculation, Comparison
+   done_when: The result is confirmed as correct or the error is identified.
+
+3. [Technical Writer]: Assemble final deliverable
+   kind: work
+   covers: R1, R2
+   depends_on: 1, 2
+   do:
+     - Extract the formula and the verified monthly payment
+     - Format the final response
+   output: memo: Formula and Monthly Payment
+   done_when: The final answer is formatted and contains both required elements.
+
+## Capability Requests:
+```
+[
+  {
+    "name": "python_interpreter",
+    "kind": "tool",
+    "for_role": "Financial Analyst",
+    "what_it_does": "Executes Python code to perform high-precision financial calculations",
+    "input": "Python code",
+    "output": "Execution result/output",
+    "example_input": "print(250000 * (0.07/12 * (1 + 0.07/12)**60) / ((1 + 0.07/12)**60 - 1))",
+    "example_output": "4950.30"
+  },
+  {
+    "name": "python_interpreter",
+    "kind": "tool",
+    "for_role": "QA Reviewer",
+    "what_it_does": "Executes Python code to perform high-precision financial calculations",
+    "input": "Python code",
+    "output": "Execution result/output",
+    "example_input": "import numpy as np; print(abs(np.pmt(0.07/12, 60, 250000)))",
+    "example_output": "4950.30"
+  }
+]
+```
+
+## Risks and Decisions:
+- **Risk:** Rounding errors during intermediate steps (e.g., rounding the monthly interest rate too early).
+- **Decision:** The Financial Analyst and QA Reviewer are instructed to use the `python_interpreter` or `calc` to maintain precision until the final rounding to two decimal places.
+- **Risk:** Ambiguity in payment timing (beginning vs. end of month).
+- **Decision:** Assumed "ordinary annuity" (payment at the end of the month) as it is the industry standard for equipment loans unless specified otherwise.
+
+## RoleFeedback
+None
+
+## PlanFeedback
+None
