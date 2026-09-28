@@ -1,0 +1,3 @@
+- verification_status: Pass
+- verification_details: The Corporate Research Memo confirms CEO Vincent Clerc [S1, S4, S7, S8] since January 1, 2023 [S4, S5, S8].
+- BLOCKED: Web Browser — Could not access the live URL https://apmoller.com/news/a-p-moller-maersk-appoints-new-ceo [S4] to verify the content in real-time.

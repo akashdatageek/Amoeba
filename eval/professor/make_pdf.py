@@ -28,14 +28,41 @@ blockquote { border-left: 3px solid #bbb; margin: .5em 0; padding-left: .8em; co
 
 
 def mermaid_to_text(m: re.Match) -> str:
-    lines = [l.strip() for l in m.group(1).splitlines() if l.strip() and not l.strip().startswith(("flowchart", "graph", "classDef", "class "))]
-    edges = [re.sub(r"\[\"?(.*?)\"?\]", r" (\1)", l) for l in lines]
-    return "<div class='diagram'><b>Step graph</b> (drawn on the GitHub page)\n" + "\n".join(edges) + "</div>"
+    out = []
+    for l in (x.strip() for x in m.group(1).splitlines()):
+        if not l or l == "end" or l.startswith(("flowchart", "graph", "classDef", "class ")):
+            continue
+        if l.startswith("subgraph"):
+            out.append(re.sub(r'subgraph\s+\w+\["?(.*?)"?\]', r"\1:", l))
+        elif "-->" in l:
+            out.append("  order: " + re.sub(r"S(\d+)", r"step \1", l).replace("-->", "→"))
+        else:
+            out.append("  " + re.sub(r'^\w+\["?(.*?)"?\]$', r"\1", l))
+    return "<div class='diagram'><b>Step graph</b> (drawn on the GitHub page)\n" + "\n".join(out) + "</div>"
+
+
+def blank_before_lists(text: str) -> str:
+    """python-markdown needs a blank line before a list (GitHub does not); add one after any non-list line, and
+    indent nested items to 4 spaces, which python-markdown needs for nesting."""
+    out, prev = [], ""
+    item = re.compile(r"^(\s*)([-*]|\d+\.)\s")
+    for line in text.splitlines():
+        m = item.match(line)
+        if m:
+            line = " " * (len(m.group(1)) * 2) + line.lstrip()        # GitHub's 2-space nesting → 4 spaces
+            if prev.strip() and not item.match(prev) and not prev.startswith(" "):
+                out.append("")
+        elif line.startswith("  ") and out and (item.match(out[-1]) or out[-1].startswith("    ")):
+            line = "    " + line.lstrip()                          # continuation of a list item
+        out.append(line)
+        prev = line
+    return "\n".join(out)
 
 
 def main() -> None:
     text = SRC.read_text(encoding="utf-8")
     text = re.sub(r"```mermaid\n(.*?)```", lambda m: mermaid_to_text(m), text, flags=re.S)
+    text = blank_before_lists(text)
     body = markdown.markdown(text, extensions=["tables", "fenced_code", "sane_lists"])
     html = f"<!doctype html><html><head><meta charset='utf-8'><title>Professor benchmark</title><style>{CSS}</style></head><body>{body}</body></html>"
     from playwright.sync_api import sync_playwright

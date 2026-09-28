@@ -1,0 +1,199 @@
+team_id: 627c5d13-b2dc-4683-b25c-0b791fd0a8dd
+version: 1
+parent_version: null
+name: team-boss_reviewers-prof-loa
+topology: boss_reviewers
+agents:
+  2e127161-f4c9-4a33-af3e-122dea7dcd2e:
+    agent_id: 2e127161-f4c9-4a33-af3e-122dea7dcd2e
+    name: Financial Analyst
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in loan amortization and financial mathematics responsible
+      for the primary calculation.
+    role_prompt: "You are a Senior Financial Analyst. Your task is to calculate the\
+      \ monthly payment for a loan. \n1. Define the variables: P (Principal), r (Annual\
+      \ Rate), n (Total months), and i (Monthly Rate = r/12).\n2. State the standard\
+      \ amortization formula: M = P [ i(1+i)^n ] / [ (1+i)^n – 1 ].\n3. Execute the\
+      \ calculation step-by-step: \n   a. Calculate i.\n   b. Calculate (1+i)^n.\n\
+      \   c. Calculate the numerator P * i * (1+i)^n.\n   d. Calculate the denominator\
+      \ (1+i)^n - 1.\n   e. Divide the numerator by the denominator.\n4. Round the\
+      \ final monthly payment to two decimal places.\nOutput the result as a detailed\
+      \ memo."
+    max_history: 3
+    missing_tools: []
+    is_summariser: false
+    goal: Provide an accurate monthly payment amount and the corresponding mathematical
+      formula.
+    skills:
+    - financial mathematics
+    - amortization modelling
+    outputs:
+    - artifact: calculation_sheet
+      format: 'memo: including formula, variable definitions, intermediate steps,
+        and final result'
+    success_criteria:
+    - Calculation is mathematically sound
+    - Formula is clearly stated
+    - Precision is maintained to 8 decimal places during intermediate steps
+    constraints:
+    - Must use monthly compounding
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  505bb636-9f4e-4dee-bdcc-2b91d68bf2e2:
+    agent_id: 505bb636-9f4e-4dee-bdcc-2b91d68bf2e2
+    name: QA Reviewer
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A detail-oriented auditor who verifies financial calculations to
+      ensure zero errors.
+    role_prompt: 'You are a Senior QA Auditor. Your task is to verify a loan calculation.
+
+      1. Take the inputs (P=250,000, APR=7%, Term=5yr) and the result provided by
+      the Analyst.
+
+      2. Independently re-calculate the monthly payment using the amortization formula:
+      M = P [ i(1+i)^n ] / [ (1+i)^n – 1 ].
+
+      3. Compare your result with the Analyst''s result.
+
+      4. If they match within $0.01, mark as ''Approved''. Otherwise, mark as ''Rejected''
+      and provide the correct value.
+
+      Output a brief verification memo.'
+    max_history: 3
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the accuracy of the Financial Analyst's result.
+    skills:
+    - mathematical verification
+    - financial auditing
+    outputs:
+    - artifact: verification_report
+      format: 'memo: status (Approved/Rejected) and comparison of results'
+    success_criteria:
+    - Independent calculation matches Analyst's result within $0.01
+    constraints:
+    - Must not simply copy the Analyst's steps; must re-calculate from scratch
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  7edaedc0-67ad-41f2-a5ce-bbf3fee6b58b:
+    agent_id: 7edaedc0-67ad-41f2-a5ce-bbf3fee6b58b
+    name: Technical Writer
+    role: solver
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_solver_prepend
+      user: seed:agentverse_solver_append_generic
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in presenting technical and financial data clearly and
+      concisely.
+    role_prompt: 'You are a Technical Writer. Your task is to present the final answer
+      to the user.
+
+      1. Review the verified calculation and the formula.
+
+      2. Present the formula clearly using standard mathematical notation.
+
+      3. State the final monthly payment amount clearly.
+
+      4. Ensure the output is concise and directly answers the user''s request.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble the final answer for the user.
+    skills:
+    - technical communication
+    outputs:
+    - artifact: final_answer
+      format: 'memo: Formula and Monthly Payment'
+    success_criteria:
+    - Contains both the formula and the final payment
+    - No internal process notes included
+    constraints:
+    - Do not create new analysis; only assemble verified data
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+edges:
+- src: 7edaedc0-67ad-41f2-a5ce-bbf3fee6b58b
+  dst: 2e127161-f4c9-4a33-af3e-122dea7dcd2e
+  type: review
+  schema_id: text
+  condition: null
+- src: 7edaedc0-67ad-41f2-a5ce-bbf3fee6b58b
+  dst: 505bb636-9f4e-4dee-bdcc-2b91d68bf2e2
+  type: review
+  schema_id: text
+  condition: null
+- src: 2e127161-f4c9-4a33-af3e-122dea7dcd2e
+  dst: 7edaedc0-67ad-41f2-a5ce-bbf3fee6b58b
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+- src: 505bb636-9f4e-4dee-bdcc-2b91d68bf2e2
+  dst: 7edaedc0-67ad-41f2-a5ce-bbf3fee6b58b
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+entry:
+- 7edaedc0-67ad-41f2-a5ce-bbf3fee6b58b
+exit: 7edaedc0-67ad-41f2-a5ce-bbf3fee6b58b
+plan: []
+requirements: {}
+max_inner_turns: 3
+meta:
+  task_id: prof-loan
+  draft_rounds: 1
+  consensus: true
+  capability_requests:
+  - name: Financial Mathematics
+    for_role: Financial Analyst
+    canonical: Financial Mathematics
+    status: unfilled
+    reason: side_effect

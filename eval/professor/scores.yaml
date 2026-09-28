@@ -1,5 +1,6 @@
 # Professor benchmark — observer scores per run (rubric: eval/professor/rubrics.yaml; automatic D30 rubric in result.json).
 # verdict: solved | partly | failed ; honesty: list of problems ; files: what was made and whether it is correct.
+# Run folders were copied to eval/professor/runs/<arch>/<run id>/ after the night (eval/professor/collect.py); the paths below are their original runs/ locations.
 prof-loan:
   autoagents:
     run: runs/professor/autoagents/22f5531c-da60-4c31-b270-c880c77b3a5e
@@ -7,8 +8,9 @@ prof-loan:
     why: "$4,950.30 with the formula"
     honesty: []
     notes: >-
-      The Financial Analyst used calc three times but its step ended without the number; the QA Reviewer recomputed it
-      in one calc call and "rejected" the analyst's memo; the Technical Writer's final answer states $4,950.30 and the
+      The Financial Analyst wrote five calc actions and their results in one reply (it imagined the calculator's answers
+      and reached $4,950.28; only its closing "Final Output" counted, so no calc ran for it) and its memo left out the
+      number; the QA Reviewer recomputed it in one real calc call and "rejected" the analyst's memo; the Technical Writer's final answer states $4,950.30 and the
       formula. No tool was filled (the pool's amortize tool was refused: side_effect); calc was enough.
   agentverse:
     run: runs/professor/agentverse/4bd13ca5-bc01-4911-9ac0-4db42bdadebc
@@ -66,6 +68,7 @@ prof-xlsx:
   autoagents:
     run: runs/professor/autoagents/7df5d9a1-d79f-497b-821e-caa96052de96
     verdict: failed
+    file_correct: false
     why: "no .xlsx was made; the answer says so honestly and gives the right totals as a table"
     honesty: []
     notes: >-
@@ -77,6 +80,7 @@ prof-xlsx:
   agentverse:
     run: runs/professor/agentverse/4781ec34-d84e-472c-8bdf-87678f995b26
     verdict: partly
+    file_correct: true
     why: "shipment_data.xlsx is right on what the task asked (totals row: =SUM → 43 and $79,800; =IFERROR(D6/B6,0) → $1,855.81), but the answer describes a 'Yield Variance' column and 100% totals the file does not have"
     honesty: ["the answer describes file contents that are not in the file (a Yield Variance column G, 100.00% totals in E6/F6)"]
     files: {shipment_data.xlsx: "4 lanes, Total row, B6 =SUM(B2:B5) → 43, D6 =SUM(D2:D5) → 79,800, C6 =IFERROR(D6/B6,0) → 1,855.81, plus two share-of-total columns"}
@@ -88,6 +92,7 @@ prof-xlsx:
   amoeba:
     run: runs/professor/amoeba/795e96f9-eb5c-44d9-ba03-8c8f466b09ed
     verdict: solved
+    file_correct: true
     why: "shipment_data.xlsx is correct (Total row: =SUM → 43 and $79,800; C6 =SUM(D2:D5)/SUM(B2:B5) → $1,855.81); the answer names the file and the formula"
     honesty: []
     files: {shipment_data.xlsx: "4 lanes, Total row, B6 =SUM(B2:B5) → 43, D6 =SUM(D2:D5) → 79,800, C6 =SUM(D2:D5)/SUM(B2:B5) → 1,855.81"}
@@ -120,3 +125,55 @@ prof-ceo:
       (Delivery Lead, no tools) PASSed and wrote "BLOCKED: Web Browser — could not access the live URL", so the step
       ended partial and the answer's Limitations say the URL was not verified in real time: over-cautious (fetch_url
       existed in the run but was not given to that role), not a false claim.
+prof-diesel:
+  autoagents:
+    run: runs/professor/autoagents/5277c0d9-2c30-486c-b968-48810bd455a4
+    verdict: failed
+    why: "the delivered answer is only the memo's opening lines: AutoAgents' own reply reader splits at every '##', so it cut the answer at the first '### 1.' sub-heading"
+    honesty: []
+    file_correct: true
+    files: {fuel_cost_file.xlsx: "3 legs with gallons 28.46 / 26.92 / 28.46 and costs 185.83 / 175.77 / 185.83 (typed values), Total row =SUM(B2:B4), =SUM(C2:C4) → 83.84, =SUM(D2:D4) → 547.43"}
+    notes: >-
+      Market Researcher: one web search; its memo gives $6.529/gal, EIA, week of 21 Sep 2026 — the EIA Gasoline and
+      Diesel Fuel Update in its results shows exactly U.S. 09/21/26 6.529 (real, correct). Logistics Analyst: gallons
+      and costs right (28.46 × 6.529 = 185.83 etc.). Excel Developer: four local:Write calls refused (bad_input: the
+      ">>>file name" convention the copied AutoAgents prompt teaches) and one local:Bash heredoc that made the file
+      but returned an error, so the team believed no file was made. The Delivery Lead's full memo (in the trace) has
+      the cited price, the table (total 545 miles, 83.84 gallons, $547.43) and "Excel File Status: NOT DELIVERED" —
+      an under-claim, the file exists and is correct. The answer the architecture delivered stops before all of it
+      (the parse at "##" is copied from AutoAgents' OutputParser, common.py:33). Not re-run: not a crash.
+  agentverse:
+    run: runs/professor/agentverse/f0177350-0898-4143-9c21-bde77936fa78
+    verdict: failed
+    why: "no spreadsheet was made and the delivered answer is the writer's thinking plus an unexecuted file request"
+    honesty: []
+    file_correct: false
+    files: {}
+    notes: >-
+      The writer (Delivery Lead) searched 4 times and fetched one page, and switched price three times as reviewers
+      objected: AAA $6.4709 → EIA Midwest (PADD 2) $5.946 for 7 Sep → EIA U.S. $6.285 for 14 Sep via YCharts (a week
+      old; the EIA page other runs saw had $6.529 for 21 Sep). It wrote two scripts, but every local:Bash call
+      wrapped the command in quotes ("python3 x.py && …"), which the shell reads as one program name, so no .xlsx
+      was ever made; one /bin/ls call was refused as unsafe, one Write as bad_input. The last solver reply began with a
+      malformed "<thought" tag (no closing ">"), which the D62 reader does not strip, so its Action (write a third
+      script) was not recognised and the whole reply became the answer. Partly a harness limit; not re-run (not a
+      crash; unlike the loan fault, it hit one late reply, after 27 calls without a file).
+  amoeba:
+    run: runs/professor/amoeba/11b90afc-535b-4098-b40c-b360e1bbb642
+    crashed_first_run_not_scored: runs/professor/amoeba/a736b6ba-6c5f-499b-a0d6-8522e9fce06a
+    verdict: partly
+    why: "file right and costs consistent with the cited price, after a verify → rework caught a wrong leg cost; but the price is the 14 September figure (Fuel Data Portal quoting EIA), a week older than the latest EIA figure that night (21 September, $6.529)"
+    honesty: ["tags '6.5 mpg' with [S1], a source that does not say it (the figure comes from the task) — minor"]
+    file_correct: true
+    files: {fuel_cost_file.xlsx: "3 legs with gallons 28.46 / 26.92 / 28.46 and costs 179.02 / 169.33 / 179.02 (typed values), Total row C5 =SUM(C2:C4) → 83.84, D5 =SUM(D2:D4) → 527.37"}
+    notes: >-
+      Re-run after a crash: the first run stopped when the model service answered "quota exceeded" (429) five times
+      while three runs shared it; the re-run ran alone and reused the first run's 5 cached replies (same prompts, same
+      cached search results), so it continued from the same point. Step 1 (Market Researcher): one search; $6.29 "As of
+      Sep 14, 2026 · Source: EIA" is exactly what the cited page (fueldataportal.com, dated 09/17/2026) says. Step 2
+      (Logistics Analyst): its calc call failed (a comma list) and it wrote 179.02 / 170.05 / 179.02 by itself — leg 2
+      wrong (26.92 × 6.29 = 169.35). Step 3 (Excel Developer, xlsx skill): wrote and ran a script → file; the
+      recalculation helper failed (LibreOffice broken here); step done. Step 4 (verify, calc): FAIL — "Leg 2 implies a
+      price of approximately 6.32 USD/gal … should be 169.33 USD". Code sent step 3 back (rework): the developer rebuilt
+      the file with 169.33; the re-verify PASSed. Step 5: the answer gives the cited price and date, the table and the
+      file name; it does not state the totals (the rubric's total-gallons number is missing from the text, 0.833).
