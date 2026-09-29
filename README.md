@@ -242,6 +242,19 @@ On a helper's last turn only Final Output is offered, so a step ends with a writ
 then is not run). A step whose output is only a search query or a tool request fails a `conclusion` check by code.
 A verify step gets its producers' raw results as the excerpts that match the claims it checks, at most 20,000
 characters in all, marked where cut.
+
+## Task understanding before planning (D77)
+
+Before the Planner drafts, one call lists what the task's names and terms could mean (abbreviations, acronyms,
+voice-input errors such as "P and W" for "PNW"). A clear winner is used; otherwise `--interactive` asks one
+multiple-choice question, and a non-interactive run takes the top reading and its answer opens with "I read X as Y;
+if you meant Z, …". `--context user.yaml` (location, organisation, role; read-only) helps the reading:
+
+    python -m scripts.run_task "How to pay the P and W universities parking citation?" --context user.yaml
+
+    # user.yaml
+    organisation: Purdue University Northwest
+    location: Hammond, Indiana
 ## Cost controls (D45–D48)
 
 ```bash

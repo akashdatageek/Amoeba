@@ -14,6 +14,7 @@ from amoeba.task.quality import draft_quality, gate_suggestions
 import os
 import re
 
+from amoeba.task.interpret import route_open_questions
 from amoeba.task.parsers import (MissingSections, parse_bullets, parse_json_objects, parse_open_questions, parse_plan,
                                  parse_plan_d24, parse_requirements, parse_sections, parse_verdict)
 
@@ -174,10 +175,13 @@ def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
 # box: ov_plan, handoff, planner, agent_obs, plan_obs, checks
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
                prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False,
-               max_rounds: int = MAX_ROUNDS, history: str = "", toolbox: str | None = None) -> Draft:
+               max_rounds: int = MAX_ROUNDS, history: str = "", toolbox: str | None = None,
+               interpretation: dict | None = None) -> Draft:
     """history: the previous draft the Planner revises (manager.py:26 roles_plan; "" at first). D53 --interactive
     re-drafts once: max_rounds=1, history = the draft the user clarified. toolbox: D68 — what Box 3 will really
-    have (toolbox_text), shown to the d24 Planner and both observers instead of the installed-tool list."""
+    have (toolbox_text), shown to the d24 Planner and both observers instead of the installed-tool list.
+    interpretation: D77 — the task interpretation step's result (read_task); the caller has put its note in the task
+    text. It is kept on the draft, and an open question about an interpreted entity is answered from it."""
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
     d24 = prompts == D24
@@ -292,6 +296,11 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                                  plan_feedback=sugg_plan, rounds=log, requests_proposed=proposed,
                                  requests_dropped_by_observers=dropped,
                                  gate_hits=sum(bool(r.gate_failed) for r in log)))
+    if interpretation is not None:                    # D77: the subject is settled before planning, not guessed
+        d.interpretation = interpretation
+        d.open_questions, routed = route_open_questions(d.open_questions, interpretation)
+        if routed:
+            trace.event("subject_questions_routed", {"amoeba.questions": routed})
     d.quality = draft_quality(d, task.prompt)         # D24: measured; used only by --quality-gate (D28)
     trace.event("draft_quality", {"amoeba.quality.passed": d.quality["passed"],
                                   "amoeba.quality.failed": d.quality["failed"],
