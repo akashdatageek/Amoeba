@@ -59,7 +59,7 @@ def test_a_spending_cap_and_other_errors_are_not_retried():
     c, slept, _ = client([cap])
     with pytest.raises(ApiError):
         c.chat("s", "u")
-    c2, slept2, _ = client([ApiError(500)])
+    c2, slept2, _ = client([ApiError(400)])            # D73: 500/502/504 are retried now; a 400 is not
     with pytest.raises(ApiError):
         c2.chat("s", "u")
     assert slept == [] and slept2 == []

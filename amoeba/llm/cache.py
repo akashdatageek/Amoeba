@@ -88,6 +88,20 @@ class CachedLLM(LLMClient):
         return resp
 
 
+# box: client
+def stamped(result):
+    """D73: the time of the live call travels with a web result (a page, or each search hit), so a replayed result
+    shows the time it was really fetched — the helper's prompt is then the same and its reply replays too."""
+    from amoeba.tools.web import now_iso
+    at = now_iso()
+    if isinstance(result, dict):
+        return {**result, "fetched_at": result.get("fetched_at") or at}
+    if isinstance(result, list):
+        return [{**r, "fetched_at": r.get("fetched_at") or at} if isinstance(r, dict) else r for r in result]
+    return result
+
+
+# box: client
 class CachedProvider:
     """Wraps a web SearchProvider (D32). The real provider is built only when a live call is needed, so replay
     works without its API key."""
@@ -113,7 +127,7 @@ class CachedProvider:
             return hit["result"]
         if self.store.mode == "replay":
             raise CacheMiss(f"no cached {parts['op']} result ({self.name}, key {k[:12]}) in {self.store.dir}")
-        result = live()
+        result = stamped(live())
         self.store.put(k, {"key": k, **parts, "provider": self.name, "result": result})
         return result
 

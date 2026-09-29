@@ -162,7 +162,8 @@ def merge_system(messages: Messages) -> Messages:
     return [{"role": "user", "content": system}, *rest]
 
 
-RATE_STATUS = (429, 503)   # D48: too many requests / service unavailable — worth waiting for
+RATE_STATUS = (429, 500, 502, 503, 504)   # D48: too many requests / service unavailable; D73: a server error
+# (500 internal, 502 bad gateway, 504 gateway timeout) is usually gone a moment later — same waits, same cap
 
 
 def dropped(e: BaseException) -> str | None:

@@ -214,6 +214,13 @@ checks once that a two-cell workbook comes back with its computed value, and tel
 Box 2 splits the Planner's reply into sections at `##`. A `##` that sits inside a JSON string (after a
 written `\n`, as in a role prompt's `Output format:\n## Formula`) no longer starts a section, so such roles are not
 lost.
+
+## Crash resilience (D73)
+
+HTTP 500, 502 and 504 from the model service are retried like 429/503 (same waits, same cap). A crashed run is
+resumable: run the same task again with the same `--llm-cache` folder and `--llm-cache-namespace` and every call it
+had finished replays from the cache for free; only the rest is paid. Web results keep the time they were really
+fetched, so the replayed prompts are identical. Local tool calls (Bash, Write) run again, since they change files.
 ## Cost controls (D45–D48)
 
 ```bash
