@@ -1,6 +1,6 @@
 {
  "action_obs": {
-  "checked_at": "22aa4bb",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -549,15 +549,15 @@
     "PlanOptions.max_replans"
    ],
    "prompts": {
-    "plan_replan": "aa76a91e7034"
+    "plan_replan": "2ffd6621bfb2"
    },
    "title": "Action Observer (re-plan)"
   },
-  "facts_hash": "b5d746078a21e326",
+  "facts_hash": "ef983940b56fb515",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "eab21b71f661e662",
   "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code checks the change before it takes effect.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, a tool the plan did not know about, or a missing answer step. No trigger, no call.",
    "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available, the budget left, and the final answer step, returning one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
@@ -692,7 +692,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -808,7 +808,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None) -> RunResult"
     }
    ],
    "checks": [],
@@ -831,7 +831,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "b480dcb618d35898",
+  "facts_hash": "2afd9424f7542ba8",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -2600,21 +2600,23 @@
   ]
  },
  "interpreter": {
-  "checked_at": "5c10844",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
      "callees": [
+      "amoeba/interp/clock.py::run_clock",
       "amoeba/interp/trace.py::NoopListener",
       "amoeba/interp/trace.py::TraceWriter",
       "amoeba/interp/trace.py::TracedLLM"
      ],
      "doc": "",
      "key": "amoeba/interp/runtime.py::Interpreter.__init__",
-     "signature": "__init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None=None, listener: NoopListener | None=None, run_dir: str | None=None, plan_options=None, equal_tools: bool=False, stock=None, max_agents: int=5)"
+     "signature": "__init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None=None, listener: NoopListener | None=None, run_dir: str | None=None, plan_options=None, equal_tools: bool=False, stock=None, max_agents: int=5, timezone: str | None=None, today=None)"
     },
     {
      "callees": [
+      "amoeba/interp/clock.py::run_clock",
       "amoeba/interp/plan_runner.py::PlanRunner",
       "amoeba/interp/plan_runner.py::PlanRunner.run",
       "amoeba/interp/runtime.py::Interpreter.run",
@@ -2634,6 +2636,11 @@
    ],
    "checks": [],
    "guards": [
+    [
+     "decide",
+     "if cfg.topology != 'plan'",
+     "set task = task.model_copy(update={'prompt': f\"{task.prompt}\\n\\n({self.clock['line']})\"})"
+    ],
     [
      "decide",
      "if cfg.topology == 'flat'",
@@ -2685,7 +2692,7 @@
    "prompts": {},
    "title": "Interpreter"
   },
-  "facts_hash": "9988ba937aa8432f",
+  "facts_hash": "d16ab41ea20128dc",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "92a5bb70bcb60bb1",
   "sentence": "Reads the team's shape and hands the job to the matching runner.",
@@ -3409,7 +3416,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -3445,7 +3452,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None) -> RunResult"
     }
    ],
    "checks": [
@@ -3473,14 +3480,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "8a5d2698e3613a54",
+  "facts_hash": "3a35a719c5bfc6b5",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves ten files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, and the selected pool items.",
+  "sentence": "Every run saves eleven files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the selected pool items, and the timezone.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), and the selected pool items.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the selected pool items, and the timezone.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -3584,11 +3591,12 @@
   ]
  },
  "ov_run": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
      "callees": [
+      "amoeba/interp/clock.py::run_clock",
       "amoeba/interp/plan_runner.py::PlanRunner",
       "amoeba/interp/plan_runner.py::PlanRunner.run",
       "amoeba/interp/runtime.py::Interpreter.run",
@@ -3703,7 +3711,7 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "27d06ff5bc5bbdee",
+  "facts_hash": "933223c469f20d6f",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call is logged.",
@@ -4066,7 +4074,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "a742c07",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -4234,6 +4242,12 @@
      "doc": "D51: one reviewer's verdict and numbered issues. An unreadable reply counts as AGREE (recorded).",
      "key": "amoeba/interp/plan_runner.py::PlanRunner._review",
      "signature": "_review(self, rv: AgentSpec, step: PlanStep, n: int, drafter: AgentSpec, draft: str, inputs: str) -> tuple[str, list[str]]"
+    },
+    {
+     "callees": [],
+     "doc": "{\"date\": date, \"weekday\": \"Tuesday\", \"tz\": \"America/Chicago\", \"line\": \"Today is Tuesday, 29 September 2026 …\"}.",
+     "key": "amoeba/interp/clock.py::run_clock",
+     "signature": "run_clock(tz: str | None=None, today: date | None=None, now: datetime | None=None) -> dict"
     },
     {
      "callees": [
@@ -4497,6 +4511,11 @@
     ],
     [
      "fallback",
+     "except (ZoneInfoNotFoundError, ValueError)",
+     "raise ValueError"
+    ],
+    [
+     "fallback",
      "except MissingSections",
      "set raw, sec = (getattr(e, 'raw', '') or '', {})"
     ],
@@ -4583,6 +4602,11 @@
     [
      "fallback",
      "meta['verdict'] if reverify else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "moment.astimezone(zone) if zone else moment.astimezone()",
      "choose value"
     ],
     [
@@ -4787,17 +4811,17 @@
     "PlanOptions.collab_rounds"
    ],
    "prompts": {
-    "plan_critique": "404c588e8d12",
-    "plan_step": "54bff1232658",
+    "plan_critique": "b17054bc5a21",
+    "plan_step": "ab14e6d46d51",
     "plan_step_system": "daf8cf4bba11"
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "01c4cb6bbf3e5510",
+  "facts_hash": "6f5086768b329fb2",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, and mark what it could not do as BLOCKED: <capability>.",
@@ -4808,7 +4832,7 @@
   ]
  },
  "plan_summary": {
-  "checked_at": "a742c07",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -5213,11 +5237,11 @@
    ],
    "prompts": {
     "plan_step_system": "daf8cf4bba11",
-    "plan_summarise": "c8352099ca3c"
+    "plan_summarise": "7fb04c95d4ff"
    },
    "title": "Summariser assembles"
   },
-  "facts_hash": "62c8e931b79e858f",
+  "facts_hash": "3d050ea14d9022c9",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "f8491f65001402a8",
   "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
@@ -6122,7 +6146,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -6311,7 +6335,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None) -> RunResult"
     }
    ],
    "checks": [
@@ -6339,11 +6363,11 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "b932187fd765d245",
+  "facts_hash": "dd1a7c62c6111bfa",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bef6a71b78aeb520",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, and any pool, selection, or clarification details.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
