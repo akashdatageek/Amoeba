@@ -1,0 +1,1 @@
+The current CEO of Maersk is Vincent Clerc, serving since January 1, 2023 [S3]. Source: https://www.maersk.com/news/articles/2022/12/12/the-board-of-directors-of-maersk-announces-planned-ceo-transition [S3]

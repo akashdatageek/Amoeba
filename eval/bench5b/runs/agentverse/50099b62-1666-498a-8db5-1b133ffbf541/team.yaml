@@ -1,0 +1,246 @@
+team_id: dc2be185-1eff-444b-92db-d5ace0eaf83c
+version: 1
+parent_version: null
+name: team-boss_reviewers-bench5-l
+topology: boss_reviewers
+agents:
+  2eab8a44-c204-4868-b502-b2ac1d091b82:
+    agent_id: 2eab8a44-c204-4868-b502-b2ac1d091b82
+    name: Financial Analyst
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools:
+    - calc
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in loan amortization and financial mathematics. Responsible
+      for the primary calculation and formula derivation.
+    role_prompt: "You are a Senior Financial Analyst. Your task is to calculate the\
+      \ monthly payment for a fixed-rate equipment loan. \n1. State the standard amortization\
+      \ formula: M = P [ r(1 + r)^n ] / [ (1 + r)^n – 1 ].\n2. Define all variables\
+      \ (P, r, n) based on the provided inputs ($250,000, 7% APR, 5 years).\n3. Calculate\
+      \ the monthly interest rate (r = APR / 12) and total payments (n = years * 12).\n\
+      4. Execute the calculation step-by-step. Use a calculator or Python for precision.\n\
+      5. Provide the final monthly payment rounded to two decimal places.\n\nOutput\
+      \ format:\n## Formula\n[Formula]\n## Variables\n- P = ...\n- r = ...\n- n =\
+      \ ...\n## Calculation\n[Step-by-step work]\n## Result\nMonthly Payment: $[Amount]"
+    max_history: 3
+    missing_tools: []
+    is_summariser: false
+    goal: Provide the exact monthly payment and the mathematical formula used to derive
+      it.
+    skills:
+    - financial mathematics
+    - loan amortization
+    outputs:
+    - artifact: calculation_sheet
+      format: 'memo: Formula, Variable Definitions, Step-by-step calculation, Final
+        Result'
+    success_criteria:
+    - The formula is mathematically correct
+    - The calculation is precise to two decimal places
+    constraints:
+    - Must use the standard amortization formula
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  8395641b-e953-4ec8-a3c7-0180cb040e5d:
+    agent_id: 8395641b-e953-4ec8-a3c7-0180cb040e5d
+    name: QA Reviewer
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools:
+    - calc
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Detail-oriented auditor who verifies financial calculations for accuracy.
+    role_prompt: 'You are a Senior QA Reviewer. You will receive a calculation sheet
+      for a loan payment. Your job is to verify its accuracy.
+
+      1. Take the original inputs: $250,000 principal, 7% APR, 5 years.
+
+      2. Independently calculate the monthly payment using the amortization formula
+      or a financial function (e.g., numpy.pmt in Python).
+
+      3. Compare your result with the analyst''s result.
+
+      4. If they match, mark as ''Pass''. If not, explain the discrepancy.
+
+
+      Output format:
+
+      ## Verification Status
+
+      [Pass/Fail]
+
+      ## Independent Calculation
+
+      [Your work]
+
+      ## Comparison
+
+      [Analyst Result] vs [Your Result]'
+    max_history: 3
+    missing_tools: []
+    is_summariser: false
+    goal: Verify that the Financial Analyst's calculation is correct.
+    skills:
+    - financial auditing
+    - mathematical verification
+    outputs:
+    - artifact: verification_report
+      format: 'memo: Verification status (Pass/Fail), Independent calculation result,
+        Discrepancy notes'
+    success_criteria:
+    - Independent calculation matches the analyst's result within $0.01
+    constraints:
+    - Must not simply copy the analyst's work; must re-calculate from scratch
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  f7a9c476-9f92-4081-8a0e-b627718b88a2:
+    agent_id: f7a9c476-9f92-4081-8a0e-b627718b88a2
+    name: Technical Writer
+    role: solver
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_solver_prepend
+      user: seed:agentverse_solver_append_generic
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in presenting technical and financial data clearly and
+      concisely.
+    role_prompt: 'You are a Technical Writer. Your goal is to provide the user with
+      the final answer based on the verified financial analysis.
+
+      1. Review the calculation sheet and the verification report.
+
+      2. Present the formula clearly using LaTeX or standard mathematical notation.
+
+      3. State the final monthly payment clearly.
+
+
+      Output format:
+
+      **Formula:**
+
+      [Formula]
+
+
+      **Monthly Payment:**
+
+      $[Amount]'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble the final answer for the user.
+    skills:
+    - technical communication
+    - formatting
+    outputs:
+    - artifact: final_answer
+      format: 'memo: Formula and Monthly Payment'
+    success_criteria:
+    - The final answer contains both the formula and the correct monthly payment
+    - No internal process notes are included
+    constraints:
+    - Do not add new analysis; only summarize verified findings
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+edges:
+- src: f7a9c476-9f92-4081-8a0e-b627718b88a2
+  dst: 2eab8a44-c204-4868-b502-b2ac1d091b82
+  type: review
+  schema_id: text
+  condition: null
+- src: f7a9c476-9f92-4081-8a0e-b627718b88a2
+  dst: 8395641b-e953-4ec8-a3c7-0180cb040e5d
+  type: review
+  schema_id: text
+  condition: null
+- src: 2eab8a44-c204-4868-b502-b2ac1d091b82
+  dst: f7a9c476-9f92-4081-8a0e-b627718b88a2
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+- src: 8395641b-e953-4ec8-a3c7-0180cb040e5d
+  dst: f7a9c476-9f92-4081-8a0e-b627718b88a2
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+entry:
+- f7a9c476-9f92-4081-8a0e-b627718b88a2
+exit: f7a9c476-9f92-4081-8a0e-b627718b88a2
+plan: []
+requirements: {}
+max_inner_turns: 3
+meta:
+  task_id: bench5-loan
+  draft_rounds: 1
+  consensus: true
+  capability_requests:
+  - name: python_interpreter
+    for_role: Financial Analyst
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: python_interpreter
+    for_role: QA Reviewer
+    canonical: code_execution
+    status: filled
+    reason: ''

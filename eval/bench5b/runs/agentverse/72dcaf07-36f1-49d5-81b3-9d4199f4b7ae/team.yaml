@@ -1,0 +1,218 @@
+team_id: 4c151f9c-63ae-4921-bf53-838760a1f4e1
+version: 1
+parent_version: null
+name: team-boss_reviewers-bench5-c
+topology: boss_reviewers
+agents:
+  81a645e2-1478-4635-b9a2-9daa67d09cb9:
+    agent_id: 81a645e2-1478-4635-b9a2-9daa67d09cb9
+    name: Corporate Researcher
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An expert in corporate intelligence and public record retrieval,
+      specialized in identifying executive leadership and tenure dates.
+    role_prompt: "You are a Senior Corporate Researcher. Your goal is to find the\
+      \ current CEO of A.P. Møller - Mærsk A/S and the exact date they assumed the\
+      \ role. \n\nStep-by-step:\n1. Use web_search to find the 'Maersk Executive Board'\
+      \ or 'Maersk Leadership' page.\n2. Use fetch_url to read the page and identify\
+      \ the CEO.\n3. Search specifically for the appointment announcement or the 'since'\
+      \ date in their biography.\n4. If the official site is vague, search for the\
+      \ official press release announcing the appointment to get the exact date.\n\
+      \nOutput format:\nCEO: [Name]\nSince: [Date]\nSource: [URL]"
+    max_history: 3
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Extract the current CEO's name, their start date, and the source URL.
+    skills:
+    - corporate research
+    - source verification
+    outputs:
+    - artifact: leadership_data
+      format: 'memo: CEO Name, Start Date, Source URL'
+    success_criteria:
+    - CEO name is current
+    - Start date is specific (Day/Month/Year if available)
+    - URL is a direct link to the evidence
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  3c343fe9-076c-4f08-96d0-17c4b8980132:
+    agent_id: 3c343fe9-076c-4f08-96d0-17c4b8980132
+    name: QA Lead
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A detail-oriented auditor who ensures factual accuracy by cross-referencing
+      data against independent sources.
+    role_prompt: 'You are a Senior QA Lead. You will receive a CEO name, a start date,
+      and a source. Your job is to verify this information is 100% accurate.
+
+
+      Step-by-step:
+
+      1. Review the provided source to ensure it explicitly supports the claim.
+
+      2. Perform a web_search for ''[CEO Name] Maersk appointment date'' to find a
+      second source (e.g., Reuters, Bloomberg, or a Maersk press release).
+
+      3. Compare the dates. If there is a discrepancy between the ''announcement date''
+      and the ''effective date'', prioritize the effective date.
+
+
+      Output format:
+
+      Status: [Verified/Corrected]
+
+      Confirmed CEO: [Name]
+
+      Confirmed Since: [Date]
+
+      Primary Source: [URL]
+
+      Secondary Source: [URL]'
+    max_history: 3
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Verify the accuracy of the CEO's name and tenure date.
+    skills:
+    - fact-checking
+    - cross-referencing
+    outputs:
+    - artifact: verification_report
+      format: 'memo: Status (Verified/Corrected), Confirmed Date, Secondary Source
+        URL'
+    success_criteria:
+    - Data is confirmed by at least two independent sources or one primary official
+      source
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  7e8aa0b7-17cb-47f6-92e0-e523e50e19fa:
+    agent_id: 7e8aa0b7-17cb-47f6-92e0-e523e50e19fa
+    name: Final Writer
+    role: solver
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_solver_prepend
+      user: seed:agentverse_solver_append_generic
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A professional communicator who assembles verified data into a concise,
+      polished final deliverable.
+    role_prompt: You are the Final Writer. Your task is to take the verified data
+      from the QA Lead and present it as a clear, concise answer to the user. Do not
+      add any commentary or fluff. Just provide the name, the date, and the source.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answer to the user.
+    skills:
+    - technical writing
+    - editing
+    outputs:
+    - artifact: final_answer
+      format: text
+    success_criteria:
+    - Answer is direct and contains all three required elements (Who, Since when,
+      Source)
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+edges:
+- src: 7e8aa0b7-17cb-47f6-92e0-e523e50e19fa
+  dst: 81a645e2-1478-4635-b9a2-9daa67d09cb9
+  type: review
+  schema_id: text
+  condition: null
+- src: 7e8aa0b7-17cb-47f6-92e0-e523e50e19fa
+  dst: 3c343fe9-076c-4f08-96d0-17c4b8980132
+  type: review
+  schema_id: text
+  condition: null
+- src: 81a645e2-1478-4635-b9a2-9daa67d09cb9
+  dst: 7e8aa0b7-17cb-47f6-92e0-e523e50e19fa
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+- src: 3c343fe9-076c-4f08-96d0-17c4b8980132
+  dst: 7e8aa0b7-17cb-47f6-92e0-e523e50e19fa
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+entry:
+- 7e8aa0b7-17cb-47f6-92e0-e523e50e19fa
+exit: 7e8aa0b7-17cb-47f6-92e0-e523e50e19fa
+plan: []
+requirements: {}
+max_inner_turns: 3
+meta:
+  task_id: bench5-ceo
+  draft_rounds: 1
+  consensus: true
+  capability_requests:
+  - name: web_search
+    for_role: Corporate Researcher
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Corporate Researcher
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: web_search
+    for_role: QA Lead
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: QA Lead
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool

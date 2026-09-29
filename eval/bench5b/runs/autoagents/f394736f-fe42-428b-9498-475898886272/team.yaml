@@ -1,0 +1,244 @@
+team_id: 3f127cc8-2c61-41f1-8a1d-e566731d0314
+version: 1
+parent_version: null
+name: team-flat-bench5-p
+topology: flat
+agents:
+  aeeba3f0-2b86-43a4-a000-e9cb3b590fa0:
+    agent_id: aeeba3f0-2b86-43a4-a000-e9cb3b590fa0
+    name: Software Engineer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert Python developer focused on algorithmic efficiency and correctness.
+      Responsible for implementing the prime number logic and executing it in the
+      sandbox.
+    role_prompt: "You are a Senior Software Engineer. Your task is to find all prime\
+      \ numbers below 10,000. \n1. Write a Python script using the Sieve of Eratosthenes\
+      \ for optimal performance.\n2. Execute the script using the python_interpreter.\n\
+      3. Capture the total number of primes found and the value of the largest prime.\n\
+      4. Output your results in a memo format including the full source code and the\
+      \ final numbers."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Produce a verified list of primes below 10,000 and the required metrics.
+    skills:
+    - Python 3
+    - Algorithmic Complexity
+    - Number Theory
+    outputs:
+    - artifact: execution_results
+      format: 'memo: containing the code used, the total count of primes, and the
+        largest prime found'
+    success_criteria:
+    - Code runs without errors.
+    - Output contains both the count and the largest prime.
+    constraints:
+    - Must use Python 3
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  1c457bfd-76d5-4b6f-a451-b1a31a0501bd:
+    agent_id: 1c457bfd-76d5-4b6f-a451-b1a31a0501bd
+    name: QA Engineer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in verification and validation. Ensures that the computational
+      results match known mathematical truths.
+    role_prompt: "You are a Senior QA Engineer. You will receive a count of primes\
+      \ below 10,000 and the largest prime found. \n1. Use web_search to find the\
+      \ known number of primes below 10,000 (the prime-counting function pi(10,000)).\n\
+      2. Use web_search to find the largest prime number less than 10,000.\n3. Compare\
+      \ these known values with the results provided by the Software Engineer.\n4.\
+      \ Output a verification memo stating 'VERIFIED' or 'FAILED' with the evidence."
+    max_history: 5
+    missing_tools:
+    - web_search
+    is_summariser: false
+    goal: Verify the accuracy of the prime count and the largest prime found.
+    skills:
+    - Verification & Validation
+    - Web Research
+    outputs:
+    - artifact: verification_report
+      format: 'memo: confirming if the results are correct or identifying discrepancies'
+    success_criteria:
+    - The count and largest prime are verified against a reliable source.
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  789888d4-4c4c-425d-8794-29af6096b088:
+    agent_id: 789888d4-4c4c-425d-8794-29af6096b088
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Responsible for the final assembly of the deliverables and ensuring
+      all requirements are met.
+    role_prompt: "You are the Delivery Lead. Your role is to synthesize the work of\
+      \ the team into the final answer. \n1. Review the execution results and the\
+      \ QA verification report.\n2. If verified, extract the total count of primes\
+      \ and the largest prime.\n3. Present the final answer clearly and concisely\
+      \ as requested by the user."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final report containing the count and the largest prime.
+    skills:
+    - Technical Communication
+    - Project Delivery
+    outputs:
+    - artifact: final_report
+      format: 'memo: final count and largest prime'
+    success_criteria:
+    - The final report contains the exact count and the largest prime as requested.
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+edges:
+- src: aeeba3f0-2b86-43a4-a000-e9cb3b590fa0
+  dst: 1c457bfd-76d5-4b6f-a451-b1a31a0501bd
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 1c457bfd-76d5-4b6f-a451-b1a31a0501bd
+  dst: 789888d4-4c4c-425d-8794-29af6096b088
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- aeeba3f0-2b86-43a4-a000-e9cb3b590fa0
+exit: 789888d4-4c4c-425d-8794-29af6096b088
+plan:
+- index: 0
+  agent_ids:
+  - aeeba3f0-2b86-43a4-a000-e9cb3b590fa0
+  text: '[Software Engineer]: Implement and Run Prime Finder'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  depends_on: []
+  do: '
+
+    - Write Python code using the Sieve of Eratosthenes to find primes < 10,000.
+
+    - Run the code using the python_interpreter.
+
+    - Record the length of the resulting list and the last element of the list.'
+  output: 'memo: execution_results (code, count, max_prime)'
+  done_when: The code has executed and produced a count and a maximum prime.
+- index: 1
+  agent_ids:
+  - 1c457bfd-76d5-4b6f-a451-b1a31a0501bd
+  text: '[QA Engineer]: Verify Results'
+  kind: verify
+  covers:
+  - R3
+  - R4
+  depends_on:
+  - 1
+  do: '
+
+    - Search for the number of primes below 10,000.
+
+    - Search for the largest prime below 10,000.
+
+    - Compare these values to the output of step 1.'
+  output: 'memo: verification_report'
+  done_when: The results are confirmed as correct or flagged as incorrect.
+- index: 2
+  agent_ids:
+  - 789888d4-4c4c-425d-8794-29af6096b088
+  text: '[Delivery Lead]: Final Report Assembly'
+  kind: work
+  covers:
+  - R3
+  - R4
+  depends_on:
+  - 2
+  do: '
+
+    - Review the verified results.
+
+    - Format the final answer stating the count and the largest prime.'
+  output: 'memo: final_report'
+  done_when: The final count and largest prime are reported.
+requirements: {}
+max_inner_turns: 3
+meta:
+  task_id: bench5-primes
+  draft_rounds: 1
+  consensus: true
+  capability_requests:
+  - name: python_interpreter
+    for_role: Software Engineer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: web_search
+    for_role: QA Engineer
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
