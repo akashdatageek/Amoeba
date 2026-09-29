@@ -485,4 +485,6 @@ def test_a_step_without_final_output_passes_only_its_last_message(task, envelope
     ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
     two_prompt = [c for c in llm.calls_of("plan_worker") if "(step 2)" in c["messages"][-1]["content"]][0]
     inputs = re.search(r"# Inputs: .*?\n(.*?)\n\n# Work done", two_prompt["messages"][-1]["content"], re.S).group(1)
-    assert inputs.endswith("status: incomplete\nnote 5") and "note 4" not in inputs
+    # D76: the last turn offers only Final Output and asks once more when a helper still does not conclude
+    assert inputs.endswith("status: incomplete\nnote 6") and "note 5" not in inputs
+    assert trace.events("last_turn_forced")[0]["amoeba.asked_for"] == "Print"

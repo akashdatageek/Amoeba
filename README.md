@@ -235,6 +235,13 @@ Every step prompt gets the run's date, weekday and time zone (`--timezone Americ
 zone), so "today" questions never rest on a guessed date. Amoeba's step prompt also asks helpers to prefer the source
 about the specific thing asked over general pages, never to infer a specific fact from a general page, and to say
 so when sources disagree.
+
+## Step endings and evidence size (D76)
+
+On a helper's last turn only Final Output is offered, so a step ends with a written conclusion (a tool asked for
+then is not run). A step whose output is only a search query or a tool request fails a `conclusion` check by code.
+A verify step gets its producers' raw results as the excerpts that match the claims it checks, at most 20,000
+characters in all, marked where cut.
 ## Cost controls (D45–D48)
 
 ```bash

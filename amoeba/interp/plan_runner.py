@@ -172,6 +172,12 @@ FRESH_NOTE = """
 This task asks for today's, the current or the latest value. Find the most recent official figure and write its date
 next to it ("as of <date>"). If the figure you found is dated before today, make one more search for a newer value
 before you use it, and say which date you settled on."""
+LAST_TURN_NOTE = ("THIS IS YOUR LAST TURN. No more tool calls: choose Final Output and write your conclusion from what "
+                  "you have found so far, with the [S#] of what supports each fact, and say plainly what you could not "
+                  "confirm.")
+LAST_TURN_AGAIN = ("Your last turn must be Final Output with a written conclusion (not a search query or a tool "
+                   "request). Answer now from what you have.")
+
 REWORK_NOTE = """
 
 REWORK: verification step {by} found issues with this step's earlier output. Fix them and give the whole corrected
@@ -278,6 +284,88 @@ class _Work:
         self.tool_results: list[str] = []       # what the step's tools returned (D33: their numbers count as derived)
         self.calls: list[dict] = []             # D61: every tool call of the step: who, which tool, ok or not
         self.last_message = ""                  # D44: the last helper message, passed on when no Final Output came
+        self.requests: list[str] = []           # D76: every tool request / non-final message of the step
+
+
+# box: step_check
+def no_conclusion(text: str, requests: list[str]) -> bool:
+    """D76: the step's output is only a search query or a tool request, not a written conclusion: empty, the same as
+    one of the step's tool inputs or unanswered requests, Action/ActionInput syntax, or a lone search string (one
+    short line with search operators or quoted terms and no sentence)."""
+    flat = lambda x: re.sub(r"\s+", " ", x or "").strip().strip("\"'`").strip()
+    t = flat(text)
+    if not t:
+        return True
+    if t in {flat(r) for r in requests if r}:
+        return True
+    if re.match(r"^(?:#+\s*)?(?:Action|ActionInput)\b", t, re.I) or re.fullmatch(r"https?://\S+", t):
+        return True
+    one_line = "\n" not in (text or "").strip() and len(t.split()) <= 15
+    searchy = re.search(r"\bsite:\S|\bintitle:|\"[^\"]+\"\s+\S|\bOR\b", text or "")
+    return bool(one_line and searchy and not re.search(r"[.!?]\s|[.!?]$|\[S\d+\]", t))
+
+
+EVIDENCE_CAP = 20_000     # D76: characters of raw evidence a verify step gets in all
+STOP = set("that this with from have were will your their there which about would could should these those than "
+           "then them they been into only also more most such other what when where while after before under over "
+           "each some very just here step steps source sources result results output figure figures".split())
+
+
+# box: step_check
+def claim_terms(text: str) -> dict:
+    """D76: what the claims being checked are made of: their numbers and times, quoted phrases, and the words of the
+    lines that cite a source."""
+    nums = {m.group(0).strip("$€£%") for m in re.finditer(r"(?<![\w.])[$€£]?\d[\d,:.]*\d%?|(?<![\w.])\d{2,}", text or "")}
+    quotes = [q.lower() for q in re.findall(r"[\"“]([^\"”\n]{6,120})[\"”]", text or "")]
+    cited = [l for l in (text or "").splitlines() if re.search(r"\[S\d+", l)]
+    words = {w for l in cited for w in re.findall(r"[a-z]{4,}", l.lower()) if w not in STOP}
+    return {"numbers": nums, "quotes": quotes, "words": words}
+
+
+# box: step_check
+def excerpt(result: str, wanted: dict, keep_head: int = 240) -> str:
+    """D76: the parts of one raw tool result that bear on the claims: its first line (what it is), and every line or
+    300-character piece holding one of their numbers, a quoted phrase, or two of their cited words. Omitted parts
+    are marked. A result with nothing relevant keeps its head."""
+    lines = []
+    for line in (result or "").splitlines():
+        while len(line) > 400:
+            cut = line.rfind(" ", 200, 320)
+            cut = cut if cut > 0 else 300
+            lines.append(line[:cut])
+            line = line[cut:]
+        lines.append(line)
+    if not lines:
+        return ""
+    def hit(x: str) -> bool:
+        low = x.lower()
+        return (any(re.search(rf"(?<![\d.]){re.escape(v)}(?![\d])", x) for v in wanted["numbers"])
+                or any(q in low for q in wanted["quotes"])
+                or len({w for w in wanted["words"] if w in low}) >= 2)
+    keep = [0] + [i for i in range(1, len(lines)) if lines[i].strip() and hit(lines[i])]
+    if len(keep) == 1:
+        head = "\n".join(lines)[:keep_head]
+        return head + ("\n[… rest of this result left out: nothing in it matches the claims checked …]"
+                       if len("\n".join(lines)) > keep_head else "")
+    out, prev = [], -1
+    for i in keep:
+        if i > prev + 1:
+            out.append("[…]")
+        out.append(lines[i])
+        prev = i
+    if prev < len(lines) - 1:
+        out.append("[…]")
+    return "\n".join(out)
+
+
+# box: step_check
+def conclusion_check(text: str, w: "_Work") -> list[dict]:
+    """D76: a failing `conclusion` check when the output is only a query or a tool request (no check when it passes,
+    so step outputs that conclude look as before)."""
+    if not no_conclusion(text, [*w.requests, *(c["input"] for c in w.calls)]):
+        return []
+    return [{"name": "conclusion", "pass": False, "source": "code",
+             "detail": "the step's output is a search query or a tool request, not a written conclusion"}]
 
 
 NUMERIC_WORDS = re.compile(r"\b(cost|costs|estimate|estimates|price|prices|pricing|number|numbers|figure|figures|"
@@ -580,14 +668,24 @@ class PlanRunner:
 
     # box: step_check
     def raw_results_text(self, n: int) -> str:
-        """D65: the raw tool results every upstream step used (not only their text), for a verify step."""
+        """D65: the raw tool results every upstream step used (not only their text), for a verify step. D76: as the
+        excerpts that bear on the claims being checked (their numbers, times, quotes and the words of the lines
+        they cite), at most EVIDENCE_CAP characters in all, with a marker when cut."""
+        ups = self.upstream(n)
+        wanted = claim_terms("\n".join(self.artifacts[d]["text"] for d in ups))
         parts = []
-        for d in self.upstream(n):
+        for d in ups:
             for r in self.artifacts[d]["meta"].get("tool_results", []):
-                parts.append(f"### Step {d} · {r['agent']} → {r['tool']} ({r['input'][:120]!r})\n{r['result']}")
+                parts.append(f"### Step {d} · {r['agent']} → {r['tool']} ({r['input'][:120]!r})\n"
+                             f"{excerpt(r['result'], wanted)}")
         if not parts:
             return ""
-        return "## Raw tool results of the steps you check (plain code copied them)\n" + "\n\n".join(parts)
+        body = "\n\n".join(parts)
+        if len(body) > EVIDENCE_CAP:
+            body = body[:EVIDENCE_CAP].rstrip() + (f"\n[… {len(body) - EVIDENCE_CAP:,} characters of raw evidence left "
+                                                   f"out: cap {EVIDENCE_CAP:,} characters …]")
+        return ("## Raw tool results of the steps you check (plain code copied the parts that bear on their claims)\n"
+                + body)
 
     # box: step_check
     def verifier_tools(self, agents: list[AgentSpec]) -> list[str]:
@@ -786,6 +884,7 @@ class PlanRunner:
         exact = computed_values(self.computed_results(w))                          # D66
         text, removed = strip_unverified(self._text(agents, w), exact)
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
+        checks += conclusion_check(text, w)                                       # D76
         own, visible = self._sources(n, deps)
         prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,   # D33
                                 self.computed_results(w), self.web_ids())
@@ -798,6 +897,7 @@ class PlanRunner:
             text, again = strip_unverified(self._text(agents, w), exact)
             removed += again
             checks = step_checks(step, text, deps, self.artifacts, verifier)
+            checks += conclusion_check(text, w)
             own, visible = self._sources(n, deps)
             prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,
                                     self.computed_results(w), self.web_ids())
@@ -896,7 +996,7 @@ class PlanRunner:
                          "tool_calls": w.calls, "files_made": self.files_of(n),
                          # D65: what the step's tools returned, for the steps that check it
                          "tool_results": [{"agent": c["agent"], "tool": c["tool"], "input": c["input"],
-                                           "result": shorten(r or "", 1500)}
+                                           "result": shorten(r or "", 6000)}   # D76: excerpted for the checker
                                           for c, r in zip(w.calls, w.tool_results) if c["ok"]][:8],
                          "unverified_check": bool(unchecked)})
         if verifier:
@@ -1295,6 +1395,8 @@ class PlanRunner:
                 w.contributions.append({"turn": w.turn + 1, "agent": agent.name, "action": act,
                                         "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
                 w.last_message = inp.strip()
+                if FINAL_OUTPUT not in act:
+                    w.requests.append(inp.strip())
                 if gap is not None:
                     w.blocked[agent.agent_id] = gap
                     w.partial[agent.agent_id] = inp.strip()
@@ -1349,7 +1451,8 @@ class PlanRunner:
     # box: plan_step
     def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int,
               extra: str = "", template: str = "") -> tuple[str, str, str, str | None]:
-        tools = list(agent.tools) + [PRINT, FINAL_OUTPUT]
+        last = turns_left <= 1                   # D76: the last turn ends the step with a written conclusion
+        tools = [FINAL_OUTPUT] if last else list(agent.tools) + [PRINT, FINAL_OUTPUT]
         user = render(template or PROMPT.plan_step, task=self.task.prompt, today=self.i.clock["line"], deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
                       step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
                       tools=str(tools), turns_left=turns_left,
@@ -1361,6 +1464,8 @@ class PlanRunner:
             items = [*(f"{x} (asked for, not available)" for x in c["needs"]),
                      *(f"{x['name']} (given to you)" for x in c["items"])]
             user = user.replace("\n# Format\n", f"\n{CONTRACT_LINE.format(items='; '.join(items))}\n\n# Format\n", 1)
+        if last:
+            user = user.replace("\n# Format\n", f"\n{LAST_TURN_NOTE}\n\n# Format\n", 1)
         system = render(PROMPT.plan_step_system, name=agent.name)
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name,
                                                 "amoeba.box": "plan_summary" if self.is_summary_step(step) else "plan_step",
@@ -1373,6 +1478,19 @@ class PlanRunner:
                 self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                rec.get("gen_ai.usage.output_tokens", 0))
             act, inp = sec["Action"].strip(), full_action_input(raw, sec["ActionInput"])
+            if last and FINAL_OUTPUT not in act:   # D76: a tool asked for on the last turn is not run; asked once more
+                self.i.trace.event("last_turn_forced", {"amoeba.step": n, "gen_ai.agent.name": agent.name,
+                                                        "amoeba.asked_for": act[:80]})
+                before = self.i.trace.n_llm_calls
+                raw, sec = self.i.llm.chat_sections(system, f"{user}\n\n{LAST_TURN_AGAIN}", PLAN_SECTIONS,
+                                                    self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
+                                                    max_tokens=PLAN_MAX_TOKENS, role=group)
+                for rec in self.i.trace.spans("chat")[before:]:
+                    self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
+                                   rec.get("gen_ai.usage.output_tokens", 0))
+                act, inp = sec["Action"].strip(), full_action_input(raw, sec["ActionInput"])
+                if FINAL_OUTPUT not in act:
+                    return "no action", inp, "", None
             resp, gap = self.i._dispatch(agent, act, inp, step.index, self.ep)
         return act, inp, resp, gap
 
