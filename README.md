@@ -228,6 +228,13 @@ In the plan runner, every quoted phrase, time of day and number a step tags with
 was shown for S# (search snippet, fetched page, tool output), after normalising spelling of times, dashes and
 separators. A miss is recorded as a mislabelled citation: the step becomes partial and the answer's Limitations name
 it, with the source that does contain it when there is one.
+
+## Today's date and research rules (D75)
+
+Every step prompt gets the run's date, weekday and time zone (`--timezone America/Chicago`; default the machine's
+zone), so "today" questions never rest on a guessed date. Amoeba's step prompt also asks helpers to prefer the source
+about the specific thing asked over general pages, never to infer a specific fact from a general page, and to say
+so when sources disagree.
 ## Cost controls (D45–D48)
 
 ```bash

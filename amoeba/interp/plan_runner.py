@@ -1003,7 +1003,7 @@ class PlanRunner:
                 ) -> tuple[str, list[str]]:
         """D51: one reviewer's verdict and numbered issues. An unreadable reply counts as AGREE (recorded)."""
         criteria = "; ".join(rv.success_criteria) or "none written"
-        user = render(PROMPT.plan_critique, task=self.task.prompt, card=plan_card(rv), number=n,
+        user = render(PROMPT.plan_critique, task=self.task.prompt, today=self.i.clock["line"], card=plan_card(rv), number=n,
                       step=step_detail(step), inputs=inputs, drafter=drafter.name, draft=draft,
                       done_when=step.done_when or "none written", criteria=criteria)
         system = render(PROMPT.plan_step_system, name=rv.name)
@@ -1350,7 +1350,7 @@ class PlanRunner:
     def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int,
               extra: str = "", template: str = "") -> tuple[str, str, str, str | None]:
         tools = list(agent.tools) + [PRINT, FINAL_OUTPUT]
-        user = render(template or PROMPT.plan_step, task=self.task.prompt, deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
+        user = render(template or PROMPT.plan_step, task=self.task.prompt, today=self.i.clock["line"], deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
                       step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
                       tools=str(tools), turns_left=turns_left,
                       unavailable="\n".join([UNAVAILABLE.format(name=t) for t in agent.missing_tools
@@ -1465,7 +1465,7 @@ class PlanRunner:
         self.replans.append(record)
 
     def _observer_call(self, triggers: list[dict]) -> str:
-        user = render(PROMPT.plan_replan, task=self.task.prompt, requirements=self.deliverables_text(),
+        user = render(PROMPT.plan_replan, task=self.task.prompt, today=self.i.clock["line"], requirements=self.deliverables_text(),
                       triggers="\n".join(f"- {t['detail']}" for t in triggers), plan=self.plan_text(),
                       outputs=self.finished_text(), blocked=self.blocked_text(), tools=self.tools_text(),
                       roles=self.roles_text(),
