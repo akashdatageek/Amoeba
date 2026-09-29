@@ -27,6 +27,7 @@ import yaml
 
 from amoeba.config.schema import AgentSpec
 from amoeba.interp.shorten import shorten
+from amoeba.tools.web import note_seen
 from amoeba.localtools.gate import in_workspace, inside, require_sandbox, screen_command
 from amoeba.localtools.office import office_check
 from amoeba.localtools.server import StdioServer
@@ -346,6 +347,7 @@ class LocalToolbox:
         if self.book is not None and not is_error:    # D61 (G7): a local result is a source the helper can cite
             key = hashlib.sha256(f"{self.calls}:{tool}:{what}".encode()).hexdigest()[:10]
             s = self.book._source(f"local://{tool}/{key}", f"local:{tool} · {what[:80]}", "local", what[:300])
+            note_seen(s, cut)                                                   # D74
             src = f" [{s['id']}] (cite a fact from this result by its [{s['id']}])"
             self.trace.event("local_source", {"amoeba.box": "localtools", "amoeba.step": self.step,
                                               "gen_ai.tool.name": f"local:{tool}", "amoeba.source_id": s["id"]})

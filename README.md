@@ -221,6 +221,13 @@ HTTP 500, 502 and 504 from the model service are retried like 429/503 (same wait
 resumable: run the same task again with the same `--llm-cache` folder and `--llm-cache-namespace` and every call it
 had finished replays from the cache for free; only the rest is paid. Web results keep the time they were really
 fetched, so the replayed prompts are identical. Local tool calls (Bash, Write) run again, since they change files.
+
+## Citation check by code (D74)
+
+In the plan runner, every quoted phrase, time of day and number a step tags with [S#] must appear in the text the team
+was shown for S# (search snippet, fetched page, tool output), after normalising spelling of times, dashes and
+separators. A miss is recorded as a mislabelled citation: the step becomes partial and the answer's Limitations name
+it, with the source that does contain it when there is one.
 ## Cost controls (D45–D48)
 
 ```bash

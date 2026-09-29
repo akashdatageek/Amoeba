@@ -17,6 +17,7 @@ from pathlib import Path
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
+from amoeba.interp.citecheck import mislabelled_citations
 from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_values, numbers_in,
                                       strip_unverified)
 from amoeba.interp.freshness import stale_figure, time_sensitive
@@ -424,6 +425,7 @@ class PlanRunner:
         self.plan_version = 1
         self.triggered: set[tuple] = set()                # (kind, step or item) already shown to the observer
         self.unmet: dict[str, str] = {}                   # requirement id -> why a re-plan left it unmet
+        self.mislabelled: dict[int, list] = {}            # D74: step -> its mislabelled citations (latest version)
         self.max_num = max((number(s) for s in cfg.plan), default=0)
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
@@ -840,6 +842,15 @@ class PlanRunner:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "unverified check: PASS with no re-checking tool call on "
                                                    + self.checkable(n)) if x)
+        mislabelled = mislabelled_citations(text, self.source_texts(), self.citation_exempt(),     # D74
+                                            computed_values(self.computed_results(w)))
+        if mislabelled:
+            status = "partial" if status == "done" else status
+            reason = "; ".join(x for x in (reason, "mislabelled citation: " + "; ".join(
+                f"{x['claim']!r} not in {x['source']}" for x in mislabelled[:4])) if x)
+            self.i.trace.event("mislabelled_citation", {"amoeba.step": n, "amoeba.count": len(mislabelled),
+                                                        "amoeba.citations": mislabelled[:10]})
+        self.mislabelled[n] = mislabelled
         if on:
             text = strip_not_needed(text) or text
         if found is not None:
@@ -870,6 +881,7 @@ class PlanRunner:
                 "visible_source_ids": sorted(visible), "provenance": prov, "figure_origins": origins,
                 "checks": checks, "retried": retried, "refine": refine,
                 "unverified_tags_removed": removed,                                # D66
+                "mislabelled_citations": mislabelled,                              # D74
                 "refine_reason": refine["reason"] if refine else "",
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
                 "stale": False, "stale_because": [],
@@ -915,6 +927,22 @@ class PlanRunner:
         """D66: what the step's calc and local tools returned (a number equal to one of them is derived)."""
         return [r for c, r in zip(w.calls, w.tool_results) if c["ok"] and (c["tool"] == "calc"
                                                                           or c["tool"].startswith("local:"))]
+
+    # box: step_check
+    def source_texts(self) -> dict[str, str]:
+        """D74: S# -> the text the team was shown for it, across web, pool and local results."""
+        books = [b for b in (self.web, getattr(self.pool, "book", None), getattr(self.local, "book", None)) if b]
+        out: dict[str, str] = {}
+        for b in books:
+            out.update(b.source_texts() if hasattr(b, "source_texts") else {})
+        return out
+
+    # box: step_check
+    def citation_exempt(self) -> set[str]:
+        """D74: numbers no source has to back: those given in the task and today's date parts (D75 gives it)."""
+        today = getattr(self.i, "today", None) or date.today()
+        return numbers_in(self.task.prompt) | {str(today.year), str(today.day), f"{today.day:02d}", str(today.month),
+                                               f"{today.month:02d}"}
 
     def web_ids(self) -> set[str]:
         """D66: the ids of search and fetched-page sources in the run."""
@@ -1196,6 +1224,12 @@ class PlanRunner:
                   for r, why in unmet.items()]
         lines += [f"- NOT USED: {u} (given to the team for step {', '.join(map(str, unused[u]))} but never used; "
                   f"added by plain code)" for u in not_used]
+        if "mislabel" not in section:                                            # D74: cited to the wrong source
+            for d, items in sorted(getattr(self, "mislabelled", {}).items()):
+                for x in items[:5]:
+                    where = f"; it is in {', '.join(x['found_in'])}" if x["found_in"] else ""
+                    lines.append(f"- Mislabelled citation: step {d} cites {x['source']} for {x['claim']!r}, which "
+                                 f"{x['source']} does not contain{where} (added by plain code)")
         stale = None
         if time_sensitive(self.task.prompt):                                     # D67: possibly not the latest
             stale = stale_figure([a["text"] for a in self.artifacts.values()] + [text or ""],
