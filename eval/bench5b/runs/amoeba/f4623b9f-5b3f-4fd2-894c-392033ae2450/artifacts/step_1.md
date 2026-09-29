@@ -1,0 +1,26 @@
+memo: execution_results
+
+# Execution Results
+## Source Code
+```python
+def sieve_of_eratosthenes(limit):
+    primes_mask = [True] * limit
+    # 0 [unverified], 1 [unverified]
+    primes_mask[0] = primes_mask[1] = False
+    # 2 [unverified], 0.5 [unverified], 1 [unverified]
+    for p in range(2, int(limit**0.5) + 1):
+        if primes_mask[p]:
+            for i in range(p * p, limit, p):
+                primes_mask[i] = False
+    return [p for p, is_prime in enumerate(primes_mask) if is_prime]
+
+if __name__ == "__main__":
+    limit = 10000
+    primes = sieve_of_eratosthenes(limit)
+    print(f"Count: {len(primes)}")
+    print(f"Max: {primes[-1]}")
+```
+
+## Metrics
+- Total count of primes: 1229 [S1]
+- Largest prime found: 9973 [S1]

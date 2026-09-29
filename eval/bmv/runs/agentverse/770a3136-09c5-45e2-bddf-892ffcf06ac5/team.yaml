@@ -1,0 +1,195 @@
+team_id: 99d640f0-b9e5-4ec0-b828-960404af79c9
+version: 1
+parent_version: null
+name: team-boss_reviewers-dev-bmv-
+topology: boss_reviewers
+agents:
+  7c5dac3a-7f2f-4246-8fa1-2a3e7d058f98:
+    agent_id: 7c5dac3a-7f2f-4246-8fa1-2a3e7d058f98
+    name: Research Analyst
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An expert in OSINT and data retrieval responsible for finding precise
+      business locations and their current operating schedules.
+    role_prompt: "You are a Senior Research Analyst. Your goal is to find the current\
+      \ operating hours for the BMV in Hammond, Indiana. \n1. Use web_search to find\
+      \ the official Indiana BMV branch(es) in Hammond.\n2. Use fetch_url to visit\
+      \ the official state page or a reliable directory to find the hours for today\
+      \ (determine today's day of the week first).\n3. Output a memo containing: Branch\
+      \ Name, Full Address, Today's Opening and Closing times, and the Source URL\
+      \ used to find this information."
+    max_history: 3
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Provide the exact address and today's operating hours for the BMV in Hammond,
+      IN.
+    skills:
+    - web research
+    - source verification
+    outputs:
+    - artifact: BMV Branch Data
+      format: 'memo: Branch Name, Address, Today''s Hours, Source URL'
+    success_criteria:
+    - Hours are sourced from an official or highly reliable source
+    - Address is confirmed for Hammond, IN
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  f0b778b2-9bbc-4969-b632-decb9086c5f1:
+    agent_id: f0b778b2-9bbc-4969-b632-decb9086c5f1
+    name: Verification Lead
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A detail-oriented lead responsible for validating data and performing
+      time-based logic checks to ensure accuracy.
+    role_prompt: "You are a Verification Lead. You will receive the operating hours\
+      \ for the Hammond BMV. \n1. Use web_search to determine the current local time\
+      \ in Hammond, Indiana (Central Time).\n2. Use web_search to check for any 'Holiday'\
+      \ or 'Special Closure' notices for today's date for the Indiana BMV.\n3. Compare\
+      \ the current local time to the 'Today's Hours' provided by the Research Analyst.\n\
+      4. If the current time falls within the opening and closing window, and no holiday\
+      \ closure is noted, mark as 'Open'. Otherwise, mark as 'Closed'.\n5. Output\
+      \ a memo stating the current local time, the verified operating window, any\
+      \ holiday notes, and the final Open/Closed status."
+    max_history: 3
+    missing_tools:
+    - web_search
+    is_summariser: false
+    goal: Confirm whether the BMV is currently open based on the research and the
+      current local time.
+    skills:
+    - time zone analysis
+    - logical verification
+    outputs:
+    - artifact: Verification Report
+      format: 'memo: Current Local Time, Verified Operating Window, Holiday Status,
+        Open/Closed Status, Logic used'
+    success_criteria:
+    - The open/closed determination is logically sound based on the current local
+      time in Central Time
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  f578ff59-5001-4773-bd83-78571afd7d83:
+    agent_id: f578ff59-5001-4773-bd83-78571afd7d83
+    name: Delivery Lead
+    role: solver
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_solver_prepend
+      user: seed:agentverse_solver_append_generic
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: The final point of contact responsible for synthesizing findings
+      into a clear, concise answer for the user.
+    role_prompt: "You are the Delivery Lead. Your task is to answer the user's question:\
+      \ 'Is BMV open in Hammond Indiana today?'. \nUse the Research Analyst's data\
+      \ and the Verification Lead's report. \nStart with a clear 'Yes, it is open'\
+      \ or 'No, it is closed'. \nFollow this with the branch address and the hours\
+      \ for today to provide context. Do not add unnecessary fluff."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answer to the user.
+    skills:
+    - technical communication
+    outputs:
+    - artifact: Final Answer
+      format: 'memo: Direct answer followed by supporting details'
+    success_criteria:
+    - The answer is unambiguous and includes the address and hours
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+edges:
+- src: f578ff59-5001-4773-bd83-78571afd7d83
+  dst: 7c5dac3a-7f2f-4246-8fa1-2a3e7d058f98
+  type: review
+  schema_id: text
+  condition: null
+- src: f578ff59-5001-4773-bd83-78571afd7d83
+  dst: f0b778b2-9bbc-4969-b632-decb9086c5f1
+  type: review
+  schema_id: text
+  condition: null
+- src: 7c5dac3a-7f2f-4246-8fa1-2a3e7d058f98
+  dst: f578ff59-5001-4773-bd83-78571afd7d83
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+- src: f0b778b2-9bbc-4969-b632-decb9086c5f1
+  dst: f578ff59-5001-4773-bd83-78571afd7d83
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+entry:
+- f578ff59-5001-4773-bd83-78571afd7d83
+exit: f578ff59-5001-4773-bd83-78571afd7d83
+plan: []
+requirements: {}
+max_inner_turns: 3
+meta:
+  task_id: dev-bmv-hammond
+  draft_rounds: 2
+  consensus: true
+  capability_requests:
+  - name: web_search
+    for_role: Research Analyst
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Research Analyst
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: web_search
+    for_role: Verification Lead
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool

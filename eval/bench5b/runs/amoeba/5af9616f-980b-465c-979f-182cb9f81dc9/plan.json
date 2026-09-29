@@ -1,0 +1,543 @@
+{
+  "created_roles": [
+    {
+      "name": "Corporate Researcher",
+      "description": "An expert in corporate intelligence and public record retrieval, specialized in identifying executive leadership and tenure dates.",
+      "tools": [],
+      "suggestions": "",
+      "prompt": "You are a Senior Corporate Researcher. Your goal is to find the current CEO of A.P. Møller - Mærsk A/S and the exact date they assumed the role. \n\nStep-by-step:\n1. Use web_search to find the 'Maersk Executive Board' or 'Maersk Leadership' page.\n2. Use fetch_url to read the page and identify the CEO.\n3. Search specifically for the appointment announcement or the 'since' date in their biography.\n4. If the official site is vague, search for the official press release announcing the appointment to get the exact date.\n\nOutput format:\nCEO: [Name]\nSince: [Date]\nSource: [URL]",
+      "missing_tools": [
+        "web_search",
+        "fetch_url"
+      ],
+      "is_summariser": false,
+      "seniority": "senior",
+      "goal": "Extract the current CEO's name, their start date, and the source URL.",
+      "responsibilities": [
+        "Search for the current leadership of A.P. Møller - Mærsk A/S",
+        "Locate the official appointment date of the CEO",
+        "Provide the direct URL to the source"
+      ],
+      "skills": [
+        "corporate research",
+        "source verification"
+      ],
+      "inputs": [
+        "Task requirements"
+      ],
+      "outputs": [
+        {
+          "artifact": "leadership_data",
+          "format": "memo: CEO Name, Start Date, Source URL"
+        }
+      ],
+      "success_criteria": [
+        "CEO name is current",
+        "Start date is specific (Day/Month/Year if available)",
+        "URL is a direct link to the evidence"
+      ],
+      "constraints": [],
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ]
+    },
+    {
+      "name": "QA Lead",
+      "description": "A detail-oriented auditor who ensures factual accuracy by cross-referencing data against independent sources.",
+      "tools": [],
+      "suggestions": "",
+      "prompt": "You are a Senior QA Lead. You will receive a CEO name, a start date, and a source. Your job is to verify this information is 100% accurate.\n\nStep-by-step:\n1. Review the provided source to ensure it explicitly supports the claim.\n2. Perform a web_search for '[CEO Name] Maersk appointment date' to find a second source (e.g., Reuters, Bloomberg, or a Maersk press release).\n3. Compare the dates. If there is a discrepancy between the 'announcement date' and the 'effective date', prioritize the effective date.\n\nOutput format:\nStatus: [Verified/Corrected]\nConfirmed CEO: [Name]\nConfirmed Since: [Date]\nPrimary Source: [URL]\nSecondary Source: [URL]",
+      "missing_tools": [
+        "web_search",
+        "fetch_url"
+      ],
+      "is_summariser": false,
+      "seniority": "senior",
+      "goal": "Verify the accuracy of the CEO's name and tenure date.",
+      "responsibilities": [
+        "Cross-reference the researcher's findings with a second independent source (e.g., financial news or regulatory filings)",
+        "Confirm the date is the actual start date of the CEO role, not a board appointment date"
+      ],
+      "skills": [
+        "fact-checking",
+        "cross-referencing"
+      ],
+      "inputs": [
+        "leadership_data from Corporate Researcher"
+      ],
+      "outputs": [
+        {
+          "artifact": "verification_report",
+          "format": "memo: Status (Verified/Corrected), Confirmed Date, Secondary Source URL"
+        }
+      ],
+      "success_criteria": [
+        "Data is confirmed by at least two independent sources or one primary official source"
+      ],
+      "constraints": [],
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ]
+    },
+    {
+      "name": "Final Writer",
+      "description": "A professional communicator who assembles verified data into a concise, polished final deliverable.",
+      "tools": [],
+      "suggestions": "",
+      "prompt": "You are the Final Writer. Your task is to take the verified data from the QA Lead and present it as a clear, concise answer to the user. Do not add any commentary or fluff. Just provide the name, the date, and the source.",
+      "missing_tools": [],
+      "is_summariser": true,
+      "seniority": "senior",
+      "goal": "Deliver the final answer to the user.",
+      "responsibilities": [
+        "Synthesize the verified data into the final response",
+        "Ensure the citation is clearly presented"
+      ],
+      "skills": [
+        "technical writing",
+        "editing"
+      ],
+      "inputs": [
+        "verification_report from QA Lead"
+      ],
+      "outputs": [
+        {
+          "artifact": "final_answer",
+          "format": "text"
+        }
+      ],
+      "success_criteria": [
+        "Answer is direct and contains all three required elements (Who, Since when, Source)"
+      ],
+      "constraints": [],
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ]
+    }
+  ],
+  "plan": [
+    {
+      "index": 0,
+      "agent_names": [
+        "Corporate Researcher"
+      ],
+      "text": "[Corporate Researcher]: Data Extraction",
+      "title": "Data Extraction",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "depends_on": [],
+      "do": "Search for Maersk's current CEO and their appointment date using official company pages and press releases.",
+      "output": "memo: CEO Name, Start Date, Source URL",
+      "done_when": "CEO name, start date, and a valid URL are identified."
+    },
+    {
+      "index": 1,
+      "agent_names": [
+        "QA Lead"
+      ],
+      "text": "[QA Lead]: Fact Verification",
+      "title": "Fact Verification",
+      "kind": "verify",
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "depends_on": [
+        1
+      ],
+      "do": "Cross-reference the researcher's findings with a second independent source to ensure the date is the effective start date.",
+      "output": "memo: Status, Confirmed CEO, Confirmed Since, Primary Source, Secondary Source",
+      "done_when": "The data is confirmed or corrected based on evidence."
+    },
+    {
+      "index": 2,
+      "agent_names": [
+        "Final Writer"
+      ],
+      "text": "[Final Writer]: Final Assembly",
+      "title": "Final Assembly",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "depends_on": [
+        2
+      ],
+      "do": "Format the verified information into the final response.",
+      "output": "text: The current CEO of Maersk is [Name], serving since [Date]. Source: [URL]",
+      "done_when": "The final answer is delivered."
+    }
+  ],
+  "rounds_used": 1,
+  "consensus": true,
+  "role_feedback": "None",
+  "plan_feedback": "None",
+  "raw_draft": "<thought>Principal Engineer and Delivery Lead.\nIdentify the current CEO of Maersk and since when they have held the position. Cite the source.\n\n        *   R1: Identify the current CEO of Maersk.\n        *   R2: Identify the start date of their tenure.\n        *   R3: Cite the source.\n\n    *   The task is simple, but the persona requires a rigorous, professional planning approach.\n    *   I need a researcher to find the data and a summarizer to present it.\n    *   Verification is required (a second check on the source/date).\n\n    *   *Requirements:*\n        *   R1: Identify current CEO of Maersk.\n        *   R2: Identify since when they have been CEO.\n        *   R3: Cite the source.\n\n    *   *Givens/Assumptions:*\n        *   Assumption: The information is publicly available on the web.\n        *   Assumption: \"Maersk\" refers to A.P. Møller - Mærsk A/S.\n\n    *   *Ideal Capabilities:*\n        *   Tool: Web search (to find current leadership).\n        *   Tool: URL fetching (to verify details from the official site or reliable news).\n        *   Skill: Fact-checking/Verification.\n\n    *   *Roles:*\n        *   Role 1: Corporate Researcher (Senior). Finds the info, fetches the page, extracts the name and date.\n        *   Role 2: Quality Assurance Lead (Senior). Verifies the researcher's findings against a second source or the primary source to ensure accuracy.\n        *   Role 3: Final Writer (Summarizer). Formats the final answer.\n\n    *   *Execution Plan:*\n        1.  Researcher: Search and extract.\n        2.  QA: Verify and cross-reference.\n        3.  Writer: Assemble.\n\n    *   *Capability Requests:*\n        *   `web_search` and `fetch_url` are already listed as available tools for roles that ask for them. No external requests needed.\n\n    *   *Risks:*\n        *   CEO change happened very recently (last few days).\n        *   Confusing the CEO of the group with a CEO of a specific business unit (e.g., Maersk Ocean).\n\n    *   *Role 1 (Researcher):*\n        *   Goal: Accurate identification of CEO and start date.\n        *   Prompt: Search for \"Maersk current CEO\", find the official Maersk leadership page, extract the name and the date they took office. Provide the URL.\n\n    *   *Role 2 (QA):*\n        *   Goal: Validation of the researcher's data.\n        *   Prompt: Take the name and date provided. Search for a second independent source (e.g., Bloomberg, Reuters, or a press release) to confirm the date. Flag any discrepancies.\n\n    *   *Role 3 (Writer):*\n        *   Goal: Final delivery.\n        *   Prompt: Combine the verified name, date, and source into a concise answer.\n\n    *   R1, R2, R3 covered? Yes.\n    *   Verification step included? Yes.\n    *   Summarizer is separate? Yes.\n    *   Tools correctly assigned? Yes.\n    *   Format followed? Yes.</thought>## Thought\nThe task is a straightforward factual retrieval, but requires high precision regarding the specific date of appointment and a verifiable source. I will employ a Corporate Researcher to extract the data from official and secondary sources, a QA Lead to cross-verify the date (as tenure dates can sometimes be confused between \"appointment date\" and \"effective start date\"), and a Final Writer to assemble the response. This ensures the \"cite your source\" requirement is handled with a verified, high-authority link.\n\n## Requirements:\nR1: Identify the current CEO of Maersk.\nR2: Identify since when they have held the position.\nR3: Cite the source of the information.\n\n## Givens and Assumptions:\n- assumption: \"Maersk\" refers to the parent company A.P. Møller - Mærsk A/S.\n- assumption: The information is available via public web records.\n\n## Open Questions:\nNone\n\n## Selected Roles List:\n```\nNone\n```\n\n## Created Roles List:\n```\n[\n  {\n    \"name\": \"Corporate Researcher\",\n    \"seniority\": \"senior\",\n    \"description\": \"An expert in corporate intelligence and public record retrieval, specialized in identifying executive leadership and tenure dates.\",\n    \"goal\": \"Extract the current CEO's name, their start date, and the source URL.\",\n    \"responsibilities\": [\n      \"Search for the current leadership of A.P. Møller - Mærsk A/S\",\n      \"Locate the official appointment date of the CEO\",\n      \"Provide the direct URL to the source\"\n    ],\n    \"skills\": [\"corporate research\", \"source verification\"],\n    \"tools\": [\"web_search\", \"fetch_url\"],\n    \"inputs\": [\"Task requirements\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"leadership_data\",\n        \"format\": \"memo: CEO Name, Start Date, Source URL\"\n      }\n    ],\n    \"success_criteria\": [\n      \"CEO name is current\",\n      \"Start date is specific (Day/Month/Year if available)\",\n      \"URL is a direct link to the evidence\"\n    ],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\", \"R3\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a Senior Corporate Researcher. Your goal is to find the current CEO of A.P. Møller - Mærsk A/S and the exact date they assumed the role. \\n\\nStep-by-step:\\n1. Use web_search to find the 'Maersk Executive Board' or 'Maersk Leadership' page.\\n2. Use fetch_url to read the page and identify the CEO.\\n3. Search specifically for the appointment announcement or the 'since' date in their biography.\\n4. If the official site is vague, search for the official press release announcing the appointment to get the exact date.\\n\\nOutput format:\\nCEO: [Name]\\nSince: [Date]\\nSource: [URL]\"\n  },\n  {\n    \"name\": \"QA Lead\",\n    \"seniority\": \"senior\",\n    \"description\": \"A detail-oriented auditor who ensures factual accuracy by cross-referencing data against independent sources.\",\n    \"goal\": \"Verify the accuracy of the CEO's name and tenure date.\",\n    \"responsibilities\": [\n      \"Cross-reference the researcher's findings with a second independent source (e.g., financial news or regulatory filings)\",\n      \"Confirm the date is the actual start date of the CEO role, not a board appointment date\"\n    ],\n    \"skills\": [\"fact-checking\", \"cross-referencing\"],\n    \"tools\": [\"web_search\", \"fetch_url\"],\n    \"inputs\": [\"leadership_data from Corporate Researcher\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"verification_report\",\n        \"format\": \"memo: Status (Verified/Corrected), Confirmed Date, Secondary Source URL\"\n      }\n    ],\n    \"success_criteria\": [\n      \"Data is confirmed by at least two independent sources or one primary official source\"\n    ],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\", \"R3\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a Senior QA Lead. You will receive a CEO name, a start date, and a source. Your job is to verify this information is 100% accurate.\\n\\nStep-by-step:\\n1. Review the provided source to ensure it explicitly supports the claim.\\n2. Perform a web_search for '[CEO Name] Maersk appointment date' to find a second source (e.g., Reuters, Bloomberg, or a Maersk press release).\\n3. Compare the dates. If there is a discrepancy between the 'announcement date' and the 'effective date', prioritize the effective date.\\n\\nOutput format:\\nStatus: [Verified/Corrected]\\nConfirmed CEO: [Name]\\nConfirmed Since: [Date]\\nPrimary Source: [URL]\\nSecondary Source: [URL]\"\n  },\n  {\n    \"name\": \"Final Writer\",\n    \"seniority\": \"senior\",\n    \"description\": \"A professional communicator who assembles verified data into a concise, polished final deliverable.\",\n    \"goal\": \"Deliver the final answer to the user.\",\n    \"responsibilities\": [\n      \"Synthesize the verified data into the final response\",\n      \"Ensure the citation is clearly presented\"\n    ],\n    \"skills\": [\"technical writing\", \"editing\"],\n    \"tools\": [],\n    \"inputs\": [\"verification_report from QA Lead\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"final_answer\",\n        \"format\": \"text\"\n      }\n    ],\n    \"success_criteria\": [\n      \"Answer is direct and contains all three required elements (Who, Since when, Source)\"\n    ],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\", \"R3\"],\n    \"is_summariser\": true,\n    \"prompt\": \"You are the Final Writer. Your task is to take the verified data from the QA Lead and present it as a clear, concise answer to the user. Do not add any commentary or fluff. Just provide the name, the date, and the source.\"\n  }\n]\n```\n\n## Execution Plan:\n1. [Corporate Researcher]: Data Extraction\n   kind: work\n   covers: R1, R2, R3\n   depends_on: none\n   do: Search for Maersk's current CEO and their appointment date using official company pages and press releases.\n   output: memo: CEO Name, Start Date, Source URL\n   done_when: CEO name, start date, and a valid URL are identified.\n\n2. [QA Lead]: Fact Verification\n   kind: verify\n   covers: R1, R2, R3\n   depends_on: 1\n   do: Cross-reference the researcher's findings with a second independent source to ensure the date is the effective start date.\n   output: memo: Status, Confirmed CEO, Confirmed Since, Primary Source, Secondary Source\n   done_when: The data is confirmed or corrected based on evidence.\n\n3. [Final Writer]: Final Assembly\n   kind: work\n   covers: R1, R2, R3\n   depends_on: 2\n   do: Format the verified information into the final response.\n   output: text: The current CEO of Maersk is [Name], serving since [Date]. Source: [URL]\n   done_when: The final answer is delivered.\n\n## Capability Requests:\n```\nNone\n```\n\n## Risks and Decisions:\n- **Risk**: The CEO may have changed very recently, and the official \"About Us\" page might not be updated yet.\n- **Decision**: The QA Lead is instructed to prioritize official press releases over general \"About\" pages to ensure the most current and precise date is captured.\n- **Risk**: Confusion between the CEO of the Group and the CEO of a specific business segment (e.g., Maersk Ocean).\n- **Decision**: The Researcher is specifically tasked with looking for the leadership of \"A.P. Møller - Mærsk A/S\" (the parent company).\n\n## RoleFeedback:\nNone\n\n## PlanFeedback:\nNone",
+  "capability_requests": [
+    {
+      "name": "web_search",
+      "kind": "tool",
+      "for_role": "Corporate Researcher",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "canonical": "web_search",
+      "mapped": true,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "fetch_url",
+      "kind": "tool",
+      "for_role": "Corporate Researcher",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "canonical": "fetch_url",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "web_search",
+      "kind": "tool",
+      "for_role": "QA Lead",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "canonical": "web_search",
+      "mapped": true,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "fetch_url",
+      "kind": "tool",
+      "for_role": "QA Lead",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "canonical": "fetch_url",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    }
+  ],
+  "rounds": [
+    {
+      "index": 1,
+      "planner_raw": "<thought>Principal Engineer and Delivery Lead.\nIdentify the current CEO of Maersk and since when they have held the position. Cite the source.\n\n        *   R1: Identify the current CEO of Maersk.\n        *   R2: Identify the start date of their tenure.\n        *   R3: Cite the source.\n\n    *   The task is simple, but the persona requires a rigorous, professional planning approach.\n    *   I need a researcher to find the data and a summarizer to present it.\n    *   Verification is required (a second check on the source/date).\n\n    *   *Requirements:*\n        *   R1: Identify current CEO of Maersk.\n        *   R2: Identify since when they have been CEO.\n        *   R3: Cite the source.\n\n    *   *Givens/Assumptions:*\n        *   Assumption: The information is publicly available on the web.\n        *   Assumption: \"Maersk\" refers to A.P. Møller - Mærsk A/S.\n\n    *   *Ideal Capabilities:*\n        *   Tool: Web search (to find current leadership).\n        *   Tool: URL fetching (to verify details from the official site or reliable news).\n        *   Skill: Fact-checking/Verification.\n\n    *   *Roles:*\n        *   Role 1: Corporate Researcher (Senior). Finds the info, fetches the page, extracts the name and date.\n        *   Role 2: Quality Assurance Lead (Senior). Verifies the researcher's findings against a second source or the primary source to ensure accuracy.\n        *   Role 3: Final Writer (Summarizer). Formats the final answer.\n\n    *   *Execution Plan:*\n        1.  Researcher: Search and extract.\n        2.  QA: Verify and cross-reference.\n        3.  Writer: Assemble.\n\n    *   *Capability Requests:*\n        *   `web_search` and `fetch_url` are already listed as available tools for roles that ask for them. No external requests needed.\n\n    *   *Risks:*\n        *   CEO change happened very recently (last few days).\n        *   Confusing the CEO of the group with a CEO of a specific business unit (e.g., Maersk Ocean).\n\n    *   *Role 1 (Researcher):*\n        *   Goal: Accurate identification of CEO and start date.\n        *   Prompt: Search for \"Maersk current CEO\", find the official Maersk leadership page, extract the name and the date they took office. Provide the URL.\n\n    *   *Role 2 (QA):*\n        *   Goal: Validation of the researcher's data.\n        *   Prompt: Take the name and date provided. Search for a second independent source (e.g., Bloomberg, Reuters, or a press release) to confirm the date. Flag any discrepancies.\n\n    *   *Role 3 (Writer):*\n        *   Goal: Final delivery.\n        *   Prompt: Combine the verified name, date, and source into a concise answer.\n\n    *   R1, R2, R3 covered? Yes.\n    *   Verification step included? Yes.\n    *   Summarizer is separate? Yes.\n    *   Tools correctly assigned? Yes.\n    *   Format followed? Yes.</thought>## Thought\nThe task is a straightforward factual retrieval, but requires high precision regarding the specific date of appointment and a verifiable source. I will employ a Corporate Researcher to extract the data from official and secondary sources, a QA Lead to cross-verify the date (as tenure dates can sometimes be confused between \"appointment date\" and \"effective start date\"), and a Final Writer to assemble the response. This ensures the \"cite your source\" requirement is handled with a verified, high-authority link.\n\n## Requirements:\nR1: Identify the current CEO of Maersk.\nR2: Identify since when they have held the position.\nR3: Cite the source of the information.\n\n## Givens and Assumptions:\n- assumption: \"Maersk\" refers to the parent company A.P. Møller - Mærsk A/S.\n- assumption: The information is available via public web records.\n\n## Open Questions:\nNone\n\n## Selected Roles List:\n```\nNone\n```\n\n## Created Roles List:\n```\n[\n  {\n    \"name\": \"Corporate Researcher\",\n    \"seniority\": \"senior\",\n    \"description\": \"An expert in corporate intelligence and public record retrieval, specialized in identifying executive leadership and tenure dates.\",\n    \"goal\": \"Extract the current CEO's name, their start date, and the source URL.\",\n    \"responsibilities\": [\n      \"Search for the current leadership of A.P. Møller - Mærsk A/S\",\n      \"Locate the official appointment date of the CEO\",\n      \"Provide the direct URL to the source\"\n    ],\n    \"skills\": [\"corporate research\", \"source verification\"],\n    \"tools\": [\"web_search\", \"fetch_url\"],\n    \"inputs\": [\"Task requirements\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"leadership_data\",\n        \"format\": \"memo: CEO Name, Start Date, Source URL\"\n      }\n    ],\n    \"success_criteria\": [\n      \"CEO name is current\",\n      \"Start date is specific (Day/Month/Year if available)\",\n      \"URL is a direct link to the evidence\"\n    ],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\", \"R3\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a Senior Corporate Researcher. Your goal is to find the current CEO of A.P. Møller - Mærsk A/S and the exact date they assumed the role. \\n\\nStep-by-step:\\n1. Use web_search to find the 'Maersk Executive Board' or 'Maersk Leadership' page.\\n2. Use fetch_url to read the page and identify the CEO.\\n3. Search specifically for the appointment announcement or the 'since' date in their biography.\\n4. If the official site is vague, search for the official press release announcing the appointment to get the exact date.\\n\\nOutput format:\\nCEO: [Name]\\nSince: [Date]\\nSource: [URL]\"\n  },\n  {\n    \"name\": \"QA Lead\",\n    \"seniority\": \"senior\",\n    \"description\": \"A detail-oriented auditor who ensures factual accuracy by cross-referencing data against independent sources.\",\n    \"goal\": \"Verify the accuracy of the CEO's name and tenure date.\",\n    \"responsibilities\": [\n      \"Cross-reference the researcher's findings with a second independent source (e.g., financial news or regulatory filings)\",\n      \"Confirm the date is the actual start date of the CEO role, not a board appointment date\"\n    ],\n    \"skills\": [\"fact-checking\", \"cross-referencing\"],\n    \"tools\": [\"web_search\", \"fetch_url\"],\n    \"inputs\": [\"leadership_data from Corporate Researcher\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"verification_report\",\n        \"format\": \"memo: Status (Verified/Corrected), Confirmed Date, Secondary Source URL\"\n      }\n    ],\n    \"success_criteria\": [\n      \"Data is confirmed by at least two independent sources or one primary official source\"\n    ],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\", \"R3\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a Senior QA Lead. You will receive a CEO name, a start date, and a source. Your job is to verify this information is 100% accurate.\\n\\nStep-by-step:\\n1. Review the provided source to ensure it explicitly supports the claim.\\n2. Perform a web_search for '[CEO Name] Maersk appointment date' to find a second source (e.g., Reuters, Bloomberg, or a Maersk press release).\\n3. Compare the dates. If there is a discrepancy between the 'announcement date' and the 'effective date', prioritize the effective date.\\n\\nOutput format:\\nStatus: [Verified/Corrected]\\nConfirmed CEO: [Name]\\nConfirmed Since: [Date]\\nPrimary Source: [URL]\\nSecondary Source: [URL]\"\n  },\n  {\n    \"name\": \"Final Writer\",\n    \"seniority\": \"senior\",\n    \"description\": \"A professional communicator who assembles verified data into a concise, polished final deliverable.\",\n    \"goal\": \"Deliver the final answer to the user.\",\n    \"responsibilities\": [\n      \"Synthesize the verified data into the final response\",\n      \"Ensure the citation is clearly presented\"\n    ],\n    \"skills\": [\"technical writing\", \"editing\"],\n    \"tools\": [],\n    \"inputs\": [\"verification_report from QA Lead\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"final_answer\",\n        \"format\": \"text\"\n      }\n    ],\n    \"success_criteria\": [\n      \"Answer is direct and contains all three required elements (Who, Since when, Source)\"\n    ],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\", \"R3\"],\n    \"is_summariser\": true,\n    \"prompt\": \"You are the Final Writer. Your task is to take the verified data from the QA Lead and present it as a clear, concise answer to the user. Do not add any commentary or fluff. Just provide the name, the date, and the source.\"\n  }\n]\n```\n\n## Execution Plan:\n1. [Corporate Researcher]: Data Extraction\n   kind: work\n   covers: R1, R2, R3\n   depends_on: none\n   do: Search for Maersk's current CEO and their appointment date using official company pages and press releases.\n   output: memo: CEO Name, Start Date, Source URL\n   done_when: CEO name, start date, and a valid URL are identified.\n\n2. [QA Lead]: Fact Verification\n   kind: verify\n   covers: R1, R2, R3\n   depends_on: 1\n   do: Cross-reference the researcher's findings with a second independent source to ensure the date is the effective start date.\n   output: memo: Status, Confirmed CEO, Confirmed Since, Primary Source, Secondary Source\n   done_when: The data is confirmed or corrected based on evidence.\n\n3. [Final Writer]: Final Assembly\n   kind: work\n   covers: R1, R2, R3\n   depends_on: 2\n   do: Format the verified information into the final response.\n   output: text: The current CEO of Maersk is [Name], serving since [Date]. Source: [URL]\n   done_when: The final answer is delivered.\n\n## Capability Requests:\n```\nNone\n```\n\n## Risks and Decisions:\n- **Risk**: The CEO may have changed very recently, and the official \"About Us\" page might not be updated yet.\n- **Decision**: The QA Lead is instructed to prioritize official press releases over general \"About\" pages to ensure the most current and precise date is captured.\n- **Risk**: Confusion between the CEO of the Group and the CEO of a specific business segment (e.g., Maersk Ocean).\n- **Decision**: The Researcher is specifically tasked with looking for the leadership of \"A.P. Møller - Mærsk A/S\" (the parent company).\n\n## RoleFeedback:\nNone\n\n## PlanFeedback:\nNone",
+      "roles": [
+        {
+          "name": "Corporate Researcher",
+          "seniority": "senior",
+          "description": "An expert in corporate intelligence and public record retrieval, specialized in identifying executive leadership and tenure dates.",
+          "goal": "Extract the current CEO's name, their start date, and the source URL.",
+          "responsibilities": [
+            "Search for the current leadership of A.P. Møller - Mærsk A/S",
+            "Locate the official appointment date of the CEO",
+            "Provide the direct URL to the source"
+          ],
+          "skills": [
+            "corporate research",
+            "source verification"
+          ],
+          "tools": [
+            "web_search",
+            "fetch_url"
+          ],
+          "inputs": [
+            "Task requirements"
+          ],
+          "outputs": [
+            {
+              "artifact": "leadership_data",
+              "format": "memo: CEO Name, Start Date, Source URL"
+            }
+          ],
+          "success_criteria": [
+            "CEO name is current",
+            "Start date is specific (Day/Month/Year if available)",
+            "URL is a direct link to the evidence"
+          ],
+          "constraints": [],
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "is_summariser": false,
+          "prompt": "You are a Senior Corporate Researcher. Your goal is to find the current CEO of A.P. Møller - Mærsk A/S and the exact date they assumed the role. \n\nStep-by-step:\n1. Use web_search to find the 'Maersk Executive Board' or 'Maersk Leadership' page.\n2. Use fetch_url to read the page and identify the CEO.\n3. Search specifically for the appointment announcement or the 'since' date in their biography.\n4. If the official site is vague, search for the official press release announcing the appointment to get the exact date.\n\nOutput format:\nCEO: [Name]\nSince: [Date]\nSource: [URL]"
+        },
+        {
+          "name": "QA Lead",
+          "seniority": "senior",
+          "description": "A detail-oriented auditor who ensures factual accuracy by cross-referencing data against independent sources.",
+          "goal": "Verify the accuracy of the CEO's name and tenure date.",
+          "responsibilities": [
+            "Cross-reference the researcher's findings with a second independent source (e.g., financial news or regulatory filings)",
+            "Confirm the date is the actual start date of the CEO role, not a board appointment date"
+          ],
+          "skills": [
+            "fact-checking",
+            "cross-referencing"
+          ],
+          "tools": [
+            "web_search",
+            "fetch_url"
+          ],
+          "inputs": [
+            "leadership_data from Corporate Researcher"
+          ],
+          "outputs": [
+            {
+              "artifact": "verification_report",
+              "format": "memo: Status (Verified/Corrected), Confirmed Date, Secondary Source URL"
+            }
+          ],
+          "success_criteria": [
+            "Data is confirmed by at least two independent sources or one primary official source"
+          ],
+          "constraints": [],
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "is_summariser": false,
+          "prompt": "You are a Senior QA Lead. You will receive a CEO name, a start date, and a source. Your job is to verify this information is 100% accurate.\n\nStep-by-step:\n1. Review the provided source to ensure it explicitly supports the claim.\n2. Perform a web_search for '[CEO Name] Maersk appointment date' to find a second source (e.g., Reuters, Bloomberg, or a Maersk press release).\n3. Compare the dates. If there is a discrepancy between the 'announcement date' and the 'effective date', prioritize the effective date.\n\nOutput format:\nStatus: [Verified/Corrected]\nConfirmed CEO: [Name]\nConfirmed Since: [Date]\nPrimary Source: [URL]\nSecondary Source: [URL]"
+        },
+        {
+          "name": "Final Writer",
+          "seniority": "senior",
+          "description": "A professional communicator who assembles verified data into a concise, polished final deliverable.",
+          "goal": "Deliver the final answer to the user.",
+          "responsibilities": [
+            "Synthesize the verified data into the final response",
+            "Ensure the citation is clearly presented"
+          ],
+          "skills": [
+            "technical writing",
+            "editing"
+          ],
+          "tools": [],
+          "inputs": [
+            "verification_report from QA Lead"
+          ],
+          "outputs": [
+            {
+              "artifact": "final_answer",
+              "format": "text"
+            }
+          ],
+          "success_criteria": [
+            "Answer is direct and contains all three required elements (Who, Since when, Source)"
+          ],
+          "constraints": [],
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "is_summariser": true,
+          "prompt": "You are the Final Writer. Your task is to take the verified data from the QA Lead and present it as a clear, concise answer to the user. Do not add any commentary or fluff. Just provide the name, the date, and the source."
+        }
+      ],
+      "plan": [
+        {
+          "agents": [
+            "Corporate Researcher"
+          ],
+          "text": "[Corporate Researcher]: Data Extraction",
+          "title": "Data Extraction",
+          "kind": "work",
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "depends_on": [],
+          "do": "Search for Maersk's current CEO and their appointment date using official company pages and press releases.",
+          "output": "memo: CEO Name, Start Date, Source URL",
+          "done_when": "CEO name, start date, and a valid URL are identified."
+        },
+        {
+          "agents": [
+            "QA Lead"
+          ],
+          "text": "[QA Lead]: Fact Verification",
+          "title": "Fact Verification",
+          "kind": "verify",
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "depends_on": [
+            1
+          ],
+          "do": "Cross-reference the researcher's findings with a second independent source to ensure the date is the effective start date.",
+          "output": "memo: Status, Confirmed CEO, Confirmed Since, Primary Source, Secondary Source",
+          "done_when": "The data is confirmed or corrected based on evidence."
+        },
+        {
+          "agents": [
+            "Final Writer"
+          ],
+          "text": "[Final Writer]: Final Assembly",
+          "title": "Final Assembly",
+          "kind": "work",
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "depends_on": [
+            2
+          ],
+          "do": "Format the verified information into the final response.",
+          "output": "text: The current CEO of Maersk is [Name], serving since [Date]. Source: [URL]",
+          "done_when": "The final answer is delivered."
+        }
+      ],
+      "capability_requests": [],
+      "agent_observer_raw": "<thought>Staffing Reviewer.\nJudge if roles are well-defined and if they collectively deliver all requirements.\nIdentify current CEO of Maersk, since when, and cite source.\n\n        *   R1: Identify CEO.\n        *   R2: Identify since when.\n        *   R3: Cite source.\n\n        *   Corporate Researcher (Senior): Search, extract, provide URL. Covers R1, R2, R3.\n        *   QA Lead (Senior): Cross-reference, verify. Covers R1, R2, R3.\n        *   Final Writer (Senior): Synthesize and deliver. Covers R1, R2, R3.\n\n    *   *Coverage:*\n        *   R1 (Who): Covered by Researcher, QA, Writer.\n        *   R2 (Since when): Covered by Researcher, QA, Writer.\n        *   R3 (Source): Covered by Researcher, QA, Writer.\n        *   *Result:* All covered.\n\n    *   *Definition:*\n        *   Corporate Researcher: Goal (Yes), Skills (Yes), Inputs (Yes), Outputs (Yes - memo), Success Criteria (Yes), Prompt (Yes - detailed).\n        *   QA Lead: Goal (Yes), Skills (Yes), Inputs (Yes), Outputs (Yes - memo), Success Criteria (Yes), Prompt (Yes - detailed).\n        *   Final Writer: Goal (Yes), Skills (Yes), Inputs (Yes), Outputs (Yes - text), Success Criteria (Yes), Prompt (Yes - detailed).\n        *   *Result:* All roles are well-defined.\n\n    *   *Skills:*\n        *   Researcher: Corporate research, source verification. (Sufficient)\n        *   QA Lead: Fact-checking, cross-referencing. (Sufficient)\n        *   Final Writer: Technical writing, editing. (Sufficient)\n        *   *Result:* Sufficient.\n\n    *   *Capabilities:*\n        *   Requirements need current web data.\n        *   Tools provided: `web_search`, `fetch_url`.\n        *   Roles requesting them: Corporate Researcher and QA Lead.\n        *   *Result:* Capabilities are aligned with tools.\n\n    *   *Summariser:*\n        *   Final Writer is marked `is_summariser: true`.\n        *   Final Writer has no tools.\n        *   Final Writer creates no new analysis (just synthesizes).\n        *   *Result:* Exactly one summariser.\n\n    *   *Size:*\n        *   3 roles (<= 5).\n        *   No duplicates.\n        *   All have covered requirements.\n        *   *Result:* Good.\n\n    *   The plan is very robust. It includes a researcher, a verifier (QA), and a writer.\n    *   The prompts are specific and step-by-step.\n    *   The flow of data (Researcher -> QA -> Writer) is logical.</thought>## Thought\nThe planner has provided a comprehensive team structure to solve a straightforward factual retrieval task. \n\n1.  **Coverage**: R1, R2, and R3 are all explicitly covered by the Corporate Researcher, verified by the QA Lead, and delivered by the Final Writer.\n2.  **Definition**: Each role contains a clear goal, specific skills, defined inputs/outputs (with formats), success criteria, and a detailed, actionable prompt.\n3.  **Skills**: The skills assigned (corporate research, fact-checking, technical writing) are perfectly aligned with the requirements.\n4.  **Capabilities**: The task requires real-time web data. The `web_search` and `fetch_url` tools are provided and correctly assigned to the roles that need them.\n5.  **Summariser**: The Final Writer is the sole summariser, has no tools, and is instructed only to synthesize verified data without adding new analysis.\n6.  **Size**: The team consists of 3 roles, which is well within the limit and contains no redundancies.\n\nThe staffing is professional, redundant where necessary for accuracy (QA), and logically sequenced.\n\n## Suggestions\nNone\n\n## Verdict\nAPPROVE",
+      "agent_observer": "None",
+      "plan_observer_raw": "<thought>Senior Delivery Reviewer.\nJudge if the plan is complete, ordered correctly, checkable, and realistic (as an experienced lead would run it).\nIdentify current CEO of Maersk, since when, and cite source.\nR1 (Who), R2 (Since when), R3 (Source).\nA.P. Møller - Mærsk A/S, public web records.\nCorporate Researcher, QA Lead, Final Writer.\n3 steps (Extraction -> Verification -> Assembly).\n\n    *   *Coverage:*\n        *   R1 (Who): Covered by Step 1, 2, 3.\n        *   R2 (Since when): Covered by Step 1, 2, 3.\n        *   R3 (Source): Covered by Step 1, 2, 3.\n        *   Verbs: \"Identify\" (R1, R2) -> \"Search/Locate\" (Step 1) -> \"Cross-reference\" (Step 2) -> \"Format\" (Step 3). Matches.\n\n    *   *Numbers:* No complex calculations involved.\n\n    *   *Dependencies:*\n        *   Step 1: None.\n        *   Step 2: Depends on 1. Correct.\n        *   Step 3: Depends on 2. Correct.\n\n    *   *Depth:*\n        *   Step 1: `do` is specific, `output` is a memo, `done_when` is clear.\n        *   Step 2: `do` is specific (cross-reference), `output` is a memo, `done_when` is clear.\n        *   Step 3: `do` is specific, `output` is text, `done_when` is clear.\n\n    *   *Verification:*\n        *   Step 2 is a dedicated verification step performed by the \"QA Lead\" (a different role from the \"Corporate Researcher\"). This satisfies the requirement.\n\n    *   *Context:* No specific constraints (budget, deadline) provided in the prompt, so the standard professional approach is used.\n\n    *   *Risks and Decisions:*\n        *   Risk 1: Recent changes. Decision: Prioritize press releases. Linked to Step 1/2.\n        *   Risk 2: Group vs Segment CEO. Decision: Focus on parent company. Linked to Step 1.\n\n    *   *Capabilities:*\n        *   Step 1 uses `web_search` and `fetch_url`. Available.\n        *   Step 2 uses `web_search` and `fetch_url`. Available.\n        *   Step 3 uses no tools. Available.\n\n    *   *User-only inputs:* None.\n\n    *   The plan is overkill for a simple \"Who is the CEO\" question, but the prompt asks if an *experienced lead* would run it this way. For a high-stakes corporate intelligence task where accuracy is paramount (e.g., for a legal or financial report), this rigor is exactly what a lead would implement.\n    *   The roles are well-defined.\n    *   The prompts for the roles are detailed and provide clear instructions.\n    *   The \"done_when\" criteria are objective.</thought>## Thought\nThe plan is exceptionally thorough for the simplicity of the task, but it adheres to the standards of a high-reliability corporate intelligence workflow. \n\n1. **Coverage**: R1, R2, and R3 are explicitly covered in every step of the execution plan.\n2. **Numbers**: N/A.\n3. **Dependencies**: The linear flow (Extraction $\\rightarrow$ Verification $\\rightarrow$ Assembly) is correct.\n4. **Depth**: Each step has a clear action (`do`), a defined artifact (`output`), and a binary success condition (`done_when`).\n5. **Verification**: Step 2 is a dedicated verification step performed by a separate role (QA Lead) using independent sources, which is a best practice for factual accuracy.\n6. **Context**: The assumptions correctly narrow the scope to the parent company to avoid ambiguity.\n7. **Risks**: The risks identified (recent changes and entity confusion) are the most likely failure points for this specific task, and the decisions mitigate them effectively.\n8. **Capabilities**: The tools `web_search` and `fetch_url` are correctly assigned to the roles that need them.\n9. **User-only inputs**: None required.\n\nThe plan is complete, logically ordered, and highly checkable.\n\n## Suggestions\nNone\n\n## Verdict\nAPPROVE",
+      "plan_observer": "None",
+      "consensus": true,
+      "gate_failed": [],
+      "agent_verdict": "APPROVE",
+      "plan_verdict": "APPROVE",
+      "agent_suggestions_n": 0,
+      "plan_suggestions_n": 0
+    }
+  ],
+  "prompts": "d24",
+  "requirements": {
+    "R1": "Identify the current CEO of Maersk.",
+    "R2": "Identify since when they have held the position.",
+    "R3": "Cite the source of the information."
+  },
+  "givens": [
+    "assumption: \"Maersk\" refers to the parent company A.P. Møller - Mærsk A/S.",
+    "assumption: The information is available via public web records."
+  ],
+  "risks": [
+    "**Risk**: The CEO may have changed very recently, and the official \"About Us\" page might not be updated yet.",
+    "**Decision**: The QA Lead is instructed to prioritize official press releases over general \"About\" pages to ensure the most current and precise date is captured.",
+    "**Risk**: Confusion between the CEO of the Group and the CEO of a specific business segment (e.g., Maersk Ocean).",
+    "**Decision**: The Researcher is specifically tasked with looking for the leadership of \"A.P. Møller - Mærsk A/S\" (the parent company)."
+  ],
+  "open_questions": [],
+  "quality": {
+    "checks": {
+      "requirements_covered": {
+        "ok": true,
+        "requirements": 3,
+        "uncovered_by_steps": [],
+        "uncovered_by_roles": []
+      },
+      "dependencies_valid": {
+        "ok": true,
+        "bad": []
+      },
+      "roles_fully_defined": {
+        "ok": true,
+        "defined": 3,
+        "roles": 3,
+        "thin": {}
+      },
+      "summariser": {
+        "ok": true,
+        "declared_by_planner": 1,
+        "name": "Final Writer",
+        "tools": [],
+        "owns_steps": [
+          3
+        ]
+      },
+      "tools_accounted": {
+        "ok": false,
+        "missing_not_requested_by_planner": [
+          "fetch_url",
+          "web_search"
+        ]
+      },
+      "verification_step": {
+        "ok": true,
+        "steps": [
+          2,
+          3
+        ]
+      },
+      "independent_verification": {
+        "ok": true,
+        "candidates": [
+          {
+            "step": 2,
+            "verifiers": [
+              "QA Lead"
+            ],
+            "producers": [
+              "Corporate Researcher"
+            ],
+            "independent": true
+          }
+        ]
+      },
+      "task_coverage": {
+        "ok": true,
+        "numbers": [],
+        "missing_numbers": [],
+        "phrases": [
+          "Cite your source"
+        ],
+        "missing_phrases": []
+      }
+    },
+    "passed": 7,
+    "failed": 1,
+    "na": 0,
+    "failed_checks": [
+      "tools_accounted"
+    ],
+    "hard_failed": []
+  },
+  "gate_hits": 0,
+  "requests_proposed": 2,
+  "requests_dropped_by_observers": 0
+}

@@ -1,0 +1,147 @@
+team_id: 80940d2e-84e5-43f6-9930-618c0ed6359c
+version: 1
+parent_version: null
+name: team-boss_reviewers-dev-pnw-
+topology: boss_reviewers
+agents:
+  f818b565-9c10-4358-a72e-69e6e5be4b08:
+    agent_id: f818b565-9c10-4358-a72e-69e6e5be4b08
+    name: University Policy Researcher
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An expert in navigating institutional websites and policy documents
+      to extract precise procedural information.
+    role_prompt: "You are a Senior University Policy Researcher. Your goal is to find\
+      \ the exact process for paying a parking citation at Purdue University Northwest\
+      \ (PNW). \n\nStep-by-step method:\n1. Use web_search to find the 'PNW parking\
+      \ citations' or 'PNW parking payment' page.\n2. Use fetch_url to read the payment\
+      \ page and the parking rules/regulations page.\n3. Identify every way a user\
+      \ can pay (Online, Mail, In-person).\n4. For each method, document the exact\
+      \ steps a user must take.\n5. List every piece of information the user needs\
+      \ to have ready (e.g., Citation #, License Plate).\n6. Search for 'late fees',\
+      \ 'grace period', or 'deadline' to find the payment window.\n\nOutput format:\
+      \ A detailed memo with headings for 'Payment Methods', 'Step-by-Step Instructions',\
+      \ 'Required Information', and 'Deadlines & Penalties'. Include the source URLs\
+      \ for verification."
+    max_history: 3
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Gather all factual data regarding PNW parking citation payments, including
+      methods, requirements, and deadlines.
+    skills:
+    - web research
+    - information extraction
+    - policy analysis
+    outputs:
+    - artifact: Payment Data Sheet
+      format: 'memo: payment methods, steps, required info, and deadlines'
+    success_criteria:
+    - All payment methods are listed.
+    - Steps are verified against the current live website.
+    - Deadlines and penalties are explicitly stated.
+    constraints:
+    - Must use official .edu or university-sanctioned sources.
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  653418bf-5653-4da2-abf8-f07f0ad2f998:
+    agent_id: 653418bf-5653-4da2-abf8-f07f0ad2f998
+    name: Technical Writer
+    role: solver
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_solver_prepend
+      user: seed:agentverse_solver_append_generic
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in creating clear, concise, and user-centric 'How-to'
+      guides.
+    role_prompt: "You are a Senior Technical Writer. You will receive a Payment Data\
+      \ Sheet containing raw information about paying parking citations at PNW University.\
+      \ \n\nYour task:\n1. Review the data for completeness. If any requirement (methods,\
+      \ steps, info needed, deadlines) is missing, flag it (though in this workflow,\
+      \ you will primarily assemble).\n2. Organize the content into a 'How to Pay\
+      \ Your PNW Parking Citation' guide.\n3. Use clear headings, bullet points for\
+      \ requirements, and numbered lists for steps.\n4. Ensure the most common method\
+      \ (likely online) is prominent.\n5. Final output must be a clean, professional\
+      \ memo that a student or visitor can follow without confusion."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Transform raw research into a polished, easy-to-follow payment guide for
+      the user.
+    skills:
+    - technical writing
+    - UX writing
+    - information architecture
+    outputs:
+    - artifact: PNW Parking Payment Guide
+      format: 'memo: structured guide'
+    success_criteria:
+    - The guide is intuitive and requires no further clarification.
+    - All R-requirements are satisfied.
+    - The tone is helpful and professional.
+    constraints:
+    - Do not add information not found in the research; do not guess.
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+edges:
+- src: 653418bf-5653-4da2-abf8-f07f0ad2f998
+  dst: f818b565-9c10-4358-a72e-69e6e5be4b08
+  type: review
+  schema_id: text
+  condition: null
+- src: f818b565-9c10-4358-a72e-69e6e5be4b08
+  dst: 653418bf-5653-4da2-abf8-f07f0ad2f998
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+entry:
+- 653418bf-5653-4da2-abf8-f07f0ad2f998
+exit: 653418bf-5653-4da2-abf8-f07f0ad2f998
+plan: []
+requirements: {}
+max_inner_turns: 3
+meta:
+  task_id: dev-pnw-parking
+  draft_rounds: 1
+  consensus: true
+  capability_requests:
+  - name: web_search
+    for_role: University Policy Researcher
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: University Policy Researcher
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool

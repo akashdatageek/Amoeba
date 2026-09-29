@@ -1,0 +1,195 @@
+team_id: fc7800f2-9047-4a83-a3fc-f39323aac4c0
+version: 1
+parent_version: null
+name: team-boss_reviewers-bench5-p
+topology: boss_reviewers
+agents:
+  4e251083-c480-47cd-9272-a3b3df5e1f49:
+    agent_id: 4e251083-c480-47cd-9272-a3b3df5e1f49
+    name: Software Engineer
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools:
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert Python developer focused on algorithmic efficiency and correctness.
+      Responsible for implementing the prime number logic and executing it in the
+      sandbox.
+    role_prompt: "You are a Senior Software Engineer. Your task is to find all prime\
+      \ numbers below 10,000. \n1. Write a Python script using the Sieve of Eratosthenes\
+      \ for optimal performance.\n2. Execute the script using the python_interpreter.\n\
+      3. Capture the total number of primes found and the value of the largest prime.\n\
+      4. Output your results in a memo format including the full source code and the\
+      \ final numbers."
+    max_history: 3
+    missing_tools: []
+    is_summariser: false
+    goal: Produce a verified list of primes below 10,000 and the required metrics.
+    skills:
+    - Python 3
+    - Algorithmic Complexity
+    - Number Theory
+    outputs:
+    - artifact: execution_results
+      format: 'memo: containing the code used, the total count of primes, and the
+        largest prime found'
+    success_criteria:
+    - Code runs without errors.
+    - Output contains both the count and the largest prime.
+    constraints:
+    - Must use Python 3
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  f75c2ab3-de1d-430f-a0a4-677196089792:
+    agent_id: f75c2ab3-de1d-430f-a0a4-677196089792
+    name: QA Engineer
+    role: critic
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_critic_prepend
+      user: seed:agentverse_critic_append
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in verification and validation. Ensures that the computational
+      results match known mathematical truths.
+    role_prompt: "You are a Senior QA Engineer. You will receive a count of primes\
+      \ below 10,000 and the largest prime found. \n1. Use web_search to find the\
+      \ known number of primes below 10,000 (the prime-counting function pi(10,000)).\n\
+      2. Use web_search to find the largest prime number less than 10,000.\n3. Compare\
+      \ these known values with the results provided by the Software Engineer.\n4.\
+      \ Output a verification memo stating 'VERIFIED' or 'FAILED' with the evidence."
+    max_history: 3
+    missing_tools:
+    - web_search
+    is_summariser: false
+    goal: Verify the accuracy of the prime count and the largest prime found.
+    skills:
+    - Verification & Validation
+    - Web Research
+    outputs:
+    - artifact: verification_report
+      format: 'memo: confirming if the results are correct or identifying discrepancies'
+    success_criteria:
+    - The count and largest prime are verified against a reliable source.
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+  d1265855-cbab-436a-a736-f8fb73460a1a:
+    agent_id: d1265855-cbab-436a-a736-f8fb73460a1a
+    name: Delivery Lead
+    role: solver
+    model: gemma-4-31b-it
+    prompt:
+      system: seed:agentverse_solver_prepend
+      user: seed:agentverse_solver_append_generic
+      format: history+append
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Responsible for the final assembly of the deliverables and ensuring
+      all requirements are met.
+    role_prompt: "You are the Delivery Lead. Your role is to synthesize the work of\
+      \ the team into the final answer. \n1. Review the execution results and the\
+      \ QA verification report.\n2. If verified, extract the total count of primes\
+      \ and the largest prime.\n3. Present the final answer clearly and concisely\
+      \ as requested by the user."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final report containing the count and the largest prime.
+    skills:
+    - Technical Communication
+    - Project Delivery
+    outputs:
+    - artifact: final_report
+      format: 'memo: final count and largest prime'
+    success_criteria:
+    - The final report contains the exact count and the largest prime as requested.
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 2048
+edges:
+- src: d1265855-cbab-436a-a736-f8fb73460a1a
+  dst: 4e251083-c480-47cd-9272-a3b3df5e1f49
+  type: review
+  schema_id: text
+  condition: null
+- src: d1265855-cbab-436a-a736-f8fb73460a1a
+  dst: f75c2ab3-de1d-430f-a0a4-677196089792
+  type: review
+  schema_id: text
+  condition: null
+- src: 4e251083-c480-47cd-9272-a3b3df5e1f49
+  dst: d1265855-cbab-436a-a736-f8fb73460a1a
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+- src: f75c2ab3-de1d-430f-a0a4-677196089792
+  dst: d1265855-cbab-436a-a736-f8fb73460a1a
+  type: revise
+  schema_id: text
+  condition: critic_disagrees
+entry:
+- d1265855-cbab-436a-a736-f8fb73460a1a
+exit: d1265855-cbab-436a-a736-f8fb73460a1a
+plan: []
+requirements: {}
+max_inner_turns: 3
+meta:
+  task_id: bench5-primes
+  draft_rounds: 1
+  consensus: true
+  capability_requests:
+  - name: python_interpreter
+    for_role: Software Engineer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: web_search
+    for_role: QA Engineer
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
