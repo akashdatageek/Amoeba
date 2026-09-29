@@ -4074,7 +4074,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "3c98cbe",
+  "checked_at": "aa3be5a",
   "facts": {
    "anchors": [
     {
@@ -4115,6 +4115,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.web_ids",
       "amoeba/interp/plan_runner.py::_Work",
       "amoeba/interp/plan_runner.py::blocked_marks",
+      "amoeba/interp/plan_runner.py::conclusion_check",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/plan_runner.py::parse_verdict_block",
       "amoeba/interp/plan_runner.py::refine_counts",
@@ -4157,6 +4158,7 @@
       "amoeba/interp/runtime.py::Interpreter._dispatch",
       "amoeba/interp/runtime.py::Interpreter._record",
       "amoeba/interp/runtime.py::full_action_input",
+      "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TraceWriter.spans",
       "amoeba/interp/trace.py::TracedLLM.chat_sections",
@@ -4266,6 +4268,11 @@
    "guards": [
     [
      "correct",
+     "if FINAL_OUTPUT not in act",
+     "add inp.strip()"
+    ],
+    [
+     "correct",
      "if act in agent.tools",
      "add resp"
     ],
@@ -4313,6 +4320,16 @@
      "decide",
      "if i != prev + 1",
      "set skipped = sum((len(lines[j]) + 1 for j in range(prev + 1, i)))"
+    ],
+    [
+     "decide",
+     "if last",
+     "set user = user.replace('\\n# Format\\n', f'\\n{LAST_TURN_NOTE}\\n\\n# Format\\n', 1)"
+    ],
+    [
+     "decide",
+     "if last and FINAL_OUTPUT not in act",
+     "set before = self.i.trace.n_llm_calls"
     ],
     [
      "decide",
@@ -4487,6 +4504,11 @@
     [
      "fallback",
      "VERIFY_NOTE if verifier else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[FINAL_OUTPUT] if last else list(agent.tools) + [PRINT, FINAL_OUTPUT]",
      "choose value"
     ],
     [
@@ -4761,6 +4783,11 @@
     ],
     [
      "stop",
+     "if FINAL_OUTPUT not in act",
+     "return ('no action', inp, '', None)"
+    ],
+    [
+     "stop",
      "if head < 0",
      "return parsed"
     ],
@@ -4817,7 +4844,7 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "6f5086768b329fb2",
+  "facts_hash": "b629e4d30792bbf2",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
@@ -6784,7 +6811,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "a742c07",
+  "checked_at": "aa3be5a",
   "facts": {
    "anchors": [
     {
@@ -6923,10 +6950,12 @@
     {
      "callees": [
       "amoeba/interp/plan_runner.py::PlanRunner.upstream",
+      "amoeba/interp/plan_runner.py::claim_terms",
+      "amoeba/interp/plan_runner.py::excerpt",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
-     "doc": "D65: the raw tool results every upstream step used (not only their text), for a verify step.",
+     "doc": "D65: the raw tool results every upstream step used (not only their text), for a verify step. D76: as the",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.raw_results_text",
      "signature": "raw_results_text(self, n: int) -> str"
     },
@@ -7005,6 +7034,35 @@
      "signature": "cap_key(name: str) -> str"
     },
     {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D76: what the claims being checked are made of: their numbers and times, quoted phrases, and the words of the",
+     "key": "amoeba/interp/plan_runner.py::claim_terms",
+     "signature": "claim_terms(text: str) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::no_conclusion"
+     ],
+     "doc": "D76: a failing `conclusion` check when the output is only a query or a tool request (no check when it passes,",
+     "key": "amoeba/interp/plan_runner.py::conclusion_check",
+     "signature": "conclusion_check(text: str, w: '_Work') -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::excerpt.hit",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D76: the parts of one raw tool result that bear on the claims: its first line (what it is), and every line or",
+     "key": "amoeba/interp/plan_runner.py::excerpt",
+     "signature": "excerpt(result: str, wanted: dict, keep_head: int=240) -> str"
+    },
+    {
      "callees": [],
      "doc": "D63: the 'MISSING INPUT: <what>' lines of a step's output.",
      "key": "amoeba/interp/plan_runner.py::missing_input_marks",
@@ -7017,6 +7075,16 @@
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::names_match",
      "signature": "names_match(a: str, b: str) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D76: the step's output is only a search query or a tool request, not a written conclusion: empty, the same as",
+     "key": "amoeba/interp/plan_runner.py::no_conclusion",
+     "signature": "no_conclusion(text: str, requests: list[str]) -> bool"
     },
     {
      "callees": [],
@@ -7036,6 +7104,11 @@
      "correct",
      "if deps",
      "add {'name': 'inputs_referenced', 'pass': uses_inputs(body, deps, artifacts), 'detail': 'the output uses nothing from the steps it depends on (no figure, source id, step or role name, or 8 words in a row from them)'}"
+    ],
+    [
+     "correct",
+     "if i > prev + 1",
+     "add '[…]'"
     ],
     [
      "correct",
@@ -7069,6 +7142,11 @@
     ],
     [
      "correct",
+     "if prev < len(lines) - 1",
+     "add '[…]'"
+    ],
+    [
+     "correct",
      "if t.removeprefix('local:') in getattr(self.local, 'exposed', []) and t not in names",
      "add t"
     ],
@@ -7076,6 +7154,16 @@
      "correct",
      "if verifier",
      "add {'name': 'verdict', 'pass': parse_verdict_block(body)[0] is not None, 'detail': 'a verification step must start with \"Verdict: PASS\" or \"Verdict: FAIL\"'}"
+    ],
+    [
+     "decide",
+     "if len(body) > EVIDENCE_CAP",
+     "set body = body[:EVIDENCE_CAP].rstrip() + f'\\n[… {len(body) - EVIDENCE_CAP:,} characters of ra"
+    ],
+    [
+     "decide",
+     "if len(keep) == 1",
+     "set head = '\\n'.join(lines)[:keep_head]"
     ],
     [
      "decide",
@@ -7099,6 +7187,11 @@
     ],
     [
      "fallback",
+     "'\\n[… rest of this result left out: nothing in it matches the claims checked …]' if len('\\n'.join(lines)) > keep_head else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'every call to it failed' if u['tried'] else 'never called it'",
      "choose value"
     ],
@@ -7115,6 +7208,11 @@
     [
      "fallback",
      "b.source_texts() if hasattr(b, 'source_texts') else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "cut if cut > 0 else 300",
      "choose value"
     ],
     [
@@ -7169,6 +7267,11 @@
     ],
     [
      "filter",
+     "keep only if lines[i].strip() and hit(lines[i])",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if p.get('source') == 'local'",
      "drop the rest"
     ],
@@ -7194,6 +7297,16 @@
     ],
     [
      "filter",
+     "keep only if r",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if re.search('\\\\[S\\\\d+', l)",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if t in reg",
      "drop the rest"
     ],
@@ -7204,8 +7317,23 @@
     ],
     [
      "filter",
+     "keep only if w in low",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if w not in STOP",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if x['agent_id'] == c['agent_id']",
      "drop the rest"
+    ],
+    [
+     "loop cap",
+     "while len(line) > 400",
+     "loop ends"
     ],
     [
      "loop cap",
@@ -7254,8 +7382,28 @@
     ],
     [
      "stop",
+     "if not lines",
+     "return ''"
+    ],
+    [
+     "stop",
+     "if not no_conclusion(text, [*w.requests, *(c['input'] for c in w.calls)])",
+     "return []"
+    ],
+    [
+     "stop",
      "if not parts",
      "return ''"
+    ],
+    [
+     "stop",
+     "if not t",
+     "return True"
+    ],
+    [
+     "stop",
+     "if re.match('^(?:#+\\\\s*)?(?:Action|ActionInput)\\\\b', t, re.I) or re.fullmatch('https?://\\\\S+', t)",
+     "return True"
     ],
     [
      "stop",
@@ -7266,14 +7414,22 @@
      "stop",
      "if set(step.agent_ids) <= summ or not step.depends_on",
      "return False"
+    ],
+    [
+     "stop",
+     "if t in {flat(r) for r in requests if r}",
+     "return True"
     ]
    ],
    "kind": "code",
-   "numbers": [],
+   "numbers": [
+    "EVIDENCE_CAP",
+    "excerpt.keep_head"
+   ],
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "53836b894b76e0bb",
+  "facts_hash": "21627e4f53c932df",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "13e802c0beb63a4e",
   "sentence": "Checks each step's output against its requirements, contract, and provenance; reads verdicts, gaps, and citation accuracy.",
@@ -7285,7 +7441,7 @@
    "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them.",
    "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, earns one refine turn and then makes the step partial (not declared / attached unused).",
    "A verify step also sees each checked step's sources, tool calls, figure counts, files, and citation labels (D61, D74). A producer whose only problem is a missing capability is not sent back (rework_skipped).",
-   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial."
+   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial. Evidence is capped at {EVIDENCE_CAP} characters and excerpts are limited to {excerpt.keep_head} characters."
   ]
  },
  "task_record": {
