@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Protocol
 
+from amoeba.tools.web import note_seen
+
 END = "<<<END POOL DATA>>>"
 
 
@@ -132,6 +134,10 @@ class SourceBook:
 
     def sources_for(self, step: int) -> list[dict]:
         return [s for s in self.sources if step in s["steps"]]
+
+    def source_texts(self) -> dict[str, str]:
+        """D74: S# -> the text helpers were shown for it."""
+        return {s["id"]: s.get("seen", "") for s in self.sources if s.get("seen")}
 
     def _source(self, url: str, title: str, kind: str, query: str = "") -> dict:
         for s in self.sources:
@@ -253,6 +259,7 @@ class PoolTools:
         key = hashlib.sha256(json.dumps(args, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:10]
         s = self.book._source(f"{it['entry'].get('remote_url', '')}#{tool}/{key}", f"{name} · {tool}", "pool",
                               json.dumps(args, ensure_ascii=False)[:300])
+        note_seen(s, cut)                                                       # D74
         self._event("pool_call", {"gen_ai.tool.name": name, "amoeba.pool.tool": tool, "amoeba.source_id": s["id"],
                                   "amoeba.chars": len(out), "amoeba.chars_passed": len(cut), "amoeba.is_error": is_error})
         more = f", first {len(cut)} of {len(out)} characters" if len(out) > len(cut) else ""

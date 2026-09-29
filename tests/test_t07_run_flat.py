@@ -18,7 +18,8 @@ def test_answer_is_last_steps_final_output(task, envelope, trace, tools):
     assert len(calls) == 3   # step 1: calc turn + final turn; step 2: final
     # {context} is the STEP text and {previous} holds the task
     assert "# Task [Calculator]: Evaluate 17 * 23 + 5 with the calc tool." in calls[0]
-    assert "# Execution Result of Previous Agents [Question/Task: Compute 17 * 23 + 5. Reply with just the number.]" in calls[0]
+    assert "# Execution Result of Previous Agents [Question/Task: Compute 17 * 23 + 5. Reply with just the number." in calls[0]
+    assert "(Today is " in calls[0] and "do not guess the date.)]" in calls[0]     # D75: the run's date rides on the task
     # the tool ran and its result landed in the shared scratchpad for turn 2
     assert [s["gen_ai.tool.name"] for s in trace.spans("execute_tool")] == ["calc"]
     assert ">Calculator Substep:\nEvaluate 17 * 23 + 5.\n>Subresponse:\n396\n" in calls[1]

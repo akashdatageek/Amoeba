@@ -214,6 +214,34 @@ checks once that a two-cell workbook comes back with its computed value, and tel
 Box 2 splits the Planner's reply into sections at `##`. A `##` that sits inside a JSON string (after a
 written `\n`, as in a role prompt's `Output format:\n## Formula`) no longer starts a section, so such roles are not
 lost.
+
+## Crash resilience (D73)
+
+HTTP 500, 502 and 504 from the model service are retried like 429/503 (same waits, same cap). A crashed run is
+resumable: run the same task again with the same `--llm-cache` folder and `--llm-cache-namespace` and every call it
+had finished replays from the cache for free; only the rest is paid. Web results keep the time they were really
+fetched, so the replayed prompts are identical. Local tool calls (Bash, Write) run again, since they change files.
+
+## Citation check by code (D74)
+
+In the plan runner, every quoted phrase, time of day and number a step tags with [S#] must appear in the text the team
+was shown for S# (search snippet, fetched page, tool output), after normalising spelling of times, dashes and
+separators. A miss is recorded as a mislabelled citation: the step becomes partial and the answer's Limitations name
+it, with the source that does contain it when there is one.
+
+## Today's date and research rules (D75)
+
+Every step prompt gets the run's date, weekday and time zone (`--timezone America/Chicago`; default the machine's
+zone), so "today" questions never rest on a guessed date. Amoeba's step prompt also asks helpers to prefer the source
+about the specific thing asked over general pages, never to infer a specific fact from a general page, and to say
+so when sources disagree.
+
+## Step endings and evidence size (D76)
+
+On a helper's last turn only Final Output is offered, so a step ends with a written conclusion (a tool asked for
+then is not run). A step whose output is only a search query or a tool request fails a `conclusion` check by code.
+A verify step gets its producers' raw results as the excerpts that match the claims it checks, at most 20,000
+characters in all, marked where cut.
 ## Cost controls (D45–D48)
 
 ```bash

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from amoeba.config.prompts import PROMPT, render, resolve
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
+from amoeba.interp.clock import run_clock
 from amoeba.interp.trace import NoopListener, TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient, Messages, api_error, describe_api_error
 from amoeba.task.models import AgentResult, CapabilityRequest, Episode, Message, Task
@@ -157,13 +158,17 @@ class Interpreter:
     # box: interpreter
     def __init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None = None,
                  listener: NoopListener | None = None, run_dir: str | None = None, plan_options=None,
-                 equal_tools: bool = False, stock=None, max_agents: int = 5):
+                 equal_tools: bool = False, stock=None, max_agents: int = 5, timezone: str | None = None,
+                 today=None):
         self.run_dir = run_dir   # D31: the plan runner writes its step artifacts under <run_dir>/artifacts
         self.equal_tools = equal_tools   # D62: web grant for flat, tool calls for boss_reviewers, same reply room
         self.helper_max_tokens = EQUAL_MAX_TOKENS if equal_tools else None
         self.plan_options = plan_options   # D39+: PlanOptions for --topology plan (None = defaults)
         self.stock = stock                 # D63: stock(requests, cfg, registry) -> (registry, summary), mid-run
         self.max_agents = max_agents       # D63: the envelope's roster cap, for a role a re-plan adds
+        self.timezone = timezone           # D75: the run's time zone (IANA name; None = the machine's)
+        self.clock = run_clock(timezone, today)
+        self.today = self.clock["date"]    # D67 / D74 / D75: the run's date (a test may set it)
         self.trace = trace or TraceWriter(None)
         self.listener = listener or NoopListener()   # spec §12: Phase 3's monitor plugs in here; no-op now
         self.llm = TracedLLM(llm, self.trace, self.listener)
@@ -178,6 +183,11 @@ class Interpreter:
         with self.trace.span("invoke_workflow", {"gen_ai.workflow.name": cfg.name,
                                                  "gen_ai.conversation.id": ep.episode_id}):
             try:
+                self.clock = run_clock(self.timezone, self.today)                  # D75: today, weekday, time zone
+                self.trace.event("run_clock", {"amoeba.date": self.clock["date"].isoformat(),
+                                               "amoeba.weekday": self.clock["weekday"], "amoeba.tz": self.clock["tz"]})
+                if cfg.topology != "plan":   # the baselines keep their papers' prompts: the date rides on the task text
+                    task = task.model_copy(update={"prompt": f"{task.prompt}\n\n({self.clock['line']})"})
                 if self.equal_tools and cfg.topology != "plan" and getattr(self.tools, "web", None) is not None:
                     grant_web(cfg, self.trace)                   # D62 (the plan runner does D32 itself)
                 if cfg.topology == "flat":

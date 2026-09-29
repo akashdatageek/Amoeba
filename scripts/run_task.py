@@ -50,7 +50,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
             saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
             local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
-            picks_only: bool = False) -> RunResult:
+            picks_only: bool = False, timezone: str | None = None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -106,7 +106,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             answer, error = None, "picks_only"
         else:
             ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
-                             stock=restock, max_agents=envelope.max_agents).run(cfg, task, seed)
+                             stock=restock, max_agents=envelope.max_agents, timezone=timezone).run(cfg, task, seed)
             answer, error = ep.answer, ep.error
     except DraftError as e:
         error = f"draft: {e}"
@@ -413,6 +413,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--picks-file", default=None, metavar="FILE",
                    help="D70: one pool pick per task and request, shared by every run that names the same file (the "
                         "three architectures of a benchmark); a recorded pick is reused when it passed vetting again")
+    p.add_argument("--timezone", default=None, metavar="IANA",
+                   help="D75: the run's time zone for today's date and weekday in every step prompt, e.g. "
+                        "America/Chicago (default: the machine's local zone)")
     p.add_argument("--picks-only", action="store_true",
                    help="D70: stop after the toolbox step (make the picks for --picks-file before the runs)")
     p.add_argument("--rerun-stale", action="store_true",
@@ -466,7 +469,8 @@ def main(argv: list[str] | None = None) -> int:
                     plan_options=cli_plan_options(args), saved_draft=chosen,
                     limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
                     ask=input if args.interactive else None, pool=pool, local=local,
-                    equal_tools=args.equal_tools == "on", picks_file=args.picks_file, picks_only=args.picks_only)
+                    equal_tools=args.equal_tools == "on", picks_file=args.picks_file, picks_only=args.picks_only,
+                    timezone=args.timezone)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

@@ -85,6 +85,19 @@ class WebLimits:
 
 
 # box: tools
+def note_seen(source: dict, text: str) -> None:
+    """D74: the text a helper was shown for a source (search snippets, the fetched page, a tool's output), so plain
+    code can check that what a step cites [S#] for is really in S#."""
+    if text:
+        source["seen"] = (source.get("seen", "") + "\n" + text)[-60_000:]
+
+
+# box: tools
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+# box: tools
 @dataclass
 class WebTools:
     """The two tools for one run: the provider, the limits, the run's source list and per-step counters."""
@@ -104,18 +117,23 @@ class WebTools:
     def sources_for(self, step: int) -> list[dict]:
         return [s for s in self.sources if step in s["steps"]]
 
-    def _source(self, url: str, title: str, kind: str, query: str = "") -> dict:
-        """The source record for a url: reused when the url was seen before (same S# across the run)."""
+    def source_texts(self) -> dict[str, str]:
+        """D74: S# -> the text helpers were shown for it."""
+        return {s["id"]: s.get("seen", "") for s in self.sources if s.get("seen")}
+
+    def _source(self, url: str, title: str, kind: str, query: str = "", at: str | None = None) -> dict:
+        """The source record for a url: reused when the url was seen before (same S# across the run). at: when the
+        provider really fetched it (D73: kept with a cached result, so a resumed run shows the same time)."""
         for s in self.sources:
             if s["url"] == url:
                 if self.step is not None and self.step not in s["steps"]:
                     s["steps"].append(self.step)
                 if kind == "fetch":   # the page itself was read now
                     s["fetched"] = True
-                    s["fetched_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                    s["fetched_at"] = at or now_iso()
                 return s
         s = {"id": f"S{len(self.sources) + 1}", "url": url, "title": title, "kind": kind, "query": query,
-             "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "fetched": kind == "fetch",
+             "fetched_at": at or now_iso(), "fetched": kind == "fetch",
              "steps": [self.step] if self.step is not None else []}
         self.sources.append(s)
         return s
@@ -150,10 +168,11 @@ class WebTools:
         lines = [f'Search results for "{query}" (cite a fact by its [S#]; fetch_url a result to read the page):']
         ids = []
         for r in results[: self.limits.max_results]:
-            s = self._source(r["url"], r["title"], "search", query)
+            s = self._source(r["url"], r["title"], "search", query, r.get("fetched_at"))
             ids.append(s["id"])
             snippet = re.sub(r"\s+", " ", r.get("snippet", ""))[: self.limits.snippet_chars]
             lines.append(f"[{s['id']}] {r['title']} — {r['url']}\n    {snippet}")
+            note_seen(s, f"{r['title']}\n{snippet}")
         self._event("web_search", {"amoeba.query": query, "amoeba.results": len(results), "amoeba.source_ids": ids})
         return "\n".join(lines)
 
@@ -175,7 +194,8 @@ class WebTools:
             return self._fail("fetch_url", f"{type(e).__name__}: {e}")
         text = re.sub(r"\n{3,}", "\n\n", page.get("text", "")).strip()
         cut = text[: self.limits.max_fetch_chars]
-        s = self._source(page.get("url", url), page.get("title", "") or url, "fetch")
+        s = self._source(page.get("url", url), page.get("title", "") or url, "fetch", at=page.get("fetched_at"))
+        note_seen(s, f"{s['title']}\n{cut}")
         self._event("fetch_url", {"amoeba.url": url, "amoeba.source_id": s["id"], "amoeba.chars": len(text),
                                   "amoeba.chars_passed": len(cut)})
         more = f", first {len(cut)} of {len(text)} characters" if len(text) > len(cut) else ""

@@ -1,6 +1,6 @@
 {
  "action_obs": {
-  "checked_at": "22aa4bb",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -549,15 +549,15 @@
     "PlanOptions.max_replans"
    ],
    "prompts": {
-    "plan_replan": "aa76a91e7034"
+    "plan_replan": "2ffd6621bfb2"
    },
    "title": "Action Observer (re-plan)"
   },
-  "facts_hash": "b5d746078a21e326",
+  "facts_hash": "ef983940b56fb515",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "eab21b71f661e662",
   "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code checks the change before it takes effect.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, a tool the plan did not know about, or a missing answer step. No trigger, no call.",
    "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available, the budget left, and the final answer step, returning one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
@@ -692,7 +692,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -808,7 +808,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None) -> RunResult"
     }
    ],
    "checks": [],
@@ -831,7 +831,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "b480dcb618d35898",
+  "facts_hash": "2afd9424f7542ba8",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -1761,9 +1761,11 @@
   },
   "facts_hash": "e1b5a59d3e3c6d4d",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "38362f560e716b08",
   "seed_hash": "bbd14a5aace21969",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand (model: still true)",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
    "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message and set the reasoning effort.",
@@ -2598,21 +2600,23 @@
   ]
  },
  "interpreter": {
-  "checked_at": "5c10844",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
      "callees": [
+      "amoeba/interp/clock.py::run_clock",
       "amoeba/interp/trace.py::NoopListener",
       "amoeba/interp/trace.py::TraceWriter",
       "amoeba/interp/trace.py::TracedLLM"
      ],
      "doc": "",
      "key": "amoeba/interp/runtime.py::Interpreter.__init__",
-     "signature": "__init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None=None, listener: NoopListener | None=None, run_dir: str | None=None, plan_options=None, equal_tools: bool=False, stock=None, max_agents: int=5)"
+     "signature": "__init__(self, llm: LLMClient, tools: ToolRegistry, trace: TraceWriter | None=None, listener: NoopListener | None=None, run_dir: str | None=None, plan_options=None, equal_tools: bool=False, stock=None, max_agents: int=5, timezone: str | None=None, today=None)"
     },
     {
      "callees": [
+      "amoeba/interp/clock.py::run_clock",
       "amoeba/interp/plan_runner.py::PlanRunner",
       "amoeba/interp/plan_runner.py::PlanRunner.run",
       "amoeba/interp/runtime.py::Interpreter.run",
@@ -2632,6 +2636,11 @@
    ],
    "checks": [],
    "guards": [
+    [
+     "decide",
+     "if cfg.topology != 'plan'",
+     "set task = task.model_copy(update={'prompt': f\"{task.prompt}\\n\\n({self.clock['line']})\"})"
+    ],
     [
      "decide",
      "if cfg.topology == 'flat'",
@@ -2683,7 +2692,7 @@
    "prompts": {},
    "title": "Interpreter"
   },
-  "facts_hash": "9988ba937aa8432f",
+  "facts_hash": "d16ab41ea20128dc",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "92a5bb70bcb60bb1",
   "sentence": "Reads the team's shape and hands the job to the matching runner.",
@@ -3407,7 +3416,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -3443,7 +3452,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None) -> RunResult"
     }
    ],
    "checks": [
@@ -3471,14 +3480,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "8a5d2698e3613a54",
+  "facts_hash": "3a35a719c5bfc6b5",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves ten files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, and the selected pool items.",
+  "sentence": "Every run saves eleven files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the selected pool items, and the timezone.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), and the selected pool items.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the selected pool items, and the timezone.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -3582,11 +3591,12 @@
   ]
  },
  "ov_run": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
      "callees": [
+      "amoeba/interp/clock.py::run_clock",
       "amoeba/interp/plan_runner.py::PlanRunner",
       "amoeba/interp/plan_runner.py::PlanRunner.run",
       "amoeba/interp/runtime.py::Interpreter.run",
@@ -3701,7 +3711,7 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "27d06ff5bc5bbdee",
+  "facts_hash": "933223c469f20d6f",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call is logged.",
@@ -4064,12 +4074,13 @@
   ]
  },
  "plan_step": {
-  "checked_at": "22aa4bb",
+  "checked_at": "aa3be5a",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/interp/citecheck.py::mislabelled_citations",
       "amoeba/interp/freshness.py::time_sensitive",
       "amoeba/interp/plan_runner.py::PlanRunner._loop",
       "amoeba/interp/plan_runner.py::PlanRunner._save",
@@ -4080,6 +4091,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.answer_findings",
       "amoeba/interp/plan_runner.py::PlanRunner.answer_gaps",
       "amoeba/interp/plan_runner.py::PlanRunner.checkable",
+      "amoeba/interp/plan_runner.py::PlanRunner.citation_exempt",
       "amoeba/interp/plan_runner.py::PlanRunner.computed_results",
       "amoeba/interp/plan_runner.py::PlanRunner.contract",
       "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
@@ -4096,12 +4108,14 @@
       "amoeba/interp/plan_runner.py::PlanRunner.refine",
       "amoeba/interp/plan_runner.py::PlanRunner.rework_producers",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::PlanRunner.source_texts",
       "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
       "amoeba/interp/plan_runner.py::PlanRunner.upstream",
       "amoeba/interp/plan_runner.py::PlanRunner.verifier_tools",
       "amoeba/interp/plan_runner.py::PlanRunner.web_ids",
       "amoeba/interp/plan_runner.py::_Work",
       "amoeba/interp/plan_runner.py::blocked_marks",
+      "amoeba/interp/plan_runner.py::conclusion_check",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/plan_runner.py::parse_verdict_block",
       "amoeba/interp/plan_runner.py::refine_counts",
@@ -4144,6 +4158,7 @@
       "amoeba/interp/runtime.py::Interpreter._dispatch",
       "amoeba/interp/runtime.py::Interpreter._record",
       "amoeba/interp/runtime.py::full_action_input",
+      "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TraceWriter.spans",
       "amoeba/interp/trace.py::TracedLLM.chat_sections",
@@ -4231,6 +4246,12 @@
      "signature": "_review(self, rv: AgentSpec, step: PlanStep, n: int, drafter: AgentSpec, draft: str, inputs: str) -> tuple[str, list[str]]"
     },
     {
+     "callees": [],
+     "doc": "{\"date\": date, \"weekday\": \"Tuesday\", \"tz\": \"America/Chicago\", \"line\": \"Today is Tuesday, 29 September 2026 …\"}.",
+     "key": "amoeba/interp/clock.py::run_clock",
+     "signature": "run_clock(tz: str | None=None, today: date | None=None, now: datetime | None=None) -> dict"
+    },
+    {
      "callees": [
       "amoeba/interp/shorten.py::_cut_line",
       "amoeba/interp/shorten.py::_output_tails",
@@ -4245,6 +4266,11 @@
    ],
    "checks": [],
    "guards": [
+    [
+     "correct",
+     "if FINAL_OUTPUT not in act",
+     "add inp.strip()"
+    ],
     [
      "correct",
      "if act in agent.tools",
@@ -4297,6 +4323,16 @@
     ],
     [
      "decide",
+     "if last",
+     "set user = user.replace('\\n# Format\\n', f'\\n{LAST_TURN_NOTE}\\n\\n# Format\\n', 1)"
+    ],
+    [
+     "decide",
+     "if last and FINAL_OUTPUT not in act",
+     "set before = self.i.trace.n_llm_calls"
+    ],
+    [
+     "decide",
      "if last_head < i < first_tail",
      "set line = _cut_line(lines[i], 300)"
     ],
@@ -4304,6 +4340,11 @@
      "decide",
      "if limit < 400",
      "set half = max(1, limit // 2)"
+    ],
+    [
+     "decide",
+     "if mislabelled",
+     "set status = 'partial' if status == 'done' else status"
     ],
     [
      "decide",
@@ -4467,6 +4508,11 @@
     ],
     [
      "fallback",
+     "[FINAL_OUTPUT] if last else list(agent.tools) + [PRINT, FINAL_OUTPUT]",
+     "choose value"
+    ],
+    [
+     "fallback",
      "[] if answer_step else sorted(set(w.blocked.values()) | set(mentions))",
      "choose value"
     ],
@@ -4484,6 +4530,11 @@
      "fallback",
      "checks[0]['source'] if checks else ''",
      "choose value"
+    ],
+    [
+     "fallback",
+     "except (ZoneInfoNotFoundError, ValueError)",
+     "raise ValueError"
     ],
     [
      "fallback",
@@ -4573,6 +4624,11 @@
     [
      "fallback",
      "meta['verdict'] if reverify else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "moment.astimezone(zone) if zone else moment.astimezone()",
      "choose value"
     ],
     [
@@ -4727,6 +4783,11 @@
     ],
     [
      "stop",
+     "if FINAL_OUTPUT not in act",
+     "return ('no action', inp, '', None)"
+    ],
+    [
+     "stop",
      "if head < 0",
      "return parsed"
     ],
@@ -4777,20 +4838,20 @@
     "PlanOptions.collab_rounds"
    ],
    "prompts": {
-    "plan_critique": "404c588e8d12",
-    "plan_step": "54bff1232658",
+    "plan_critique": "b17054bc5a21",
+    "plan_step": "ab14e6d46d51",
     "plan_step_system": "daf8cf4bba11"
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "5df340ec34073c2d",
+  "facts_hash": "b629e4d30792bbf2",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
-   "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
+   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search or lacks specific tools gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information.",
    "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); the step keeps one output.",
@@ -4798,7 +4859,7 @@
   ]
  },
  "plan_summary": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -5036,6 +5097,11 @@
     ],
     [
      "fallback",
+     "f\"; it is in {', '.join(x['found_in'])}\" if x['found_in'] else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "f\"; lacked: {', '.join(m['blocked'])}\" if m.get('blocked') else ''",
      "choose value"
     ],
@@ -5198,22 +5264,22 @@
    ],
    "prompts": {
     "plan_step_system": "daf8cf4bba11",
-    "plan_summarise": "c8352099ca3c"
+    "plan_summarise": "7fb04c95d4ff"
    },
    "title": "Summariser assembles"
   },
-  "facts_hash": "5ec94a24d091847a",
+  "facts_hash": "3d050ea14d9022c9",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "f8491f65001402a8",
   "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
-  "source": "hand (model: still true)",
+  "source": "model: rewritten",
   "what": [
-   "Sees every step's latest output with its status, missing capabilities, verdict and figure counts, and the deliverables the plan committed to (never the scoring rubric).",
+   "Sees every step's latest output with its status, missing capabilities, verdict, figure counts, the deliverables the plan committed to, and where each figure was found (never the scoring rubric).",
    "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under Limitations when there are any.",
    "Code counts any number it adds, lists the answer's untagged and unverified figures, and appends a line for any missing capability it left out.",
    "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code under 'Files made', and Limitations also name undeclared missing capabilities and attached items left unused (NOT USED).",
    "Each input is shortened to {PlanOptions.max_input_chars} characters and all of them to {PlanOptions.max_summary_input_chars}; since D64 the head, the tail and every line with a result (a count, a total, an '=' line, the last lines of program output) are kept, with a mark for what was left out. When several final steps have no summariser step, code puts their outputs together under headings instead.",
-   "D67: for a task that asks for today's, the current or the latest value, a figure whose as-of date is more than {MAX_AGE_DAYS} days old adds 'possibly not the latest' to Limitations."
+   "D67: for a task that asks for today's, the current or the latest value, a figure whose as-of date is more than {MAX_AGE_DAYS} days old adds 'possibly not the latest' to Limitations; it also notes where the figure was found."
   ]
  },
  "planner": {
@@ -6107,7 +6173,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "3c98cbe",
   "facts": {
    "anchors": [
     {
@@ -6296,7 +6362,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None) -> RunResult"
     }
    ],
    "checks": [
@@ -6324,11 +6390,11 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "b932187fd765d245",
+  "facts_hash": "dd1a7c62c6111bfa",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bef6a71b78aeb520",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, and any pool, selection, or clarification details.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
@@ -6745,7 +6811,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "aa3be5a",
   "facts": {
    "anchors": [
     {
@@ -6884,10 +6950,12 @@
     {
      "callees": [
       "amoeba/interp/plan_runner.py::PlanRunner.upstream",
+      "amoeba/interp/plan_runner.py::claim_terms",
+      "amoeba/interp/plan_runner.py::excerpt",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
-     "doc": "D65: the raw tool results every upstream step used (not only their text), for a verify step.",
+     "doc": "D65: the raw tool results every upstream step used (not only their text), for a verify step. D76: as the",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.raw_results_text",
      "signature": "raw_results_text(self, n: int) -> str"
     },
@@ -6900,6 +6968,25 @@
      "doc": "D65: what the steps a verify step checks produced that a tool can re-check: code, files or cited",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.checkable",
      "signature": "checkable(self, n: int) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/interp/citecheck.py::_has",
+      "amoeba/interp/citecheck.py::claims",
+      "amoeba/localtools/server.py::StdioServer.start",
+      "amoeba/localtools/toolbox.py::LocalToolbox.start"
+     ],
+     "doc": "D74: every checkable claim tagged [S#] whose source text does not contain it. `contents`: S# -> the text the",
+     "key": "amoeba/interp/citecheck.py::mislabelled_citations",
+     "signature": "mislabelled_citations(text: str, contents: dict[str, str], exempt: set[str] | None=None, exact: list[float] | None=None) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/provenance.py::numbers_in"
+     ],
+     "doc": "D74: numbers no source has to back: those given in the task and today's date parts (D75 gives it).",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.citation_exempt",
+     "signature": "citation_exempt(self) -> set[str]"
     },
     {
      "callees": [],
@@ -6916,6 +7003,16 @@
      "doc": "D61: the files the team made in the workspace (of step n, or all), that still exist.",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.files_of",
      "signature": "files_of(self, n: int | None=None) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.source_texts",
+      "amoeba/pool/mcp.py::SourceBook.source_texts",
+      "amoeba/tools/web.py::WebTools.source_texts"
+     ],
+     "doc": "D74: S# -> the text the team was shown for it, across web, pool and local results.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.source_texts",
+     "signature": "source_texts(self) -> dict[str, str]"
     },
     {
      "callees": [
@@ -6937,6 +7034,35 @@
      "signature": "cap_key(name: str) -> str"
     },
     {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D76: what the claims being checked are made of: their numbers and times, quoted phrases, and the words of the",
+     "key": "amoeba/interp/plan_runner.py::claim_terms",
+     "signature": "claim_terms(text: str) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::no_conclusion"
+     ],
+     "doc": "D76: a failing `conclusion` check when the output is only a query or a tool request (no check when it passes,",
+     "key": "amoeba/interp/plan_runner.py::conclusion_check",
+     "signature": "conclusion_check(text: str, w: '_Work') -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::excerpt.hit",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D76: the parts of one raw tool result that bear on the claims: its first line (what it is), and every line or",
+     "key": "amoeba/interp/plan_runner.py::excerpt",
+     "signature": "excerpt(result: str, wanted: dict, keep_head: int=240) -> str"
+    },
+    {
      "callees": [],
      "doc": "D63: the 'MISSING INPUT: <what>' lines of a step's output.",
      "key": "amoeba/interp/plan_runner.py::missing_input_marks",
@@ -6949,6 +7075,16 @@
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::names_match",
      "signature": "names_match(a: str, b: str) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D76: the step's output is only a search query or a tool request, not a written conclusion: empty, the same as",
+     "key": "amoeba/interp/plan_runner.py::no_conclusion",
+     "signature": "no_conclusion(text: str, requests: list[str]) -> bool"
     },
     {
      "callees": [],
@@ -6968,6 +7104,11 @@
      "correct",
      "if deps",
      "add {'name': 'inputs_referenced', 'pass': uses_inputs(body, deps, artifacts), 'detail': 'the output uses nothing from the steps it depends on (no figure, source id, step or role name, or 8 words in a row from them)'}"
+    ],
+    [
+     "correct",
+     "if i > prev + 1",
+     "add '[…]'"
     ],
     [
      "correct",
@@ -7001,6 +7142,11 @@
     ],
     [
      "correct",
+     "if prev < len(lines) - 1",
+     "add '[…]'"
+    ],
+    [
+     "correct",
      "if t.removeprefix('local:') in getattr(self.local, 'exposed', []) and t not in names",
      "add t"
     ],
@@ -7008,6 +7154,16 @@
      "correct",
      "if verifier",
      "add {'name': 'verdict', 'pass': parse_verdict_block(body)[0] is not None, 'detail': 'a verification step must start with \"Verdict: PASS\" or \"Verdict: FAIL\"'}"
+    ],
+    [
+     "decide",
+     "if len(body) > EVIDENCE_CAP",
+     "set body = body[:EVIDENCE_CAP].rstrip() + f'\\n[… {len(body) - EVIDENCE_CAP:,} characters of ra"
+    ],
+    [
+     "decide",
+     "if len(keep) == 1",
+     "set head = '\\n'.join(lines)[:keep_head]"
     ],
     [
      "decide",
@@ -7031,6 +7187,11 @@
     ],
     [
      "fallback",
+     "'\\n[… rest of this result left out: nothing in it matches the claims checked …]' if len('\\n'.join(lines)) > keep_head else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'every call to it failed' if u['tried'] else 'never called it'",
      "choose value"
     ],
@@ -7042,6 +7203,16 @@
     [
      "fallback",
      "'ok' if c['ok'] else 'failed'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "b.source_texts() if hasattr(b, 'source_texts') else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "cut if cut > 0 else 300",
      "choose value"
     ],
     [
@@ -7071,12 +7242,32 @@
     ],
     [
      "filter",
+     "keep only if b",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if d in self.artifacts",
      "drop the rest"
     ],
     [
      "filter",
+     "keep only if i in contents",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if i not in ids and _has(kind, claim, t)",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if len(x.replace('.', '')) > 1",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if lines[i].strip() and hit(lines[i])",
      "drop the rest"
     ],
     [
@@ -7106,6 +7297,16 @@
     ],
     [
      "filter",
+     "keep only if r",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if re.search('\\\\[S\\\\d+', l)",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if t in reg",
      "drop the rest"
     ],
@@ -7116,13 +7317,33 @@
     ],
     [
      "filter",
+     "keep only if w in low",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if w not in STOP",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if x['agent_id'] == c['agent_id']",
      "drop the rest"
     ],
     [
      "loop cap",
+     "while len(line) > 400",
+     "loop ends"
+    ],
+    [
+     "loop cap",
      "while todo",
      "loop ends"
+    ],
+    [
+     "reject",
+     "if any((_has(kind, claim, contents[i]) for i in known)) or (tuple(ids), claim) in seen",
+     "skip (continue)"
     ],
     [
      "reject",
@@ -7132,6 +7353,11 @@
     [
      "reject",
      "if d in self.reworked or self.artifacts[d]['meta'].get('verification')",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if not known",
      "skip (continue)"
     ],
     [
@@ -7156,8 +7382,28 @@
     ],
     [
      "stop",
+     "if not lines",
+     "return ''"
+    ],
+    [
+     "stop",
+     "if not no_conclusion(text, [*w.requests, *(c['input'] for c in w.calls)])",
+     "return []"
+    ],
+    [
+     "stop",
      "if not parts",
      "return ''"
+    ],
+    [
+     "stop",
+     "if not t",
+     "return True"
+    ],
+    [
+     "stop",
+     "if re.match('^(?:#+\\\\s*)?(?:Action|ActionInput)\\\\b', t, re.I) or re.fullmatch('https?://\\\\S+', t)",
+     "return True"
     ],
     [
      "stop",
@@ -7168,26 +7414,34 @@
      "stop",
      "if set(step.agent_ids) <= summ or not step.depends_on",
      "return False"
+    ],
+    [
+     "stop",
+     "if t in {flat(r) for r in requests if r}",
+     "return True"
     ]
    ],
    "kind": "code",
-   "numbers": [],
+   "numbers": [
+    "EVIDENCE_CAP",
+    "excerpt.keep_head"
+   ],
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "5b67221106142016",
+  "facts_hash": "21627e4f53c932df",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "13e802c0beb63a4e",
-  "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
-  "source": "hand (model: still true)",
+  "sentence": "Checks each step's output against its requirements, contract, and provenance; reads verdicts, gaps, and citation accuracy.",
+  "source": "model: rewritten",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
    "A step the planner marked kind: verify must answer PASS or FAIL; a FAIL sends each step it checked back once, then it checks again. Steps that already used the old output are marked stale (--rerun-stale redoes them once).",
    "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them.",
    "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, earns one refine turn and then makes the step partial (not declared / attached unused).",
-   "A verify step also sees each checked step's sources, tool calls, figure counts and files (D61). A producer whose only problem is a missing capability is not sent back (rework_skipped).",
-   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial."
+   "A verify step also sees each checked step's sources, tool calls, figure counts, files, and citation labels (D61, D74). A producer whose only problem is a missing capability is not sent back (rework_skipped).",
+   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial. Evidence is capped at {EVIDENCE_CAP} characters and excerpts are limited to {excerpt.keep_head} characters."
   ]
  },
  "task_record": {
@@ -8404,9 +8658,11 @@
    "title": "Stock the toolbox"
   },
   "facts_hash": "a646c242bb0ed1a9",
+  "rejected_hash": "58ce2a6ca82b6d01",
   "seed_hash": "7524778ff38722f5",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
    "Vet first (D60): the candidates are checked before the pick and the AI is shown only the best {rank.top} that pass (up to 50 matches are checked); if none pass, the request is unfilled (all_refused) with no AI call.",
@@ -8421,7 +8677,7 @@
   ]
  },
  "tools": {
-  "checked_at": "bfb4dbf",
+  "checked_at": "a742c07",
   "facts": {
    "anchors": [
     {
@@ -8491,6 +8747,7 @@
      "methods": [
       "begin_step(self, step: int, trace=None) -> None",
       "sources_for(self, step: int) -> list[dict]",
+      "source_texts(self) -> dict[str, str]",
       "web_search(self, query: str) -> str",
       "fetch_url(self, url: str) -> str"
      ],
@@ -8519,6 +8776,21 @@
      "doc": "A fresh Box 3 registry for one run: echo, calc, web_search and fetch_url (Tavily unless a provider is given).",
      "key": "amoeba/tools/web.py::web_registry",
      "signature": "web_registry(provider: SearchProvider | None=None, limits: WebLimits | None=None)"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D74: the text a helper was shown for a source (search snippets, the fetched page, a tool's output), so plain",
+     "key": "amoeba/tools/web.py::note_seen",
+     "signature": "note_seen(source: dict, text: str) -> None"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/tools/web.py::now_iso",
+     "signature": "now_iso() -> str"
     }
    ],
    "checks": [],
@@ -8560,6 +8832,11 @@
     ],
     [
      "decide",
+     "if text",
+     "set source['seen'] = (source.get('seen', '') + '\\n' + text)[-60000:]"
+    ],
+    [
+     "decide",
      "if trace is not None",
      "set self.trace = trace"
     ],
@@ -8592,6 +8869,11 @@
      "fallback",
      "f', first {len(cut)} of {len(text)} characters' if len(text) > len(cut) else ''",
      "choose value"
+    ],
+    [
+     "filter",
+     "keep only if s.get('seen')",
+     "drop the rest"
     ],
     [
      "filter",
@@ -8687,11 +8969,11 @@
    "prompts": {},
    "title": "Tool box"
   },
-  "facts_hash": "ac41c303c718db4c",
+  "facts_hash": "c15d28fbc05af949",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "e40d467b502b090d",
-  "sentence": "Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search and page reading.",
-  "source": "hand (model: still true)",
+  "sentence": "Repeat a text back, do arithmetic, or get the current time; with --web-tools the plan runner also has web search and page reading.",
+  "source": "model: kept",
   "what": [
    "Tools are looked up by name; a name that is not registered is an error, not a web search.",
    "The arithmetic tool accepts numbers and + − × ÷ and powers only, never arbitrary code.",
