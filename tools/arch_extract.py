@@ -167,6 +167,27 @@ BOXES: list[dict] = [
          anchors=[("amoeba/task/draft.py::draft_team", None, "# state 1"),
                   "amoeba/task/parsers.py::parse_open_questions", "scripts/run_task.py::ask_user",
                   "amoeba/task/draft.py::toolbox_text"]),
+    dict(id="interpret", view="plan", title="Task interpretation (D77)", kind="llm", plan=None, ai="interpreter",
+         sentence="Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a "
+                  "clear winner, asks the user one question, or makes the answer state its assumption.",
+         what=["One call reads the task (and the read-only user context from --context: location, organisation, role) "
+               "and lists the key entities and terms that could be read more than one way — names, abbreviations, "
+               "acronyms, likely voice-input errors such as \"P and W\" for \"PNW\" — each reading with a one-line "
+               "reason and a confidence.",
+               "Plain code: a reading whose confidence beats the next by 0.3 or more (DOMINANCE_GAP) (or the only one) is the "
+               "working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question "
+               "(the readings + other); without it the top reading is an assumption.",
+               "The working interpretation is added to the task text, so the Planner, both checkers and every helper "
+               "in all three runners read it; an open question the Planner writes about one of these names is answered "
+               "from it, not by its guess.",
+               "After the run, when the reading was assumed, plain code makes the answer open with \"I read X as Y; if "
+               "you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing."],
+         proposes="The entities, their readings, a reason and a confidence for each.",
+         disposes="Plain code decides whether a reading is clear, whether to ask, and checks the answer's opening line.",
+         prompts=["interpret"],
+         anchors=["amoeba/task/interpret.py::read_task", "amoeba/task/interpret.py::decide",
+                  "amoeba/task/interpret.py::ask_one", "amoeba/task/interpret.py::enforce_opening",
+                  "amoeba/task/interpret.py::route_open_questions", "amoeba/memory/context.py::load_context"]),
     dict(id="split", view="plan", title="Split sections", kind="code", plan="Split sections",
          sentence="Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
          what=["Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts.",

@@ -19,7 +19,8 @@ MODELS = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
 ROLE_GROUPS = ("planner", "observers", "workers", "reviewers", "summariser", "pool")   # pool: D56's picker
 PROFILE_KEYS = {"base_url", "model", "api_key_env", "merge_system", "reasoning_effort", "max_tokens", "roles"}
 ROLE_KEYS = {"model", "max_tokens"}
-BOX2_GROUPS = {"planner": "planner", "agent_observer": "observers", "plan_observer": "observers"}
+BOX2_GROUPS = {"planner": "planner", "agent_observer": "observers", "plan_observer": "observers",
+               "interpreter": "planner"}   # D77: the task interpretation step
 
 
 @dataclass

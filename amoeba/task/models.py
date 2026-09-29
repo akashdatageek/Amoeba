@@ -256,6 +256,7 @@ class Draft(BaseModel):
     givens: list[str] = Field(default_factory=list)                # D24: givens, derived numbers, assumptions
     risks: list[str] = Field(default_factory=list)                 # D24: risks and decision points
     open_questions: list[dict[str, str]] = Field(default_factory=list)   # D53: {question, assumption} the planner settled
+    interpretation: dict = Field(default_factory=dict)             # D77: the task interpretation step (read_task)
     quality: dict = Field(default_factory=dict)                    # D24 draft_quality checks (recorded, not enforced)
     gate_hits: int = 0                                             # D28: rounds the --quality-gate sent back
     requests_proposed: int = 0                 # distinct capabilities asked for in round 1
@@ -264,6 +265,7 @@ class Draft(BaseModel):
 
 # box: runresult
 class RunResult(BaseModel):
+    interpretation: dict = Field(default_factory=dict)   # D77: the task interpretation step and what it settled
     run_id: str
     task_id: str
     draft_source: str | None = None   # D45: the saved draft reused (eval_draft file stem or run id); None = drafted

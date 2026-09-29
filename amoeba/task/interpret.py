@@ -1,0 +1,199 @@
+"""D77 — task understanding before planning (Box 1 → Box 2).
+
+One LLM call lists the readings of the task's key entities and terms (names, abbreviations, acronyms, likely
+voice-input errors such as "P and W" for "PNW"), each with a one-line justification and a confidence; it reads the
+user context (--context, the Memory stub) when there is one. Plain code then decides, per entity:
+
+- one reading clearly dominant (its confidence beats the next by at least DOMINANCE_GAP, or it is the only one)
+  → it is the working interpretation;
+- otherwise the task's subject is ambiguous:
+    - with --interactive the user gets ONE multiple-choice question (the readings + "other") before planning;
+    - without it the top reading is used as an assumption: the final answer must open with "I read X as Y; if you
+      meant Z, …" and its Limitations list the other readings (plain code checks both and adds what is missing).
+
+The working interpretation travels with the task text (Planner, observers, every Box 3 helper), and an open
+question the Planner writes about one of these entities is answered from it, never by the Planner's guess.
+"""
+from __future__ import annotations
+
+import json
+import re
+from typing import Callable, Mapping
+
+from amoeba.config.prompts import PROMPT, render
+from amoeba.interp.trace import TracedLLM
+from amoeba.memory.context import context_text
+from amoeba.task.parsers import parse_sections
+
+DOMINANCE_GAP = 0.3          # confidence lead a reading needs over the next to be taken without asking
+MAX_TOKENS = 4096
+OTHER = "other (type what you meant)"
+
+
+# box: interpret
+def parse_entities(raw: str) -> list[dict]:
+    """The Entities section as [{entity, readings: [{reading, why, confidence}]}], readings sorted by confidence."""
+    body = parse_sections(raw).get("Entities", "") or raw
+    m = re.search(r"\[[\s\S]*\]", body)
+    try:
+        items = json.loads(m.group(0)) if m else []
+    except json.JSONDecodeError:
+        items = []
+    out = []
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict) or not str(it.get("entity", "")).strip():
+            continue
+        readings = []
+        for r in it.get("readings") or []:
+            if isinstance(r, dict) and str(r.get("reading", "")).strip():
+                try:
+                    conf = max(0.0, min(1.0, float(r.get("confidence", 0))))
+                except (TypeError, ValueError):
+                    conf = 0.0
+                readings.append({"reading": str(r["reading"]).strip(), "why": str(r.get("why", "")).strip(),
+                                 "confidence": round(conf, 3)})
+        if readings:
+            readings.sort(key=lambda r: -r["confidence"])
+            out.append({"entity": str(it["entity"]).strip(), "readings": readings})
+    return out
+
+
+# box: interpret
+def decide(entities: list[dict], gap: float = DOMINANCE_GAP) -> dict:
+    """Plain code: per entity, the working reading and how it was settled ("dominant" / "only" / "assumed")."""
+    working, ambiguous = [], []
+    for e in entities:
+        top, rest = e["readings"][0], e["readings"][1:]
+        lead = top["confidence"] - (rest[0]["confidence"] if rest else 0.0)
+        how = "only" if not rest else ("dominant" if lead >= gap else "assumed")
+        working.append({"entity": e["entity"], "reading": top["reading"], "why": top["why"],
+                        "confidence": top["confidence"], "lead": round(lead, 3), "settled": how,
+                        "alternatives": [r["reading"] for r in rest]})
+        if how == "assumed":
+            ambiguous.append(e["entity"])
+    return {"entities": entities, "working": working, "ambiguous": ambiguous, "gap": gap, "question": None}
+
+
+# box: interpret
+def read_task(task_text: str, llm: TracedLLM, context: Mapping[str, str] | None = None, seed: int = 0,
+              gap: float = DOMINANCE_GAP) -> dict:
+    """The interpretation step: one call, then plain code decides."""
+    user = render(PROMPT.interpret, task=task_text, context=context_text(context or {}))
+    raw = llm.chat_messages([{"role": "user", "content": user}], seed=seed, max_tokens=MAX_TOKENS,
+                            agent_name="interpreter", role="planner").content
+    out = decide(parse_entities(raw), gap)
+    out["context"] = dict(context or {})
+    llm.trace.event("task_interpretation", {
+        "amoeba.box": "interpret", "amoeba.entities": [w["entity"] for w in out["working"]],
+        "amoeba.working": {w["entity"]: w["reading"] for w in out["working"]},
+        "amoeba.settled": {w["entity"]: w["settled"] for w in out["working"]}, "amoeba.ambiguous": out["ambiguous"],
+        "amoeba.context_keys": sorted(out["context"])})
+    return out
+
+
+# box: interpret
+def ask_one(interp: dict, ask: Callable[[str], str]) -> dict:
+    """--interactive: ONE multiple-choice question about the least certain ambiguous entity (its readings + other),
+    before planning. The answer becomes that entity's working reading ("user"); any other ambiguous entity stays an
+    assumption."""
+    if not interp["ambiguous"]:
+        return interp
+    rows = [w for w in interp["working"] if w["settled"] == "assumed"]
+    w = min(rows, key=lambda x: x["lead"])
+    e = next(x for x in interp["entities"] if x["entity"] == w["entity"])
+    options = [r["reading"] for r in e["readings"]] + [OTHER]
+    lines = [f'What did you mean by "{w["entity"]}"?'] + [f"  {i}. {o}" for i, o in enumerate(options, 1)]
+    try:
+        reply = ask("\n".join(lines) + f"\nChoose 1-{len(options)} (or type your meaning): ").strip()
+    except EOFError:
+        reply = ""
+    chosen = None
+    if reply.isdigit() and 1 <= int(reply) <= len(options) - 1:
+        chosen = options[int(reply) - 1]
+    elif reply and not (reply.isdigit() and int(reply) == len(options)):
+        chosen = reply
+    interp["question"] = {"entity": w["entity"], "options": options, "reply": reply, "chosen": chosen}
+    if chosen:
+        w.update(reading=chosen, settled="user", alternatives=[])
+        interp["ambiguous"] = [a for a in interp["ambiguous"] if a != w["entity"]]
+    return interp
+
+
+# box: interpret
+def assumed(interp: dict | None) -> list[dict]:
+    return [w for w in (interp or {}).get("working", []) if w["settled"] == "assumed"]
+
+
+# box: interpret
+def opening_line(interp: dict | None) -> str | None:
+    """The sentence the answer must open with when the subject was assumed: "I read X as Y; if you meant Z, …"."""
+    rows = assumed(interp)
+    if not rows:
+        return None
+    parts = []
+    for w in rows:
+        alts = " or ".join(w["alternatives"][:3])
+        parts.append(f'I read "{w["entity"]}" as {w["reading"]}; if you meant {alts}, the answer below may not apply.')
+    return " ".join(parts)
+
+
+# box: interpret
+def task_note(interp: dict | None) -> str:
+    """What the Planner, the observers and every helper are told: the working interpretation, and when it was
+    assumed, the opening line the answer must carry."""
+    rows = (interp or {}).get("working", [])
+    if not rows:
+        return ""
+    how = {"only": "", "dominant": "", "user": " (the user chose this)", "assumed": " (an assumption)"}
+    lines = ["Working interpretation (settled before planning; do not re-interpret it or guess otherwise):"]
+    lines += [f'- "{w["entity"]}" means {w["reading"]}{how[w["settled"]]}' for w in rows]
+    line = opening_line(interp)
+    if line:
+        lines.append(f"The final answer must open with this line: {line}")
+    return "\n".join(lines)
+
+
+# box: interpret
+def with_note(prompt: str, interp: dict | None) -> str:
+    note = task_note(interp)
+    return f"{prompt}\n\n{note}" if note and note not in prompt else prompt
+
+
+# box: interpret
+def route_open_questions(open_questions: list[dict], interp: dict | None) -> tuple[list[dict], list[str]]:
+    """The Planner may not settle a question about the task's subject by guessing: an open question that names an
+    interpreted entity is answered from the working interpretation. Returns the questions and the ones routed."""
+    rows = (interp or {}).get("working", [])
+    routed, out = [], []
+    for q in open_questions:
+        text = f"{q.get('question', '')}"
+        hit = next((w for w in rows if w["entity"].lower() in text.lower()
+                    or w["reading"].lower() in text.lower()), None)
+        if hit:
+            q = {**q, "assumption": f'settled before planning: "{hit["entity"]}" means {hit["reading"]}'
+                                    + (" (an assumption; the answer states it)" if hit["settled"] == "assumed" else "")}
+            routed.append(text)
+        out.append(q)
+    return out, routed
+
+
+# box: interpret
+def enforce_opening(answer: str | None, interp: dict | None) -> tuple[str | None, dict]:
+    """Plain code: when the subject was assumed, the answer opens with the stated assumption and its Limitations
+    list the other readings; whatever is missing is added (and recorded)."""
+    line, rows = opening_line(interp), assumed(interp)
+    if not answer or not line:
+        return answer, {}
+    added = {"opening_line_added": False, "alternatives_added": []}
+    first = next((l for l in answer.splitlines() if l.strip()), "")
+    if not (re.match(r"^\W*I read\b", first, re.I) and all(w["entity"].lower() in first.lower() for w in rows)):
+        answer = f"{line}\n\n{answer.lstrip()}"
+        added["opening_line_added"] = True
+    m = re.search(r"^\s*#+\s*limitations\b.*$", answer, re.I | re.M)
+    section = answer[m.end():].lower() if m else ""
+    missing = [(w["entity"], a) for w in rows for a in w["alternatives"] if a.lower() not in section]
+    if missing:
+        body = "\n".join(f'- Other reading of "{e}": {a} (not researched; added by plain code)' for e, a in missing)
+        answer = f"{answer.rstrip()}\n\n{body}\n" if m else f"{answer.rstrip()}\n\n## Limitations\n{body}\n"
+        added["alternatives_added"] = [a for _, a in missing]
+    return answer, added

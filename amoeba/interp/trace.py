@@ -23,6 +23,8 @@ SPAN_BOX = {"invoke_workflow": "interpreter", "execute_tool": "tools", "stock_to
 EVENT_BOX = {
     "capability_request": "capreq", "unknown_tool": "resolver", "blocked": "read_action",
     "draft_quality": "checks", "quality_gate": "checks", "draft_reused": "handoff", "intake_review": "planner",
+    "task_interpretation": "interpret", "interpretation_question": "interpret",                            # D77
+    "subject_questions_routed": "interpret", "assumption_stated": "interpret",
     "truncated": "client", "rate_limited": "client", "cache_miss": "client", "api_error": "client",
     "plan_graph": "plan_graph", "dependency_relinked": "plan_graph", "step_input": "plan_step",
     "input_truncated": "plan_step", "collab_round": "plan_step", "review_unreadable": "plan_step",
@@ -42,7 +44,8 @@ EVENT_BOX = {
     "replan_trigger": "action_obs", "replan_decision": "action_obs", "replan_validated": "action_obs",   # D63
     "plan_version": "action_obs", "requirement_status": "action_obs",
 }
-BOX2_BOX = {"planner": "planner", "agent_observer": "agent_obs", "plan_observer": "plan_obs"}
+BOX2_BOX = {"planner": "planner", "agent_observer": "agent_obs", "plan_observer": "plan_obs",
+            "interpreter": "interpret"}   # D77
 
 
 # box: trace

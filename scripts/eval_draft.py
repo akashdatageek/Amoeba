@@ -24,6 +24,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from amoeba.interp.trace import TracedLLM
+from amoeba.memory.context import load_context
+from amoeba.task.interpret import read_task, with_note
 from amoeba.interp.trace import TraceWriter
 from amoeba.llm.client import ChatResponse, LLMClient, Messages, MockLLMClient
 from amoeba.safety.envelope import Envelope
@@ -83,7 +86,8 @@ def would_pass(text: str, names: list[str], max_agents: int) -> bool:
 
 def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path, seed: int,
             log_content: bool = True, prompts: str = "d19", max_tokens: dict | None = None,
-            quality_gate: bool = False, toolbox: str | None = None) -> dict:
+            quality_gate: bool = False, toolbox: str | None = None, interpret: bool = False,
+            context=None) -> dict:
     rec = Recording(llm)
     trace = TraceWriter(out / "traces" / f"{task.id}.{rep}.jsonl", episode_id=f"{task.id}.{rep}",
                         log_content=log_content, stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54
@@ -92,8 +96,11 @@ def attempt(task: Task, rep: int, llm: LLMClient, envelope: Envelope, out: Path,
            "profile": getattr(llm, "profile", None)}
     saved: dict = {}
     try:
-        d = draft_team(task, rec, envelope, trace, seed, prompts=prompts, max_tokens=max_tokens,
-                       quality_gate=quality_gate, toolbox=toolbox)
+        interp = read_task(task.prompt, TracedLLM(rec, trace), context, seed) if interpret else None   # D77
+        noted = task.model_copy(update={"prompt": with_note(task.prompt, interp)})
+        d = draft_team(noted, rec, envelope, trace, seed, prompts=prompts, max_tokens=max_tokens,
+                       quality_gate=quality_gate, toolbox=toolbox, interpretation=interp)
+        row["interpretation"] = {w["entity"]: f'{w["reading"]} ({w["settled"]})' for w in (interp or {}).get("working", [])}
         row.update(ok=True, error="", rounds=d.rounds_used, consensus=d.consensus, roster=len(d.created_roles),
                    plan_steps=len(d.plan), requests_final=len(d.capability_requests),
                    requests_proposed=d.requests_proposed, requests_dropped=d.requests_dropped_by_observers,
@@ -230,6 +237,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="D68: tell Box 2 that Box 3 will have web_search and fetch_url (as run_task --web-tools)")
     p.add_argument("--local-tools", choices=["on", "off"], default="off",
                    help="D68: tell Box 2 that Box 3 will have the local tools and skills (as run_task --local-tools on)")
+    p.add_argument("--interpret", choices=["on", "off"], default="off",
+                   help="D77: read the task before planning (task interpretation step); the draft keeps the result, "
+                        "so every run that reuses it (run_task --drafts-from) states the same reading")
+    p.add_argument("--context", default=None, metavar="YAML",
+                   help="D77: read-only user context (location, organisation, role) for the interpretation step")
     p.add_argument("--pool", action=argparse.BooleanOptionalAction, default=False,
                    help="D68: tell Box 2 that Box 3 will stock its toolbox from the pool (as run_task --pool)")
     return p.parse_args(argv)
@@ -250,7 +262,8 @@ def main(argv: list[str] | None = None) -> int:
                               prompts=args.draft_prompts, max_tokens=cli_token_limits(args),
                               quality_gate=args.quality_gate,
                               toolbox=toolbox_text(envelope, web=args.web_tools, local=args.local_tools == "on",
-                                                   pool=args.pool))
+                                                   pool=args.pool),
+                              interpret=args.interpret == "on", context=load_context(args.context))
                 rows.append(row)
                 fh.write(json.dumps(row, ensure_ascii=False) + "\n")
                 fh.flush()

@@ -25,6 +25,9 @@ from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, desc
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
+from amoeba.task.interpret import ask_one, enforce_opening, opening_line, read_task, with_note
+from amoeba.memory.context import load_context
+from amoeba.interp.trace import TracedLLM
 from amoeba.task.evaluate import rubric_score, score
 from amoeba.task.instantiate import instantiate
 from amoeba.task.models import RunResult, Task
@@ -50,13 +53,16 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             max_tokens: dict | None = None, quality_gate: bool = False, plan_options=None,
             saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
             local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
-            picks_only: bool = False, timezone: str | None = None) -> RunResult:
+            picks_only: bool = False, timezone: str | None = None, interpret: bool = False,
+            context=None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
     local: D59 — --local-tools on: Claude Code's tools and skills (claude mcp serve) in runs/<id>/workspace/.
     picks_file: D70 — one pool pick per task and request, shared by every run of the task; picks_only: stop after
-    the toolbox step (a pre-pass that makes the picks before the architectures run)."""
+    the toolbox step (a pre-pass that makes the picks before the architectures run).
+    interpret: D77 — read the task before planning (task interpretation step); context: the read-only user context
+    (--context, amoeba.memory.context.load_context) it reads."""
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -71,14 +77,23 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     pool_summary: dict = {"status": "off"} if pool is None else {}
     box = LocalToolbox(local, run_dir, trace) if local is not None else None   # D59: refuses without AMOEBA_SANDBOX=1
     local_out: dict = {}
+    interp = None
+    stated: dict = {}
     try:
         if saved_draft is not None:   # D45: reuse a saved Box 2 draft; no drafting call is made
             draft = saved_draft.draft
+            interp = draft.interpretation or None                                  # D77: read when it was drafted
             trace.event("draft_reused", {"amoeba.draft_source": saved_draft.source, "amoeba.task_id": task.id})
         else:
             toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None)
+            if interpret:             # D77: what the task is about is settled before the Planner drafts
+                interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed)
+                if interp["ambiguous"] and ask is not None:
+                    interp = ask_one(interp, ask)
+                    trace.event("interpretation_question", {"amoeba.question": interp["question"]})
+            task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
-                               quality_gate=quality_gate, toolbox=toolbox)                     # D68
+                               quality_gate=quality_gate, toolbox=toolbox, interpretation=interp)   # D68, D77
             if ask is not None:       # D53: the user reads the draft's intake before Box 3 runs
                 print(intake_text(draft))
                 clarification = ask_user(ask)
@@ -88,7 +103,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     task = task.model_copy(update={"prompt": f"{task.prompt}\n\nUser clarification: {clarification}"})
                     draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                        quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
-                                       toolbox=toolbox)
+                                       toolbox=toolbox, interpretation=interp)
+        task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})    # D77: Box 3 reads it too
         cfg = instantiate(draft, topology, task, envelope)
         team_id = cfg.team_id
         requests = [q.model_copy(deep=True) for q in draft.capability_requests]
@@ -108,6 +124,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
                              stock=restock, max_agents=envelope.max_agents, timezone=timezone).run(cfg, task, seed)
             answer, error = ep.answer, ep.error
+            answer, stated = enforce_opening(answer, interp)     # D77: an assumed subject is stated, by plain code
+            if stated:
+                trace.event("assumption_stated", {"amoeba.line": opening_line(interp), **{
+                    f"amoeba.{k}": v for k, v in stated.items()}})
     except DraftError as e:
         error = f"draft: {e}"
         failed = e
@@ -158,6 +178,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         requests_dropped_by_observers=draft.requests_dropped_by_observers if draft else 0,
         clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace),
         replan=ep.replan if ep else {},
+        interpretation=interpretation_of(interp, stated),
         pool=pool_summary, **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=None if box else LOCAL_FIELDS),
@@ -200,6 +221,17 @@ def ask_user(ask) -> str | None:
             return None
         if reply:
             return reply
+
+
+def interpretation_of(interp: dict | None, stated: dict) -> dict:
+    """D77: the working interpretation for result.json: each entity's reading, how it was settled, the alternatives,
+    the question asked (if any) and what plain code added to the answer."""
+    if not interp:
+        return {}
+    return {"working": [{k: w[k] for k in ("entity", "reading", "settled", "confidence", "alternatives")}
+                        for w in interp.get("working", [])],
+            "ambiguous": interp.get("ambiguous", []), "question": interp.get("question"),
+            "context": interp.get("context", {}), "opening_line": opening_line(interp), "added_by_code": stated}
 
 
 def provenance_of(ep) -> dict:
@@ -413,6 +445,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--picks-file", default=None, metavar="FILE",
                    help="D70: one pool pick per task and request, shared by every run that names the same file (the "
                         "three architectures of a benchmark); a recorded pick is reused when it passed vetting again")
+    p.add_argument("--interpret", choices=["on", "off"], default="on",
+                   help="D77: read the task before planning — list the readings of its key names and terms; a clear "
+                        "winner is used, otherwise --interactive asks one question and a non-interactive run states "
+                        "its assumption in the answer")
+    p.add_argument("--context", default=None, metavar="YAML",
+                   help="D77: read-only user context (location, organisation, role) for the interpretation step")
     p.add_argument("--timezone", default=None, metavar="IANA",
                    help="D75: the run's time zone for today's date and weekday in every step prompt, e.g. "
                         "America/Chicago (default: the machine's local zone)")
@@ -470,7 +508,7 @@ def main(argv: list[str] | None = None) -> int:
                     limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
                     ask=input if args.interactive else None, pool=pool, local=local,
                     equal_tools=args.equal_tools == "on", picks_file=args.picks_file, picks_only=args.picks_only,
-                    timezone=args.timezone)
+                    timezone=args.timezone, interpret=args.interpret == "on", context=load_context(args.context))
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
