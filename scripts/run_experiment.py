@@ -37,10 +37,10 @@ from amoeba.tools.registry import default_registry
 ROOT = Path(__file__).resolve().parents[1]
 
 
-# box: experimenter
 OVERRIDES = ("AMOEBA_BASE_URL", "AMOEBA_MODEL", "AMOEBA_API_KEY")   # would override --profile (as in the bench drivers)
 
 
+# box: experimenter
 def load_env(files: list[str]) -> dict:
     """The runs' environment: this one without the AMOEBA_* model overrides, plus the KEY=VALUE files."""
     e = {k: v for k, v in os.environ.items() if k not in OVERRIDES}
