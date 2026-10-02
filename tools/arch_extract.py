@@ -760,6 +760,23 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI decides here (the runs it starts call the model inside Boxes 1–3).",
          disposes="Plain code builds both arms, runs them and writes the pairs.",
          anchors=[]),
+    dict(id="gate", view="adapt", title="8 · Gate and ledger (D84)", kind="code", plan=None,
+         sentence="Keeps a recipe change only when its gain on held-out tasks beats the measured noise, was predicted, is "
+                  "worth its cost, keeps the team honest and loses nothing on the tasks that already worked.",
+         what=["Noise floor, once per kind and recipe version: the recipe against itself with other seeds on the "
+               "held-out after-shift tasks; noise = 2 × the spread of those score differences / √(pairs).",
+               "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from "
+               "held-out tasks; 2 the mean gain beats the noise (and a floor), and a one-sided paired test, corrected "
+               "for every hypothesis tried since the last accept, is significant; 3 the gain has the predicted sign; "
+               "4 the token cost is justified; 5 no more honesty flags and no new refusals; 6 no loss on the "
+               "before-shift tasks beyond the noise.",
+               "Every event is a ledger line (calibration, hypothesis, decision with its numbers and reasons); an "
+               "accepted recipe becomes the kind's current version. After an accept, a rollback watch reverts to the "
+               "parent version if the next practice tasks fall below the alarm window minus the noise.",
+               "Thresholds are in amoeba/config/adapt.yaml; nothing here calls an AI."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code computes the noise floor, applies rules 1–6 and writes the ledger and the store.",
+         anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and

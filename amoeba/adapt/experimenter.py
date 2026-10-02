@@ -133,6 +133,22 @@ def honesty_flags(run_dir: str | Path) -> float:
     return n + (1 if r.get("error") else 0)
 
 
+DRAFT_AGENTS = {"planner", "agent_observer", "plan_observer", "interpreter"}
+
+
+def draft_tokens(run_dir: str | Path) -> int:
+    """Tokens a run spent in Box 2 (interpretation, Planner, both Observers), from its trace."""
+    t = Path(run_dir) / "trace.jsonl"
+    n = 0
+    for line in (t.read_text(encoding="utf-8").splitlines() if t.exists() else []):
+        if '"chat"' not in line:
+            continue
+        r = json.loads(line)
+        if r.get("name") == "chat" and r.get("gen_ai.agent.name") in DRAFT_AGENTS:
+            n += int(r.get("gen_ai.usage.input_tokens") or 0) + int(r.get("gen_ai.usage.output_tokens") or 0)
+    return n
+
+
 def refusals(r: dict) -> int:
     """Sandbox refusals (local tools) and side-effect refusals (pool vetting) in one run."""
     n = sum((r.get("local_refusals") or {}).values())
@@ -304,9 +320,12 @@ def _arm_a(stream: Stream, recipe_A: Recipe, root: Path, tasks: list[StreamTask]
     return got, sum(1 for _ in got) - len(todo)
 
 
-def _pair(t: StreamTask, k: int, a: RunRecord, b: RunRecord) -> Pair:
+def _pair(t: StreamTask, k: int, a: RunRecord, b: RunRecord, shared_draft: bool = False) -> Pair:
+    """shared_draft: arm B ran on arm A's saved draft, so A's drafting tokens count for B too (the cost comparison
+    is per full run)."""
+    extra = draft_tokens(a.run_dir) if shared_draft and a.run_dir else 0
     return Pair(task_id=t.id, phase=t.phase, k=k, seed=a.seed, score_A=a.score or 0.0, score_B=b.score or 0.0,
-                tokens_A=a.tokens, tokens_B=b.tokens, honesty_A=a.honesty, honesty_B=b.honesty,
+                tokens_A=a.tokens, tokens_B=b.tokens + extra, honesty_A=a.honesty, honesty_B=b.honesty,
                 refusals_A=a.refusals, refusals_B=b.refusals, run_A=a.run_dir, run_B=b.run_dir,
                 error_A=a.error, error_B=b.error)
 
@@ -342,7 +361,7 @@ def experiment(recipe_A: Recipe, edit: Edit, hypothesis_id: str, stream: Stream,
     res = ReplayResult(hypothesis_id=hypothesis_id, family=recipe_A.family, recipe_from=recipe_A.version,
                        recipe_to=recipe_B.version, recipe_A_hash=recipe_A.hash(), recipe_B_hash=recipe_B.hash(),
                        edit=edit.model_dump(), mode="same_draft" if same_draft else "own_draft",
-                       pairs=[_pair(t, k, a[(t.id, k)], b[(t.id, k)]) for t in tasks for k in range(repeats)],
+                       pairs=[_pair(t, k, a[(t.id, k)], b[(t.id, k)], same_draft) for t in tasks for k in range(repeats)],
                        arm_a_cache_hits=hits, runs=len(jobs) + (len(tasks) * repeats - hits))
     write_result(exp, res)
     return res

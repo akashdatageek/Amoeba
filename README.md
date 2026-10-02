@@ -305,6 +305,14 @@ runs the family's current recipe (A) against A plus one edit (B) on the stream's
 the same seed. A transform edit reuses arm A's saved draft, so the arms differ only by the edit; a planner-rule edit
 drafts in each arm. Arm A runs are cached per recipe version. Results go to `eval/loop/<stream>/experiments/<id>/`.
 
+## The Gate (D84, Phase 2)
+
+The Gate keeps a recipe edit only when, on the held-out post tasks, its mean gain beats both the noise floor (the
+recipe against itself with other seeds) and 0.05, a one-sided paired test corrected for every hypothesis since the
+last accept is significant, the gain was predicted, the token cost is justified, honesty flags and refusals do not
+grow, and the held-out pre tasks lose nothing beyond the noise. Every calibration, hypothesis and decision is a line
+in `eval/loop/<stream>/ledger.jsonl`; thresholds are in `amoeba/config/adapt.yaml`.
+
 ## Cost controls (D45–D48)
 
 ```bash

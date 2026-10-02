@@ -1,4 +1,4 @@
-"""Phase 2 week-1 check (spec §8): one hand-written hypothesis through Box 7 (the Experimenter) — and, from D84, Box 8.
+"""Phase 2 week-1 check (spec §8): one hand-written hypothesis through Box 7 (the Experimenter) and Box 8 (the Gate).
 
     python -m scripts.run_experiment --stream m1 --family calc --edit edit.yaml \\
         --llm openai --profile gemma-api --timezone America/Chicago --llm-cache runs/cache --env-file keys.env
@@ -10,7 +10,9 @@ edit.yaml:
     rationale: "..."
 
 Recipe A is the family's current recipe in --recipes (default eval/loop/<stream>/recipes), else the empty seed
-recipe. Every flag this script does not know is passed to each run_task run unchanged (model, cache, time zone…),
+recipe. Without a calibration row for recipe A in eval/loop/<stream>/ledger.jsonl the noise floor is calibrated
+first (A vs A′ on the held-out post slice). The ledger gets a hypothesis row and a decision row with the reasons;
+an accepted recipe B becomes the family's current version in the store. Every flag this script does not know is passed to each run_task run unchanged (model, cache, time zone…),
 after the experiment flags of amoeba/config/adapt.yaml. Keys come from --env-file files and are never printed.
 """
 from __future__ import annotations
@@ -24,8 +26,13 @@ from pathlib import Path
 import yaml
 
 from amoeba.adapt.experimenter import SubprocessRunner, calibrate, experiment, experiment_flags
-from amoeba.adapt.recipe import Edit, adapt_config, load_recipe, seed_recipe
-from amoeba.adapt.stream import load_stream
+from amoeba.adapt.gate import Hypothesis, decide, decision_row, noise_floor
+from amoeba.adapt.ledger import Ledger
+from amoeba.adapt.recipe import adapt_config, apply_edit, load_recipe, seed_recipe, write_store
+from amoeba.adapt.stream import Stream, load_stream
+from amoeba.safety.envelope import Envelope
+from amoeba.task.models import Draft
+from amoeba.tools.registry import default_registry
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -59,6 +66,70 @@ def summary(res) -> str:
             f"B={mean([p.tokens_B for p in post]):.0f}; arm-A cache hits {res.arm_a_cache_hits}; runs {res.runs}")
 
 
+def _rel(root: Path, p: Path) -> str:
+    try:
+        return str(p.relative_to(root))
+    except ValueError:
+        return str(p)
+
+
+def sample_draft(res) -> Draft | None:
+    """V5's sample draft: Box 2's draft of the first arm-A run."""
+    for p in res.post():
+        for f in ("draft.json", "plan.json"):
+            path = Path(p.run_A) / f if p.run_A else None
+            if path and path.exists():
+                try:
+                    return Draft.model_validate_json(path.read_text(encoding="utf-8"))
+                except ValueError:
+                    pass
+    return None
+
+
+# box: gate
+def ensure_calibration(stream: Stream, family: str, runner, root: Path, store: Path, repeats: int) -> dict:
+    """§9.1: the calibration row of the family's current recipe, run (A vs A′) when the ledger has none."""
+    ledger = Ledger(root / "ledger.jsonl")
+    recipe_A = load_recipe(store, family) or seed_recipe(family)
+    row = ledger.calibration(family, recipe_A.hash())
+    if row is not None:
+        return row
+    cal = calibrate(recipe_A, stream, runner, root, repeats)
+    post = cal.post()
+    return ledger.append({"event": "calibration", "family": family, "recipe_from": recipe_A.version,
+                          "recipe_hash": recipe_A.hash(), "noise": noise_floor(cal), "n": len(post),
+                          "d_AA_mean": round(sum(p.d for p in post) / len(post), 4) if post else None,
+                          "score_A_mean": round(sum(p.score_A for p in post) / len(post), 4) if post else None,
+                          "score_A2_mean": round(sum(p.score_B for p in post) / len(post), 4) if post else None,
+                          "tokens_A_mean": round(sum(p.tokens_A for p in post) / len(post)) if post else None,
+                          "runs": f"experiments/{cal.hypothesis_id}/"})
+
+
+# box: gate
+def hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | None = None,
+               repeats: int = 3) -> dict:
+    """One hand-written hypothesis through Box 7 and Box 8: calibration if needed, the experiment, the decision.
+    Returns the ledger's decision row; on accept recipe B becomes the family's current version in `store`."""
+    root = Path(root)
+    store = Path(store or root / "recipes")
+    ledger = Ledger(root / "ledger.jsonl")
+    cal = ensure_calibration(stream, h.family, runner, root, store, repeats)
+    recipe_A = load_recipe(store, h.family) or seed_recipe(h.family)
+    recipe_B = apply_edit(recipe_A, h.edit, created_by="human", hypothesis_id=h.hypothesis_id)
+    ledger.append({"event": "hypothesis", "family": h.family, "hypothesis_id": h.hypothesis_id,
+                   "recipe_from": recipe_A.version, "edit": h.edit.model_dump(), "predicted_delta": h.predicted_delta,
+                   "rationale": h.rationale, "created_by": "human"})
+    res = experiment(recipe_A, h.edit, h.hypothesis_id, stream, runner, root, repeats)
+    print(summary(res), flush=True)
+    tools = default_registry()
+    dec = decide(recipe_A, recipe_B, h, res, cal["noise"], ledger.tried_since_accept(h.family) + 1,
+                 stream.heldout(h.family), Envelope.from_registry(tools), sample_draft(res))
+    row = ledger.append(decision_row(h, recipe_A, recipe_B, dec, f"experiments/{h.hypothesis_id}/"))
+    if dec.decision == "accept":                   # Box 9, minimal: the store's current version (D88 adds history)
+        write_store(store, [recipe_B])
+    return row
+
+
 # box: experimenter
 def parse(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -80,21 +151,19 @@ def main(argv=None) -> int:
     cfg = adapt_config().get("experiment", {})
     root = Path(args.root or ROOT / "eval" / "loop" / args.stream)
     stream = load_stream(args.stream)
-    recipe_A = load_recipe(args.recipes or root / "recipes", args.family) or seed_recipe(args.family)
     runner = SubprocessRunner([*experiment_flags(), *option_defaults(), *passthrough], env=load_env(args.env_file),
                               parallel=args.parallel or cfg.get("parallel", 8), scratch=root / "jobs")
     repeats = args.repeats or cfg.get("repeats", 3)
+    store = Path(args.recipes or root / "recipes")
     if args.calibrate_only:
-        res = calibrate(recipe_A, stream, runner, root, repeats)
-        print(summary(res))
+        print(json.dumps(ensure_calibration(stream, args.family, runner, root, store, repeats)))
         return 0
     if not args.edit:
         print("give --edit or --calibrate-only")
         return 2
-    h = yaml.safe_load(Path(args.edit).read_text(encoding="utf-8"))
-    res = experiment(recipe_A, Edit.model_validate(h["edit"]), h["hypothesis_id"], stream, runner, root, repeats)
-    print(summary(res))
-    print(json.dumps({"experiment": str(root / "experiments" / h["hypothesis_id"])}))
+    h = Hypothesis.model_validate({"family": args.family, **yaml.safe_load(Path(args.edit).read_text(encoding="utf-8"))})
+    row = hand_check(stream, h, runner, root, store, repeats)
+    print(json.dumps(row, indent=2))
     return 0
 
 
