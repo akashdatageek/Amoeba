@@ -309,14 +309,24 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
 
 
 # box: planner
-def toolbox_text(envelope: Envelope, web: bool = False, local: bool = False, pool: bool = False) -> str:
-    """D68: every tool Box 3 will really have, and how a role gets it, for the Planner and both observers."""
-    lines = [f"- {n}: {envelope.tool_descriptions.get(n, '')} (installed)" for n in envelope.allowed_tool_names]
-    if web:
+def toolbox_text(envelope: Envelope, web: bool = False, local: bool = False, pool: bool = False,
+                 disabled=()) -> str:
+    """D68: every tool Box 3 will really have, and how a role gets it, for the Planner and both observers.
+    disabled: D80 --disable-tools — tools taken out of this run are not listed."""
+    off = set(disabled or ())
+    lines = [f"- {n}: {envelope.tool_descriptions.get(n, '')} (installed)" for n in envelope.allowed_tool_names
+             if n not in off]
+    if web and "web_search" not in off:
         lines += ["- web_search: searches the web and returns snippets with their URLs (a role that lists web_search "
                   "or asks for it gets it)",
                   "- fetch_url: fetches the text of a web page (given together with web_search)"]
-    if local:
+    if local and off & {"local:Bash", "local:Read", "local:Write", "local:Edit"}:   # D80: what is left of them
+        left = [n for n in ("Bash", "Read", "Write", "Edit") if f"local:{n}" not in off]
+        lines += [f"- local tools, sandboxed in the run's own workspace, no network: {', '.join(left) or 'none'}. A "
+                  "role gets them through a capability request for the ability (e.g. file writing)",
+                  "- local skills for document formats: xlsx, docx, pptx, pdf (a skill request for the format gives "
+                  "the role the skill's instructions and the local tools)"]
+    elif local:
         lines += ["- local tools, sandboxed in the run's own workspace, no network: Bash (runs Python 3 or a shell "
                   "command; python3 has openpyxl, python-docx, python-pptx, matplotlib, pypdf), Read, Write and Edit "
                   "(files). A role gets them through a capability request for the ability (e.g. python_interpreter, "

@@ -96,6 +96,17 @@ BOXES: list[dict] = [
                "These files are the raw material later phases will learn from."],
          proposes="Nothing.", disposes="Plain code writes the files, even when drafting fails.",
          anchors=["scripts/run_task.py::run_one"], guard_anchors=[]),
+    dict(id="ov_adapt", view="overview", title="4–9 · Adaptation loop (Phase 2)", kind="top", opens="adapt",
+         plan=None,
+         sentence="A stream of tasks per kind; one typed change to that kind's team recipe is tested old against new on "
+                  "held-out tasks, and plain code keeps it only if the gain is real.",
+         what=["Phase 2 (spec/BUILD_SPEC_PHASE2.md). Week 1 builds the measuring half: the task stream, the team recipe "
+               "and its hook into Boxes 2–3, the Experimenter and the Gate.",
+               "A hand-written change goes through the Experimenter and the Gate before any AI may propose one.",
+               "Only Amoeba's plan runner gets recipes; the two baselines never do. Nothing in Boxes 7–8 calls an AI."],
+         proposes="Nothing yet: in week 1 the change is written by hand.",
+         disposes="Plain code runs both arms, measures the noise floor and accepts or rejects with recorded reasons.",
+         anchors=[], guard_anchors=[]),
     # ---------------------------------------------------------------- task view
     dict(id="toy_source", view="task", title="Toy task source", kind="code", plan="Toy task source",
          sentence="Makes practice jobs with known answers (sums, reversed words, vowel counts), the same for the same seed.",
@@ -695,6 +706,23 @@ BOXES: list[dict] = [
                "Used by the command line when no real AI is configured, and by every test."],
          proposes="Scripted replies.", disposes="Everything downstream treats it exactly like a real AI.",
          anchors=["amoeba/llm/toy_mock.py::toy_mock_client", "amoeba/llm/client.py::MockLLMClient"]),
+    # ---------------------------------------------------------------- adaptation loop (Phase 2)
+    dict(id="stream", view="adapt", title="0 · Task stream (D80)", kind="code", plan=None,
+         sentence="Tasks arrive in a fixed order per kind of task; held-out tasks are kept apart for testing, and the "
+                  "loop learns only the names of the rubric items a practice run failed.",
+         what=["tasks/stream_<name>.jsonl: each task has its kind (family), its D30 rubric, whether it is practice or "
+               "held-out, whether it comes before or after its kind's shift, and (practice only) its place in the order.",
+               "tasks/stream_<name>.shifts.yaml: a feedback shift (the later rubrics ask for something new that the "
+               "prompts never mention) or a tool shift (code takes a tool out of that kind's runs, --disable-tools).",
+               "Plain code checks the file when it is loaded: the new item is in every post rubric and no pre one, no "
+               "prompt mentions it, order and phase agree.",
+               "The loop only ever gets practice tasks; held-out ones are for the Experimenter. The feedback it keeps "
+               "is the failed item names, never patterns or expected numbers.",
+               "The leakage screen refuses an edit text holding an 8-word run of a held-out prompt, a held-out "
+               "expected number or a held-out task id."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code orders the tasks, applies the shifts and filters what the loop may see.",
+         anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and

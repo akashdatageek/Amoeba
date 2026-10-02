@@ -45,6 +45,7 @@ from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
+PHASE2_FIELDS = {"disabled_tools"}           # left out of result.json when None (Phase 1 records unchanged)
 
 
 # box: ov_leave, capreq, runresult
@@ -54,7 +55,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
             local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
             picks_only: bool = False, timezone: str | None = None, interpret: bool = False,
-            context=None) -> RunResult:
+            context=None, disabled_tools=()) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -62,7 +63,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     picks_file: D70 — one pool pick per task and request, shared by every run of the task; picks_only: stop after
     the toolbox step (a pre-pass that makes the picks before the architectures run).
     interpret: D77 — read the task before planning (task interpretation step); context: the read-only user context
-    (--context, amoeba.memory.context.load_context) it reads."""
+    (--context, amoeba.memory.context.load_context) it reads.
+    disabled_tools: D80 --disable-tools — already taken out of `tools`, `pool` and `local` by the caller
+    (disable_tools); recorded, and left out of the toolbox Box 2 is shown."""
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -70,6 +73,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
     t0 = time.perf_counter()
+    if disabled_tools:
+        trace.event("tools_disabled", {"amoeba.box": "stream", "amoeba.tools": list(disabled_tools)})
     draft = ep = failed = clarification = None
     answer = error = None
     team_id = ""
@@ -85,7 +90,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             interp = draft.interpretation or None                                  # D77: read when it was drafted
             trace.event("draft_reused", {"amoeba.draft_source": saved_draft.source, "amoeba.task_id": task.id})
         else:
-            toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None)
+            toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None,
+                                   disabled=disabled_tools)
             if interpret:             # D77: what the task is about is settled before the Planner drafts
                 interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed)
                 if interp["ambiguous"] and ask is not None:
@@ -179,10 +185,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace),
         replan=ep.replan if ep else {},
         interpretation=interpretation_of(interp, stated),
-        pool=pool_summary, **local_out)
+        pool=pool_summary, disabled_tools=list(disabled_tools) or None, **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
-    (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=None if box else LOCAL_FIELDS),
-                                         encoding="utf-8")
+    exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
+    (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
     return result
 
 
@@ -294,6 +300,19 @@ def quality_gate_on(choice: str | bool, topology: str, drafts_from: str | None =
     if choice == "auto":
         return topology == "plan" and not drafts_from
     return choice == "on"
+
+
+# box: stream
+def disable_tools(names, tools: ToolRegistry, pool: PoolSetup | None = None, local: LocalSetup | None = None):
+    """D80 --disable-tools a,b: one run without these tools — out of the registry (and so the envelope Box 2 is
+    shown), out of the pool (by id or name) and, for local:<Name>, out of the local tools' allow list."""
+    names = [n.strip() for n in names or () if n.strip()]
+    if not names:
+        return tools, pool, local
+    if pool is not None:
+        pool = PoolSetup(config=pool.config, cache_dir=pool.cache_dir, connector=pool.connector, env=pool.env,
+                         disabled=frozenset(names))
+    return tools.without(names), pool, (local.without(names) if local is not None else None)
 
 
 def cli_plan_options(args: argparse.Namespace):
@@ -467,6 +486,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--timezone", default=None, metavar="IANA",
                    help="D75: the run's time zone for today's date and weekday in every step prompt, e.g. "
                         "America/Chicago (default: the machine's local zone)")
+    p.add_argument("--disable-tools", default="", metavar="A,B",
+                   help="D80: take these tools out of the registry, the pool and the local tools for this run (e.g. "
+                        "calc,local:Bash); used by remove_tool shifts")
     p.add_argument("--picks-only", action="store_true",
                    help="D70: stop after the toolbox step (make the picks for --picks-file before the runs)")
     p.add_argument("--rerun-stale", action="store_true",
@@ -495,7 +517,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     llm = build_llm(args)
-    tools = default_registry()
+    disabled = [n.strip() for n in args.disable_tools.split(",") if n.strip()]          # D80
+    tools, _, _ = disable_tools(disabled, default_registry())
     envelope = Envelope.from_registry(tools, model=llm.model)
     if args.tasks:
         tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -505,6 +528,7 @@ def main(argv: list[str] | None = None) -> int:
     pool = PoolSetup(cache_dir=args.pool_dir) if args.pool else None   # D56
     local = LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir) \
         if args.local_tools == "on" else None                            # D59
+    _, pool, local = disable_tools(disabled, tools, pool, local)        # D80
     results = []
     for task in tasks:
         chosen = None
@@ -514,6 +538,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[{args.topology}] {task.id}: no saved draft #{args.draft_pick} in {args.drafts_from} — skipped")
                 continue
         box3_tools = build_box3_tools(args, tools)   # a fresh source list per run (D32)
+        if disabled:                                 # D80
+            box3_tools = box3_tools.without(disabled)
         r = run_one(task, args.topology, llm, envelope, box3_tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
                     max_tokens=cli_token_limits(args),
@@ -522,7 +548,8 @@ def main(argv: list[str] | None = None) -> int:
                     limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
                     ask=input if args.interactive else None, pool=pool, local=local,
                     equal_tools=args.equal_tools == "on", picks_file=args.picks_file, picks_only=args.picks_only,
-                    timezone=args.timezone, interpret=args.interpret == "on", context=load_context(args.context))
+                    timezone=args.timezone, interpret=args.interpret == "on", context=load_context(args.context),
+                    disabled_tools=disabled)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

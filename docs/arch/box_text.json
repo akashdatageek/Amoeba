@@ -1,6 +1,6 @@
 {
  "action_obs": {
-  "checked_at": "3c98cbe",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
@@ -34,6 +34,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/plan_runner.py::step_field",
@@ -79,6 +80,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -553,7 +555,7 @@
    },
    "title": "Action Observer (re-plan)"
   },
-  "facts_hash": "ef983940b56fb515",
+  "facts_hash": "0144d5a6fa21b2ee",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "eab21b71f661e662",
   "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code checks the change before it takes effect.",
@@ -854,7 +856,7 @@
   ]
  },
  "checks": {
-  "checked_at": "23d0535",
+  "checked_at": "a8b32ba",
   "facts": {
    "anchors": [
     {
@@ -1048,6 +1050,12 @@
      "key": "amoeba/task/models.py::DraftedRole",
      "methods": [],
      "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "D79: the Box 2 quality gate (D28) is on by default for Amoeba's plan runner, off for the baselines (flat,",
+     "key": "scripts/run_task.py::quality_gate_on",
+     "signature": "quality_gate_on(choice: str | bool, topology: str, drafts_from: str | None=None) -> bool"
     }
    ],
    "checks": [
@@ -1359,6 +1367,16 @@
     ],
     [
      "stop",
+     "if choice == 'auto'",
+     "return topology == 'plan' and (not drafts_from)"
+    ],
+    [
+     "stop",
+     "if isinstance(choice, bool)",
+     "return choice"
+    ],
+    [
+     "stop",
      "if isinstance(v, str)",
      "return [v]"
     ],
@@ -1386,18 +1404,18 @@
    "prompts": {},
    "title": "Plain-code checks on the final draft"
   },
-  "facts_hash": "d93609de45d9913b",
+  "facts_hash": "1a6973a325486d24",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "77d490c5eaf21975",
   "sentence": "Throws out broken or nameless helper entries, records tools we lack instead of dropping them, flags the summariser, and drops steps that name nobody.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "Reads the helper records and the numbered steps out of the last draft.",
    "Skips records that are not valid, have no name, or repeat a name; tools we lack go to the tool resolver below.",
    "Flags the summariser: the helper the planner marked, else the last helper of the last step (having no tools no longer decides it; nothing is appended). Then requires a team size in the allowed range.",
    "Matches each step's names to helpers (exact first, then by part of the name) and drops steps that match nobody; no steps left means drafting failed.",
    "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one summariser, a checking step done by a helper that did not produce what it checks, and task coverage: every number in the task and every deliverable verb (deliver, estimate, assess, prototype, test, gather, build, plan, and since D68 run, convert, email, make, save, write, list, read, compute, compare and more) must reach a requirement or a given; a phrase ends at sentence punctuation, not inside an email address or a decimal.",
-   "With the quality gate on, a draft failing a must-have check goes back to the planner for one more round with the failed checks listed, within the round cap."
+   "With the quality gate on by default, a draft failing a must-have check goes back to the planner for one more round with the failed checks listed, within the round cap."
   ]
  },
  "client": {
@@ -1790,7 +1808,7 @@
   ]
  },
  "critics": {
-  "checked_at": "bfb4dbf",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
@@ -1811,6 +1829,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/task/parsers.py::ParseError"
      ],
      "doc": "AgentVerse 'critic' parser = CommonParser3 (output_parser/output_parser.py:541-561) → (is_agree, criticism).",
@@ -1873,7 +1892,7 @@
    },
    "title": "Critics (all others)"
   },
-  "facts_hash": "d3512fce9583698f",
+  "facts_hash": "ecfff224dcfb9b27",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "7d6586e2c55f4a4e",
   "sentence": "Every other helper reviews the answer and must reply Agree or Disagree; unreadable replies count as agreement.",
@@ -2107,7 +2126,7 @@
   ]
  },
  "free_text": {
-  "checked_at": "23d0535",
+  "checked_at": "a8b32ba",
   "facts": {
    "anchors": [
     {
@@ -2134,6 +2153,7 @@
       "scripts/run_task.py::cli_plan_options",
       "scripts/run_task.py::cli_token_limits",
       "scripts/run_task.py::parse_args",
+      "scripts/run_task.py::quality_gate_on",
       "scripts/run_task.py::run_one"
      ],
      "doc": "",
@@ -2240,7 +2260,7 @@
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "ff78c46da0f4bc6d",
+  "facts_hash": "4b445f325c2ed0da",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
@@ -3052,7 +3072,7 @@
   ]
  },
  "localtools": {
-  "checked_at": "22aa4bb",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
@@ -3154,6 +3174,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
@@ -3747,11 +3768,11 @@
    "prompts": {},
    "title": "Local toolbox (sandboxed)"
   },
-  "facts_hash": "85b54a790d6087c4",
+  "facts_hash": "0fcb313d8674275c",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "cf9559fad29b1143",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused and logged once. They become local:<Name> tools of the run.",
    "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); a Bash command runs from there, network commands are refused (network_command) and destructive or escaping ones too (unsafe_command).",
@@ -4431,7 +4452,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "aa3be5a",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
@@ -4497,6 +4518,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/plan_runner.py::PlanRunner._turn",
       "amoeba/interp/plan_runner.py::tool_ok"
      ],
@@ -4544,7 +4566,9 @@
      "signature": "step_detail(step: PlanStep) -> str"
     },
     {
-     "callees": [],
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub"
+     ],
      "doc": "ActionInput is the last section, so it runs to the end of the reply. The AutoAgents parser splits on every",
      "key": "amoeba/interp/runtime.py::full_action_input",
      "signature": "full_action_input(raw: str, parsed: str) -> str"
@@ -5201,7 +5225,7 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "b629e4d30792bbf2",
+  "facts_hash": "d74fceb4261a1f02",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
@@ -5216,7 +5240,7 @@
   ]
  },
  "plan_summary": {
-  "checked_at": "3c98cbe",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
@@ -5244,6 +5268,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/freshness.py::stale_figure",
       "amoeba/interp/freshness.py::time_sensitive",
       "amoeba/interp/plan_runner.py::PlanRunner.blocked_capabilities",
@@ -5270,6 +5295,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/plan_runner.py::PlanRunner.add_files_section",
       "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
       "amoeba/interp/plan_runner.py::PlanRunner.files_of",
@@ -5625,11 +5651,11 @@
    },
    "title": "Summariser assembles"
   },
-  "facts_hash": "3d050ea14d9022c9",
+  "facts_hash": "eaf776f93dd42f6e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "f8491f65001402a8",
   "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Sees every step's latest output with its status, missing capabilities, verdict, figure counts, the deliverables the plan committed to, and where each figure was found (never the scoring rubric).",
    "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under Limitations when there are any.",
@@ -5640,7 +5666,7 @@
   ]
  },
  "planner": {
-  "checked_at": "23d0535",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
@@ -5678,6 +5704,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/localtools/server.py::StdioServer.start",
       "amoeba/localtools/toolbox.py::LocalToolbox.start",
@@ -5815,7 +5842,7 @@
    },
    "title": "Planner"
   },
-  "facts_hash": "9c80145ef67f87a8",
+  "facts_hash": "0e890f0b1df36231",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "53bd3e0ee5bba97c",
   "sentence": "An AI writes the list of helpers and a numbered step plan; later rounds see only the latest critique.",
@@ -5831,7 +5858,7 @@
   ]
  },
  "pool_index": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
@@ -5944,7 +5971,9 @@
      "signature": "repo_skills(repo: str, path: str='skills', clone: Callable[[str, Path], None]=git_clone, work: Path | None=None, keep: Path | None=None) -> tuple[dict, list[dict]]"
     },
     {
-     "callees": [],
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub"
+     ],
      "doc": "",
      "key": "amoeba/pool/index.py::safe_name",
      "signature": "safe_name(s: str) -> str"
@@ -6001,11 +6030,11 @@
    "prompts": {},
    "title": "Pool index (cache)"
   },
-  "facts_hash": "7a7b4cd786d825e1",
+  "facts_hash": "860d50b6e1976657",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "a8206d27f6388101",
   "sentence": "The tools and skills Box 3 may draw on, fetched ahead of time by `amoeba pool refresh`; a run only reads it.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Tools: the official MCP Registry, the latest version of each server (remote, repository, version, whether a key is needed).",
    "Skills: SKILL.md files from a shallow git clone of github.com/anthropics/skills (only the repository named in pool.yaml), with whether the skill ships scripts and the length of its text; the skill folders are kept whole under repos/ for the local toolbox (D59).",
@@ -6013,7 +6042,7 @@
   ]
  },
  "provenance": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
@@ -6049,6 +6078,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/provenance.py::equals_computed"
      ],
      "doc": "D66: remove an [unverified] tag that stands right after a number equal to a calc or local-tool result of the",
@@ -6147,11 +6177,11 @@
    "prompts": {},
    "title": "Where each figure came from"
   },
-  "facts_hash": "a664de1addd9e57e",
+  "facts_hash": "536ad209c594705b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "487cebdbfb5a1b8a",
   "sentence": "Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "A number is cited when its line carries a source id the step could have seen.",
    "Numbers from the task, from a calculation shown or run, and from the step's inputs are counted apart.",
@@ -6162,7 +6192,7 @@
   ]
  },
  "read_action": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
@@ -6230,6 +6260,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
@@ -6240,6 +6271,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
@@ -6249,7 +6281,9 @@
      "signature": "strip_thought(text: str) -> str"
     },
     {
-     "callees": [],
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub"
+     ],
      "doc": "ActionInput is the last section, so it runs to the end of the reply. The AutoAgents parser splits on every",
      "key": "amoeba/interp/runtime.py::full_action_input",
      "signature": "full_action_input(raw: str, parsed: str) -> str"
@@ -6355,10 +6389,11 @@
    "prompts": {},
    "title": "Read \"## Action\""
   },
-  "facts_hash": "2a9cc61c083ae048",
+  "facts_hash": "bcb041c4b02225bb",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "8c7248ccf38edd67",
   "sentence": "Reads the helper's chosen action: runs a tool and loops, or accepts a final answer; gives up after five turns.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "If the chosen action is one of the helper's tools, the tool runs and its result goes on the scratchpad.",
    "'Final Output' marks that helper done; the step ends when every helper of it is done.",
@@ -6771,11 +6806,13 @@
   ]
  },
  "scoring": {
-  "checked_at": "7126cfe",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
-     "callees": [],
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub"
+     ],
      "doc": "",
      "key": "amoeba/task/evaluate.py::normalise",
      "signature": "normalise(s: str) -> str"
@@ -6792,6 +6829,8 @@
     {
      "callees": [
       "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/localtools/server.py::StdioServer.start",
+      "amoeba/localtools/toolbox.py::LocalToolbox.start",
       "amoeba/task/evaluate.py::_any",
       "amoeba/task/evaluate.py::number_found",
       "amoeba/tools/web.py::SearchProvider.search",
@@ -6804,6 +6843,7 @@
     {
      "callees": [
       "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/evaluate.py::quantities"
      ],
      "doc": "The first quantity in `text` equal to value+unit within the relative tolerance (either reading of a byte",
@@ -6888,12 +6928,11 @@
    "prompts": {},
    "title": "Scoring (after Box 3)"
   },
-  "facts_hash": "ed59fd795dafa4dc",
-  "rejected_hash": "ea229ca3e69e6eb2",
+  "facts_hash": "525c1eed65f3adb0",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "462d766e9d3c79f0",
   "sentence": "Compares the team's answer with the known answer; a job with no single right answer is scored against its rubric instead.",
-  "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand (model: still true)",
   "what": [
    "After the run, the team's answer is compared with the known answer.",
    "Both are lower-cased, runs of spaces are squeezed to one, and trailing full stops are dropped.",
@@ -7039,11 +7078,12 @@
   ]
  },
  "split": {
-  "checked_at": "ae97d53",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
      "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/task/parsers.py::split_blocks",
       "amoeba/tools/web.py::SearchProvider.search",
@@ -7088,7 +7128,9 @@
      "signature": "_sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int, log: list[DraftRound], system: str=MANAGER_PREFIX, max_tokens: int | None=None) -> tuple[str, dict[str, str]]"
     },
     {
-     "callees": [],
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub"
+     ],
      "doc": "common.py:33 splits on every '##'. DEVIATION D72: a '##' right after a written '\\n' is a heading inside a",
      "key": "amoeba/task/parsers.py::split_blocks",
      "signature": "split_blocks(text: str) -> list[str]"
@@ -7168,11 +7210,11 @@
    "prompts": {},
    "title": "Split sections"
   },
-  "facts_hash": "8772089b12f6d4bc",
+  "facts_hash": "906a8273edd5b60f",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "fef54b117607e8e1",
   "sentence": "Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts.",
    "If a required part is missing, the AI is asked once more with the error attached.",
@@ -7180,7 +7222,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "aa3be5a",
+  "checked_at": "64c0f64",
   "facts": {
    "anchors": [
     {
@@ -7396,6 +7438,7 @@
     {
      "callees": [
       "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/task/evaluate.py::normalise"
      ],
      "doc": "A capability or tool name compared by its canonical form, without a pool:/local:/skill: prefix.",
@@ -7456,7 +7499,9 @@
      "signature": "no_conclusion(text: str, requests: list[str]) -> bool"
     },
     {
-     "callees": [],
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub"
+     ],
      "doc": "D61: NOT NEEDED lines are for plain code (kept in the step's metadata), not for later steps or the answer.",
      "key": "amoeba/interp/plan_runner.py::strip_not_needed",
      "signature": "strip_not_needed(text: str) -> str"
@@ -7798,11 +7843,11 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "21627e4f53c932df",
+  "facts_hash": "626cb7cc4b31dd88",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "13e802c0beb63a4e",
   "sentence": "Checks each step's output against its requirements, contract, and provenance; reads verdicts, gaps, and citation accuracy.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
@@ -9027,7 +9072,7 @@
    "title": "Stock the toolbox"
   },
   "facts_hash": "a646c242bb0ed1a9",
-  "rejected_hash": "58ce2a6ca82b6d01",
+  "rejected_hash": "cece8bda9bfd6c51",
   "seed_hash": "7524778ff38722f5",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
   "source": "hand",

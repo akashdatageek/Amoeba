@@ -243,18 +243,6 @@ then is not run). A step whose output is only a search query or a tool request f
 A verify step gets its producers' raw results as the excerpts that match the claims it checks, at most 20,000
 characters in all, marked where cut.
 
-## Identifiers in the citation check (D78)
-
-Phone numbers, ZIP codes and street numbers are matched as whole tokens, digits only, never rounded or found inside a
-longer number. A ZIP+4 printed run together ("463243348") contains its 5-digit ZIP, so an address copied correctly
-is no longer flagged as a mislabelled citation.
-
-## Quality gate on for the plan runner (D79)
-
-`--quality-gate` is now `auto` by default: on for `--topology plan` (a draft failing a hard draft check goes back to
-the Planner within the round cap), off for flat and boss_reviewers and when `--drafts-from` reuses a saved draft.
-`--quality-gate on|off` overrides it.
-
 ## Task understanding before planning (D77)
 
 Before the Planner drafts, one call lists what the task's names and terms could mean (abbreviations, acronyms,
@@ -267,6 +255,30 @@ if you meant Z, …". `--context user.yaml` (location, organisation, role; read-
     # user.yaml
     organisation: Purdue University Northwest
     location: Hammond, Indiana
+## Identifiers in the citation check (D78)
+
+Phone numbers, ZIP codes and street numbers are matched as whole tokens, digits only, never rounded or found inside a
+longer number. A ZIP+4 printed run together ("463243348") contains its 5-digit ZIP, so an address copied correctly
+is no longer flagged as a mislabelled citation.
+
+## Quality gate on for the plan runner (D79)
+
+`--quality-gate` is now `auto` by default: on for `--topology plan` (a draft failing a hard draft check goes back to
+the Planner within the round cap), off for flat and boss_reviewers and when `--drafts-from` reuses a saved draft.
+`--quality-gate on|off` overrides it.
+
+## Task stream (D80, Phase 2)
+
+Phase 2 (spec/BUILD_SPEC_PHASE2.md) learns from a stream of tasks. `tasks/stream_<name>.jsonl` holds practice tasks
+(with an `order`) and held-out tasks, each with its family, its D30 rubric and whether it comes before or after the
+family's shift; `tasks/stream_<name>.shifts.yaml` holds the shifts. A feedback shift adds rubric items the prompts
+never mention; a tool shift takes a tool out of the family's runs:
+
+    python -m scripts.run_task --tasks t.jsonl --topology plan --disable-tools calc,local:Bash
+
+Held-out tasks never reach the practice loop or any prompt; the loop learns only the names of the rubric items a
+practice run failed (`amoeba/adapt/stream.py::feedback`).
+
 ## Cost controls (D45–D48)
 
 ```bash

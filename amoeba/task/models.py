@@ -304,3 +304,5 @@ class RunResult(BaseModel):
     skills_attached: list[dict] | None = None
     clarification: str | None = None   # D53 --interactive: the user's edit appended to the task before one re-draft
     rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric
+    # Phase 2 fields, left out of result.json when None (a Phase 1 run's record is unchanged)
+    disabled_tools: list[str] | None = None   # D80 --disable-tools: tools taken out of this run
