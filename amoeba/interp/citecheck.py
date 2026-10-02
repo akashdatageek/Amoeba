@@ -7,6 +7,9 @@ up to the tag). In that stretch plain code picks out the claims it can check wit
 - a time of day (8:00 AM, 4:30 p.m., 08:30)
 - a number: a price, a percentage, a count, a date part (list markers, labels such as "step 3" or "R2", numbers
   given in the task and numbers the step computed with calc or a local tool are left out)
+- an identifier (D78): a phone number, a ZIP or ZIP+4 code, a street number — matched as a whole token, digits only,
+  never as a rounded or partial number; a 5-digit ZIP is in a source that prints its ZIP+4 run together
+  ("463243348") or hyphenated
 
 Each must appear in the text the team was really shown for that source (search snippet, fetched page, tool output),
 after normalising: case, dashes, "a.m."/"AM", spaces and thousands separators; a number also matches when the
@@ -24,6 +27,13 @@ TAG = re.compile(r"\[(S\d+(?:\s*,\s*S\d+)*)\]", re.I)
 QUOTE = re.compile(r"[\"“]([^\"”\n]{3,200})[\"”]")
 TIME = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)(?![a-z])|\b(\d{1,2}):(\d{2})\b", re.I)
 URL = re.compile(r"https?://\S+")
+# D78: identifiers, taken out before the number scan and matched as whole tokens
+PHONE = re.compile(r"(?<![\d-])(?:\+?1[-.\s]?)?(?:\(\d{3}\)\s?|\d{3}[-.\s])\d{3}[-.]\d{4}(?![\d-])")
+ZIP = re.compile(r"(?:(?<=\b[A-Z]{2} )|(?<=\b[A-Z]{2}, ))\d{5}(?:-?\d{4})?(?!\d)|"
+                 r"(?<![\d-])\d{5}-\d{4}(?![\d-])")
+STREET = re.compile(r"(?<![\d,.$])\d{1,6}(?=\s+(?:[NSEW]\.?\s+)?(?:[A-Z][\w.']*\s+){1,3}"
+                    r"(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Hwy|Highway|Pkwy|Parkway|"
+                    r"Ct|Court|Pl|Place)\b)")
 
 
 def norm(text: str) -> str:
@@ -68,10 +78,46 @@ def numbers(text: str) -> list[float]:
     return out
 
 
+def digits(tok: str) -> str:
+    return re.sub(r"\D", "", tok)
+
+
+def identifiers(body: str) -> tuple[list[tuple[str, str]], str]:
+    """D78: (kind, digits) for every phone number, ZIP and street number in `body`, and `body` with them blanked
+    out, so their digits are not also read as numbers."""
+    found = []
+
+    def take(kind):
+        def sub(m):
+            found.append((kind, digits(m.group(0))))
+            return " " * len(m.group(0))
+        return sub
+    body = PHONE.sub(take("phone"), body)
+    body = ZIP.sub(take("zip"), body)
+    body = STREET.sub(take("street"), body)
+    return found, body
+
+
+def _identifier_in(kind: str, d: str, text: str) -> bool:
+    """A whole-token match, digits only: a phone with any separators; a ZIP alone, as ZIP+4 hyphenated or run
+    together; a street number not inside a longer number."""
+    t = text or ""
+    if kind == "phone":
+        d = d[-10:]
+        return re.search(rf"(?<!\d)(?:\+?1[-.\s]?)?\(?{d[:3]}\)?[-.\s]*{d[3:6]}[-.\s]*{d[6:]}(?!\d)", t) is not None
+    if kind == "zip":
+        if len(d) == 9:
+            return re.search(rf"(?<!\d){d[:5]}-?{d[5:]}(?!\d)", t) is not None
+        return re.search(rf"(?<!\d){d}(?:-?\d{{4}})?(?!\d)", t) is not None
+    return re.search(rf"(?<![\d,.]){d}(?!\d|[,.]\d)", t) is not None
+
+
 def claims(segment: str, exempt: set[str], exact: list[float]) -> list[tuple[str, str]]:
     """(kind, claim) pairs a code check can test in the words an [S#] tag backs."""
     body = URL.sub(" ", LIST_MARKER.sub("", segment))
     out = [("quote", q.strip()) for q in QUOTE.findall(body) if len(q.split()) >= 3 or len(q.strip()) >= 12]
+    ids, body = identifiers(QUOTE.sub(lambda m: " " * len(m.group(0)), body))
+    out += [(kind, d) for kind, d in ids if d not in exempt]
     times = times_in(body)
     out += [("time", t) for t in sorted(times)]
     rest = TIME.sub(" ", norm(QUOTE.sub(" ", body)))   # a quote's and a time's digits are not claims of their own
@@ -90,6 +136,10 @@ def _has(kind: str, claim: str, text: str) -> bool:
         return norm(claim).strip(" .,;:") in norm(text)
     if kind == "time":
         return _time_match(claim, times_in(text))
+    if kind in ("phone", "zip", "street"):
+        return _identifier_in(kind, claim, text)
+    if re.fullmatch(r"\d{5}", claim) and _identifier_in("zip", claim, text):
+        return True        # D78: a bare 5-digit number is in a source's ZIP+4 run together ("463243348")
     return equals_computed(claim, numbers(text))
 
 

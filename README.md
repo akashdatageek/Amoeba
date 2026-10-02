@@ -243,6 +243,12 @@ then is not run). A step whose output is only a search query or a tool request f
 A verify step gets its producers' raw results as the excerpts that match the claims it checks, at most 20,000
 characters in all, marked where cut.
 
+## Identifiers in the citation check (D78)
+
+Phone numbers, ZIP codes and street numbers are matched as whole tokens, digits only, never rounded or found inside a
+longer number. A ZIP+4 printed run together ("463243348") contains its 5-digit ZIP, so an address copied correctly
+is no longer flagged as a mislabelled citation.
+
 ## Task understanding before planning (D77)
 
 Before the Planner drafts, one call lists what the task's names and terms could mean (abbreviations, acronyms,
