@@ -38,8 +38,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 # box: experimenter
+OVERRIDES = ("AMOEBA_BASE_URL", "AMOEBA_MODEL", "AMOEBA_API_KEY")   # would override --profile (as in the bench drivers)
+
+
 def load_env(files: list[str]) -> dict:
-    e = dict(os.environ)
+    """The runs' environment: this one without the AMOEBA_* model overrides, plus the KEY=VALUE files."""
+    e = {k: v for k, v in os.environ.items() if k not in OVERRIDES}
     for f in files or []:
         for line in Path(f).read_text(encoding="utf-8").splitlines():
             line = line.strip().removeprefix("export ").strip()
