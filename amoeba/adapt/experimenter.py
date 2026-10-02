@@ -136,6 +136,7 @@ def honesty_flags(run_dir: str | Path) -> float:
 DRAFT_AGENTS = {"planner", "agent_observer", "plan_observer", "interpreter"}
 
 
+# box: experimenter
 def draft_tokens(run_dir: str | Path) -> int:
     """Tokens a run spent in Box 2 (interpretation, Planner, both Observers), from its trace."""
     t = Path(run_dir) / "trace.jsonl"
@@ -149,6 +150,7 @@ def draft_tokens(run_dir: str | Path) -> int:
     return n
 
 
+# box: experimenter
 def refusals(r: dict) -> int:
     """Sandbox refusals (local tools) and side-effect refusals (pool vetting) in one run."""
     n = sum((r.get("local_refusals") or {}).values())
@@ -166,6 +168,7 @@ def record_of(job: Job, run_dir: Path | None, error: str | None = None) -> RunRe
                      refusals=refusals(r), error=r.get("error"))
 
 
+# box: experimenter
 def finished_run(out: Path) -> Path | None:
     """D73 resume: the newest run folder under `out` that has a result.json and did not crash."""
     runs = sorted((p for p in out.glob("*/result.json")), key=lambda p: p.stat().st_mtime) if out.exists() else []
@@ -288,16 +291,19 @@ class ArmACache:
 
 
 # ---- the experiment --------------------------------------------------------------------------------------------------
+# box: experimenter
 def _slug(s: str) -> str:
     return "".join(c if c.isalnum() or c in "-_." else "-" for c in s)[:80]
 
 
+# box: experimenter
 def heldout_disabled(stream: Stream, task: StreamTask) -> list[str]:
     """A remove_tool shift is in effect for the family's held-out post tasks."""
     return [s.tool for s in stream.shifts if s.family == task.family and s.kind == "remove_tool"
             and task.phase == "post"]
 
 
+# box: experimenter
 def _arm_a(stream: Stream, recipe_A: Recipe, root: Path, tasks: list[StreamTask], repeats: int, runner,
            seed_offset: int = 0, arm: str = "A") -> tuple[dict, int]:
     """Arm A (or A′) records per (task, k), from the cache or run now (one batch)."""
@@ -320,6 +326,7 @@ def _arm_a(stream: Stream, recipe_A: Recipe, root: Path, tasks: list[StreamTask]
     return got, sum(1 for _ in got) - len(todo)
 
 
+# box: experimenter
 def _pair(t: StreamTask, k: int, a: RunRecord, b: RunRecord, shared_draft: bool = False) -> Pair:
     """shared_draft: arm B ran on arm A's saved draft, so A's drafting tokens count for B too (the cost comparison
     is per full run)."""
@@ -330,6 +337,7 @@ def _pair(t: StreamTask, k: int, a: RunRecord, b: RunRecord, shared_draft: bool 
                 error_A=a.error, error_B=b.error)
 
 
+# box: experimenter
 def _rel(p: str) -> str:
     try:
         return str(Path(p).resolve().relative_to(ROOT))
@@ -384,6 +392,7 @@ def calibrate(recipe_A: Recipe, stream: Stream, runner, root: str | Path, repeat
     return res
 
 
+# box: experimenter
 def write_result(folder: Path, res: ReplayResult) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     rel = res.model_copy(update={"pairs": [p.model_copy(update={"run_A": _rel(p.run_A), "run_B": _rel(p.run_B)})
@@ -392,6 +401,7 @@ def write_result(folder: Path, res: ReplayResult) -> None:
     (folder / "experiment.json").write_text(rel.model_dump_json(indent=2, exclude={"pairs"}), encoding="utf-8")
 
 
+# box: experimenter
 def experiment_flags() -> list[str]:
     """The run_task flags every experiment run gets (amoeba/config/adapt.yaml experiment.run_flags)."""
     return [str(x) for x in adapt_config().get("experiment", {}).get("run_flags", [])]

@@ -26,6 +26,7 @@ from amoeba.adapt.recipe import Edit, Recipe, adapt_config, validate_recipe
 from amoeba.adapt.stream import leaks
 
 
+# box: gate
 def cfg() -> dict:
     return adapt_config()["gate"]
 
@@ -40,6 +41,7 @@ def noise_floor(cal: ReplayResult | list[float]) -> float:
     return round(2 * stdev(d) / math.sqrt(len(d)), 4)
 
 
+# box: gate
 def _ranks(xs: list[float]) -> list[float]:
     """Average ranks (1-based) of xs, ties sharing the mean rank."""
     order = sorted(range(len(xs)), key=lambda i: xs[i])
@@ -74,6 +76,7 @@ def wilcoxon_greater(d: list[float]) -> float:
     return sum(c for s, c in dist.items() if s >= w) / 2 ** n
 
 
+# box: gate
 def _betacf(a: float, b: float, x: float) -> float:
     qab, qap, qam = a + b, a + 1, a - 1
     c, dd = 1.0, 1 - qab * x / qap
@@ -97,6 +100,7 @@ def _betacf(a: float, b: float, x: float) -> float:
     return h
 
 
+# box: gate
 def _betainc(a: float, b: float, x: float) -> float:
     """Regularised incomplete beta I_x(a, b)."""
     if x <= 0:
@@ -166,6 +170,7 @@ class Decision(BaseModel):
     n_pre: int = 0
 
 
+# box: gate
 def _sign(x: float) -> int:
     return (x > 0) - (x < 0)
 

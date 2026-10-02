@@ -93,37 +93,45 @@ def seed_recipe(family: str) -> Recipe:
 
 
 # ---- the edit menu (§3.2) ------------------------------------------------------------------------------------------
+# box: recipe
 class _P(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# box: recipe
 class AddRule(_P):
     text: str
 
 
+# box: recipe
 class RemoveRule(_P):
     id: str
 
 
+# box: recipe
 class SelectOnly(_P):
     select: Selector = Field(default_factory=Selector)
 
 
+# box: recipe
 class Tighten(_P):
     select: Selector = Field(default_factory=Selector)
     clause: str
 
 
+# box: recipe
 class ToolEdit(_P):
     select: Selector = Field(default_factory=Selector)
     tool: str
 
 
+# box: recipe
 class RoleRule(_P):
     select: Selector = Field(default_factory=Selector)
     text: str
 
 
+# box: recipe
 class SetOption(_P):
     name: str
     value: Any
@@ -160,6 +168,7 @@ class Edit(BaseModel):
         return [str(self.params[k]) for k in ("text", "clause") if self.params.get(k)]
 
 
+# box: recipe
 def _next_id(prefix: str, ids: list[str]) -> str:
     nums = [int(i[len(prefix):]) for i in ids if i.startswith(prefix) and i[len(prefix):].isdigit()]
     return f"{prefix}{max(nums, default=0) + 1}"
@@ -187,10 +196,12 @@ def apply_edit(recipe: Recipe, edit: Edit, created_by: str = "architect", hypoth
 
 
 # ---- transforms on a Draft (used by D82 between Box 2 and Box 3, and by V5) ---------------------------------------
+# box: recipe
 def _summariser(d: Draft) -> str | None:
     return next((r.name for r in d.created_roles if r.is_summariser), None)
 
 
+# box: recipe
 def _answer_steps(d: Draft) -> set[int]:
     """Step numbers (1-based) of the answer step(s): the summariser's steps, else the last step."""
     s = _summariser(d)
@@ -198,10 +209,12 @@ def _answer_steps(d: Draft) -> set[int]:
     return owned or ({d.plan[-1].index + 1} if d.plan else set())
 
 
+# box: recipe
 def _tools_of(d: Draft) -> dict[str, list[str]]:
     return {r.name: list(r.tools) for r in d.created_roles}
 
 
+# box: recipe
 def select_steps(d: Draft, sel: Selector) -> list[int]:
     """Step numbers (1-based) the selector matches; the answer step is never selected."""
     answer = _answer_steps(d)
@@ -223,6 +236,7 @@ def select_steps(d: Draft, sel: Selector) -> list[int]:
     return out
 
 
+# box: recipe
 def select_roles(d: Draft, sel: Selector) -> list[str]:
     """Role names the selector matches; the summariser (who writes the answer and holds no tools) never is."""
     summ = _summariser(d)
@@ -236,6 +250,7 @@ def select_roles(d: Draft, sel: Selector) -> list[str]:
     return [n for n in names if n in picked]
 
 
+# box: recipe
 def _renumber(plan: list[DraftPlanStep], at: int) -> list[DraftPlanStep]:
     """Make room for a new step number `at` (1-based): later steps move up one, and so do references to them."""
     out = []
@@ -245,6 +260,7 @@ def _renumber(plan: list[DraftPlanStep], at: int) -> list[DraftPlanStep]:
     return out
 
 
+# box: recipe
 def _checker(d: Draft, avoid: list[str]) -> tuple[Draft, str]:
     """The team's checker role: one that already owns a verify step, else one whose name says it checks; else a
     new one (adapt.yaml checker_role), unless the team is full, then a role not in the step it checks."""
@@ -272,6 +288,7 @@ def _checker(d: Draft, avoid: list[str]) -> tuple[Draft, str]:
     return d, (others or [r.name for r in d.created_roles if r.name != summ])[0]
 
 
+# box: recipe
 def _t_add_verify_step(d: Draft, t: Transform) -> tuple[Draft, dict]:
     targets = select_steps(d, t.select)
     added, roles_before = [], {r.name for r in d.created_roles}
@@ -298,6 +315,7 @@ def _t_add_verify_step(d: Draft, t: Transform) -> tuple[Draft, dict]:
                "after_steps": sorted(targets)}
 
 
+# box: recipe
 def _t_tighten(d: Draft, t: Transform) -> tuple[Draft, dict]:
     steps = select_steps(d, t.select)
     clause = t.params["clause"].strip()
@@ -306,6 +324,7 @@ def _t_tighten(d: Draft, t: Transform) -> tuple[Draft, dict]:
     return d.model_copy(update={"plan": plan}), {"steps": steps}
 
 
+# box: recipe
 def _t_tools(d: Draft, t: Transform) -> tuple[Draft, dict]:
     roles, tool = select_roles(d, t.select), t.params["tool"]
     changed, out = [], []
@@ -321,6 +340,7 @@ def _t_tools(d: Draft, t: Transform) -> tuple[Draft, dict]:
     return d.model_copy(update={"created_roles": out}), {"roles": changed}
 
 
+# box: recipe
 def _t_role_rule(d: Draft, t: Transform) -> tuple[Draft, dict]:
     roles, text = select_roles(d, t.select), t.params["text"].strip()
     out = [r.model_copy(update={"constraints": [*r.constraints, text]}) if r.name in roles else r
@@ -352,6 +372,7 @@ class Violation(BaseModel):
     detail: str
 
 
+# box: recipe
 def _texts(recipe: Recipe) -> list[tuple[str, str]]:
     out = [(f"rule {r.id}", r.text) for r in recipe.planner_rules]
     out += [(f"transform {t.id}", str(t.params[k])) for t in recipe.transforms for k in ("clause", "text")
@@ -359,6 +380,7 @@ def _texts(recipe: Recipe) -> list[tuple[str, str]]:
     return out
 
 
+# box: recipe
 def plan_problems(d: Draft) -> list[str]:
     """The Phase 1 plan checks V5 re-runs after the transforms: depends_on names existing steps, no cycle, every
     role a step names exists, step numbers are 1..n in order."""

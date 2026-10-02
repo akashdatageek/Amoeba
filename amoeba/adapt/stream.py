@@ -24,6 +24,7 @@ from amoeba.task.models import Task
 TASKS_DIR = Path(__file__).resolve().parents[2] / "tasks"
 
 
+# box: stream
 class HeldOutLeak(RuntimeError):
     """A held-out task (or its text) was about to reach the practice loop or a prompt."""
 
@@ -66,6 +67,7 @@ class Shift(BaseModel):
         return self
 
 
+# box: stream
 def item_names(task: Task) -> list[str]:
     r = task.rubric
     if r is None:
@@ -171,6 +173,7 @@ def feedback_record(task: StreamTask, result) -> dict:
 
 
 # ---- leakage screen (§7, re-checked by the Gate §9.2.1) ------------------------------------------------------------
+# box: stream
 def _words(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+(?:[.,][0-9]+)*", (text or "").lower())
 
@@ -199,5 +202,6 @@ def leaks(text: str, heldout: list[StreamTask], ngram: int = 8) -> list[str]:
     return out
 
 
+# box: stream
 def dump_task_line(t: StreamTask) -> str:
     return json.dumps(t.model_dump(mode="json", exclude_none=True), ensure_ascii=False)

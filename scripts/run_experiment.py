@@ -66,6 +66,7 @@ def summary(res) -> str:
             f"B={mean([p.tokens_B for p in post]):.0f}; arm-A cache hits {res.arm_a_cache_hits}; runs {res.runs}")
 
 
+# box: experimenter
 def _rel(root: Path, p: Path) -> str:
     try:
         return str(p.relative_to(root))
@@ -73,6 +74,7 @@ def _rel(root: Path, p: Path) -> str:
         return str(p)
 
 
+# box: experimenter
 def sample_draft(res) -> Draft | None:
     """V5's sample draft: Box 2's draft of the first arm-A run."""
     for p in res.post():
