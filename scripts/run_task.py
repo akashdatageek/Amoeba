@@ -57,7 +57,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
             picks_only: bool = False, timezone: str | None = None, interpret: bool = False,
             context=None, disabled_tools=(), recipe: Recipe | None = None,
-            cli_explicit: frozenset = frozenset(), max_turns: int | None = None) -> RunResult:
+            cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
+            default_max_turns: int | None = None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -85,7 +86,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         trace.event("tools_disabled", {"amoeba.box": "stream", "amoeba.tools": list(disabled_tools)})
     lessons = lessons_text(recipe) if saved_draft is None else {}               # D82: Box 2's {lessons} slot
     plan_options, recipe_turns, opts_applied, opts_cli = overlay_run_options(plan_options, recipe, cli_explicit)
-    max_turns = max_turns or recipe_turns          # --max-turns (set explicitly) wins over the recipe
+    # --max-turns given on the command line wins over the recipe; a harness default (--option-defaults) yields to it
+    max_turns = max_turns or recipe_turns or default_max_turns
     recipe_rec: dict | None = None
     if recipe is not None:
         recipe_rec = {"family": recipe.family, "version": recipe.version, "hash": recipe.hash(),
@@ -356,6 +358,10 @@ def disable_tools(names, tools: ToolRegistry, pool: PoolSetup | None = None, loc
     return tools.without(names), pool, (local.without(names) if local is not None else None)
 
 
+OPTION_FLAGS = {"replan": "--replan", "self_refine": "--self-refine", "collab": "--collab",
+                "check_retry_turns": "--check-retry-turns", "max_turns": "--max-turns"}
+
+
 def explicit_flags(argv: list[str]) -> frozenset:
     """D82: the option flags given on the command line (a recipe's run option yields to these)."""
     return frozenset(a.split("=", 1)[0] for a in argv if a.startswith("--"))
@@ -541,6 +547,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: turns a failed-check retry gets (D42; default 2). Set here, it wins over a recipe")
     p.add_argument("--max-turns", type=int, default=None,
                    help="turns per step for every helper (default 5). Set here, it wins over a recipe")
+    p.add_argument("--option-defaults", default="", metavar="K=V,...",
+                   help="D83: harness defaults for the options a recipe may set (replan, self_refine, collab, "
+                        "check_retry_turns, max_turns), e.g. replan=on; unlike a flag they yield to a recipe")
     p.add_argument("--disable-tools", default="", metavar="A,B",
                    help="D80: take these tools out of the registry, the pool and the local tools for this run (e.g. "
                         "calc,local:Bash); used by remove_tool shifts")
@@ -563,6 +572,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     if args.recipes and args.topology != "plan":
         p.error("--recipes is for --topology plan only; the baselines never get recipes (D82)")
     args.explicit = explicit_flags(argv if argv is not None else sys.argv[1:])
+    for kv in filter(None, args.option_defaults.split(",")):            # D83: defaults that yield to a recipe
+        k, _, v = kv.partition("=")
+        k = k.strip().replace("-", "_")
+        if k not in OPTION_FLAGS:
+            p.error(f"--option-defaults: {k!r} is not one of {sorted(OPTION_FLAGS)}")
+        if OPTION_FLAGS[k] not in args.explicit:
+            setattr(args, k, int(v) if k in ("check_retry_turns", "max_turns") else v.strip())
     if args.local_tools == "on":
         try:
             require_sandbox()
@@ -607,7 +623,9 @@ def main(argv: list[str] | None = None) -> int:
                     ask=input if args.interactive else None, pool=pool, local=local,
                     equal_tools=args.equal_tools == "on", picks_file=args.picks_file, picks_only=args.picks_only,
                     timezone=args.timezone, interpret=args.interpret == "on", context=load_context(args.context),
-                    disabled_tools=disabled, cli_explicit=args.explicit, max_turns=args.max_turns,
+                    disabled_tools=disabled, cli_explicit=args.explicit,
+                    max_turns=args.max_turns if "--max-turns" in args.explicit else None,
+                    default_max_turns=None if "--max-turns" in args.explicit else args.max_turns,
                     recipe=load_recipe(args.recipes, task.family) if args.recipes else None)   # D82
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]

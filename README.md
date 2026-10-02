@@ -296,6 +296,15 @@ appear as "Lessons for this kind of task" in the d24 Planner and Observer prompt
 the final draft (`plan.json` records them; `draft.json` keeps Box 2's own draft), and its run options overlay the run
 settings unless a flag sets them. With no recipe the run is a Phase 1 run, byte for byte.
 
+## The Experimenter (D83, Phase 2)
+
+    python -m scripts.run_experiment --stream m1 --family calc --calibrate-only  --llm openai --profile gemma-api ...
+    python -m scripts.run_experiment --stream m1 --family calc --edit edit.yaml   --llm openai --profile gemma-api ...
+
+runs the family's current recipe (A) against A plus one edit (B) on the stream's held-out tasks, 3 repeats each with
+the same seed. A transform edit reuses arm A's saved draft, so the arms differ only by the edit; a planner-rule edit
+drafts in each arm. Arm A runs are cached per recipe version. Results go to `eval/loop/<stream>/experiments/<id>/`.
+
 ## Cost controls (D45–D48)
 
 ```bash

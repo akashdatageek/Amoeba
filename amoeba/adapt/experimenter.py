@@ -1,0 +1,378 @@
+"""D83 — Box 7, the Experimenter (Phase 2 spec §8). Plain code; it calls no model itself — it runs Boxes 1–3 (which
+do) on the family's held-out tasks, old recipe (arm A) against new (arm B), and returns the paired results.
+
+    experiment(recipe_A, edit, ...) -> ReplayResult
+      recipe_B = apply_edit(recipe_A, edit)
+      for each held-out task of the family (post tasks first, then pre tasks for retention), for k in 0..repeats-1:
+        arm A: a fresh draft with recipe A's rules (seed k), run with recipe A           — cached per recipe version
+        arm B: a transform or run option edit → recipe B on arm A's saved draft (D45): the arms differ only by the edit
+               a planner rule edit → a fresh draft with recipe B's rules (seed k): draft variance is part of the noise
+        same seed, tools, model, time zone and limits in both arms
+
+Arm A results are cached by (recipe A hash, task, k, seed) for the life of a recipe version, so a later hypothesis
+against the same version runs arm B only. The calibration (A against A′ with other seeds, §9.1) fills the same cache.
+Honesty flags per run: hallucinated citations + mislabelled citations + claimed files missing + unverified checks +
+1 if the run ended in an error. Everything is written under eval/loop/<stream>/.
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Callable
+
+from pydantic import BaseModel, Field
+
+from amoeba.adapt.recipe import Edit, Recipe, adapt_config, apply_edit, write_store
+from amoeba.adapt.stream import Stream, StreamTask, dump_task_line
+
+RULE_OPS = ("add_planner_rule", "remove_planner_rule")
+CALIBRATION_SEED_OFFSET = 1000          # arm A′ of the noise-floor calibration uses seed k + this
+ROOT = Path(__file__).resolve().parents[2]
+
+
+# box: experimenter
+@dataclass
+class Job:
+    """One run of Boxes 1–3 on one held-out task."""
+
+    arm: str                       # "A", "A'" (calibration) or "B"
+    task: StreamTask
+    k: int                         # the repeat
+    seed: int
+    store: Path                    # the arm's recipe store (--recipes)
+    out: Path                      # the folder that receives this run's folder (--runs-dir)
+    namespace: str                 # LLM cache namespace: arms never share one; a crashed run resumes from it
+    drafts_from: Path | None = None    # arm B of a transform / run-option edit: arm A's run folder (D45)
+    disabled_tools: list[str] = field(default_factory=list)
+
+
+# box: experimenter
+class RunRecord(BaseModel):
+    arm: str
+    task_id: str
+    k: int
+    seed: int
+    run_dir: str = ""
+    score: float | None = None
+    tokens: int = 0
+    honesty: float = 0.0
+    refusals: int = 0
+    error: str | None = None
+
+    def crashed(self) -> bool:
+        """An error that is not the team's doing (model service, cache) — the run is redone once."""
+        return not self.run_dir or str(self.error or "").startswith(("api:", "cache_miss", "runner:"))
+
+
+# box: experimenter
+class Pair(BaseModel):
+    task_id: str
+    phase: str
+    k: int
+    seed: int
+    score_A: float
+    score_B: float
+    tokens_A: int
+    tokens_B: int
+    honesty_A: float
+    honesty_B: float
+    refusals_A: int = 0
+    refusals_B: int = 0
+    run_A: str = ""
+    run_B: str = ""
+    error_A: str | None = None
+    error_B: str | None = None
+
+    @property
+    def d(self) -> float:
+        return self.score_B - self.score_A
+
+
+# box: experimenter
+class ReplayResult(BaseModel):
+    kind: str = "hypothesis"               # hypothesis | calibration
+    hypothesis_id: str
+    family: str
+    recipe_from: int
+    recipe_to: int | None
+    recipe_A_hash: str
+    recipe_B_hash: str | None = None
+    edit: dict | None = None
+    mode: str                              # same_draft (transform / run option) | own_draft (planner rule) | calibration
+    pairs: list[Pair] = Field(default_factory=list)
+    arm_a_cache_hits: int = 0
+    runs: int = 0
+
+    def post(self) -> list[Pair]:
+        return [p for p in self.pairs if p.phase == "post"]
+
+    def pre(self) -> list[Pair]:
+        return [p for p in self.pairs if p.phase == "pre"]
+
+
+# ---- what a run left behind ---------------------------------------------------------------------------------------
+# box: experimenter
+def honesty_flags(run_dir: str | Path) -> float:
+    """hallucinated citations + Σ mislabelled citations + Σ claimed files missing + unverified checks + 1 if error."""
+    d = Path(run_dir)
+    r = json.loads((d / "result.json").read_text(encoding="utf-8"))
+    n = float((r.get("provenance") or {}).get("total", {}).get("hallucinated_citations", 0) or 0)
+    for f in sorted((d / "artifacts").glob("step_*.json")):
+        try:
+            s = json.loads(f.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        n += len(s.get("mislabelled_citations") or []) + len(s.get("claimed_files_missing") or [])
+        n += 1 if s.get("unverified_check") else 0
+    return n + (1 if r.get("error") else 0)
+
+
+def refusals(r: dict) -> int:
+    """Sandbox refusals (local tools) and side-effect refusals (pool vetting) in one run."""
+    n = sum((r.get("local_refusals") or {}).values())
+    n += sum(v for k, v in ((r.get("pool") or {}).get("reasons") or {}).items() if "side_effect" in k)
+    return int(n)
+
+
+# box: experimenter
+def record_of(job: Job, run_dir: Path | None, error: str | None = None) -> RunRecord:
+    if run_dir is None or not (run_dir / "result.json").exists():
+        return RunRecord(arm=job.arm, task_id=job.task.id, k=job.k, seed=job.seed, error=error or "runner: no result")
+    r = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
+    return RunRecord(arm=job.arm, task_id=job.task.id, k=job.k, seed=job.seed, run_dir=str(run_dir),
+                     score=r.get("score"), tokens=int(r.get("total_tokens") or 0), honesty=honesty_flags(run_dir),
+                     refusals=refusals(r), error=r.get("error"))
+
+
+def finished_run(out: Path) -> Path | None:
+    """D73 resume: the newest run folder under `out` that has a result.json and did not crash."""
+    runs = sorted((p for p in out.glob("*/result.json")), key=lambda p: p.stat().st_mtime) if out.exists() else []
+    for p in reversed(runs):
+        err = str(json.loads(p.read_text(encoding="utf-8")).get("error") or "")
+        if not err.startswith(("api:", "cache_miss")):
+            return p.parent
+    return None
+
+
+# ---- runners --------------------------------------------------------------------------------------------------------
+# box: experimenter
+class InProcessRunner:
+    """Runs each job with run_one in this process, one after another (the mock-LLM tests). llm_for(job) gives the
+    client; tools() a fresh Box 3 registry."""
+
+    def __init__(self, llm_for: Callable[[Job], object], tools: Callable[[], object] | None = None, **run_kw):
+        from amoeba.tools.registry import default_registry
+        self.llm_for, self.tools, self.run_kw = llm_for, tools or default_registry, run_kw
+        self.jobs: list[Job] = []
+
+    def run(self, jobs: list[Job]) -> list[RunRecord]:
+        from amoeba.adapt.recipe import load_recipe
+        from amoeba.interp.plan_runner import PlanOptions
+        from amoeba.safety.envelope import Envelope
+        from amoeba.task.saved_drafts import load_saved_drafts, pick
+        from scripts.run_task import disable_tools, run_one
+        out = []
+        for job in jobs:
+            self.jobs.append(job)
+            done = finished_run(job.out)
+            if done is not None:
+                out.append(record_of(job, done))
+                continue
+            tools, _, _ = disable_tools(job.disabled_tools, self.tools())
+            saved = pick(load_saved_drafts(job.drafts_from), job.task.id, 0) if job.drafts_from else None
+            kw = {"draft_prompts": "d24", "plan_options": PlanOptions(), **self.run_kw}
+            r = run_one(job.task.as_task(), "plan", self.llm_for(job), Envelope.from_registry(tools), tools, job.out,
+                        seed=job.seed, saved_draft=saved, recipe=load_recipe(job.store, job.task.family),
+                        disabled_tools=job.disabled_tools, **kw)
+            out.append(record_of(job, job.out / r.run_id))
+        return out
+
+
+# box: experimenter
+class SubprocessRunner:
+    """Runs each job as `python -m scripts.run_task` (the bench runners' pattern), `parallel` at once; a run whose
+    folder already holds a finished result is not run again (D73 resume), and a crash that is not the team's doing
+    (model service, cache) is re-run once. `flags`: everything but the per-job ones (model, cache, plan options,
+    limits, time zone); `env`: the environment with the keys (never printed)."""
+
+    def __init__(self, flags: list[str], env: dict | None = None, parallel: int = 8, scratch: Path | None = None,
+                 log: Callable[[str], None] = print):
+        self.flags, self.env, self.parallel = list(flags), env, parallel
+        self.scratch = Path(scratch or ROOT / "runs" / "adapt_jobs")
+        self.log = log
+
+    def command(self, job: Job) -> list[str]:
+        self.scratch.mkdir(parents=True, exist_ok=True)
+        tf = self.scratch / f"{job.namespace}.jsonl"
+        tf.write_text(dump_task_line(job.task) + "\n", encoding="utf-8")
+        cmd = [sys.executable, "-m", "scripts.run_task", "--tasks", str(tf), "--topology", "plan",
+               "--recipes", str(job.store), "--seed", str(job.seed), "--llm-cache-namespace", job.namespace,
+               "--runs-dir", str(job.out), *self.flags]
+        if job.drafts_from is not None:
+            cmd += ["--drafts-from", str(job.drafts_from), "--draft-pick", "0"]
+        if job.disabled_tools:
+            cmd += ["--disable-tools", ",".join(job.disabled_tools)]
+        return cmd
+
+    def _one(self, job: Job) -> RunRecord:
+        for attempt in (1, 2):
+            done = finished_run(job.out)
+            if done is not None:
+                return record_of(job, done)
+            job.out.mkdir(parents=True, exist_ok=True)
+            t0 = time.time()
+            with open(job.out / "run_task.log", "a", encoding="utf-8") as fh:
+                rc = subprocess.run(self.command(job), cwd=ROOT, env=self.env or os.environ.copy(), stdout=fh,
+                                    stderr=subprocess.STDOUT).returncode
+            runs = sorted(job.out.glob("*/result.json"), key=lambda p: p.stat().st_mtime)
+            rec = record_of(job, runs[-1].parent if runs else None, None if runs else f"runner: rc={rc}")
+            self.log(f"[{job.arm}] {job.task.id} k{job.k} score={rec.score} tokens={rec.tokens} "
+                     f"error={rec.error} {int(time.time() - t0)}s" + (" (re-run after a crash)" if attempt == 2 else ""))
+            if not rec.crashed():
+                return rec
+        return rec
+
+    def run(self, jobs: list[Job]) -> list[RunRecord]:
+        with ThreadPoolExecutor(max_workers=self.parallel) as ex:
+            return list(ex.map(self._one, jobs))
+
+
+# ---- the arm-A cache -------------------------------------------------------------------------------------------------
+# box: experimenter
+class ArmACache:
+    """Arm A (and A′) runs per recipe version: <root>/armA/<recipe hash>/<task>.k<k>.s<seed>/<run_id>/, and an index
+    <root>/armA/<recipe hash>/index.jsonl of their records."""
+
+    def __init__(self, root: Path, recipe: Recipe):
+        self.dir = Path(root) / "armA" / recipe.hash()
+        self.index = self.dir / "index.jsonl"
+
+    def out(self, task_id: str, k: int, seed: int) -> Path:
+        return self.dir / f"{task_id}.k{k}.s{seed}"
+
+    def get(self, task_id: str, k: int, seed: int) -> RunRecord | None:
+        if not self.index.exists():
+            return None
+        for line in reversed(self.index.read_text(encoding="utf-8").splitlines()):
+            r = RunRecord.model_validate_json(line)
+            if (r.task_id, r.k, r.seed) == (task_id, k, seed) and not r.crashed() and Path(r.run_dir).exists():
+                return r
+        return None
+
+    def put(self, rec: RunRecord) -> None:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        with open(self.index, "a", encoding="utf-8") as fh:
+            fh.write(rec.model_dump_json() + "\n")
+
+
+# ---- the experiment --------------------------------------------------------------------------------------------------
+def _slug(s: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_." else "-" for c in s)[:80]
+
+
+def heldout_disabled(stream: Stream, task: StreamTask) -> list[str]:
+    """A remove_tool shift is in effect for the family's held-out post tasks."""
+    return [s.tool for s in stream.shifts if s.family == task.family and s.kind == "remove_tool"
+            and task.phase == "post"]
+
+
+def _arm_a(stream: Stream, recipe_A: Recipe, root: Path, tasks: list[StreamTask], repeats: int, runner,
+           seed_offset: int = 0, arm: str = "A") -> tuple[dict, int]:
+    """Arm A (or A′) records per (task, k), from the cache or run now (one batch)."""
+    cache = ArmACache(root, recipe_A)
+    store = write_store(cache.dir / "recipes", [recipe_A])
+    got, todo = {}, []
+    for t in tasks:
+        for k in range(repeats):
+            seed = k + seed_offset
+            hit = cache.get(t.id, k, seed)
+            if hit is not None:
+                got[(t.id, k)] = hit
+            else:
+                todo.append(Job(arm=arm, task=t, k=k, seed=seed, store=store, out=cache.out(t.id, k, seed),
+                                namespace=_slug(f"{stream.name}-A-{recipe_A.hash()}-{t.id}-k{k}-s{seed}"),
+                                disabled_tools=heldout_disabled(stream, t)))
+    for rec in runner.run(todo) if todo else []:
+        cache.put(rec)
+        got[(rec.task_id, rec.k)] = rec
+    return got, sum(1 for _ in got) - len(todo)
+
+
+def _pair(t: StreamTask, k: int, a: RunRecord, b: RunRecord) -> Pair:
+    return Pair(task_id=t.id, phase=t.phase, k=k, seed=a.seed, score_A=a.score or 0.0, score_B=b.score or 0.0,
+                tokens_A=a.tokens, tokens_B=b.tokens, honesty_A=a.honesty, honesty_B=b.honesty,
+                refusals_A=a.refusals, refusals_B=b.refusals, run_A=a.run_dir, run_B=b.run_dir,
+                error_A=a.error, error_B=b.error)
+
+
+def _rel(p: str) -> str:
+    try:
+        return str(Path(p).resolve().relative_to(ROOT))
+    except ValueError:
+        return p
+
+
+# box: experimenter
+def experiment(recipe_A: Recipe, edit: Edit, hypothesis_id: str, stream: Stream, runner, root: str | Path,
+               repeats: int = 3, created_by: str = "human", slices: tuple[str, ...] = ("post", "pre")) -> ReplayResult:
+    """Box 7: recipe A against recipe A + edit on the family's held-out tasks. Writes
+    <root>/experiments/<hypothesis_id>/{experiment.json, pairs.jsonl, recipes_B/, runs/B/…}."""
+    root = Path(root)
+    recipe_B = apply_edit(recipe_A, edit, created_by=created_by, hypothesis_id=hypothesis_id)
+    tasks = [t for ph in slices for t in stream.heldout(recipe_A.family, ph)]
+    exp = root / "experiments" / hypothesis_id
+    store_B = write_store(exp / "recipes_B", [recipe_B])
+    a, hits = _arm_a(stream, recipe_A, root, tasks, repeats, runner)
+    same_draft = edit.op not in RULE_OPS
+    jobs = []
+    for t in tasks:
+        for k in range(repeats):
+            ra = a[(t.id, k)]
+            jobs.append(Job(arm="B", task=t, k=k, seed=ra.seed, store=store_B, out=exp / "runs" / "B" / f"{t.id}.k{k}",
+                            namespace=_slug(f"{stream.name}-{hypothesis_id}-B-{t.id}-k{k}"),
+                            drafts_from=Path(ra.run_dir) if same_draft and ra.run_dir else None,
+                            disabled_tools=heldout_disabled(stream, t)))
+    b = {(r.task_id, r.k): r for r in runner.run(jobs)}
+    res = ReplayResult(hypothesis_id=hypothesis_id, family=recipe_A.family, recipe_from=recipe_A.version,
+                       recipe_to=recipe_B.version, recipe_A_hash=recipe_A.hash(), recipe_B_hash=recipe_B.hash(),
+                       edit=edit.model_dump(), mode="same_draft" if same_draft else "own_draft",
+                       pairs=[_pair(t, k, a[(t.id, k)], b[(t.id, k)]) for t in tasks for k in range(repeats)],
+                       arm_a_cache_hits=hits, runs=len(jobs) + (len(tasks) * repeats - hits))
+    write_result(exp, res)
+    return res
+
+
+# box: experimenter
+def calibrate(recipe_A: Recipe, stream: Stream, runner, root: str | Path, repeats: int = 3) -> ReplayResult:
+    """§9.1 runs: recipe A against itself (A vs A′, A′ with seeds k + 1000) on the family's held-out post slice.
+    Both arms land in the arm-A cache; arm A (seeds 0..repeats-1) is what later hypotheses reuse."""
+    root = Path(root)
+    tasks = stream.heldout(recipe_A.family, "post")
+    a, hits = _arm_a(stream, recipe_A, root, tasks, repeats, runner)
+    a2, hits2 = _arm_a(stream, recipe_A, root, tasks, repeats, runner, seed_offset=CALIBRATION_SEED_OFFSET, arm="A'")
+    res = ReplayResult(kind="calibration", hypothesis_id=f"calibration-{recipe_A.family}-v{recipe_A.version}",
+                       family=recipe_A.family, recipe_from=recipe_A.version, recipe_to=None,
+                       recipe_A_hash=recipe_A.hash(), mode="calibration",
+                       pairs=[_pair(t, k, a[(t.id, k)], a2[(t.id, k)]) for t in tasks for k in range(repeats)],
+                       arm_a_cache_hits=hits + hits2, runs=2 * len(tasks) * repeats - hits - hits2)
+    write_result(root / "experiments" / res.hypothesis_id, res)
+    return res
+
+
+def write_result(folder: Path, res: ReplayResult) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
+    rel = res.model_copy(update={"pairs": [p.model_copy(update={"run_A": _rel(p.run_A), "run_B": _rel(p.run_B)})
+                                           for p in res.pairs]})
+    (folder / "pairs.jsonl").write_text("".join(p.model_dump_json() + "\n" for p in rel.pairs), encoding="utf-8")
+    (folder / "experiment.json").write_text(rel.model_dump_json(indent=2, exclude={"pairs"}), encoding="utf-8")
+
+
+def experiment_flags() -> list[str]:
+    """The run_task flags every experiment run gets (amoeba/config/adapt.yaml experiment.run_flags)."""
+    return [str(x) for x in adapt_config().get("experiment", {}).get("run_flags", [])]

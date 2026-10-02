@@ -744,6 +744,22 @@ BOXES: list[dict] = [
          proposes="Nothing yet: in week 1 an edit is written by hand (the Architect proposes them in week 2).",
          disposes="Plain code applies the edit, applies the transforms and refuses a recipe that breaks V1–V5.",
          anchors=[]),
+    dict(id="experimenter", view="adapt", title="7 · Experimenter (D83)", kind="code", plan=None,
+         sentence="Runs the old recipe against the old recipe plus one edit on the kind's held-out tasks, three times "
+                  "each, with the same seed, tools and model, and returns the score pairs.",
+         what=["For each held-out task (after-shift tasks first, then before-shift ones for the retention check) and each "
+               "repeat, arm A drafts afresh with the old recipe and runs it.",
+               "For a transform or run-option edit, arm B reuses arm A's saved draft, so the only difference between "
+               "the arms is the edit; for a planner-rule edit, arm B drafts with its own rules and draft variance is "
+               "part of the noise.",
+               "Arm A runs are cached per recipe version (by the recipe's hash), so a later hypothesis against the same "
+               "version runs arm B only; the noise-floor calibration (A against A' with other seeds) fills that cache.",
+               "Each pair records both scores, tokens, honesty flags (made-up or mislabelled citations, claimed files "
+               "missing, checks that re-checked nothing, an error) and refusals. Runs go out as run_task processes, 8 "
+               "at once; a finished run is never redone, and a model-service crash is re-run once."],
+         proposes="Nothing: no AI decides here (the runs it starts call the model inside Boxes 1–3).",
+         disposes="Plain code builds both arms, runs them and writes the pairs.",
+         anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and
