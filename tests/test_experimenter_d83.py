@@ -109,3 +109,11 @@ def test_the_subprocess_runner_builds_one_run_task_command_per_job(tmp_path):
         assert part in joined
     line = json.loads((tmp_path / "jobs" / "ns.jsonl").read_text())
     assert line["id"] == "h-post-1" and line["split"] == "heldout"       # Box 1–3 read it as a plain Task
+
+
+def test_scores_are_recomputed_from_the_saved_answer(tmp_path):
+    """A run's score comes from the current scorer and its saved answer, not the stored number (D80a)."""
+    from amoeba.adapt.experimenter import score_of
+    t = StreamTask(id="h", prompt="p", family="calc", split="heldout", phase="pre",
+                   rubric={"expected_numbers": [{"name": "area", "value": 32.4, "unit": "", "tolerance": 0.01}]})
+    assert score_of({"answer": "Floor Area: 32.4 m²", "score": 0.0}, t) == 1.0

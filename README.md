@@ -313,6 +313,12 @@ last accept is significant, the gain was predicted, the token cost is justified,
 grow, and the held-out pre tasks lose nothing beyond the noise. Every calibration, hypothesis and decision is a line
 in `eval/loop/<stream>/ledger.jsonl`; thresholds are in `amoeba/config/adapt.yaml`.
 
+## Metres are not millions (D80a)
+
+The rubric's number reader used to read the "m" of "32.4 m²" or "8 m long" as million. A lowercase "m" now scales to
+a million only after a currency sign ($1.5m), and a scale letter followed by a digit, ² or ³ is no scale at all. The
+Experimenter re-scores every run from its saved answer, so a scorer fix applies to both arms alike.
+
 ## Cost controls (D45–D48)
 
 ```bash

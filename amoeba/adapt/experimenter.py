@@ -159,12 +159,22 @@ def refusals(r: dict) -> int:
 
 
 # box: experimenter
+def score_of(result: dict, task: StreamTask) -> float | None:
+    """The run's score by the current D30 scorer, from its saved answer (a scorer fix applies to every run alike,
+    including runs scored before it)."""
+    if task.rubric is None:
+        return result.get("score")
+    from amoeba.task.evaluate import rubric_score
+    return rubric_score(result.get("answer"), task.rubric)["score"]
+
+
+# box: experimenter
 def record_of(job: Job, run_dir: Path | None, error: str | None = None) -> RunRecord:
     if run_dir is None or not (run_dir / "result.json").exists():
         return RunRecord(arm=job.arm, task_id=job.task.id, k=job.k, seed=job.seed, error=error or "runner: no result")
     r = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
     return RunRecord(arm=job.arm, task_id=job.task.id, k=job.k, seed=job.seed, run_dir=str(run_dir),
-                     score=r.get("score"), tokens=int(r.get("total_tokens") or 0), honesty=honesty_flags(run_dir),
+                     score=score_of(r, job.task), tokens=int(r.get("total_tokens") or 0), honesty=honesty_flags(run_dir),
                      refusals=refusals(r), error=r.get("error"))
 
 
@@ -275,13 +285,14 @@ class ArmACache:
     def out(self, task_id: str, k: int, seed: int) -> Path:
         return self.dir / f"{task_id}.k{k}.s{seed}"
 
-    def get(self, task_id: str, k: int, seed: int) -> RunRecord | None:
+    def get(self, task: StreamTask, k: int, seed: int) -> RunRecord | None:
         if not self.index.exists():
             return None
         for line in reversed(self.index.read_text(encoding="utf-8").splitlines()):
             r = RunRecord.model_validate_json(line)
-            if (r.task_id, r.k, r.seed) == (task_id, k, seed) and not r.crashed() and Path(r.run_dir).exists():
-                return r
+            if (r.task_id, r.k, r.seed) == (task.id, k, seed) and not r.crashed() and Path(r.run_dir).exists():
+                res = json.loads((Path(r.run_dir) / "result.json").read_text(encoding="utf-8"))
+                return r.model_copy(update={"score": score_of(res, task)})        # re-scored (see score_of)
         return None
 
     def put(self, rec: RunRecord) -> None:
@@ -313,7 +324,7 @@ def _arm_a(stream: Stream, recipe_A: Recipe, root: Path, tasks: list[StreamTask]
     for t in tasks:
         for k in range(repeats):
             seed = k + seed_offset
-            hit = cache.get(t.id, k, seed)
+            hit = cache.get(t, k, seed)
             if hit is not None:
                 got[(t.id, k)] = hit
             else:
