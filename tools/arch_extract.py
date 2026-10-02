@@ -723,7 +723,7 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code orders the tasks, applies the shifts and filters what the loop may see.",
          anchors=[]),
-    dict(id="recipe", view="adapt", title="Team recipe and edit menu (D81)", kind="code", plan=None,
+    dict(id="recipe", view="adapt", title="Team recipe, edit menu and hook (D81–D82)", kind="code", plan=None,
          sentence="Per kind of task, a small piece of data says what to tell the Planner, how code reshapes the drafted "
                   "plan and which run settings to use; one typed edit makes the next version.",
          what=["A recipe holds planner rules (lessons shown in Box 2), transforms (applied by code to the final draft) "
@@ -735,7 +735,12 @@ BOXES: list[dict] = [
                "Validation by plain code (V1–V5): tools are in the registry and not outside actions; run options are "
                "whitelisted and in range; the number of rules and transforms and the length of each text "
                "are capped (amoeba/config/adapt.yaml); no wording that tells the team to skip checks, citations or the sandbox; and "
-               "the step graph still passes the plan checks after the transforms."],
+               "the step graph still passes the plan checks after the transforms.",
+               "The hook (D82): run_task --recipes DIR loads the family's current recipe (plan runner only; the "
+               "baselines never get one). Its rules fill the lessons slot of the Planner's and both checkers' "
+               "prompts, with one more check item for the plan checker; code applies its transforms to the final draft "
+               "(draft.json keeps Box 2's own draft) and records what each changed; its run options overlay the run "
+               "settings unless the command line set them. With a reused draft only transforms and run options apply."],
          proposes="Nothing yet: in week 1 an edit is written by hand (the Architect proposes them in week 2).",
          disposes="Plain code applies the edit, applies the transforms and refuses a recipe that breaks V1–V5.",
          anchors=[]),

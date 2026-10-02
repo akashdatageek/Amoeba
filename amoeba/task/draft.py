@@ -176,18 +176,21 @@ def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
                prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False,
                max_rounds: int = MAX_ROUNDS, history: str = "", toolbox: str | None = None,
-               interpretation: dict | None = None) -> Draft:
+               interpretation: dict | None = None, lessons: dict[str, str] | None = None) -> Draft:
     """history: the previous draft the Planner revises (manager.py:26 roles_plan; "" at first). D53 --interactive
     re-drafts once: max_rounds=1, history = the draft the user clarified. toolbox: D68 — what Box 3 will really
     have (toolbox_text), shown to the d24 Planner and both observers instead of the installed-tool list.
     interpretation: D77 — the task interpretation step's result (read_task); the caller has put its note in the task
-    text. It is kept on the draft, and an open question about an interpreted entity is answered from it."""
+    text. It is kept on the draft, and an open question about an interpreted entity is answered from it.
+    lessons: D82 — the recipe's planner rules as the d24 prompts' {lessons} slot, one text per reader ("planner",
+    "agent_observer", "plan_observer"; amoeba.adapt.recipe.lessons_text); None or empty: the prompts are unchanged."""
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
     d24 = prompts == D24
     limits = token_limits(max_tokens)                 # D27: per role, CLI > env > 8192
     tl = TracedLLM(llm, trace)
     tools = toolbox if (toolbox and d24) else envelope.tool_catalog_string()
+    lessons = lessons or {}                           # D82: "" fills the slot with nothing (prompts byte-identical)
     ctx = f"[Question/Task: {task.prompt}]"          # manager.py:32 str(important_memory) — keep the bracketed form
     sugg_roles, sugg_plan = "", ""                    # manager.py:26 — cumulative strings
     suggestions = ""                                  # manager.py:27 — what the planner sees: LATEST round only
@@ -201,7 +204,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             if d24:   # D24: plan the ideal first, full role records, detailed steps, requirements and givens
                 raw, sec = _sections(tl, "planner", render(
                     PROMPT.d24_create_team, context=task.prompt, existing_roles="[]", tools=tools, history=history,
-                    suggestions=suggestions, max_agents=str(envelope.max_agents),
+                    suggestions=suggestions, max_agents=str(envelope.max_agents), lessons=lessons.get("planner", ""),
                     format_example=PROMPT.d24_create_team_format),
                     D24_PLANNER_SECTIONS, seed, log, system=PROMPT.d24_planner_system.strip(),
                     max_tokens=limits["planner"])
@@ -230,7 +233,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                     PROMPT.d24_review_team, question=task.prompt, requirements=requirements_text(sec),
                     created_roles=sec["Created Roles List"], selected_roles=sec["Selected Roles List"],
                     capability_requests=requests_text, tools=tools, history=hist_roles,
-                    max_agents=str(envelope.max_agents)),
+                    max_agents=str(envelope.max_agents), lessons=lessons.get("agent_observer", "")),
                     seed, log, system=PROMPT.d24_agent_observer_system.strip(),
                     max_tokens=limits["agent_observer"])
                 rec.agent_verdict = parse_verdict(s) or "REVISE"
@@ -253,7 +256,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                     PROMPT.d24_review_plan, context=task.prompt, requirements=requirements_text(sec),
                     roles=sec["Selected Roles List"] + sec["Created Roles List"], plan=sec["Execution Plan"],
                     risks=sec["Risks and Decisions"], capability_requests=requests_text, history=hist_plan,
-                    tools=tools),                                                       # D68: the real toolbox
+                    tools=tools, lessons=lessons.get("plan_observer", "")),             # D68: the real toolbox
                     seed, log, system=PROMPT.d24_plan_observer_system.strip(),
                     max_tokens=limits["plan_observer"])
                 rec.plan_verdict = parse_verdict(s) or "REVISE"

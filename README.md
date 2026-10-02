@@ -287,6 +287,15 @@ options. Every family starts empty, and an empty recipe changes nothing. One typ
 `validate_recipe` refuses unknown tools, out-of-range options, long or check-weakening text, and transforms that
 break the step graph. Limits are in `amoeba/config/adapt.yaml`.
 
+## Recipes in a run (D82, Phase 2)
+
+    python -m scripts.run_task --tasks t.jsonl --topology plan --recipes eval/loop/m1/recipes
+
+loads the current recipe of each task's family (plan runner only; the baselines never get one). Its planner rules
+appear as "Lessons for this kind of task" in the d24 Planner and Observer prompts, code applies its transforms to
+the final draft (`plan.json` records them; `draft.json` keeps Box 2's own draft), and its run options overlay the run
+settings unless a flag sets them. With no recipe the run is a Phase 1 run, byte for byte.
+
 ## Cost controls (D45–D48)
 
 ```bash
