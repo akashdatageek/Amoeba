@@ -723,6 +723,22 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code orders the tasks, applies the shifts and filters what the loop may see.",
          anchors=[]),
+    dict(id="recipe", view="adapt", title="Team recipe and edit menu (D81)", kind="code", plan=None,
+         sentence="Per kind of task, a small piece of data says what to tell the Planner, how code reshapes the drafted "
+                  "plan and which run settings to use; one typed edit makes the next version.",
+         what=["A recipe holds planner rules (lessons shown in Box 2), transforms (applied by code to the final draft) "
+               "and run options (whitelisted plan-runner settings). Every kind starts from an empty recipe, and an "
+               "empty recipe changes nothing.",
+               "The edit menu: add or remove a planner rule, add a check step after selected steps, add a clause to "
+               "selected steps' done-when, grant or revoke a tool on selected roles, add a rule to selected roles' "
+               "cards, set one run option. Each edit is a pure function that makes version N+1 with parent N.",
+               "Validation by plain code (V1–V5): tools are in the registry and not outside actions; run options are "
+               "whitelisted and in range; the number of rules and transforms and the length of each text "
+               "are capped (amoeba/config/adapt.yaml); no wording that tells the team to skip checks, citations or the sandbox; and "
+               "the step graph still passes the plan checks after the transforms."],
+         proposes="Nothing yet: in week 1 an edit is written by hand (the Architect proposes them in week 2).",
+         disposes="Plain code applies the edit, applies the transforms and refuses a recipe that breaks V1–V5.",
+         anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and

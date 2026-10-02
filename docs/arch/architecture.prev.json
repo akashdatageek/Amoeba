@@ -1,11 +1,11 @@
 {
  "generated_by": "tools/arch_extract.py",
- "generated_at": "2026-10-02 19:49 UTC",
+ "generated_at": "2026-10-02 19:51 UTC",
  "repo": {
-  "commit": "64c0f64a8bc4422c8de5003a3aa3422784a46903",
-  "short": "64c0f64",
+  "commit": "a8b32bad328f488017450fb097ab09c4863a0ef6",
+  "short": "a8b32ba",
   "branch": "claude/zen-fermi-mnaurm",
-  "commit_date": "2026-10-02T19:48:40+00:00",
+  "commit_date": "2026-10-02T19:50:42+00:00",
   "dirty": false,
   "dirty_scope": "amoeba/ scripts/ tests/ spec/"
  },
@@ -8277,8 +8277,8 @@
    "kind": "function",
    "name": "build_llm",
    "path": "scripts/run_task.py",
-   "line": 339,
-   "end_line": 360,
+   "line": 350,
+   "end_line": 371,
    "signature": "build_llm(args: argparse.Namespace) -> LLMClient",
    "doc": "",
    "callers": [
@@ -8301,8 +8301,8 @@
    "kind": "function",
    "name": "main",
    "path": "scripts/run_task.py",
-   "line": 482,
-   "end_line": 534,
+   "line": 495,
+   "end_line": 548,
    "signature": "main(argv: list[str] | None=None) -> int",
    "doc": "",
    "callers": [],
@@ -8329,6 +8329,7 @@
     "scripts/run_task.py::cli_plan_options",
     "scripts/run_task.py::cli_token_limits",
     "scripts/run_task.py::parse_args",
+    "scripts/run_task.py::quality_gate_on",
     "scripts/run_task.py::run_one"
    ]
   },
@@ -8337,8 +8338,8 @@
    "kind": "function",
    "name": "parse_args",
    "path": "scripts/run_task.py",
-   "line": 374,
-   "end_line": 478,
+   "line": 385,
+   "end_line": 491,
    "signature": "parse_args(argv: list[str] | None) -> argparse.Namespace",
    "doc": "",
    "callers": [
@@ -8356,6 +8357,20 @@
     "scripts/run_task.py::add_client_args",
     "scripts/run_task.py::parse_args"
    ]
+  },
+  {
+   "key": "scripts/run_task.py::quality_gate_on",
+   "kind": "function",
+   "name": "quality_gate_on",
+   "path": "scripts/run_task.py",
+   "line": 289,
+   "end_line": 296,
+   "signature": "quality_gate_on(choice: str | bool, topology: str, drafts_from: str | None=None) -> bool",
+   "doc": "D79: the Box 2 quality gate (D28) is on by default for Amoeba's plan runner, off for the baselines (flat,",
+   "callers": [
+    "scripts/run_task.py::main"
+   ],
+   "callees": []
   },
   {
    "key": "scripts/run_task.py::run_one",
@@ -9895,13 +9910,13 @@
    "name": "PROFILE_KEYS",
    "path": "amoeba/llm/profiles.py",
    "line": 20,
-   "value": "{'reasoning_effort', 'max_tokens', 'base_url', 'model', 'roles', 'merge_system', 'api_key_env'}"
+   "value": "{'base_url', 'reasoning_effort', 'model', 'max_tokens', 'merge_system', 'roles', 'api_key_env'}"
   },
   {
    "name": "ROLE_KEYS",
    "path": "amoeba/llm/profiles.py",
    "line": 21,
-   "value": "{'max_tokens', 'model'}"
+   "value": "{'model', 'max_tokens'}"
   },
   {
    "name": "BOX2_GROUPS",
@@ -10571,7 +10586,7 @@
    "name": "LOCAL_FIELDS",
    "path": "scripts/run_task.py",
    "line": 47,
-   "value": "{'local_refusals', 'local_tool_calls', 'files_created', 'skills_attached'}"
+   "value": "{'local_tool_calls', 'local_refusals', 'skills_attached', 'files_created'}"
   },
   {
    "name": "CONTINUE",
@@ -20814,9 +20829,25 @@
    "effect": "choose value"
   },
   {
+   "key": "scripts/run_task.py::quality_gate_on",
+   "path": "scripts/run_task.py",
+   "line": 292,
+   "kind": "stop",
+   "code": "if isinstance(choice, bool)",
+   "effect": "return choice"
+  },
+  {
+   "key": "scripts/run_task.py::quality_gate_on",
+   "path": "scripts/run_task.py",
+   "line": 294,
+   "kind": "stop",
+   "code": "if choice == 'auto'",
+   "effect": "return topology == 'plan' and (not drafts_from)"
+  },
+  {
    "key": "scripts/run_task.py::endpoint",
    "path": "scripts/run_task.py",
-   "line": 333,
+   "line": 344,
    "kind": "fallback",
    "code": "os.environ.get(profile.api_key_env) if profile.api_key_env else None",
    "effect": "choose value"
@@ -20824,7 +20855,7 @@
   {
    "key": "scripts/run_task.py::build_llm",
    "path": "scripts/run_task.py",
-   "line": 340,
+   "line": 351,
    "kind": "decide",
    "code": "if args.llm == 'mock'",
    "effect": "set mock = toy_mock_client()"
@@ -20832,7 +20863,7 @@
   {
    "key": "scripts/run_task.py::build_llm",
    "path": "scripts/run_task.py",
-   "line": 342,
+   "line": 353,
    "kind": "fallback",
    "code": "CachedLLM(mock, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else mock",
    "effect": "choose value"
@@ -20840,7 +20871,7 @@
   {
    "key": "scripts/run_task.py::build_llm",
    "path": "scripts/run_task.py",
-   "line": 347,
+   "line": 358,
    "kind": "fallback",
    "code": "profile.merge_system if args.merge_system is None else args.merge_system",
    "effect": "choose value"
@@ -20848,7 +20879,7 @@
   {
    "key": "scripts/run_task.py::build_llm",
    "path": "scripts/run_task.py",
-   "line": 348,
+   "line": 359,
    "kind": "fallback",
    "code": "None if args.reasoning_effort == 'unset' else args.reasoning_effort or profile.reasoning_effort",
    "effect": "choose value"
@@ -20856,7 +20887,7 @@
   {
    "key": "scripts/run_task.py::build_llm",
    "path": "scripts/run_task.py",
-   "line": 355,
+   "line": 366,
    "kind": "fallback",
    "code": "CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else client",
    "effect": "choose value"
@@ -20864,7 +20895,7 @@
   {
    "key": "scripts/run_task.py::build_llm.make",
    "path": "scripts/run_task.py",
-   "line": 355,
+   "line": 366,
    "kind": "fallback",
    "code": "CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else client",
    "effect": "choose value"
@@ -20872,7 +20903,7 @@
   {
    "key": "scripts/run_task.py::build_llm",
    "path": "scripts/run_task.py",
-   "line": 358,
+   "line": 369,
    "kind": "fallback",
    "code": "{'planner'} if getattr(args, 'planner_max_tokens', None) else set()",
    "effect": "choose value"
@@ -20880,7 +20911,7 @@
   {
    "key": "scripts/run_task.py::build_llm",
    "path": "scripts/run_task.py",
-   "line": 359,
+   "line": 370,
    "kind": "fallback",
    "code": "{'observers'} if getattr(args, 'observer_max_tokens', None) else set()",
    "effect": "choose value"
@@ -20888,7 +20919,7 @@
   {
    "key": "scripts/run_task.py::build_box3_tools",
    "path": "scripts/run_task.py",
-   "line": 366,
+   "line": 377,
    "kind": "stop",
    "code": "if not args.web_tools",
    "effect": "return tools"
@@ -20896,7 +20927,7 @@
   {
    "key": "scripts/run_task.py::build_box3_tools",
    "path": "scripts/run_task.py",
-   "line": 368,
+   "line": 379,
    "kind": "stop",
    "code": "if args.llm_cache",
    "effect": "return web_registry(CachedProvider(TavilyProvider, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace))"
@@ -20904,7 +20935,7 @@
   {
    "key": "scripts/run_task.py::parse_args",
    "path": "scripts/run_task.py",
-   "line": 476,
+   "line": 489,
    "kind": "fallback",
    "code": "except SandboxRequired",
    "effect": "p.error(str(e))"
@@ -20912,7 +20943,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 487,
+   "line": 500,
    "kind": "decide",
    "code": "if args.tasks",
    "effect": "set tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding='utf-8')"
@@ -20920,7 +20951,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 488,
+   "line": 501,
    "kind": "filter",
    "code": "keep only if l.strip()",
    "effect": "drop the rest"
@@ -20928,7 +20959,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 490,
+   "line": 503,
    "kind": "fallback",
    "code": "ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]",
    "effect": "choose value"
@@ -20936,7 +20967,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 491,
+   "line": 504,
    "kind": "fallback",
    "code": "load_saved_drafts(args.drafts_from) if args.drafts_from else None",
    "effect": "choose value"
@@ -20944,7 +20975,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 492,
+   "line": 505,
    "kind": "fallback",
    "code": "PoolSetup(cache_dir=args.pool_dir) if args.pool else None",
    "effect": "choose value"
@@ -20952,7 +20983,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 493,
+   "line": 506,
    "kind": "fallback",
    "code": "LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir) if args.local_tools == 'on' else None",
    "effect": "choose value"
@@ -20960,7 +20991,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 493,
+   "line": 506,
    "kind": "fallback",
    "code": "pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir",
    "effect": "choose value"
@@ -20968,7 +20999,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 498,
+   "line": 511,
    "kind": "decide",
    "code": "if saved is not None",
    "effect": "set chosen = pick(saved, task.id, args.draft_pick)"
@@ -20976,7 +21007,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 500,
+   "line": 513,
    "kind": "reject",
    "code": "if chosen is None",
    "effect": "skip (continue)"
@@ -20984,7 +21015,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 509,
+   "line": 523,
    "kind": "fallback",
    "code": "input if args.interactive else None",
    "effect": "choose value"
@@ -20992,7 +21023,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 520,
+   "line": 534,
    "kind": "stop",
    "code": "if not results",
    "effect": "return 1"
@@ -21000,7 +21031,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 523,
+   "line": 537,
    "kind": "filter",
    "code": "keep only if r.score is not None",
    "effect": "drop the rest"
@@ -21008,7 +21039,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 525,
+   "line": 539,
    "kind": "fallback",
    "code": "sum(scored) / len(scored) if scored else float('nan')",
    "effect": "choose value"
@@ -21016,7 +21047,7 @@
   {
    "key": "scripts/run_task.py::main",
    "path": "scripts/run_task.py",
-   "line": 533,
+   "line": 547,
    "kind": "fallback",
    "code": "f', est. cost ${sum(costs):.4f}' if all((c is not None for c in costs)) else ' (no price for this model)'",
    "effect": "choose value"
@@ -21081,7 +21112,7 @@
   }
  },
  "tests": {
-  "summary": "522 passed in 59.28s",
+  "summary": "525 passed in 57.17s",
   "tests": {
    "tests/test_arch_text.py::test_tags_put_code_in_boxes": {
     "line": 34,
@@ -23240,6 +23271,7 @@
      "scripts/run_task.py::models_of",
      "scripts/run_task.py::parse_args",
      "scripts/run_task.py::provenance_of",
+     "scripts/run_task.py::quality_gate_on",
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::run_one"
     ],
@@ -43660,6 +43692,7 @@
      "scripts/run_task.py::models_of",
      "scripts/run_task.py::parse_args",
      "scripts/run_task.py::provenance_of",
+     "scripts/run_task.py::quality_gate_on",
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::run_one"
     ],
@@ -47789,6 +47822,7 @@
      "scripts/run_task.py::models_of",
      "scripts/run_task.py::parse_args",
      "scripts/run_task.py::provenance_of",
+     "scripts/run_task.py::quality_gate_on",
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::run_one"
     ],
@@ -52939,6 +52973,7 @@
      "scripts/run_task.py::models_of",
      "scripts/run_task.py::parse_args",
      "scripts/run_task.py::provenance_of",
+     "scripts/run_task.py::quality_gate_on",
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::run_one"
     ],
@@ -63766,6 +63801,7 @@
      "scripts/run_task.py::models_of",
      "scripts/run_task.py::parse_args",
      "scripts/run_task.py::provenance_of",
+     "scripts/run_task.py::quality_gate_on",
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::run_one"
     ],
@@ -81856,6 +81892,7 @@
      "scripts/run_task.py::models_of",
      "scripts/run_task.py::parse_args",
      "scripts/run_task.py::provenance_of",
+     "scripts/run_task.py::quality_gate_on",
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::run_one"
     ],
@@ -86414,18 +86451,21 @@
    "tests/test_quality_gate_d79.py::test_auto_default_is_on_only_for_the_plan_runner_when_drafting": {
     "line": 5,
     "doc": "D79 — the Box 2 quality gate (D28) is on by default for --topology plan; off for the baselines and --drafts-from.",
-    "outcome": "unknown",
-    "direct": [],
+    "outcome": "passed",
+    "direct": [
+     "scripts/run_task.py::quality_gate_on"
+    ],
     "reached": [],
     "prompts": []
    },
    "tests/test_quality_gate_d79.py::test_explicit_choice_wins_and_the_bare_flag_still_means_on": {
     "line": 12,
     "doc": "D79 — the Box 2 quality gate (D28) is on by default for --topology plan; off for the baselines and --drafts-from.",
-    "outcome": "unknown",
+    "outcome": "passed",
     "direct": [
      "scripts/eval_draft.py::parse_args",
-     "scripts/run_task.py::parse_args"
+     "scripts/run_task.py::parse_args",
+     "scripts/run_task.py::quality_gate_on"
     ],
     "reached": [
      "amoeba/llm/cache.py::_Store.get",
@@ -86442,7 +86482,7 @@
    "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one": {
     "line": 19,
     "doc": "D79 — the Box 2 quality gate (D28) is on by default for --topology plan; off for the baselines and --drafts-from.",
-    "outcome": "unknown",
+    "outcome": "passed",
     "direct": [
      "amoeba/cli.py::main",
      "amoeba/pool/mcp.py::SdkConnector._run.main",
@@ -86934,6 +86974,7 @@
      "scripts/run_task.py::models_of",
      "scripts/run_task.py::parse_args",
      "scripts/run_task.py::provenance_of",
+     "scripts/run_task.py::quality_gate_on",
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::run_one"
     ],
@@ -98051,6 +98092,7 @@
      "scripts/run_task.py::models_of",
      "scripts/run_task.py::parse_args",
      "scripts/run_task.py::provenance_of",
+     "scripts/run_task.py::quality_gate_on",
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::run_one"
     ],
@@ -114015,12 +114057,20 @@
     "why": "the citation check no longer flags an address or phone number that is in its source, so a correct step is not reworked",
     "path": "spec/BUILD_SPEC_PHASE1.md",
     "line": 575
+   },
+   {
+    "id": "D79",
+    "original": "Phase 2 spec §13: the PNW no-context draft (docs/eval/dev/REPORT.md §2) had only two roles and a writer that verified without tools, and the Plan Observer approved it; the D28 quality gate that would send such a draft back was opt-in and had never been used in a benchmark. Phase 2 adapts Amoeba's recipe on top of Box 2, so Box 2's own floor should be on",
+    "ours": "**The Box 2 quality gate is on by default for Amoeba's plan runner** (`scripts/run_task.py::quality_gate_on`). `--quality-gate on|off|auto`, default `auto`: on for `--topology plan`, off for the baselines (flat, boss_reviewers keep their papers' drafting) and with `--drafts-from` (nothing is drafted); a bare `--quality-gate` still means on, and an explicit choice wins. The gate itself is unchanged (D28: a failed hard draft_quality check sends the draft back within the round cap). `eval_draft.py`, which drafts once for all three architectures in the benchmarks, keeps its opt-in default, so the shared drafts stay shared. This is the only Box 1–3 default Phase 2 changes. Tests: tests/test_quality_gate_d79.py — auto is on for plan only and off with --drafts-from; explicit on/off and the bare flag; main passes the resolved value per topology",
+    "why": "Amoeba's own drafts must pass the hard draft checks before Box 3 runs; the baselines are unchanged",
+    "path": "spec/BUILD_SPEC_PHASE1.md",
+    "line": 576
    }
   ]
  },
  "sample": {
   "free_text_task": {
-   "id": "433f8f34-d8a0-48c4-8827-56287433c471",
+   "id": "5c9b228d-2e3e-4ba8-857f-c7173a1a0140",
    "prompt": "Reverse the string 'adaptive' then uppercase it",
    "family": "freeform",
    "ground_truth": null,
@@ -114075,8 +114125,8 @@
   },
   "runs": {
    "flat": {
-    "run_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
-    "dir": "runs/99b0832f-d8a9-4108-a702-4c5043e0c237",
+    "run_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
+    "dir": "runs/f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
     "files": [
      "capability_requests.json",
      "plan.json",
@@ -114086,10 +114136,10 @@
     ],
     "result": {
      "interpretation": {},
-     "run_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+     "run_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
      "task_id": "toy-0-000",
      "draft_source": null,
-     "team_id": "f4a86914-d15a-4800-b8ca-39c8c05fec15",
+     "team_id": "7014ef74-c618-4435-997f-87fc85cdc7dc",
      "topology": "flat",
      "answer": "734",
      "error": null,
@@ -114105,7 +114155,7 @@
       "model": "toy-mock",
       "cost_usd": null
      },
-     "latency_ms": 6,
+     "latency_ms": 7,
      "n_llm_calls": 6,
      "draft_rounds": 1,
      "consensus": true,
@@ -114202,11 +114252,11 @@
     "team_trimmed": {
      "topology": "flat",
      "entry": [
-      "1f425523-984a-4f08-8cc3-c486ffd84029"
+      "13006a1a-2a0a-4626-b0e7-fb6bf264aa9d"
      ],
-     "exit": "75856820-e97c-462a-ae5b-9365cbce03e1",
+     "exit": "ffb2bee4-762e-40be-b6ba-1ce0621bb37a",
      "agents": {
-      "1f425523-984a-4f08-8cc3-c486ffd84029": {
+      "13006a1a-2a0a-4626-b0e7-fb6bf264aa9d": {
        "name": "Solver",
        "role": "worker",
        "model": "toy-mock",
@@ -114216,7 +114266,7 @@
        "role_prompt": "You are a careful problem solver. Do exactly what the task asks and report only the result … [+1 chars]",
        "max_history": 5
       },
-      "75856820-e97c-462a-ae5b-9365cbce03e1": {
+      "ffb2bee4-762e-40be-b6ba-1ce0621bb37a": {
        "name": "Language Expert",
        "role": "worker",
        "model": "toy-mock",
@@ -114227,8 +114277,8 @@
      },
      "edges": [
       {
-       "src": "1f425523-984a-4f08-8cc3-c486ffd84029",
-       "dst": "75856820-e97c-462a-ae5b-9365cbce03e1",
+       "src": "13006a1a-2a0a-4626-b0e7-fb6bf264aa9d",
+       "dst": "ffb2bee4-762e-40be-b6ba-1ce0621bb37a",
        "type": "sequential",
        "schema_id": "text",
        "condition": null
@@ -114238,7 +114288,7 @@
       {
        "index": 0,
        "agent_ids": [
-        "1f425523-984a-4f08-8cc3-c486ffd84029"
+        "13006a1a-2a0a-4626-b0e7-fb6bf264aa9d"
        ],
        "text": "[Solver]: Solve the task and report the result.",
        "kind": "",
@@ -114251,7 +114301,7 @@
       {
        "index": 1,
        "agent_ids": [
-        "75856820-e97c-462a-ae5b-9365cbce03e1"
+        "ffb2bee4-762e-40be-b6ba-1ce0621bb37a"
        ],
        "text": "[Language Expert]: Restate the Solver's result as the final answer.",
        "kind": "",
@@ -114463,9 +114513,9 @@
      "raw_draft": "## Thought\nThe task is small: one role works it out, one language expert states the answer.\n\n## Question or Task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n## Selected Roles List:\n```\n```\n\n## Created Roles List:\n```\n{\n    \"name\": \"Solver\",\n    \"description\": \"Works out the answer to the task, using the calc tool for any arithmetic.\",\n    \"tools\": [\"calc\"],\n    \"suggestions\": \"Use calc for arithmetic. Reply with only the final value.\",\n    \"prompt\": \"You are a careful problem solver. Do exactly what the task asks and report only the result.\"\n},\n{\n    \"name\": \"Language Expert\",\n    \"desc … [+458 chars]"
     },
     "trace_lines": [
-     "{\"ts\": \"2026-10-02T19:49:49.257546+00:00\", \"episode_id\": \"99b0832f-d8a9-4108-a702-4c5043e0c237\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T19:49:49.257969+00:00\", \"episode_id\": \"99b0832f-d8a9-4108-a702-4c5043e0c237\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T19:49:49.258043+00:00\", \"episode_id\": \"99b0832f-d8a9-4108-a702-4c5043e0c237\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
+     "{\"ts\": \"2026-10-02T19:51:41.409639+00:00\", \"episode_id\": \"f9928cc8-4b8f-4fa3-954e-e5ec19e3be24\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-02T19:51:41.410072+00:00\", \"episode_id\": \"f9928cc8-4b8f-4fa3-954e-e5ec19e3be24\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-02T19:51:41.410149+00:00\", \"episode_id\": \"f9928cc8-4b8f-4fa3-954e-e5ec19e3be24\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
     ],
     "n_trace_lines": 14,
     "timeline": [
@@ -114479,8 +114529,8 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.257494+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.409586+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "invoke_agent",
        "gen_ai.agent.name": "planner",
@@ -114498,8 +114548,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T19:49:49.257546+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.409639+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "planner",
@@ -114526,8 +114576,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T19:49:49.257969+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.410072+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "agent_observer",
@@ -114554,8 +114604,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T19:49:49.258043+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.410149+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "plan_observer",
@@ -114582,8 +114632,8 @@
       "latency_ms": 0,
       "result": "draft_quality: passed=2, failed=1, failed_checks=roles_fully_defined, box=checks",
       "raw": {
-       "ts": "2026-10-02T19:49:49.258256+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.410403+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "event",
        "name": "draft_quality",
        "amoeba.quality.passed": 2,
@@ -114602,12 +114652,12 @@
       "latency_ms": 1,
       "result": "answer '734'",
       "raw": {
-       "ts": "2026-10-02T19:49:49.261746+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.414403+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "invoke_workflow",
        "gen_ai.workflow.name": "team-flat-toy-0-00",
-       "gen_ai.conversation.id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "gen_ai.conversation.id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "amoeba.box": "interpreter",
        "latency_ms": 1
       }
@@ -114622,8 +114672,8 @@
       "latency_ms": 0,
       "result": "run_clock: date=2026-10-02, weekday=Friday, tz=UTC, box=interpreter",
       "raw": {
-       "ts": "2026-10-02T19:49:49.261773+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.414428+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "event",
        "name": "run_clock",
        "amoeba.date": "2026-10-02",
@@ -114642,11 +114692,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.261854+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.414525+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "1f425523-984a-4f08-8cc3-c486ffd84029",
+       "gen_ai.agent.id": "13006a1a-2a0a-4626-b0e7-fb6bf264aa9d",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "helper",
        "latency_ms": 0
@@ -114662,11 +114712,11 @@
       "latency_ms": 0,
       "result": "Action: calc · ActionInput: 26 * 28 + 6",
       "raw": {
-       "ts": "2026-10-02T19:49:49.261873+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.414557+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "1f425523-984a-4f08-8cc3-c486ffd84029",
+       "gen_ai.agent.id": "13006a1a-2a0a-4626-b0e7-fb6bf264aa9d",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
@@ -114690,12 +114740,12 @@
       "latency_ms": 0,
       "result": "ran tool calc (result is not written to the trace)",
       "raw": {
-       "ts": "2026-10-02T19:49:49.262277+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.415277+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "execute_tool",
        "gen_ai.tool.name": "calc",
-       "gen_ai.agent.id": "1f425523-984a-4f08-8cc3-c486ffd84029",
+       "gen_ai.agent.id": "13006a1a-2a0a-4626-b0e7-fb6bf264aa9d",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "tools",
        "latency_ms": 0
@@ -114711,11 +114761,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.262471+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.415462+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "1f425523-984a-4f08-8cc3-c486ffd84029",
+       "gen_ai.agent.id": "13006a1a-2a0a-4626-b0e7-fb6bf264aa9d",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "helper",
        "latency_ms": 0
@@ -114731,11 +114781,11 @@
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-02T19:49:49.262487+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.415487+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "1f425523-984a-4f08-8cc3-c486ffd84029",
+       "gen_ai.agent.id": "13006a1a-2a0a-4626-b0e7-fb6bf264aa9d",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
@@ -114759,11 +114809,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.262620+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.415692+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "75856820-e97c-462a-ae5b-9365cbce03e1",
+       "gen_ai.agent.id": "ffb2bee4-762e-40be-b6ba-1ce0621bb37a",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.box": "helper",
        "latency_ms": 0
@@ -114779,11 +114829,11 @@
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-02T19:49:49.262632+00:00",
-       "episode_id": "99b0832f-d8a9-4108-a702-4c5043e0c237",
+       "ts": "2026-10-02T19:51:41.415709+00:00",
+       "episode_id": "f9928cc8-4b8f-4fa3-954e-e5ec19e3be24",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "75856820-e97c-462a-ae5b-9365cbce03e1",
+       "gen_ai.agent.id": "ffb2bee4-762e-40be-b6ba-1ce0621bb37a",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.role_group": "summariser",
        "gen_ai.request.model": "toy-mock",
@@ -114999,8 +115049,8 @@
     }
    },
    "boss_reviewers": {
-    "run_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
-    "dir": "runs/51c6c6be-cd30-4be6-b804-e034461e5da4",
+    "run_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
+    "dir": "runs/9a84b9dd-4197-4498-9959-a56b3661ec67",
     "files": [
      "capability_requests.json",
      "plan.json",
@@ -115010,10 +115060,10 @@
     ],
     "result": {
      "interpretation": {},
-     "run_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+     "run_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
      "task_id": "toy-0-000",
      "draft_source": null,
-     "team_id": "dbdae9e9-cc2b-416f-8e4b-82e57a400587",
+     "team_id": "60178fbe-623d-4f5a-a935-324e5df023fb",
      "topology": "boss_reviewers",
      "answer": "734",
      "error": null,
@@ -115029,7 +115079,7 @@
       "model": "toy-mock",
       "cost_usd": null
      },
-     "latency_ms": 5,
+     "latency_ms": 6,
      "n_llm_calls": 5,
      "draft_rounds": 1,
      "consensus": true,
@@ -115126,11 +115176,11 @@
     "team_trimmed": {
      "topology": "boss_reviewers",
      "entry": [
-      "b5aaba02-b5c2-4479-900d-0870e53e0b44"
+      "c853cad4-fa2a-4747-9c0b-d627fe747ab7"
      ],
-     "exit": "b5aaba02-b5c2-4479-900d-0870e53e0b44",
+     "exit": "c853cad4-fa2a-4747-9c0b-d627fe747ab7",
      "agents": {
-      "e19143db-2a5d-4fda-a37c-df4754a730e7": {
+      "50966b1e-d869-4234-b9b6-eef75437ac80": {
        "name": "Solver",
        "role": "critic",
        "model": "toy-mock",
@@ -115140,7 +115190,7 @@
        "role_prompt": "You are a careful problem solver. Do exactly what the task asks and report only the result … [+1 chars]",
        "max_history": 3
       },
-      "b5aaba02-b5c2-4479-900d-0870e53e0b44": {
+      "c853cad4-fa2a-4747-9c0b-d627fe747ab7": {
        "name": "Language Expert",
        "role": "solver",
        "model": "toy-mock",
@@ -115151,15 +115201,15 @@
      },
      "edges": [
       {
-       "src": "b5aaba02-b5c2-4479-900d-0870e53e0b44",
-       "dst": "e19143db-2a5d-4fda-a37c-df4754a730e7",
+       "src": "c853cad4-fa2a-4747-9c0b-d627fe747ab7",
+       "dst": "50966b1e-d869-4234-b9b6-eef75437ac80",
        "type": "review",
        "schema_id": "text",
        "condition": null
       },
       {
-       "src": "e19143db-2a5d-4fda-a37c-df4754a730e7",
-       "dst": "b5aaba02-b5c2-4479-900d-0870e53e0b44",
+       "src": "50966b1e-d869-4234-b9b6-eef75437ac80",
+       "dst": "c853cad4-fa2a-4747-9c0b-d627fe747ab7",
        "type": "revise",
        "schema_id": "text",
        "condition": "critic_disagrees"
@@ -115367,9 +115417,9 @@
      "raw_draft": "## Thought\nThe task is small: one role works it out, one language expert states the answer.\n\n## Question or Task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n## Selected Roles List:\n```\n```\n\n## Created Roles List:\n```\n{\n    \"name\": \"Solver\",\n    \"description\": \"Works out the answer to the task, using the calc tool for any arithmetic.\",\n    \"tools\": [\"calc\"],\n    \"suggestions\": \"Use calc for arithmetic. Reply with only the final value.\",\n    \"prompt\": \"You are a careful problem solver. Do exactly what the task asks and report only the result.\"\n},\n{\n    \"name\": \"Language Expert\",\n    \"desc … [+458 chars]"
     },
     "trace_lines": [
-     "{\"ts\": \"2026-10-02T19:49:49.271089+00:00\", \"episode_id\": \"51c6c6be-cd30-4be6-b804-e034461e5da4\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T19:49:49.271442+00:00\", \"episode_id\": \"51c6c6be-cd30-4be6-b804-e034461e5da4\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T19:49:49.271513+00:00\", \"episode_id\": \"51c6c6be-cd30-4be6-b804-e034461e5da4\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
+     "{\"ts\": \"2026-10-02T19:51:41.425061+00:00\", \"episode_id\": \"9a84b9dd-4197-4498-9959-a56b3661ec67\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-02T19:51:41.425585+00:00\", \"episode_id\": \"9a84b9dd-4197-4498-9959-a56b3661ec67\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-02T19:51:41.425679+00:00\", \"episode_id\": \"9a84b9dd-4197-4498-9959-a56b3661ec67\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
     ],
     "n_trace_lines": 11,
     "timeline": [
@@ -115383,8 +115433,8 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.271027+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.425009+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "span",
        "name": "invoke_agent",
        "gen_ai.agent.name": "planner",
@@ -115402,8 +115452,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T19:49:49.271089+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.425061+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "planner",
@@ -115430,8 +115480,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T19:49:49.271442+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.425585+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "agent_observer",
@@ -115458,8 +115508,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T19:49:49.271513+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.425679+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "plan_observer",
@@ -115486,8 +115536,8 @@
       "latency_ms": 0,
       "result": "draft_quality: passed=2, failed=1, failed_checks=roles_fully_defined, box=checks",
       "raw": {
-       "ts": "2026-10-02T19:49:49.271701+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.425880+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "event",
        "name": "draft_quality",
        "amoeba.quality.passed": 2,
@@ -115506,12 +115556,12 @@
       "latency_ms": 0,
       "result": "answer '734'",
       "raw": {
-       "ts": "2026-10-02T19:49:49.274583+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.429193+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "span",
        "name": "invoke_workflow",
        "gen_ai.workflow.name": "team-boss_reviewers-toy-0-00",
-       "gen_ai.conversation.id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "gen_ai.conversation.id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "amoeba.box": "interpreter",
        "latency_ms": 0
       }
@@ -115526,8 +115576,8 @@
       "latency_ms": 0,
       "result": "run_clock: date=2026-10-02, weekday=Friday, tz=UTC, box=interpreter",
       "raw": {
-       "ts": "2026-10-02T19:49:49.274602+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.429216+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "event",
        "name": "run_clock",
        "amoeba.date": "2026-10-02",
@@ -115546,11 +115596,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.274727+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.429381+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "b5aaba02-b5c2-4479-900d-0870e53e0b44",
+       "gen_ai.agent.id": "c853cad4-fa2a-4747-9c0b-d627fe747ab7",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.box": "solver",
        "latency_ms": 0
@@ -115566,11 +115616,11 @@
       "latency_ms": 0,
       "result": "734",
       "raw": {
-       "ts": "2026-10-02T19:49:49.274739+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.429483+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "b5aaba02-b5c2-4479-900d-0870e53e0b44",
+       "gen_ai.agent.id": "c853cad4-fa2a-4747-9c0b-d627fe747ab7",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.role_group": "summariser",
        "gen_ai.request.model": "toy-mock",
@@ -115594,11 +115644,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.275003+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.429821+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "e19143db-2a5d-4fda-a37c-df4754a730e7",
+       "gen_ai.agent.id": "50966b1e-d869-4234-b9b6-eef75437ac80",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "critics",
        "latency_ms": 0
@@ -115614,11 +115664,11 @@
       "latency_ms": 0,
       "result": "Action: Agree",
       "raw": {
-       "ts": "2026-10-02T19:49:49.275013+00:00",
-       "episode_id": "51c6c6be-cd30-4be6-b804-e034461e5da4",
+       "ts": "2026-10-02T19:51:41.429834+00:00",
+       "episode_id": "9a84b9dd-4197-4498-9959-a56b3661ec67",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "e19143db-2a5d-4fda-a37c-df4754a730e7",
+       "gen_ai.agent.id": "50966b1e-d869-4234-b9b6-eef75437ac80",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "reviewers",
        "gen_ai.request.model": "toy-mock",
@@ -115845,8 +115895,8 @@
     }
    },
    "plan": {
-    "run_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
-    "dir": "runs/a8462c49-bb37-422a-9e52-55b875634c7c",
+    "run_id": "29f5edb2-44df-4529-8c52-59144ae524da",
+    "dir": "runs/29f5edb2-44df-4529-8c52-59144ae524da",
     "files": [
      "artifacts",
      "capability_requests.json",
@@ -115857,10 +115907,10 @@
     ],
     "result": {
      "interpretation": {},
-     "run_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+     "run_id": "29f5edb2-44df-4529-8c52-59144ae524da",
      "task_id": "toy-0-000",
      "draft_source": null,
-     "team_id": "a3e38196-c523-48b3-a1d0-3743e8e3e258",
+     "team_id": "ceb13308-b6a1-432e-8241-a927cfa9a0d4",
      "topology": "plan",
      "answer": "734",
      "error": null,
@@ -115876,7 +115926,7 @@
       "model": "toy-mock",
       "cost_usd": null
      },
-     "latency_ms": 15,
+     "latency_ms": 18,
      "n_llm_calls": 6,
      "draft_rounds": 1,
      "consensus": true,
@@ -116046,12 +116096,12 @@
     "team_trimmed": {
      "topology": "plan",
      "entry": [
-      "40e10a74-e363-4230-a1f0-5f41fcd2fb4b",
-      "f1acc390-3893-4ba7-9960-55963ac76697"
+      "b09a6ff9-3341-4a8d-966c-0be41c58f218",
+      "c0807141-65a5-4bac-8ac2-b657ba0f7cb0"
      ],
-     "exit": "f1acc390-3893-4ba7-9960-55963ac76697",
+     "exit": "c0807141-65a5-4bac-8ac2-b657ba0f7cb0",
      "agents": {
-      "40e10a74-e363-4230-a1f0-5f41fcd2fb4b": {
+      "b09a6ff9-3341-4a8d-966c-0be41c58f218": {
        "name": "Solver",
        "role": "worker",
        "model": "toy-mock",
@@ -116061,7 +116111,7 @@
        "role_prompt": "You are a careful problem solver. Do exactly what the task asks and report only the result … [+1 chars]",
        "max_history": 5
       },
-      "f1acc390-3893-4ba7-9960-55963ac76697": {
+      "c0807141-65a5-4bac-8ac2-b657ba0f7cb0": {
        "name": "Language Expert",
        "role": "worker",
        "model": "toy-mock",
@@ -116075,7 +116125,7 @@
       {
        "index": 0,
        "agent_ids": [
-        "40e10a74-e363-4230-a1f0-5f41fcd2fb4b"
+        "b09a6ff9-3341-4a8d-966c-0be41c58f218"
        ],
        "text": "[Solver]: Solve the task and report the result.",
        "kind": "",
@@ -116088,7 +116138,7 @@
       {
        "index": 1,
        "agent_ids": [
-        "f1acc390-3893-4ba7-9960-55963ac76697"
+        "c0807141-65a5-4bac-8ac2-b657ba0f7cb0"
        ],
        "text": "[Language Expert]: Restate the Solver's result as the final answer.",
        "kind": "",
@@ -116300,9 +116350,9 @@
      "raw_draft": "## Thought\nThe task is small: one role works it out, one language expert states the answer.\n\n## Question or Task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n## Selected Roles List:\n```\n```\n\n## Created Roles List:\n```\n{\n    \"name\": \"Solver\",\n    \"description\": \"Works out the answer to the task, using the calc tool for any arithmetic.\",\n    \"tools\": [\"calc\"],\n    \"suggestions\": \"Use calc for arithmetic. Reply with only the final value.\",\n    \"prompt\": \"You are a careful problem solver. Do exactly what the task asks and report only the result.\"\n},\n{\n    \"name\": \"Language Expert\",\n    \"desc … [+458 chars]"
     },
     "trace_lines": [
-     "{\"ts\": \"2026-10-02T19:49:49.282034+00:00\", \"episode_id\": \"a8462c49-bb37-422a-9e52-55b875634c7c\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T19:49:49.282458+00:00\", \"episode_id\": \"a8462c49-bb37-422a-9e52-55b875634c7c\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T19:49:49.282546+00:00\", \"episode_id\": \"a8462c49-bb37-422a-9e52-55b875634c7c\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
+     "{\"ts\": \"2026-10-02T19:51:41.436749+00:00\", \"episode_id\": \"29f5edb2-44df-4529-8c52-59144ae524da\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-02T19:51:41.437057+00:00\", \"episode_id\": \"29f5edb2-44df-4529-8c52-59144ae524da\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-02T19:51:41.437181+00:00\", \"episode_id\": \"29f5edb2-44df-4529-8c52-59144ae524da\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
     ],
     "n_trace_lines": 23,
     "timeline": [
@@ -116316,8 +116366,8 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.281961+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.436695+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "invoke_agent",
        "gen_ai.agent.name": "planner",
@@ -116335,8 +116385,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T19:49:49.282034+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.436749+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "planner",
@@ -116363,8 +116413,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T19:49:49.282458+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.437057+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "agent_observer",
@@ -116391,8 +116441,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T19:49:49.282546+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.437181+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "plan_observer",
@@ -116419,8 +116469,8 @@
       "latency_ms": 0,
       "result": "draft_quality: passed=2, failed=1, failed_checks=roles_fully_defined, box=checks",
       "raw": {
-       "ts": "2026-10-02T19:49:49.282752+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.437400+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "draft_quality",
        "amoeba.quality.passed": 2,
@@ -116436,17 +116486,17 @@
       "box": "interpreter",
       "helper": "",
       "tokens": 0,
-      "latency_ms": 4,
+      "latency_ms": 6,
       "result": "answer '734'",
       "raw": {
-       "ts": "2026-10-02T19:49:49.292487+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.447393+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "invoke_workflow",
        "gen_ai.workflow.name": "team-plan-toy-0-00",
-       "gen_ai.conversation.id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "gen_ai.conversation.id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "amoeba.box": "interpreter",
-       "latency_ms": 4
+       "latency_ms": 6
       }
      },
      {
@@ -116459,8 +116509,8 @@
       "latency_ms": 0,
       "result": "run_clock: date=2026-10-02, weekday=Friday, tz=UTC, box=interpreter",
       "raw": {
-       "ts": "2026-10-02T19:49:49.292514+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.447428+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "run_clock",
        "amoeba.date": "2026-10-02",
@@ -116479,8 +116529,8 @@
       "latency_ms": 0,
       "result": "plan_graph: waves=[[1], [2]], depends_on={'1': [], '2': [1]}, max_turns=5, max_tokens=8192, rerun_stale=False, check_ret … [+188 chars]",
       "raw": {
-       "ts": "2026-10-02T19:49:49.292745+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.447717+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "plan_graph",
        "amoeba.waves": [
@@ -116523,8 +116573,8 @@
       "latency_ms": 0,
       "result": "step_input: step=1, wave=1, depends_on=[], received=[], input_chars=43, verification=False, rework=False, box=plan_step",
       "raw": {
-       "ts": "2026-10-02T19:49:49.292800+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.447780+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "step_input",
        "amoeba.step": 1,
@@ -116547,11 +116597,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.292988+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.447967+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "40e10a74-e363-4230-a1f0-5f41fcd2fb4b",
+       "gen_ai.agent.id": "b09a6ff9-3341-4a8d-966c-0be41c58f218",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "plan_step",
        "amoeba.step": 1,
@@ -116568,11 +116618,11 @@
       "latency_ms": 0,
       "result": "Action: calc · ActionInput: 26 * 28 + 6",
       "raw": {
-       "ts": "2026-10-02T19:49:49.293027+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.447988+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "40e10a74-e363-4230-a1f0-5f41fcd2fb4b",
+       "gen_ai.agent.id": "b09a6ff9-3341-4a8d-966c-0be41c58f218",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
@@ -116597,12 +116647,12 @@
       "latency_ms": 0,
       "result": "ran tool calc (result is not written to the trace)",
       "raw": {
-       "ts": "2026-10-02T19:49:49.293489+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.448517+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "execute_tool",
        "gen_ai.tool.name": "calc",
-       "gen_ai.agent.id": "40e10a74-e363-4230-a1f0-5f41fcd2fb4b",
+       "gen_ai.agent.id": "b09a6ff9-3341-4a8d-966c-0be41c58f218",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "tools",
        "latency_ms": 0
@@ -116618,11 +116668,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.293735+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.448840+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "40e10a74-e363-4230-a1f0-5f41fcd2fb4b",
+       "gen_ai.agent.id": "b09a6ff9-3341-4a8d-966c-0be41c58f218",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "plan_step",
        "amoeba.step": 1,
@@ -116639,11 +116689,11 @@
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-02T19:49:49.293752+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.448870+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "40e10a74-e363-4230-a1f0-5f41fcd2fb4b",
+       "gen_ai.agent.id": "b09a6ff9-3341-4a8d-966c-0be41c58f218",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
@@ -116668,8 +116718,8 @@
       "latency_ms": 0,
       "result": "step_done: step=1, wave=1, status=done, status_reason=, turns=2, output_chars=3, rework=False, checks_failed=[], box=ste … [+7 chars]",
       "raw": {
-       "ts": "2026-10-02T19:49:49.294946+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.451741+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "step_done",
        "amoeba.step": 1,
@@ -116693,8 +116743,8 @@
       "latency_ms": 0,
       "result": "provenance: step=1, cited=0, unverified=0, given=0, derived=1, inherited=0, untagged=0, numbers=1, hallucinated_citation … [+43 chars]",
       "raw": {
-       "ts": "2026-10-02T19:49:49.294981+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.451813+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "provenance",
        "amoeba.step": 1,
@@ -116720,8 +116770,8 @@
       "latency_ms": 0,
       "result": "step_input: step=2, wave=2, depends_on=[1], received=[1], input_chars=80, verification=False, rework=False, box=plan_ste … [+1 chars]",
       "raw": {
-       "ts": "2026-10-02T19:49:49.295271+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.452174+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "step_input",
        "amoeba.step": 2,
@@ -116748,11 +116798,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T19:49:49.295427+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.452300+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "f1acc390-3893-4ba7-9960-55963ac76697",
+       "gen_ai.agent.id": "c0807141-65a5-4bac-8ac2-b657ba0f7cb0",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.box": "plan_summary",
        "amoeba.step": 2,
@@ -116769,11 +116819,11 @@
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-02T19:49:49.295448+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.452371+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "f1acc390-3893-4ba7-9960-55963ac76697",
+       "gen_ai.agent.id": "c0807141-65a5-4bac-8ac2-b657ba0f7cb0",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.role_group": "summariser",
        "gen_ai.request.model": "toy-mock",
@@ -116798,8 +116848,8 @@
       "latency_ms": 0,
       "result": "summary_check: step=2, new_number_in_summary=0, new_numbers=[], limitations_section=False, box=plan_summary",
       "raw": {
-       "ts": "2026-10-02T19:49:49.296196+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.453068+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "summary_check",
        "amoeba.step": 2,
@@ -116819,8 +116869,8 @@
       "latency_ms": 0,
       "result": "step_done: step=2, wave=2, status=done, status_reason=, turns=1, output_chars=3, rework=False, checks_failed=[], box=ste … [+7 chars]",
       "raw": {
-       "ts": "2026-10-02T19:49:49.296225+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.453146+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "step_done",
        "amoeba.step": 2,
@@ -116844,8 +116894,8 @@
       "latency_ms": 0,
       "result": "provenance: step=2, cited=0, unverified=0, given=0, derived=0, inherited=1, untagged=0, numbers=1, hallucinated_citation … [+43 chars]",
       "raw": {
-       "ts": "2026-10-02T19:49:49.296241+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.453167+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "provenance",
        "amoeba.step": 2,
@@ -116871,8 +116921,8 @@
       "latency_ms": 0,
       "result": "figure_ledger: figures=1, first_derived=1, box=provenance",
       "raw": {
-       "ts": "2026-10-02T19:49:49.296624+00:00",
-       "episode_id": "a8462c49-bb37-422a-9e52-55b875634c7c",
+       "ts": "2026-10-02T19:51:41.453480+00:00",
+       "episode_id": "29f5edb2-44df-4529-8c52-59144ae524da",
        "kind": "event",
        "name": "figure_ledger",
        "amoeba.figures": 1,
@@ -116900,7 +116950,7 @@
      "interpreter": {
       "calls": 0,
       "tokens": 0,
-      "ms": 4
+      "ms": 6
      },
      "plan_step": {
       "calls": 2,
@@ -120812,8 +120862,8 @@
    ],
    "events": [
     {
-     "ts": "2026-10-02T19:49:49.246892+00:00",
-     "episode_id": "19080693-49e8-46ba-bfcf-d72fe227c74a",
+     "ts": "2026-10-02T19:51:41.398373+00:00",
+     "episode_id": "859069de-d7c6-45fb-bd91-3f72885a84e7",
      "kind": "event",
      "name": "capability_request",
      "capability.name": "web_search",
@@ -120823,8 +120873,8 @@
      "amoeba.box": "capreq"
     },
     {
-     "ts": "2026-10-02T19:49:49.246916+00:00",
-     "episode_id": "19080693-49e8-46ba-bfcf-d72fe227c74a",
+     "ts": "2026-10-02T19:51:41.398401+00:00",
+     "episode_id": "859069de-d7c6-45fb-bd91-3f72885a84e7",
      "kind": "event",
      "name": "capability_request",
      "capability.name": "unit_conversion",
@@ -120834,8 +120884,8 @@
      "amoeba.box": "capreq"
     },
     {
-     "ts": "2026-10-02T19:49:49.246990+00:00",
-     "episode_id": "19080693-49e8-46ba-bfcf-d72fe227c74a",
+     "ts": "2026-10-02T19:51:41.398483+00:00",
+     "episode_id": "859069de-d7c6-45fb-bd91-3f72885a84e7",
      "kind": "event",
      "name": "draft_quality",
      "amoeba.quality.passed": 2,
@@ -120844,8 +120894,8 @@
      "amoeba.box": "checks"
     },
     {
-     "ts": "2026-10-02T19:49:49.253217+00:00",
-     "episode_id": "19080693-49e8-46ba-bfcf-d72fe227c74a",
+     "ts": "2026-10-02T19:51:41.404739+00:00",
+     "episode_id": "859069de-d7c6-45fb-bd91-3f72885a84e7",
      "kind": "event",
      "name": "run_clock",
      "amoeba.date": "2026-10-02",
@@ -120854,11 +120904,11 @@
      "amoeba.box": "interpreter"
     },
     {
-     "ts": "2026-10-02T19:49:49.253738+00:00",
-     "episode_id": "19080693-49e8-46ba-bfcf-d72fe227c74a",
+     "ts": "2026-10-02T19:51:41.405297+00:00",
+     "episode_id": "859069de-d7c6-45fb-bd91-3f72885a84e7",
      "kind": "event",
      "name": "unknown_tool",
-     "gen_ai.agent.id": "e3850d9c-9a44-472d-a005-8422b46fd311",
+     "gen_ai.agent.id": "11a7bafd-ece7-4e24-a0cc-af9485d6f9d6",
      "gen_ai.agent.name": "Researcher",
      "gen_ai.tool.name": "web_search",
      "amoeba.tool.registered": false,
@@ -123584,11 +123634,11 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     }
    ],
-   "fingerprint": "6edca0b1c2470079",
+   "fingerprint": "ccc75b7e064c3fd3",
    "sentence_tpl": "One job to do; practice jobs also carry the right answer, so the system can grade itself.",
    "what_tpl": [
     "A task is one job for the team: a line of text, plus the right answer when it is a practice job.",
@@ -124326,7 +124376,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -124396,7 +124446,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "f8ec64b0dfc3bb7e",
+   "fingerprint": "022c54a9c22d2700",
    "sentence_tpl": "An AI drafts a team and a step plan, two AIs critique it, then plain code checks it and builds the team.",
    "what_tpl": [
     "A planning AI proposes a set of helpers and a numbered step plan for the job.",
@@ -125982,7 +126032,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -126208,7 +126258,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "a1eaae35e0f95cfd",
+   "fingerprint": "69e983d430959827",
    "sentence_tpl": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call is logged.",
    "what_tpl": [
     "The team runs in one of three shapes chosen when you start the run, never by an AI.",
@@ -126587,7 +126637,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -126597,7 +126647,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "d0c35e7f78bee8eb",
+   "fingerprint": "ebdd3e3c19a1f7de",
    "sentence_tpl": "Every run saves twelve files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the selected pool items, the timezone, and the task interpretation.",
    "what_tpl": [
     "Each run gets its own folder named by a random run id.",
@@ -126847,11 +126897,11 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     }
    ],
-   "fingerprint": "d24eb717f0f096d3",
+   "fingerprint": "73300dfba6a65810",
    "sentence_tpl": "Makes practice jobs with known answers (sums, reversed words, vowel counts), the same for the same seed.",
    "what_tpl": [
     "Generates practice jobs from a seed number, cycling through three kinds of job.",
@@ -126885,8 +126935,8 @@
      "kind": "function",
      "name": "main",
      "path": "scripts/run_task.py",
-     "line": 482,
-     "end_line": 534,
+     "line": 495,
+     "end_line": 548,
      "signature": "main(argv: list[str] | None=None) -> int",
      "doc": "",
      "callers": [],
@@ -126913,11 +126963,12 @@
       "scripts/run_task.py::cli_plan_options",
       "scripts/run_task.py::cli_token_limits",
       "scripts/run_task.py::parse_args",
+      "scripts/run_task.py::quality_gate_on",
       "scripts/run_task.py::run_one"
      ],
      "range": [
-      482,
-      534
+      495,
+      548
      ]
     },
     {
@@ -126925,8 +126976,8 @@
      "kind": "function",
      "name": "parse_args",
      "path": "scripts/run_task.py",
-     "line": 374,
-     "end_line": 478,
+     "line": 385,
+     "end_line": 491,
      "signature": "parse_args(argv: list[str] | None) -> argparse.Namespace",
      "doc": "",
      "callers": [
@@ -126945,8 +126996,8 @@
       "scripts/run_task.py::parse_args"
      ],
      "range": [
-      374,
-      478
+      385,
+      491
      ]
     }
    ],
@@ -126954,7 +127005,7 @@
     {
      "key": "scripts/run_task.py::parse_args",
      "path": "scripts/run_task.py",
-     "line": 476,
+     "line": 489,
      "kind": "fallback",
      "code": "except SandboxRequired",
      "effect": "p.error(str(e))"
@@ -126962,7 +127013,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 487,
+     "line": 500,
      "kind": "decide",
      "code": "if args.tasks",
      "effect": "set tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding='utf-8')"
@@ -126970,7 +127021,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 488,
+     "line": 501,
      "kind": "filter",
      "code": "keep only if l.strip()",
      "effect": "drop the rest"
@@ -126978,7 +127029,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 490,
+     "line": 503,
      "kind": "fallback",
      "code": "ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]",
      "effect": "choose value"
@@ -126986,7 +127037,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 491,
+     "line": 504,
      "kind": "fallback",
      "code": "load_saved_drafts(args.drafts_from) if args.drafts_from else None",
      "effect": "choose value"
@@ -126994,7 +127045,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 492,
+     "line": 505,
      "kind": "fallback",
      "code": "PoolSetup(cache_dir=args.pool_dir) if args.pool else None",
      "effect": "choose value"
@@ -127002,7 +127053,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 493,
+     "line": 506,
      "kind": "fallback",
      "code": "LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir) if args.local_tools == 'on' else None",
      "effect": "choose value"
@@ -127010,7 +127061,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 493,
+     "line": 506,
      "kind": "fallback",
      "code": "pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir",
      "effect": "choose value"
@@ -127018,7 +127069,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 498,
+     "line": 511,
      "kind": "decide",
      "code": "if saved is not None",
      "effect": "set chosen = pick(saved, task.id, args.draft_pick)"
@@ -127026,7 +127077,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 500,
+     "line": 513,
      "kind": "reject",
      "code": "if chosen is None",
      "effect": "skip (continue)"
@@ -127034,7 +127085,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 509,
+     "line": 523,
      "kind": "fallback",
      "code": "input if args.interactive else None",
      "effect": "choose value"
@@ -127042,7 +127093,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 520,
+     "line": 534,
      "kind": "stop",
      "code": "if not results",
      "effect": "return 1"
@@ -127050,7 +127101,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 523,
+     "line": 537,
      "kind": "filter",
      "code": "keep only if r.score is not None",
      "effect": "drop the rest"
@@ -127058,7 +127109,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 525,
+     "line": 539,
      "kind": "fallback",
      "code": "sum(scored) / len(scored) if scored else float('nan')",
      "effect": "choose value"
@@ -127066,7 +127117,7 @@
     {
      "key": "scripts/run_task.py::main",
      "path": "scripts/run_task.py",
-     "line": 533,
+     "line": 547,
      "kind": "fallback",
      "code": "f', est. cost ${sum(costs):.4f}' if all((c is not None for c in costs)) else ' (no price for this model)'",
      "effect": "choose value"
@@ -127076,7 +127127,7 @@
    "output_guards": [],
    "shield": false,
    "ai_sites": [],
-   "src": "scripts/run_task.py:482",
+   "src": "scripts/run_task.py:495",
    "plan_card": {
     "Description": "A task you type yourself. It runs normally but cannot be graded.",
     "Input": "a string from the command line",
@@ -127203,13 +127254,13 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_explicit_choice_wins_and_the_bare_flag_still_means_on",
      "line": 12,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "direct"
     },
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "direct"
     },
     {
@@ -127231,7 +127282,7 @@
      "how": "direct"
     }
    ],
-   "fingerprint": "f6fc5e650878877c",
+   "fingerprint": "48e9548a91062c91",
    "sentence_tpl": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
    "what_tpl": [
     "When you give a sentence instead of asking for practice jobs, it becomes a single job.",
@@ -127246,7 +127297,7 @@
    },
    "text_source": "model: kept",
    "text_stale": null,
-   "text_hash": "ff78c46da0f4bc6d"
+   "text_hash": "4b445f325c2ed0da"
   },
   {
    "id": "task_record",
@@ -128618,7 +128669,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -128658,7 +128709,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "3fab83b276786055",
+   "fingerprint": "110c1de7769300d7",
    "sentence_tpl": "The single record every later step reads: the job text, its kind and, for practice jobs, the answer.",
    "what_tpl": [
     "A small record with an id, the job text, its kind, the known answer if any, and tags.",
@@ -129350,7 +129401,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -129420,7 +129471,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "69fc6f3db183eb2c",
+   "fingerprint": "b9e428581a8a42db",
    "sentence_tpl": "Passes the job to the team planner, which reads only the job text.",
    "what_tpl": [
     "The job moves to the planning box.",
@@ -130846,7 +130897,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -131306,7 +131357,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "728a9b1fc1a0ae59",
+   "fingerprint": "d61511dec5230bd2",
    "sentence_tpl": "Compares the team's answer with the known answer; a job with no single right answer is scored against its rubric instead.",
    "what_tpl": [
     "After the run, the team's answer is compared with the known answer.",
@@ -132380,7 +132431,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -132450,7 +132501,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "27bc026242939a12",
+   "fingerprint": "cb48851ae4621cbc",
    "sentence_tpl": "An AI writes the list of helpers and a numbered step plan; later rounds see only the latest critique.",
    "what_tpl": [
     "The planning AI reads the job and the tools that exist, then writes each helper as a small record and a numbered plan saying which helper does which step.",
@@ -133593,7 +133644,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -133741,7 +133792,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "0f54e81de62ad0ae",
+   "fingerprint": "2c094dee82394cfe",
    "sentence_tpl": "Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a clear winner, asks the user one question, or makes the answer state its assumption.",
    "what_tpl": [
     "One call reads the task (and the read-only user context from --context: location, organisation, role) and lists the key entities and terms that could be read more than one way — names, abbreviations, acronyms, likely voice-input errors such as \"P and W\" for \"PNW\" — each reading with a one-line reason and a confidence.",
@@ -135270,7 +135321,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -135736,7 +135787,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "c8c20e7b35176725",
+   "fingerprint": "610a2682fd24e1d4",
    "sentence_tpl": "Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
    "what_tpl": [
     "Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts.",
@@ -136585,7 +136636,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -136655,7 +136706,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "4a4870246723218a",
+   "fingerprint": "85273a36900f8fc9",
    "sentence_tpl": "A second AI checks the list of helpers and replies with suggestions, or 'No Suggestions'.",
    "what_tpl": [
     "The checking AI reads the job, the drafted helpers, the capability requests and every earlier helper suggestion.",
@@ -137552,7 +137603,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -137622,7 +137673,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "425f6f159a6951fd",
+   "fingerprint": "56cfa735fa007d81",
    "sentence_tpl": "A third AI checks the step plan; the loop stops when both checkers say 'No Suggestions' in one round.",
    "what_tpl": [
     "The plan-checking AI reads the job, the helpers, the step plan, the capability requests and every earlier plan suggestion; like the helper checker, it may question a request only on need.",
@@ -139146,7 +139197,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -139156,7 +139207,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "e09c249a02e029d7",
+   "fingerprint": "e52532309a6db896",
    "sentence_tpl": "The rulebook the planner is held to: which tools exist and how many helpers a team may have.",
    "what_tpl": [
     "Lists the tools each kind of helper may use and the largest team allowed.",
@@ -139183,7 +139234,7 @@
     "Flags the summariser: the helper the planner marked, else the last helper of the last step (having no tools no longer decides it; nothing is appended). Then requires a team size in the allowed range.",
     "Matches each step's names to helpers (exact first, then by part of the name) and drops steps that match nobody; no steps left means drafting failed.",
     "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one summariser, a checking step done by a helper that did not produce what it checks, and task coverage: every number in the task and every deliverable verb (deliver, estimate, assess, prototype, test, gather, build, plan, and since D68 run, convert, email, make, save, write, list, read, compute, compare and more) must reach a requirement or a given; a phrase ends at sentence punctuation, not inside an email address or a decimal.",
-    "With the quality gate on, a draft failing a must-have check goes back to the planner for one more round with the failed checks listed, within the round cap."
+    "With the quality gate on by default, a draft failing a must-have check goes back to the planner for one more round with the failed checks listed, within the round cap."
    ],
    "proposes": "The final draft text.",
    "disposes": "Everything listed here; the original project trusted the AI for all of it.",
@@ -139533,6 +139584,24 @@
      "range": [
       155,
       207
+     ]
+    },
+    {
+     "key": "scripts/run_task.py::quality_gate_on",
+     "kind": "function",
+     "name": "quality_gate_on",
+     "path": "scripts/run_task.py",
+     "line": 289,
+     "end_line": 296,
+     "signature": "quality_gate_on(choice: str | bool, topology: str, drafts_from: str | None=None) -> bool",
+     "doc": "D79: the Box 2 quality gate (D28) is on by default for Amoeba's plan runner, off for the baselines (flat,",
+     "callers": [
+      "scripts/run_task.py::main"
+     ],
+     "callees": [],
+     "range": [
+      289,
+      296
      ]
     }
    ],
@@ -140064,6 +140133,22 @@
      "kind": "correct",
      "code": "if tc['missing_phrases']",
      "effect": "add 'Task phrases no requirement keeps (same verb, same object): ' + '; '.join((f'\"{x}\"' for x in tc['missing_phrases'])) + \". Add a requirement for each, keeping the task's own verb.\""
+    },
+    {
+     "key": "scripts/run_task.py::quality_gate_on",
+     "path": "scripts/run_task.py",
+     "line": 292,
+     "kind": "stop",
+     "code": "if isinstance(choice, bool)",
+     "effect": "return choice"
+    },
+    {
+     "key": "scripts/run_task.py::quality_gate_on",
+     "path": "scripts/run_task.py",
+     "line": 294,
+     "kind": "stop",
+     "code": "if choice == 'auto'",
+     "effect": "return topology == 'plan' and (not drafts_from)"
     }
    ],
    "deviations": [
@@ -140406,6 +140491,18 @@
     {
      "test": "tests/test_quality_gate.py::test_gate_never_fires_on_checks_a_d19_draft_cannot_have",
      "line": 54,
+     "outcome": "passed",
+     "how": "direct"
+    },
+    {
+     "test": "tests/test_quality_gate_d79.py::test_auto_default_is_on_only_for_the_plan_runner_when_drafting",
+     "line": 5,
+     "outcome": "passed",
+     "how": "direct"
+    },
+    {
+     "test": "tests/test_quality_gate_d79.py::test_explicit_choice_wins_and_the_bare_flag_still_means_on",
+     "line": 12,
      "outcome": "passed",
      "how": "direct"
     },
@@ -141354,7 +141451,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -141736,7 +141833,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "382b8a8600018f29",
+   "fingerprint": "065ca27c560ed414",
    "sentence_tpl": "Throws out broken or nameless helper entries, records tools we lack instead of dropping them, flags the summariser, and drops steps that name nobody.",
    "what_tpl": [
     "Reads the helper records and the numbered steps out of the last draft.",
@@ -141744,7 +141841,7 @@
     "Flags the summariser: the helper the planner marked, else the last helper of the last step (having no tools no longer decides it; nothing is appended). Then requires a team size in the allowed range.",
     "Matches each step's names to helpers (exact first, then by part of the name) and drops steps that match nobody; no steps left means drafting failed.",
     "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one summariser, a checking step done by a helper that did not produce what it checks, and task coverage: every number in the task and every deliverable verb (deliver, estimate, assess, prototype, test, gather, build, plan, and since D68 run, convert, email, make, save, write, list, read, compute, compare and more) must reach a requirement or a given; a phrase ends at sentence punctuation, not inside an email address or a decimal.",
-    "With the quality gate on, a draft failing a must-have check goes back to the planner for one more round with the failed checks listed, within the round cap."
+    "With the quality gate on by default, a draft failing a must-have check goes back to the planner for one more round with the failed checks listed, within the round cap."
    ],
    "numbers": {
     "Envelope.max_agents": 5,
@@ -141755,9 +141852,9 @@
     "RunResult.requests_dropped_by_observers": 0,
     "draft_team.seed": 0
    },
-   "text_source": "model: kept",
+   "text_source": "model: rewritten",
    "text_stale": null,
-   "text_hash": "d93609de45d9913b"
+   "text_hash": "1a6973a325486d24"
   },
   {
    "id": "instantiate",
@@ -142486,7 +142583,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -142556,7 +142653,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "b4d4ba9ba93d1cb9",
+   "fingerprint": "21c4cd17ced6b98e",
    "sentence_tpl": "Gives each helper a permanent id, wires the helpers for the chosen shape, and rejects the team if any rule is broken.",
    "what_tpl": [
     "Each helper gets a permanent id and its drafted instructions, tools and suggestions.",
@@ -143975,7 +144072,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -144429,7 +144526,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "9209bfc31263c838",
+   "fingerprint": "9cee69a86fd6954c",
    "sentence_tpl": "Keeps the tools that exist; a tool we lack is recorded as a request, never used and never silently dropped.",
    "what_tpl": [
     "After drafting: each helper's tools are split into the ones the registry has (kept) and the rest (its missing tools). Each missing one becomes a capability request unless the planner already asked for it.",
@@ -145871,7 +145968,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -146271,7 +146368,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "1509428f53f08620",
+   "fingerprint": "4226ae9e9fd51f16",
    "sentence_tpl": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
    "what_tpl": [
     "One record per request: name, tool or skill, for which helper, what it does, input, output and an example of each.",
@@ -146970,7 +147067,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -147064,7 +147161,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "fad2858e24ffe387",
+   "fingerprint": "6096cf5f33b7ac1d",
    "sentence_tpl": "The finished team written down as data: who exists, what each may use and who hands work to whom.",
    "what_tpl": [
     "The team as a data record: helpers, connections, where work starts and which helper gives the answer.",
@@ -148590,7 +148687,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -148816,7 +148913,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "64b453df60f838b1",
+   "fingerprint": "79ef590608067d08",
    "sentence_tpl": "Reads the team's shape and hands the job to the matching runner.",
    "what_tpl": [
     "Opens the log entry for the whole run and picks the runner for the team's shape.",
@@ -150070,7 +150167,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -150530,7 +150627,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "9ad7da4ab476ff10",
+   "fingerprint": "68918b3fe3e8eb01",
    "sentence_tpl": "Walks through the plan's steps in order, giving each step everything the earlier steps produced.",
    "what_tpl": [
     "Takes the plan's steps one at a time, in order.",
@@ -151911,7 +152008,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -152365,7 +152462,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "523fc84deb06d975",
+   "fingerprint": "0c5eccf3edb0f321",
    "sentence_tpl": "The AI helper for a step reads the step, the earlier results and a shared scratchpad, then picks one action.",
    "what_tpl": [
     "Each helper named in the step gets its own drafted instructions plus the step, earlier results and a scratchpad shared with the other helpers of that step.",
@@ -153862,7 +153959,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -154322,7 +154419,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "69d8fcdc20c009d0",
+   "fingerprint": "029ba32c13b223d0",
    "sentence_tpl": "Reads the helper's chosen action: runs a tool and loops, or accepts a final answer; gives up after five turns.",
    "what_tpl": [
     "If the chosen action is one of the helper's tools, the tool runs and its result goes on the scratchpad.",
@@ -155742,7 +155839,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -156196,7 +156293,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "248cb3a6606d3dd0",
+   "fingerprint": "49e7d6ff329d9b20",
    "sentence_tpl": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply gets one retry.",
    "what_tpl": [
     "The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
@@ -157559,7 +157656,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -158013,7 +158110,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "75944cb64667e9bd",
+   "fingerprint": "d019dd44c6b6d140",
    "sentence_tpl": "Every other helper reviews the answer and must reply Agree or Disagree; unreadable replies count as agreement.",
    "what_tpl": [
     "Each reviewer sees the job, its own role and the recent chat history (answers and objections).",
@@ -159263,7 +159360,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -159723,7 +159820,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "acd2f0040039c34a",
+   "fingerprint": "dad75e8f6b5e6f63",
    "sentence_tpl": "Counts the objections: none ends the run; otherwise everyone sees them and the writer revises, up to {TeamConfig.max_inner_turns} rounds, or stops if the plan is empty.",
    "what_tpl": [
     "After each review round, plain code keeps only the disagreeing reviews that carry a reason.",
@@ -161387,7 +161484,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -161613,7 +161710,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "66dde13d784806ab",
+   "fingerprint": "4f31b93c97421b07",
    "sentence_tpl": "Builds the order of work from each step's 'depends on' line and rejects a plan that loops.",
    "what_tpl": [
     "Reads which earlier steps each step depends on; a plan with no such lines runs as a simple chain.",
@@ -164150,7 +164247,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -164616,7 +164713,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "d8b41d7117b402d5",
+   "fingerprint": "41347d511a0fa3c5",
    "sentence_tpl": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
    "what_tpl": [
     "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
@@ -167044,7 +167141,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -167504,7 +167601,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "80c8b6d04d43ad09",
+   "fingerprint": "f2edc045fa66a7e2",
    "sentence_tpl": "Checks each step's output against its requirements, contract, and provenance; reads verdicts, gaps, and citation accuracy.",
    "what_tpl": [
     "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
@@ -169582,7 +169679,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -170042,7 +170139,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "2d4e4c41f0e3dee8",
+   "fingerprint": "068c5f476ed13b1e",
    "sentence_tpl": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code checks the change before it takes effect.",
    "what_tpl": [
     "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, a tool the plan did not know about, or a missing answer step. No trigger, no call.",
@@ -171470,7 +171567,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -171948,7 +172045,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "d31435d111a1317a",
+   "fingerprint": "90667be78b19c977",
    "sentence_tpl": "Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
    "what_tpl": [
     "A number is cited when its line carries a source id the step could have seen.",
@@ -173146,7 +173243,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -173606,7 +173703,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "b9511aeb1186a52d",
+   "fingerprint": "0237f30a9585f629",
    "sentence_tpl": "Each step's output saved as a file, with who wrote it, what it saw, its status and its sources.",
    "what_tpl": [
     "runs/<id>/artifacts/step_<n>.md holds the text; step_<n>.json the step, wave, roles, inputs, status, checks, verdict, sources and figure counts.",
@@ -175509,7 +175606,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -175975,7 +176072,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "24343f77793ab613",
+   "fingerprint": "50f7b3aa2d3961a4",
    "sentence_tpl": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
    "what_tpl": [
     "Sees every step's latest output with its status, missing capabilities, verdict, figure counts, the deliverables the plan committed to, and where each figure was found (never the scoring rubric).",
@@ -177907,7 +178004,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -178091,7 +178188,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "1d775405a4a240ad",
+   "fingerprint": "a45ffddb03858687",
    "sentence_tpl": "Writes one log line per AI call and tool call: who, which model, tokens, reasoning tokens, and time. Nothing enforces a budget.",
    "what_tpl": [
     "Every AI call becomes one log line with the helper, model, tokens in and out, reasoning tokens, and time taken.",
@@ -178719,7 +178816,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -178729,7 +178826,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "963887b67205c359",
+   "fingerprint": "6dcfeae3938cb304",
    "sentence_tpl": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, interpretation, and any pool, selection, or clarification details.",
    "what_tpl": [
     "Summarises the run in one record saved as result.json.",
@@ -181095,7 +181192,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -181351,7 +181448,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "d1bd8c7f41804680",
+   "fingerprint": "aa20b0fdedfc21ee",
    "sentence_tpl": "Repeat a text back, do arithmetic, or get the current time; with --web-tools the plan runner also has web search and page reading.",
    "what_tpl": [
     "Tools are looked up by name; a name that is not registered is an error, not a web search.",
@@ -185213,13 +185310,13 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_explicit_choice_wins_and_the_bare_flag_still_means_on",
      "line": 12,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -185385,7 +185482,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "b060961bb9cb3a51",
+   "fingerprint": "41899b908f457649",
    "sentence_tpl": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
    "what_tpl": [
     "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
@@ -188149,13 +188246,13 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_explicit_choice_wins_and_the_bare_flag_still_means_on",
      "line": 12,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -188615,7 +188712,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "bb9f17b63148562a",
+   "fingerprint": "491298ed423adb1f",
    "sentence_tpl": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
    "what_tpl": [
     "Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused and logged once. They become local:<Name> tools of the run.",
@@ -189117,7 +189214,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "direct"
     },
     {
@@ -190723,7 +190820,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "784d90df09394683",
+   "fingerprint": "2fcad103967aeaaf",
    "sentence_tpl": "The tools and skills Box 3 may draw on, fetched ahead of time by `amoeba pool refresh`; a run only reads it.",
    "what_tpl": [
     "Tools: the official MCP Registry, the latest version of each server (remote, repository, version, whether a key is needed).",
@@ -191120,8 +191217,8 @@
      "kind": "function",
      "name": "build_llm",
      "path": "scripts/run_task.py",
-     "line": 339,
-     "end_line": 360,
+     "line": 350,
+     "end_line": 371,
      "signature": "build_llm(args: argparse.Namespace) -> LLMClient",
      "doc": "",
      "callers": [
@@ -191139,8 +191236,8 @@
       "scripts/run_task.py::endpoint"
      ],
      "range": [
-      339,
-      360
+      350,
+      371
      ]
     },
     {
@@ -191500,7 +191597,7 @@
     {
      "key": "scripts/run_task.py::build_llm",
      "path": "scripts/run_task.py",
-     "line": 340,
+     "line": 351,
      "kind": "decide",
      "code": "if args.llm == 'mock'",
      "effect": "set mock = toy_mock_client()"
@@ -191508,7 +191605,7 @@
     {
      "key": "scripts/run_task.py::build_llm",
      "path": "scripts/run_task.py",
-     "line": 342,
+     "line": 353,
      "kind": "fallback",
      "code": "CachedLLM(mock, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else mock",
      "effect": "choose value"
@@ -191516,7 +191613,7 @@
     {
      "key": "scripts/run_task.py::build_llm",
      "path": "scripts/run_task.py",
-     "line": 347,
+     "line": 358,
      "kind": "fallback",
      "code": "profile.merge_system if args.merge_system is None else args.merge_system",
      "effect": "choose value"
@@ -191524,7 +191621,7 @@
     {
      "key": "scripts/run_task.py::build_llm",
      "path": "scripts/run_task.py",
-     "line": 348,
+     "line": 359,
      "kind": "fallback",
      "code": "None if args.reasoning_effort == 'unset' else args.reasoning_effort or profile.reasoning_effort",
      "effect": "choose value"
@@ -191532,7 +191629,7 @@
     {
      "key": "scripts/run_task.py::build_llm",
      "path": "scripts/run_task.py",
-     "line": 355,
+     "line": 366,
      "kind": "fallback",
      "code": "CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else client",
      "effect": "choose value"
@@ -191540,7 +191637,7 @@
     {
      "key": "scripts/run_task.py::build_llm.make",
      "path": "scripts/run_task.py",
-     "line": 355,
+     "line": 366,
      "kind": "fallback",
      "code": "CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else client",
      "effect": "choose value"
@@ -191548,7 +191645,7 @@
     {
      "key": "scripts/run_task.py::build_llm",
      "path": "scripts/run_task.py",
-     "line": 358,
+     "line": 369,
      "kind": "fallback",
      "code": "{'planner'} if getattr(args, 'planner_max_tokens', None) else set()",
      "effect": "choose value"
@@ -191556,7 +191653,7 @@
     {
      "key": "scripts/run_task.py::build_llm",
      "path": "scripts/run_task.py",
-     "line": 359,
+     "line": 370,
      "kind": "fallback",
      "code": "{'observers'} if getattr(args, 'observer_max_tokens', None) else set()",
      "effect": "choose value"
@@ -193124,7 +193221,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -193656,7 +193753,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "ed011dc25c86acd9",
+   "fingerprint": "d108c01e7a3e0a55",
    "sentence_tpl": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
    "what_tpl": [
     "Sends the messages to the AI service and returns the reply with its token counts.",
@@ -195269,7 +195366,7 @@
     {
      "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
      "line": 19,
-     "outcome": "unknown",
+     "outcome": "passed",
      "how": "indirect"
     },
     {
@@ -195519,7 +195616,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "b5b7afc8b8d34bc3",
+   "fingerprint": "e1c7a7b39e267c92",
    "sentence_tpl": "A scripted pretend AI that answers the practice jobs correctly, so everything runs without a real AI.",
    "what_tpl": [
     "Recognises which role is being asked from a fixed phrase in the prompt.",
@@ -196249,6 +196346,9 @@
   "scripts/run_task.py::ask_user": [
    "planner"
   ],
+  "scripts/run_task.py::quality_gate_on": [
+   "checks"
+  ],
   "scripts/run_task.py::build_llm": [
    "client"
   ],
@@ -196588,35 +196688,12 @@
   "scripts/run_task.py::models_of",
   "scripts/run_task.py::parse_args",
   "scripts/run_task.py::provenance_of",
+  "scripts/run_task.py::quality_gate_on",
   "scripts/run_task.py::refinement_of",
   "scripts/run_task.py::run_one",
   "scripts/smoke_web.py::main"
  ],
  "unassigned": [
-  {
-   "key": "amoeba/interp/citecheck.py::_identifier_in",
-   "name": "_identifier_in",
-   "path": "amoeba/interp/citecheck.py",
-   "line": 101,
-   "kind": "function",
-   "new": true
-  },
-  {
-   "key": "amoeba/interp/citecheck.py::digits",
-   "name": "digits",
-   "path": "amoeba/interp/citecheck.py",
-   "line": 81,
-   "kind": "function",
-   "new": true
-  },
-  {
-   "key": "amoeba/interp/citecheck.py::identifiers",
-   "name": "identifiers",
-   "path": "amoeba/interp/citecheck.py",
-   "line": 85,
-   "kind": "function",
-   "new": true
-  },
   {
    "key": "amoeba/capabilities/__init__.py::_table",
    "name": "_table",
@@ -196762,6 +196839,14 @@
    "new": false
   },
   {
+   "key": "amoeba/interp/citecheck.py::_identifier_in",
+   "name": "_identifier_in",
+   "path": "amoeba/interp/citecheck.py",
+   "line": 101,
+   "kind": "function",
+   "new": false
+  },
+  {
    "key": "amoeba/interp/citecheck.py::_time_match",
    "name": "_time_match",
    "path": "amoeba/interp/citecheck.py",
@@ -196774,6 +196859,22 @@
    "name": "claims",
    "path": "amoeba/interp/citecheck.py",
    "line": 115,
+   "kind": "function",
+   "new": false
+  },
+  {
+   "key": "amoeba/interp/citecheck.py::digits",
+   "name": "digits",
+   "path": "amoeba/interp/citecheck.py",
+   "line": 81,
+   "kind": "function",
+   "new": false
+  },
+  {
+   "key": "amoeba/interp/citecheck.py::identifiers",
+   "name": "identifiers",
+   "path": "amoeba/interp/citecheck.py",
+   "line": 85,
    "kind": "function",
    "new": false
   },
@@ -197717,7 +197818,7 @@
    "key": "scripts/run_task.py::add_client_args",
    "name": "add_client_args",
    "path": "scripts/run_task.py",
-   "line": 302,
+   "line": 313,
    "kind": "function",
    "new": false
   },
@@ -197733,7 +197834,7 @@
    "key": "scripts/run_task.py::build_box3_tools",
    "name": "build_box3_tools",
    "path": "scripts/run_task.py",
-   "line": 363,
+   "line": 374,
    "kind": "function",
    "new": false
   },
@@ -197741,7 +197842,7 @@
    "key": "scripts/run_task.py::cli_plan_options",
    "name": "cli_plan_options",
    "path": "scripts/run_task.py",
-   "line": 288,
+   "line": 299,
    "kind": "function",
    "new": false
   },
@@ -197749,7 +197850,7 @@
    "key": "scripts/run_task.py::cli_token_limits",
    "name": "cli_token_limits",
    "path": "scripts/run_task.py",
-   "line": 296,
+   "line": 307,
    "kind": "function",
    "new": false
   },
@@ -197757,7 +197858,7 @@
    "key": "scripts/run_task.py::endpoint",
    "name": "endpoint",
    "path": "scripts/run_task.py",
-   "line": 328,
+   "line": 339,
    "kind": "function",
    "new": false
   },
@@ -197877,22 +197978,24 @@
   ]
  ],
  "text_log": {
-  "ts": "2026-10-02T19:49:49+00:00",
-  "commit": "64c0f64",
+  "ts": "2026-10-02T19:51:41+00:00",
+  "commit": "a8b32ba",
   "boxes": 42,
-  "unchanged": 28,
+  "unchanged": 38,
   "hand": 0,
-  "checked": 13,
-  "kept": 12,
-  "rewritten": 0,
-  "stale": 1,
-  "rejected": 1,
-  "llm_calls": 13,
-  "input_tokens": 30055,
-  "output_tokens": 261,
+  "checked": 2,
+  "kept": 1,
+  "rewritten": 1,
+  "stale": 2,
+  "rejected": 0,
+  "llm_calls": 2,
+  "input_tokens": 4264,
+  "output_tokens": 64,
   "reasoning_tokens": 0,
   "model": "gemini-3.1-flash-lite",
-  "rewritten_boxes": [],
+  "rewritten_boxes": [
+   "checks"
+  ],
   "stale_boxes": [
    "toolbox",
    "client"

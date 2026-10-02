@@ -695,7 +695,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "23d0535",
+  "checked_at": "c784985",
   "facts": {
    "anchors": [
     {
@@ -818,7 +818,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=()) -> RunResult"
     }
    ],
    "checks": [],
@@ -841,7 +841,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "804d948e3e264e8b",
+  "facts_hash": "ab14757f8e15e592",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -2126,7 +2126,7 @@
   ]
  },
  "free_text": {
-  "checked_at": "a8b32ba",
+  "checked_at": "c784985",
   "facts": {
    "anchors": [
     {
@@ -2136,6 +2136,7 @@
       "amoeba/llm/limits.py::RunLimits",
       "amoeba/llm/limits.py::describe",
       "amoeba/localtools/toolbox.py::LocalSetup",
+      "amoeba/localtools/toolbox.py::LocalSetup.without",
       "amoeba/memory/context.py::load_context",
       "amoeba/pool/stock.py::PoolSetup",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -2146,12 +2147,14 @@
       "amoeba/task/saved_drafts.py::pick",
       "amoeba/task/source.py::ToyTaskSource",
       "amoeba/task/source.py::ToyTaskSource.tasks",
+      "amoeba/tools/registry.py::ToolRegistry.without",
       "amoeba/tools/registry.py::default_registry",
       "scripts/eval_draft.py::parse_args",
       "scripts/run_task.py::build_box3_tools",
       "scripts/run_task.py::build_llm",
       "scripts/run_task.py::cli_plan_options",
       "scripts/run_task.py::cli_token_limits",
+      "scripts/run_task.py::disable_tools",
       "scripts/run_task.py::parse_args",
       "scripts/run_task.py::quality_gate_on",
       "scripts/run_task.py::run_one"
@@ -2178,6 +2181,11 @@
      "decide",
      "if args.tasks",
      "set tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding='utf-8')"
+    ],
+    [
+     "decide",
+     "if disabled",
+     "set box3_tools = box3_tools.without(disabled)"
     ],
     [
      "decide",
@@ -2236,6 +2244,11 @@
     ],
     [
      "filter",
+     "keep only if n.strip()",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if r.score is not None",
      "drop the rest"
     ],
@@ -2260,7 +2273,7 @@
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "4b445f325c2ed0da",
+  "facts_hash": "cf12d626d3282b0d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
@@ -3072,7 +3085,7 @@
   ]
  },
  "localtools": {
-  "checked_at": "64c0f64",
+  "checked_at": "c784985",
   "facts": {
    "anchors": [
     {
@@ -3124,7 +3137,8 @@
      ],
      "key": "amoeba/localtools/toolbox.py::LocalSetup",
      "methods": [
-      "limits(self) -> dict"
+      "limits(self) -> dict",
+      "without(self, names) -> 'LocalSetup'"
      ],
      "signature": null
     },
@@ -3560,6 +3574,11 @@
     ],
     [
      "filter",
+     "keep only if n.startswith('local:')",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if p in now",
      "drop the rest"
     ],
@@ -3571,6 +3590,11 @@
     [
      "filter",
      "keep only if self._seen.get(p) != v",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t not in drop",
      "drop the rest"
     ],
     [
@@ -3768,7 +3792,7 @@
    "prompts": {},
    "title": "Local toolbox (sandboxed)"
   },
-  "facts_hash": "0fcb313d8674275c",
+  "facts_hash": "1f297a1a8200e5be",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "cf9559fad29b1143",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
@@ -3784,8 +3808,29 @@
    "D71: LibreOffice Calc headless (scripts/setup_office.sh) recalculates spreadsheet formulas with a fresh profile and HOME; when the xlsx skill is attached, plain code checks once that a two-cell workbook comes back with its value, and if not the helper's card says recalc.py will fail."
   ]
  },
+ "ov_adapt": {
+  "checked_at": "c784985",
+  "facts": {
+   "anchors": [],
+   "checks": [],
+   "guards": [],
+   "kind": "top",
+   "numbers": [],
+   "prompts": {},
+   "title": "4–9 · Adaptation loop (Phase 2)"
+  },
+  "facts_hash": "9e0ef16013eae32b",
+  "seed_hash": "f78341b7f9396cfb",
+  "sentence": "A stream of tasks per kind; one typed change to that kind's team recipe is tested old against new on held-out tasks, and plain code keeps it only if the gain is real.",
+  "source": "hand",
+  "what": [
+   "Phase 2 (spec/BUILD_SPEC_PHASE2.md). Week 1 builds the measuring half: the task stream, the team recipe and its hook into Boxes 2–3, the Experimenter and the Gate.",
+   "A hand-written change goes through the Experimenter and the Gate before any AI may propose one.",
+   "Only Amoeba's plan runner gets recipes; the two baselines never do. Nothing in Boxes 7–8 calls an AI."
+  ]
+ },
  "ov_leave": {
-  "checked_at": "23d0535",
+  "checked_at": "c784985",
   "facts": {
    "anchors": [
     {
@@ -3828,7 +3873,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=()) -> RunResult"
     }
    ],
    "checks": [
@@ -3856,14 +3901,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "c8c288214ce5ba8f",
+  "facts_hash": "5bc4c0a9e24ae884",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves twelve files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the selected pool items, the timezone, and the task interpretation.",
+  "sentence": "Every run saves thirteen files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the selected pool items, the timezone, the task interpretation, and the list of disabled tools.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the selected pool items, the timezone, and the task interpretation.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the selected pool items, the timezone, the task interpretation, and the list of disabled tools.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -5666,7 +5711,7 @@
   ]
  },
  "planner": {
-  "checked_at": "64c0f64",
+  "checked_at": "c784985",
   "facts": {
    "anchors": [
     {
@@ -5729,7 +5774,7 @@
      ],
      "doc": "D68: every tool Box 3 will really have, and how a role gets it, for the Planner and both observers.",
      "key": "amoeba/task/draft.py::toolbox_text",
-     "signature": "toolbox_text(envelope: Envelope, web: bool=False, local: bool=False, pool: bool=False) -> str"
+     "signature": "toolbox_text(envelope: Envelope, web: bool=False, local: bool=False, pool: bool=False, disabled=()) -> str"
     }
    ],
    "checks": [
@@ -5761,6 +5806,11 @@
     ],
     [
      "decide",
+     "if local and off & {'local:Bash', 'local:Read', 'local:Write', 'local:Edit'}",
+     "set left = [n for n in ('Bash', 'Read', 'Write', 'Edit') if f'local:{n}' not in off]"
+    ],
+    [
+     "decide",
      "if not q and a and out and (not out[-1]['assumption'])",
      "set out[-1]['assumption'] = a"
     ],
@@ -5771,7 +5821,7 @@
     ],
     [
      "decide",
-     "if web",
+     "if web and 'web_search' not in off",
      "set lines += ['- web_search: searches the web and returns snippets with their URLs (a role tha"
     ],
     [
@@ -5793,6 +5843,16 @@
      "fallback",
      "toolbox if toolbox and d24 else envelope.tool_catalog_string()",
      "choose value"
+    ],
+    [
+     "filter",
+     "keep only if f'local:{n}' not in off",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n not in off",
+     "drop the rest"
     ],
     [
      "loop cap",
@@ -5842,11 +5902,11 @@
    },
    "title": "Planner"
   },
-  "facts_hash": "0e890f0b1df36231",
+  "facts_hash": "c354386e48c553d8",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "53bd3e0ee5bba97c",
   "sentence": "An AI writes the list of helpers and a numbered step plan; later rounds see only the latest critique.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "The planning AI reads the job and the tools that exist, then writes each helper as a small record and a numbered plan saying which helper does which step.",
    "From the second round on it also sees its own last draft and the checkers' latest suggestions.",
@@ -5854,7 +5914,7 @@
    "It is told to prefer the tools that exist; a tool or skill it needs but we lack goes in an optional sixth part, Capability Requests, which costs no retry when absent.",
    "At most three rounds are run.",
    "With our prompts (d24) it may also list Open Questions: each ambiguity in the job and the assumption it took. With --interactive the person sees the requirements, assumptions and open questions and types continue, or a correction that is added to the job before one more round.",
-   "D68: with our prompts it and both checkers are shown every tool the team will really have (calc, web search and fetch, the local tools and skills when on, and that a tool pool exists); a document format or a house style is a skill; what only the user can supply is an open question or a request."
+   "D68: with our prompts it and both checkers are shown every tool the team will really have (calc, web search and fetch, the local tools and skills when on, and that a tool pool exists); a document format or a house style is a skill; what only the user can supply is an open question or a request; tools that are disabled are hidden from this list."
   ]
  },
  "pool_index": {
@@ -6566,7 +6626,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "23d0535",
+  "checked_at": "c784985",
   "facts": {
    "anchors": [
     {
@@ -6720,6 +6780,10 @@
       [
        "rubric",
        "dict | None"
+      ],
+      [
+       "disabled_tools",
+       "list[str] | None"
       ]
      ],
      "key": "amoeba/task/models.py::RunResult",
@@ -6766,7 +6830,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=()) -> RunResult"
     }
    ],
    "checks": [
@@ -6794,7 +6858,7 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "176d052b97e3872d",
+  "facts_hash": "77837c44fbe59a14",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bef6a71b78aeb520",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, interpretation, and any pool, selection, or clarification details.",
@@ -6802,7 +6866,7 @@
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
-   "It also lists the steps that answered BLOCKED, every capability request, local tool usage, files created, skills attached, replan details, refinement data, and interpretation, while tracking pool usage and clarifications."
+   "It also lists the steps that answered BLOCKED, every capability request, local tool usage, files created, skills attached, replan details, refinement data, interpretation, and disabled tools, while tracking pool usage and clarifications."
   ]
  },
  "scoring": {
@@ -7222,7 +7286,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "64c0f64",
+  "checked_at": "c784985",
   "facts": {
    "anchors": [
     {
@@ -7239,6 +7303,7 @@
     },
     {
      "callees": [
+      "amoeba/adapt/stream.py::_words",
       "amoeba/interp/plan_runner.py::_words",
       "amoeba/interp/plan_runner.py::shares_words",
       "amoeba/interp/provenance.py::numbers_in",
@@ -7843,7 +7908,7 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "626cb7cc4b31dd88",
+  "facts_hash": "74c1883254cbcb3a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "13e802c0beb63a4e",
   "sentence": "Checks each step's output against its requirements, contract, and provenance; reads verdicts, gaps, and citation accuracy.",
@@ -7856,6 +7921,349 @@
    "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, earns one refine turn and then makes the step partial (not declared / attached unused).",
    "A verify step also sees each checked step's sources, tool calls, figure counts, files, and citation labels (D61, D74). A producer whose only problem is a missing capability is not sent back (rework_skipped).",
    "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial. Evidence is capped at {EVIDENCE_CAP} characters and excerpts are limited to {excerpt.keep_head} characters."
+  ]
+ },
+ "stream": {
+  "checked_at": "c784985",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "after",
+       "int"
+      ],
+      [
+       "family",
+       "str"
+      ],
+      [
+       "kind",
+       "Literal['feedback', 'remove_tool']"
+      ],
+      [
+       "items",
+       "list[str]"
+      ],
+      [
+       "tool",
+       "str | None"
+      ]
+     ],
+     "key": "amoeba/adapt/stream.py::Shift",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "name",
+       "str"
+      ],
+      [
+       "tasks",
+       "list[StreamTask]"
+      ],
+      [
+       "shifts",
+       "list[Shift]"
+      ]
+     ],
+     "key": "amoeba/adapt/stream.py::Stream",
+     "methods": [
+      "practice(self, family: str | None=None) -> list[StreamTask]",
+      "shifts_due(self, task: StreamTask) -> list[Shift]",
+      "disabled_tools(self, task: StreamTask) -> list[str]",
+      "heldout(self, family: str, phase: str | None=None) -> list[StreamTask]",
+      "families(self) -> list[str]"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "split",
+       "Literal['practice', 'heldout']"
+      ],
+      [
+       "phase",
+       "Literal['pre', 'post']"
+      ],
+      [
+       "order",
+       "int | None"
+      ]
+     ],
+     "key": "amoeba/adapt/stream.py::StreamTask",
+     "methods": [
+      "as_task(self) -> Task"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/stream.py::HeldOutLeak"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/stream.py::assert_practice",
+     "signature": "assert_practice(task) -> None"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The feedback channel (§2.2): the NAMES of the rubric items a practice run failed — nothing else (no",
+     "key": "amoeba/adapt/stream.py::feedback",
+     "signature": "feedback(rubric_result: dict | None) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/stream.py::assert_practice",
+      "amoeba/adapt/stream.py::feedback",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "What the loop keeps from one practice run's scoring.",
+     "key": "amoeba/adapt/stream.py::feedback_record",
+     "signature": "feedback_record(task: StreamTask, result) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/stream.py::_words",
+      "amoeba/interp/plan_runner.py::_words",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "Why `text` (an edit's text) leaks held-out content: an 8-word sequence from a held-out prompt, a held-out",
+     "key": "amoeba/adapt/stream.py::leaks",
+     "signature": "leaks(text: str, heldout: list[StreamTask], ngram: int=8) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/stream.py::Stream",
+      "amoeba/adapt/stream.py::stream_paths",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/stream.py::load_stream",
+     "signature": "load_stream(name_or_path: str | Path) -> Stream"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/stream.py::stream_paths",
+     "signature": "stream_paths(name_or_path: str | Path) -> tuple[Path, Path]"
+    },
+    {
+     "callees": [
+      "amoeba/localtools/toolbox.py::LocalSetup.without",
+      "amoeba/pool/stock.py::PoolSetup",
+      "amoeba/tools/registry.py::ToolRegistry.without"
+     ],
+     "doc": "D80 --disable-tools a,b: one run without these tools — out of the registry (and so the envelope Box 2 is",
+     "key": "scripts/run_task.py::disable_tools",
+     "signature": "disable_tools(names, tools: ToolRegistry, pool: PoolSetup | None=None, local: LocalSetup | None=None)"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if hit",
+     "add f'8-word sequence from {t.id}: {hit!r}'"
+    ],
+    [
+     "correct",
+     "if len(v.replace('.', '')) >= 3 and re.search(f'(?<![\\\\d.]){re.escape(v)}(?![\\\\d])', low.replace(',', ''))",
+     "add f'held-out expected number {v} ({t.id})'"
+    ],
+    [
+     "correct",
+     "if t.id.lower() in low",
+     "add f'held-out task id {t.id}'"
+    ],
+    [
+     "decide",
+     "if pool is not None",
+     "set pool = PoolSetup(config=pool.config, cache_dir=pool.cache_dir, connector=pool.connector, e"
+    ],
+    [
+     "decide",
+     "if t.split == 'practice'",
+     "set want = 'post' if t.order > s.after else 'pre'"
+    ],
+    [
+     "fallback",
+     "'post' if t.order > s.after else 'pre'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "(yaml.safe_load(shifts_file.read_text(encoding='utf-8')) or {}).get('shifts', []) if shifts_file.exists() else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "local.without(names) if local is not None else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "result.rubric if hasattr(result, 'rubric') else result.get('rubric')",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "t.rubric.expected_numbers if t.rubric else []",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if ' '.join(pw[i:i + ngram]) in grams",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if l.strip()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n.strip()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not i['pass']",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if s.family == task.family and task.order > s.after",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if s.kind == 'remove_tool'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t.family == s.family",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t.split == 'heldout' and t.family == family and (phase in (None, t.phase))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t.split == 'practice'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t.split == 'practice' and family in (None, t.family)",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if (item.lower() in names) != (t.phase == 'post')",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if getattr(task, 'split', 'practice') == 'heldout'",
+     "raise HeldOutLeak"
+    ],
+    [
+     "reject",
+     "if item.lower() in t.prompt.lower()",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if len(ids) != len(set(ids))",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if len(orders) != len(set(orders))",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if s.kind != 'feedback'",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if self.kind == 'feedback' and (not self.items)",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if self.kind == 'remove_tool' and (not self.tool)",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if self.rubric is None",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if self.split == 'heldout' and self.order is not None",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if self.split == 'practice' and self.order is None",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if t.phase != want",
+     "raise ValueError"
+    ],
+    [
+     "stop",
+     "if not names",
+     "return (tools, pool, local)"
+    ],
+    [
+     "stop",
+     "if p.suffix == '.jsonl'",
+     "return (p, p.with_name(p.stem + '.shifts.yaml'))"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "leaks.ngram"
+   ],
+   "prompts": {},
+   "title": "0 · Task stream (D80)"
+  },
+  "facts_hash": "e02515932f30b687",
+  "seed_hash": "fb26970e07106a93",
+  "sentence": "Tasks arrive in a fixed order per kind of task; held-out tasks are kept apart for testing, and the loop learns only the names of the rubric items a practice run failed.",
+  "source": "hand",
+  "what": [
+   "tasks/stream_<name>.jsonl: each task has its kind (family), its D30 rubric, whether it is practice or held-out, whether it comes before or after its kind's shift, and (practice only) its place in the order.",
+   "tasks/stream_<name>.shifts.yaml: a feedback shift (the later rubrics ask for something new that the prompts never mention) or a tool shift (code takes a tool out of that kind's runs, --disable-tools).",
+   "Plain code checks the file when it is loaded: the new item is in every post rubric and no pre one, no prompt mentions it, order and phase agree.",
+   "The loop only ever gets practice tasks; held-out ones are for the Experimenter. The feedback it keeps is the failed item names, never patterns or expected numbers.",
+   "The leakage screen refuses an edit text holding an {leaks.ngram}-word run of a held-out prompt, a held-out expected number or a held-out task id."
   ]
  },
  "task_record": {
@@ -9072,7 +9480,7 @@
    "title": "Stock the toolbox"
   },
   "facts_hash": "a646c242bb0ed1a9",
-  "rejected_hash": "cece8bda9bfd6c51",
+  "rejected_hash": "28744ea0841ae20f",
   "seed_hash": "7524778ff38722f5",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
   "source": "hand",
@@ -9091,7 +9499,7 @@
   ]
  },
  "tools": {
-  "checked_at": "a742c07",
+  "checked_at": "c784985",
   "facts": {
    "anchors": [
     {
@@ -9105,6 +9513,7 @@
       "names(self) -> list[str]",
       "descriptions(self) -> dict[str, str]",
       "copy(self) -> 'ToolRegistry'",
+      "without(self, names) -> 'ToolRegistry'",
       "execute(self, name: str, action_input: str, agent=None) -> str"
      ],
      "signature": null
@@ -9383,7 +9792,7 @@
    "prompts": {},
    "title": "Tool box"
   },
-  "facts_hash": "c15d28fbc05af949",
+  "facts_hash": "388e97a355e4c7f4",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "e40d467b502b090d",
   "sentence": "Repeat a text back, do arithmetic, or get the current time; with --web-tools the plan runner also has web search and page reading.",

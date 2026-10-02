@@ -279,6 +279,14 @@ never mention; a tool shift takes a tool out of the family's runs:
 Held-out tasks never reach the practice loop or any prompt; the loop learns only the names of the rubric items a
 practice run failed (`amoeba/adapt/stream.py::feedback`).
 
+## Team recipes (D81, Phase 2)
+
+A recipe (`amoeba/adapt/recipe.py`) is data per task family: planner rules shown to Box 2, transforms code applies to
+the drafted plan (add a check step, tighten a done-when, grant or revoke a tool, add a role rule) and whitelisted run
+options. Every family starts empty, and an empty recipe changes nothing. One typed edit makes the next version;
+`validate_recipe` refuses unknown tools, out-of-range options, long or check-weakening text, and transforms that
+break the step graph. Limits are in `amoeba/config/adapt.yaml`.
+
 ## Cost controls (D45–D48)
 
 ```bash
