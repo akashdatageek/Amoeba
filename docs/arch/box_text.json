@@ -2171,7 +2171,7 @@
   ]
  },
  "experimenter": {
-  "checked_at": "3590ca1",
+  "checked_at": "a7163f1",
   "facts": {
    "anchors": [
     {
@@ -2182,7 +2182,7 @@
      "methods": [
       "__init__(self, root: Path, recipe: Recipe)",
       "out(self, task_id: str, k: int, seed: int) -> Path",
-      "get(self, task_id: str, k: int, seed: int) -> RunRecord | None",
+      "get(self, task: StreamTask, k: int, seed: int) -> RunRecord | None",
       "put(self, rec: RunRecord) -> None"
      ],
      "signature": null
@@ -2578,6 +2578,7 @@
       "amoeba/adapt/experimenter.py::RunRecord",
       "amoeba/adapt/experimenter.py::honesty_flags",
       "amoeba/adapt/experimenter.py::refusals",
+      "amoeba/adapt/experimenter.py::score_of",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -2594,6 +2595,17 @@
      "doc": "Sandbox refusals (local tools) and side-effect refusals (pool vetting) in one run.",
      "key": "amoeba/adapt/experimenter.py::refusals",
      "signature": "refusals(r: dict) -> int"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/evaluate.py::rubric_score"
+     ],
+     "doc": "The run's score by the current D30 scorer, from its saved answer (a scorer fix applies to every run alike,",
+     "key": "amoeba/adapt/experimenter.py::score_of",
+     "signature": "score_of(result: dict, task: StreamTask) -> float | None"
     },
     {
      "callees": [
@@ -2682,6 +2694,11 @@
      "decide",
      "if '=' in line and (not line.startswith('#'))",
      "set k, v = line.split('=', 1)"
+    ],
+    [
+     "decide",
+     "if (r.task_id, r.k, r.seed) == (task.id, k, seed) and (not r.crashed()) and Path(r.run_dir).exists()",
+     "set res = json.loads((Path(r.run_dir) / 'result.json').read_text(encoding='utf-8'))"
     ],
     [
      "decide",
@@ -2840,11 +2857,6 @@
     ],
     [
      "stop",
-     "if (r.task_id, r.k, r.seed) == (task_id, k, seed) and (not r.crashed()) and Path(r.run_dir).exists()",
-     "return r"
-    ],
-    [
-     "stop",
      "if args.calibrate_only",
      "return 0"
     ],
@@ -2877,6 +2889,11 @@
      "stop",
      "if run_dir is None or not (run_dir / 'result.json').exists()",
      "return RunRecord(arm=job.arm, task_id=job.task.id, k=job.k, seed=job.seed, error=error or 'runner: no result')"
+    ],
+    [
+     "stop",
+     "if task.rubric is None",
+     "return result.get('score')"
     ]
    ],
    "kind": "code",
@@ -2901,7 +2918,7 @@
    "prompts": {},
    "title": "7 · Experimenter (D83)"
   },
-  "facts_hash": "83d25004b8badc5d",
+  "facts_hash": "d044a93df1428d8b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0af422728bb53ada",
   "sentence": "Runs the old recipe against the old recipe plus one edit on the kind's held-out tasks, {experiment.repeats} times each, with the same seed, tools and model, and returns the score pairs.",
