@@ -249,6 +249,12 @@ Phone numbers, ZIP codes and street numbers are matched as whole tokens, digits 
 longer number. A ZIP+4 printed run together ("463243348") contains its 5-digit ZIP, so an address copied correctly
 is no longer flagged as a mislabelled citation.
 
+## Quality gate on for the plan runner (D79)
+
+`--quality-gate` is now `auto` by default: on for `--topology plan` (a draft failing a hard draft check goes back to
+the Planner within the round cap), off for flat and boss_reviewers and when `--drafts-from` reuses a saved draft.
+`--quality-gate on|off` overrides it.
+
 ## Task understanding before planning (D77)
 
 Before the Planner drafts, one call lists what the task's names and terms could mean (abbreviations, acronyms,

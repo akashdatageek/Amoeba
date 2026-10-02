@@ -285,6 +285,17 @@ def blocked_of(ep) -> dict:
     return dict(sorted(counts.items()))
 
 
+# box: checks
+def quality_gate_on(choice: str | bool, topology: str, drafts_from: str | None = None) -> bool:
+    """D79: the Box 2 quality gate (D28) is on by default for Amoeba's plan runner, off for the baselines (flat,
+    boss_reviewers keep their papers' drafting) and when a saved draft is reused (nothing is drafted)."""
+    if isinstance(choice, bool):
+        return choice
+    if choice == "auto":
+        return topology == "plan" and not drafts_from
+    return choice == "on"
+
+
 def cli_plan_options(args: argparse.Namespace):
     """The plan runner's settings from the command line (D39+)."""
     from amoeba.interp.plan_runner import PlanOptions
@@ -393,8 +404,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="Planner reply limit (default $AMOEBA_MAX_TOKENS_PLANNER or 8192; D27)")
     p.add_argument("--observer-max-tokens", type=int, default=None,
                    help="both observers' reply limit (default $AMOEBA_MAX_TOKENS_OBSERVER or 8192; D27)")
-    p.add_argument("--quality-gate", action="store_true",
-                   help="send a draft back (within the round cap) when a hard draft_quality check fails (D28)")
+    p.add_argument("--quality-gate", nargs="?", choices=["on", "off", "auto"], const="on", default="auto",
+                   help="send a draft back (within the round cap) when a hard draft_quality check fails (D28). "
+                        "auto (default, D79): on for --topology plan, off for the baselines and with --drafts-from "
+                        "(no drafting); a bare --quality-gate means on")
     p.add_argument("--web-tools", action="store_true",
                    help="give Box 3 web_search and fetch_url (Tavily; needs TAVILY_API_KEY). The plan runner hands "
                         "them to roles that asked for web search (D32); Box 2 never sees them")
@@ -503,7 +516,8 @@ def main(argv: list[str] | None = None) -> int:
         box3_tools = build_box3_tools(args, tools)   # a fresh source list per run (D32)
         r = run_one(task, args.topology, llm, envelope, box3_tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
-                    max_tokens=cli_token_limits(args), quality_gate=args.quality_gate,
+                    max_tokens=cli_token_limits(args),
+                    quality_gate=quality_gate_on(args.quality_gate, args.topology, args.drafts_from),
                     plan_options=cli_plan_options(args), saved_draft=chosen,
                     limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
                     ask=input if args.interactive else None, pool=pool, local=local,
