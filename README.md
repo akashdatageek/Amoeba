@@ -341,6 +341,13 @@ last accepted change, and raises an alarm when they drop by more than max(2σ, 0
 missing rubric item suddenly appears in most recent runs. It stays quiet for a few tasks after a change is accepted
 or rejected. Thresholds: `amoeba/config/adapt.yaml` monitor.
 
+## The Diagnoser (D86, Phase 2)
+
+After an alarm, the Diagnoser counts what the window's runs recorded (step causes, blocked capabilities, unused tools,
+missing files, unverified checks, citation problems, failed rubric item names) and names the cause that rose most
+compared with the runs before. The table in `amoeba/config/adapt.yaml` says which edits may answer it. No model is
+called; `--diagnoser none` gives the Architect the alarm only, with every edit allowed.
+
 ## Cost controls (D45–D48)
 
 ```bash

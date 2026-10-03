@@ -794,6 +794,20 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code computes the window and the reference and decides whether to raise an alarm.",
          anchors=[]),
+    dict(id="diagnoser", view="adapt", title="5 · Diagnoser (D86)", kind="code", plan=None,
+         sentence="Counts what the runs of the alarm's window recorded and names the cause that rose most, with the "
+                  "edits that may answer it.",
+         what=["It reads the window's run folders: step causes recorded by the step contract (with the step's kind, "
+               "roles and their tools), blocked capabilities, unused tools, missing files, unverified checks, made-up "
+               "or mislabelled citations and the names of the failed rubric items.",
+               "The cause is the one whose share of runs rose most from the reference runs to the window — a cause "
+               "that was always there does not explain an alarm — then the most frequent, then the table order.",
+               "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice "
+               "examples (never held-out tasks) go to the Architect with the evidence lines.",
+               "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation)."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code counts the records, names the cause and limits the edits.",
+         anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and
