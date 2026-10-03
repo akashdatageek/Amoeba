@@ -319,6 +319,12 @@ The rubric's number reader used to read the "m" of "32.4 m²" or "8 m long" as m
 a million only after a currency sign ($1.5m), and a scale letter followed by a digit, ² or ³ is no scale at all. The
 Experimenter re-scores every run from its saved answer, so a scorer fix applies to both arms alike.
 
+## Headings inside a line are text (D84a)
+
+The reply parser now starts a new section only at a "##" that begins a line (or follows a closing tag such as
+"</thought>"). A "##" quoted in the middle of a line, for example a role prompt that says "end with a section headed
+'## Assumptions'", stays text, so the role is no longer cut apart and lost.
+
 ## Cost controls (D45–D48)
 
 ```bash

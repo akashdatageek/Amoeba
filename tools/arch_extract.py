@@ -201,7 +201,9 @@ BOXES: list[dict] = [
                   "amoeba/task/interpret.py::route_open_questions", "amoeba/memory/context.py::load_context"]),
     dict(id="split", view="plan", title="Split sections", kind="code", plan="Split sections",
          sentence="Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
-         what=["Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts.",
+         what=["Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts. Only a "
+               "'##' that starts a line (or follows a closing tag, as in '</thought>## Thought') is a heading; one in the "
+               "middle of a line, such as a lesson echoed inside a role's JSON, is text.",
                "If a required part is missing, the AI is asked once more with the error attached.",
                "If the retry still lacks it, drafting stops with an error (or the run ends with a parse error)."],
          proposes="The reply text.", disposes="Plain code decides whether every required part is present.",

@@ -16,14 +16,19 @@ class MissingSections(ParseError):
 
 
 HASH = "\x00H\x00"
+BREAK = "\x00B\x00"
 
 
 # box: split
 def split_blocks(text: str) -> list[str]:
     """common.py:33 splits on every '##'. DEVIATION D72: a '##' right after a written '\\n' is a heading inside a
     JSON string (a role prompt's "Output format:\\n## Formula"), not a section break; before, such a prompt cut the
-    roles block apart and every role was lost."""
-    return [b.replace(HASH, "##") for b in re.sub(r"(?<=\\n)##", HASH, text).split("##")]
+    roles block apart and every role was lost. DEVIATION D84a: more generally, only a '##' that starts a line (after
+    optional spaces) or follows a closing tag ("</thought>## Thought", as Gemma writes it) is a section break — a '##'
+    in the middle of a line ("end with a section headed '## Assumptions'"
+    inside a role's JSON or a sentence) is text."""
+    marked = re.sub(r"(?m)(^[ \t]*|(?<=>))" + re.escape(HASH), lambda m: m.group(1) + BREAK, text.replace("##", HASH))
+    return [b.replace(HASH, "##") for b in marked.split(BREAK)]
 
 
 # box: split
