@@ -77,3 +77,31 @@ def test_a_plan_step_with_a_mislabelled_citation_is_partial_and_named_in_limitat
     assert {x["claim"] for x in meta["mislabelled_citations"]} == {"8:00am", "4:30pm"}
     assert all(x["found_in"] == ["S2"] for x in meta["mislabelled_citations"])
     assert "Mislabelled citation: step 1 cites S1 for '8:00am', which S1 does not contain; it is in S2" in r.answer
+
+
+# ---- D78: identifiers are whole tokens; a ZIP+4 run together contains its ZIP -------------------------------------
+def test_d78_the_bmv_zip_plus_4_written_together_contains_the_zip():
+    from amoeba.interp.citecheck import claims
+    s1 = "Highland BMV Branch 7931 Indianapolis Blvd Highland, IN 463243348 Mon Closed"
+    for line in ("The branch is at 7931 Indianapolis Blvd, Highland, IN 46324 [S1]",
+                 "Branch ZIP code: 46324 [S1]", "Mail to Highland, IN 46324-3348 [S1]"):
+        assert mislabelled_citations(line, {"S1": s1}) == [], line
+    assert ("zip", "46324") in claims("Highland, IN 46324", set(), [])
+    assert ("street", "7931") in claims("7931 Indianapolis Blvd", set(), [])
+    # a different ZIP+4 extension, or a ZIP that is only the start of a longer number, does not pass
+    assert [x["claim"] for x in mislabelled_citations("Mail to IN 46324-3349 [S1]", {"S1": s1})] == ["463243349"]
+    assert mislabelled_citations("Highland, IN 46324 [S1]", {"S1": "Account 4632433481 balance"})
+
+
+def test_d78_phone_and_street_numbers_match_as_whole_tokens():
+    src = "Call (219) 989-2012 for the office at 793 Calumet Ave. Fees: $219, 989 visitors, 2012 report"
+    assert mislabelled_citations("Phone: 219-989-2012 [S1]", {"S1": src}) == []
+    assert mislabelled_citations("Phone: 219.989.2012 [S1]", {"S1": "tel 2199892012"}) == []
+    # the three digit groups are in the text, but not as one phone number
+    [x] = mislabelled_citations("Phone: 219-989-2012 [S1]", {"S1": "Fees: $219, 989 visitors, 2012 report"})
+    assert x["kind"] == "phone" and x["claim"] == "2199892012"
+    # a street number is not found inside a longer number, nor rounded
+    assert mislabelled_citations("Office at 793 Calumet Ave [S1]", {"S1": src}) == []
+    [y] = mislabelled_citations("Office at 79 Calumet Ave [S1]", {"S1": src})
+    assert y["kind"] == "street" and y["claim"] == "79"
+    assert mislabelled_citations("Office at 7931 Indianapolis Blvd [S1]", {"S1": "at 7,931 Indianapolis Blvd"})

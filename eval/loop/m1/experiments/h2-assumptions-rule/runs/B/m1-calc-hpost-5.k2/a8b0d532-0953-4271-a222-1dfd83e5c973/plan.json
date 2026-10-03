@@ -1,0 +1,476 @@
+{
+  "created_roles": [
+    {
+      "name": "Culinary Mathematician",
+      "description": "A specialist in recipe scaling and unit conversions who ensures precise ingredient ratios are maintained when changing yield.",
+      "tools": [
+        "calc"
+      ],
+      "suggestions": "",
+      "prompt": "You are a senior Culinary Mathematician. Your task is to scale a recipe. \n1. Calculate the scaling factor by dividing the target servings (40) by the base servings (12).\n2. Multiply each base ingredient (450g flour, 200g butter, 300g sugar) by this scaling factor.\n3. Use the `calc` tool for every operation to ensure precision.\n4. Output the results as a clear list: 'Ingredient: [Amount] [Unit]'.",
+      "missing_tools": [],
+      "is_summariser": false,
+      "seniority": "senior",
+      "goal": "Provide precise scaled quantities for all ingredients.",
+      "responsibilities": [
+        "Determine the scaling factor",
+        "Calculate the new quantity for each ingredient",
+        "Maintain precision to two decimal places"
+      ],
+      "skills": [
+        "arithmetic",
+        "recipe scaling"
+      ],
+      "inputs": [
+        "Base recipe quantities and serving sizes from the task"
+      ],
+      "outputs": [
+        {
+          "artifact": "scaled ingredients list",
+          "format": "list: ingredient x quantity (unit)"
+        }
+      ],
+      "success_criteria": [
+        "Calculations are mathematically correct based on the scaling factor"
+      ],
+      "constraints": [],
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ]
+    },
+    {
+      "name": "QA Engineer",
+      "description": "A detail-oriented reviewer focused on verifying numerical accuracy and logic.",
+      "tools": [
+        "calc"
+      ],
+      "suggestions": "",
+      "prompt": "You are a senior QA Engineer. You must verify the calculations provided by the Culinary Mathematician.\n1. Independently calculate the scaling factor (40/12).\n2. Independently calculate the required amounts for flour, butter, and sugar.\n3. Compare your results with the provided list.\n4. If they match, output 'Status: Pass'. If they differ, output 'Status: Fail' and provide the correct values.",
+      "missing_tools": [],
+      "is_summariser": false,
+      "seniority": "senior",
+      "goal": "Verify that the scaled quantities are mathematically sound.",
+      "responsibilities": [
+        "Independently recalculate the scaling factor",
+        "Cross-check the Mathematician's results",
+        "Flag any rounding errors or calculation mistakes"
+      ],
+      "skills": [
+        "numerical verification",
+        "attention to detail"
+      ],
+      "inputs": [
+        "scaled ingredients list from Culinary Mathematician"
+      ],
+      "outputs": [
+        {
+          "artifact": "verification report",
+          "format": "memo: status (Pass/Fail) and corrected values if applicable"
+        }
+      ],
+      "success_criteria": [
+        "All calculations are verified as correct or corrected"
+      ],
+      "constraints": [],
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ]
+    },
+    {
+      "name": "Technical Writer",
+      "description": "A specialist in formatting and delivering final reports according to strict guidelines.",
+      "tools": [],
+      "suggestions": "",
+      "prompt": "You are a senior Technical Writer. Your goal is to assemble the final response.\n1. Take the verified ingredient quantities.\n2. Present them clearly to the user.\n3. Create a section at the end headed '## Assumptions'.\n4. In this section, list every assumption made: linear scaling, no waste, rounding methods, and that units remain in grams. This is a mandatory requirement (L1).",
+      "missing_tools": [],
+      "is_summariser": true,
+      "seniority": "senior",
+      "goal": "Assemble the final answer including the mandatory assumptions section.",
+      "responsibilities": [
+        "Format the verified quantities into a final answer",
+        "Draft the '## Assumptions' section as per L1"
+      ],
+      "skills": [
+        "technical writing",
+        "formatting"
+      ],
+      "inputs": [
+        "verified quantities from QA Engineer"
+      ],
+      "outputs": [
+        {
+          "artifact": "final recipe response",
+          "format": "memo: quantities followed by ## Assumptions"
+        }
+      ],
+      "success_criteria": [
+        "Final answer contains all 3 ingredients and the '## Assumptions' section"
+      ],
+      "constraints": [
+        "Must follow L1: final answer must end with '## Assumptions'"
+      ],
+      "covers": [
+        "R4"
+      ]
+    }
+  ],
+  "plan": [
+    {
+      "index": 0,
+      "agent_names": [
+        "Culinary Mathematician"
+      ],
+      "text": "[Culinary Mathematician]: Calculate scaled ingredients",
+      "title": "Calculate scaled ingredients",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "depends_on": [],
+      "do": "\n- Calculate scaling factor: 40 / 12\n- Calculate flour: 450 * (40/12)\n- Calculate butter: 200 * (40/12)\n- Calculate sugar: 300 * (40/12)",
+      "output": "list: ingredient x quantity (unit)",
+      "done_when": "All three ingredients have a calculated quantity."
+    },
+    {
+      "index": 1,
+      "agent_names": [
+        "QA Engineer"
+      ],
+      "text": "[QA Engineer]: Verify calculations",
+      "title": "Verify calculations",
+      "kind": "verify",
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "depends_on": [
+        1
+      ],
+      "do": "\n- Re-calculate scaling factor and ingredient totals independently using `calc`.\n- Compare results with Step 1.",
+      "output": "memo: status (Pass/Fail)",
+      "done_when": "Verification is complete and results are confirmed."
+    },
+    {
+      "index": 2,
+      "agent_names": [
+        "Technical Writer"
+      ],
+      "text": "[Technical Writer]: Assemble final deliverable",
+      "title": "Assemble final deliverable",
+      "kind": "work",
+      "covers": [
+        "R4"
+      ],
+      "depends_on": [
+        2
+      ],
+      "do": "\n- Format the verified quantities.\n- Add the '## Assumptions' section listing linear scaling, unit consistency, and rounding.",
+      "output": "memo: final recipe response",
+      "done_when": "The response contains the quantities and the '## Assumptions' section."
+    }
+  ],
+  "rounds_used": 1,
+  "consensus": true,
+  "role_feedback": "None",
+  "plan_feedback": "None",
+  "raw_draft": "<thought>Principal Engineer and Delivery Lead.\nCalculate ingredient amounts for 40 servings based on a 12-serving recipe.\n    *   12 servings: 450g flour, 200g butter, 300g sugar.\n    *   Target: 40 servings.\n    *   Deliverables: Amounts of flour, butter, and sugar for 40 servings.\n    *   Constraint: Final answer must have a \"## Assumptions\" section (L1).\n    *   Tools: `calc`, `echo`.\n\n    *   R1: Calculate the amount of flour for 40 servings.\n    *   R2: Calculate the amount of butter for 40 servings.\n    *   R3: Calculate the amount of sugar for 40 servings.\n    *   R4: Provide a final answer including an \"## Assumptions\" section (L1).\n\n    *   Given: 12 servings $\\rightarrow$ 450g flour, 200g butter, 300g sugar.\n    *   Target: 40 servings.\n    *   Scaling factor: $40 / 12 = 10 / 3 \\approx 3.333...$\n    *   Flour: $450 \\times (40/12) = 450 \\times 3.333 = 1500\\text{g}$.\n    *   Butter: $200 \\times (40/12) = 200 \\times 3.333 = 666.67\\text{g}$.\n    *   Sugar: $300 \\times (40/12) = 300 \\times 3.333 = 1000\\text{g}$.\n\n    *   Scaling calculations (Arithmetic).\n    *   Verification (Double-checking the math).\n    *   Formatting/Summarization (Final output with Assumptions).\n\n    *   Role 1: Culinary Mathematician (Calculates the scaling).\n    *   Role 2: Quality Assurance (Verifies the math).\n    *   Role 3: Technical Writer (Summarizes and adds Assumptions).\n\n    *   Step 1: Culinary Mathematician calculates the amounts.\n    *   Step 2: QA verifies the calculations.\n    *   Step 3: Technical Writer assembles the final response.\n\n    *   L1: Final answer must end with \"## Assumptions\".\n    *   Tools: `calc` is available.\n\n    *   *Requirements:* R1-R4.\n    *   *Givens:* 12 servings, 450g flour, 200g butter, 300g sugar. Target 40.\n    *   *Derived:* Scaling factor $40/12$.\n    *   *Assumptions:* Linear scaling, no waste, rounding rules.\n    *   *Roles:*\n        *   `Culinary Mathematician`: Senior. Goal: Accurate scaled ingredients.\n        *   `QA Engineer`: Senior. Goal: Zero calculation errors.\n        *   `Technical Writer`: Senior. Goal: Final formatted deliverable.\n    *   *Execution Plan:*\n        1. Math (Work)\n        2. QA (Verify)\n        3. Summary (Work)\n\n    *   Is the scaling factor handled correctly? Yes, $40/12$ is $3.33...$\n    *   Are the tools used? `calc` will be used by the Mathematician.\n    *   Is L1 addressed? Yes, in the Technical Writer's prompt and the execution plan.\n    *   Are roles well-defined? Yes.\n    *   Is the summariser correct? Yes, Technical Writer.</thought>## Thought\nThe task is a straightforward scaling problem: converting a recipe from 12 servings to 40 servings. The core requirement is to apply a scaling factor ($40/12$) to three ingredients (flour, butter, sugar) and present the results. I will employ a Culinary Mathematician to perform the calculations using the `calc` tool, a QA Engineer to verify the arithmetic independently, and a Technical Writer to assemble the final response, ensuring the mandatory \"## Assumptions\" section is included as per lesson L1.\n\n## Requirements:\nR1: Calculate the amount of flour needed for 40 servings.\nR2: Calculate the amount of butter needed for 40 servings.\nR3: Calculate the amount of sugar needed for 40 servings.\nR4: Deliver the final answer with a section headed '## Assumptions' listing all assumptions (L1).\n\n## Givens and Assumptions:\n- given: Base servings = 12\n- given: Base flour = 450 g\n- given: Base butter = 200 g\n- given: Base sugar = 300 g\n- given: Target servings = 40\n- derived: Scaling factor = 40 / 12 = 3.333... (or 10/3)\n- assumption: The relationship between servings and ingredient quantities is linear.\n- assumption: Ingredients are scaled exactly without adjustments for pan size or chemistry (standard culinary scaling).\n\n## Open Questions:\nNone\n\n## Selected Roles List:\n```\nNone\n```\n\n## Created Roles List:\n```\n[\n  {\n    \"name\": \"Culinary Mathematician\",\n    \"seniority\": \"senior\",\n    \"description\": \"A specialist in recipe scaling and unit conversions who ensures precise ingredient ratios are maintained when changing yield.\",\n    \"goal\": \"Provide precise scaled quantities for all ingredients.\",\n    \"responsibilities\": [\n      \"Determine the scaling factor\",\n      \"Calculate the new quantity for each ingredient\",\n      \"Maintain precision to two decimal places\"\n    ],\n    \"skills\": [\"arithmetic\", \"recipe scaling\"],\n    \"tools\": [\"calc\"],\n    \"inputs\": [\"Base recipe quantities and serving sizes from the task\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"scaled ingredients list\",\n        \"format\": \"list: ingredient x quantity (unit)\"\n      }\n    ],\n    \"success_criteria\": [\"Calculations are mathematically correct based on the scaling factor\"],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\", \"R3\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a senior Culinary Mathematician. Your task is to scale a recipe. \\n1. Calculate the scaling factor by dividing the target servings (40) by the base servings (12).\\n2. Multiply each base ingredient (450g flour, 200g butter, 300g sugar) by this scaling factor.\\n3. Use the `calc` tool for every operation to ensure precision.\\n4. Output the results as a clear list: 'Ingredient: [Amount] [Unit]'.\"\n  },\n  {\n    \"name\": \"QA Engineer\",\n    \"seniority\": \"senior\",\n    \"description\": \"A detail-oriented reviewer focused on verifying numerical accuracy and logic.\",\n    \"goal\": \"Verify that the scaled quantities are mathematically sound.\",\n    \"responsibilities\": [\n      \"Independently recalculate the scaling factor\",\n      \"Cross-check the Mathematician's results\",\n      \"Flag any rounding errors or calculation mistakes\"\n    ],\n    \"skills\": [\"numerical verification\", \"attention to detail\"],\n    \"tools\": [\"calc\"],\n    \"inputs\": [\"scaled ingredients list from Culinary Mathematician\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"verification report\",\n        \"format\": \"memo: status (Pass/Fail) and corrected values if applicable\"\n      }\n    ],\n    \"success_criteria\": [\"All calculations are verified as correct or corrected\"],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\", \"R3\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a senior QA Engineer. You must verify the calculations provided by the Culinary Mathematician.\\n1. Independently calculate the scaling factor (40/12).\\n2. Independently calculate the required amounts for flour, butter, and sugar.\\n3. Compare your results with the provided list.\\n4. If they match, output 'Status: Pass'. If they differ, output 'Status: Fail' and provide the correct values.\"\n  },\n  {\n    \"name\": \"Technical Writer\",\n    \"seniority\": \"senior\",\n    \"description\": \"A specialist in formatting and delivering final reports according to strict guidelines.\",\n    \"goal\": \"Assemble the final answer including the mandatory assumptions section.\",\n    \"responsibilities\": [\n      \"Format the verified quantities into a final answer\",\n      \"Draft the '## Assumptions' section as per L1\"\n    ],\n    \"skills\": [\"technical writing\", \"formatting\"],\n    \"tools\": [],\n    \"inputs\": [\"verified quantities from QA Engineer\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"final recipe response\",\n        \"format\": \"memo: quantities followed by ## Assumptions\"\n      }\n    ],\n    \"success_criteria\": [\"Final answer contains all 3 ingredients and the '## Assumptions' section\"],\n    \"constraints\": [\"Must follow L1: final answer must end with '## Assumptions'\"],\n    \"covers\": [\"R4\"],\n    \"is_summariser\": true,\n    \"prompt\": \"You are a senior Technical Writer. Your goal is to assemble the final response.\\n1. Take the verified ingredient quantities.\\n2. Present them clearly to the user.\\n3. Create a section at the end headed '## Assumptions'.\\n4. In this section, list every assumption made: linear scaling, no waste, rounding methods, and that units remain in grams. This is a mandatory requirement (L1).\"\n  }\n]\n```\n\n## Execution Plan:\n1. [Culinary Mathematician]: Calculate scaled ingredients\n   kind: work\n   covers: R1, R2, R3\n   depends_on: none\n   do:\n     - Calculate scaling factor: 40 / 12\n     - Calculate flour: 450 * (40/12)\n     - Calculate butter: 200 * (40/12)\n     - Calculate sugar: 300 * (40/12)\n   output: list: ingredient x quantity (unit)\n   done_when: All three ingredients have a calculated quantity.\n\n2. [QA Engineer]: Verify calculations\n   kind: verify\n   covers: R1, R2, R3\n   depends_on: 1\n   do:\n     - Re-calculate scaling factor and ingredient totals independently using `calc`.\n     - Compare results with Step 1.\n   output: memo: status (Pass/Fail)\n   done_when: Verification is complete and results are confirmed.\n\n3. [Technical Writer]: Assemble final deliverable\n   kind: work\n   covers: R4\n   depends_on: 2\n   do:\n     - Format the verified quantities.\n     - Add the '## Assumptions' section listing linear scaling, unit consistency, and rounding.\n   output: memo: final recipe response\n   done_when: The response contains the quantities and the '## Assumptions' section.\n\n## Capability Requests:\n```\nNone\n```\n\n## Risks and Decisions:\n- **Risk**: Rounding errors for butter (200 * 3.333... = 666.666...). \n- **Decision**: The Culinary Mathematician will be instructed to maintain precision to two decimal places, and the Technical Writer will document the rounding method in the Assumptions section.\n- **Decision**: I have decided to use a separate QA role to ensure the arithmetic is double-checked, as is standard for high-reliability delivery leads, even for simple math.\n\n## RoleFeedback:\nNone\n\n## PlanFeedback:\nNone",
+  "capability_requests": [],
+  "rounds": [
+    {
+      "index": 1,
+      "planner_raw": "<thought>Principal Engineer and Delivery Lead.\nCalculate ingredient amounts for 40 servings based on a 12-serving recipe.\n    *   12 servings: 450g flour, 200g butter, 300g sugar.\n    *   Target: 40 servings.\n    *   Deliverables: Amounts of flour, butter, and sugar for 40 servings.\n    *   Constraint: Final answer must have a \"## Assumptions\" section (L1).\n    *   Tools: `calc`, `echo`.\n\n    *   R1: Calculate the amount of flour for 40 servings.\n    *   R2: Calculate the amount of butter for 40 servings.\n    *   R3: Calculate the amount of sugar for 40 servings.\n    *   R4: Provide a final answer including an \"## Assumptions\" section (L1).\n\n    *   Given: 12 servings $\\rightarrow$ 450g flour, 200g butter, 300g sugar.\n    *   Target: 40 servings.\n    *   Scaling factor: $40 / 12 = 10 / 3 \\approx 3.333...$\n    *   Flour: $450 \\times (40/12) = 450 \\times 3.333 = 1500\\text{g}$.\n    *   Butter: $200 \\times (40/12) = 200 \\times 3.333 = 666.67\\text{g}$.\n    *   Sugar: $300 \\times (40/12) = 300 \\times 3.333 = 1000\\text{g}$.\n\n    *   Scaling calculations (Arithmetic).\n    *   Verification (Double-checking the math).\n    *   Formatting/Summarization (Final output with Assumptions).\n\n    *   Role 1: Culinary Mathematician (Calculates the scaling).\n    *   Role 2: Quality Assurance (Verifies the math).\n    *   Role 3: Technical Writer (Summarizes and adds Assumptions).\n\n    *   Step 1: Culinary Mathematician calculates the amounts.\n    *   Step 2: QA verifies the calculations.\n    *   Step 3: Technical Writer assembles the final response.\n\n    *   L1: Final answer must end with \"## Assumptions\".\n    *   Tools: `calc` is available.\n\n    *   *Requirements:* R1-R4.\n    *   *Givens:* 12 servings, 450g flour, 200g butter, 300g sugar. Target 40.\n    *   *Derived:* Scaling factor $40/12$.\n    *   *Assumptions:* Linear scaling, no waste, rounding rules.\n    *   *Roles:*\n        *   `Culinary Mathematician`: Senior. Goal: Accurate scaled ingredients.\n        *   `QA Engineer`: Senior. Goal: Zero calculation errors.\n        *   `Technical Writer`: Senior. Goal: Final formatted deliverable.\n    *   *Execution Plan:*\n        1. Math (Work)\n        2. QA (Verify)\n        3. Summary (Work)\n\n    *   Is the scaling factor handled correctly? Yes, $40/12$ is $3.33...$\n    *   Are the tools used? `calc` will be used by the Mathematician.\n    *   Is L1 addressed? Yes, in the Technical Writer's prompt and the execution plan.\n    *   Are roles well-defined? Yes.\n    *   Is the summariser correct? Yes, Technical Writer.</thought>## Thought\nThe task is a straightforward scaling problem: converting a recipe from 12 servings to 40 servings. The core requirement is to apply a scaling factor ($40/12$) to three ingredients (flour, butter, sugar) and present the results. I will employ a Culinary Mathematician to perform the calculations using the `calc` tool, a QA Engineer to verify the arithmetic independently, and a Technical Writer to assemble the final response, ensuring the mandatory \"## Assumptions\" section is included as per lesson L1.\n\n## Requirements:\nR1: Calculate the amount of flour needed for 40 servings.\nR2: Calculate the amount of butter needed for 40 servings.\nR3: Calculate the amount of sugar needed for 40 servings.\nR4: Deliver the final answer with a section headed '## Assumptions' listing all assumptions (L1).\n\n## Givens and Assumptions:\n- given: Base servings = 12\n- given: Base flour = 450 g\n- given: Base butter = 200 g\n- given: Base sugar = 300 g\n- given: Target servings = 40\n- derived: Scaling factor = 40 / 12 = 3.333... (or 10/3)\n- assumption: The relationship between servings and ingredient quantities is linear.\n- assumption: Ingredients are scaled exactly without adjustments for pan size or chemistry (standard culinary scaling).\n\n## Open Questions:\nNone\n\n## Selected Roles List:\n```\nNone\n```\n\n## Created Roles List:\n```\n[\n  {\n    \"name\": \"Culinary Mathematician\",\n    \"seniority\": \"senior\",\n    \"description\": \"A specialist in recipe scaling and unit conversions who ensures precise ingredient ratios are maintained when changing yield.\",\n    \"goal\": \"Provide precise scaled quantities for all ingredients.\",\n    \"responsibilities\": [\n      \"Determine the scaling factor\",\n      \"Calculate the new quantity for each ingredient\",\n      \"Maintain precision to two decimal places\"\n    ],\n    \"skills\": [\"arithmetic\", \"recipe scaling\"],\n    \"tools\": [\"calc\"],\n    \"inputs\": [\"Base recipe quantities and serving sizes from the task\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"scaled ingredients list\",\n        \"format\": \"list: ingredient x quantity (unit)\"\n      }\n    ],\n    \"success_criteria\": [\"Calculations are mathematically correct based on the scaling factor\"],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\", \"R3\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a senior Culinary Mathematician. Your task is to scale a recipe. \\n1. Calculate the scaling factor by dividing the target servings (40) by the base servings (12).\\n2. Multiply each base ingredient (450g flour, 200g butter, 300g sugar) by this scaling factor.\\n3. Use the `calc` tool for every operation to ensure precision.\\n4. Output the results as a clear list: 'Ingredient: [Amount] [Unit]'.\"\n  },\n  {\n    \"name\": \"QA Engineer\",\n    \"seniority\": \"senior\",\n    \"description\": \"A detail-oriented reviewer focused on verifying numerical accuracy and logic.\",\n    \"goal\": \"Verify that the scaled quantities are mathematically sound.\",\n    \"responsibilities\": [\n      \"Independently recalculate the scaling factor\",\n      \"Cross-check the Mathematician's results\",\n      \"Flag any rounding errors or calculation mistakes\"\n    ],\n    \"skills\": [\"numerical verification\", \"attention to detail\"],\n    \"tools\": [\"calc\"],\n    \"inputs\": [\"scaled ingredients list from Culinary Mathematician\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"verification report\",\n        \"format\": \"memo: status (Pass/Fail) and corrected values if applicable\"\n      }\n    ],\n    \"success_criteria\": [\"All calculations are verified as correct or corrected\"],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\", \"R3\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a senior QA Engineer. You must verify the calculations provided by the Culinary Mathematician.\\n1. Independently calculate the scaling factor (40/12).\\n2. Independently calculate the required amounts for flour, butter, and sugar.\\n3. Compare your results with the provided list.\\n4. If they match, output 'Status: Pass'. If they differ, output 'Status: Fail' and provide the correct values.\"\n  },\n  {\n    \"name\": \"Technical Writer\",\n    \"seniority\": \"senior\",\n    \"description\": \"A specialist in formatting and delivering final reports according to strict guidelines.\",\n    \"goal\": \"Assemble the final answer including the mandatory assumptions section.\",\n    \"responsibilities\": [\n      \"Format the verified quantities into a final answer\",\n      \"Draft the '## Assumptions' section as per L1\"\n    ],\n    \"skills\": [\"technical writing\", \"formatting\"],\n    \"tools\": [],\n    \"inputs\": [\"verified quantities from QA Engineer\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"final recipe response\",\n        \"format\": \"memo: quantities followed by ## Assumptions\"\n      }\n    ],\n    \"success_criteria\": [\"Final answer contains all 3 ingredients and the '## Assumptions' section\"],\n    \"constraints\": [\"Must follow L1: final answer must end with '## Assumptions'\"],\n    \"covers\": [\"R4\"],\n    \"is_summariser\": true,\n    \"prompt\": \"You are a senior Technical Writer. Your goal is to assemble the final response.\\n1. Take the verified ingredient quantities.\\n2. Present them clearly to the user.\\n3. Create a section at the end headed '## Assumptions'.\\n4. In this section, list every assumption made: linear scaling, no waste, rounding methods, and that units remain in grams. This is a mandatory requirement (L1).\"\n  }\n]\n```\n\n## Execution Plan:\n1. [Culinary Mathematician]: Calculate scaled ingredients\n   kind: work\n   covers: R1, R2, R3\n   depends_on: none\n   do:\n     - Calculate scaling factor: 40 / 12\n     - Calculate flour: 450 * (40/12)\n     - Calculate butter: 200 * (40/12)\n     - Calculate sugar: 300 * (40/12)\n   output: list: ingredient x quantity (unit)\n   done_when: All three ingredients have a calculated quantity.\n\n2. [QA Engineer]: Verify calculations\n   kind: verify\n   covers: R1, R2, R3\n   depends_on: 1\n   do:\n     - Re-calculate scaling factor and ingredient totals independently using `calc`.\n     - Compare results with Step 1.\n   output: memo: status (Pass/Fail)\n   done_when: Verification is complete and results are confirmed.\n\n3. [Technical Writer]: Assemble final deliverable\n   kind: work\n   covers: R4\n   depends_on: 2\n   do:\n     - Format the verified quantities.\n     - Add the '## Assumptions' section listing linear scaling, unit consistency, and rounding.\n   output: memo: final recipe response\n   done_when: The response contains the quantities and the '## Assumptions' section.\n\n## Capability Requests:\n```\nNone\n```\n\n## Risks and Decisions:\n- **Risk**: Rounding errors for butter (200 * 3.333... = 666.666...). \n- **Decision**: The Culinary Mathematician will be instructed to maintain precision to two decimal places, and the Technical Writer will document the rounding method in the Assumptions section.\n- **Decision**: I have decided to use a separate QA role to ensure the arithmetic is double-checked, as is standard for high-reliability delivery leads, even for simple math.\n\n## RoleFeedback:\nNone\n\n## PlanFeedback:\nNone",
+      "roles": [
+        {
+          "name": "Culinary Mathematician",
+          "seniority": "senior",
+          "description": "A specialist in recipe scaling and unit conversions who ensures precise ingredient ratios are maintained when changing yield.",
+          "goal": "Provide precise scaled quantities for all ingredients.",
+          "responsibilities": [
+            "Determine the scaling factor",
+            "Calculate the new quantity for each ingredient",
+            "Maintain precision to two decimal places"
+          ],
+          "skills": [
+            "arithmetic",
+            "recipe scaling"
+          ],
+          "tools": [
+            "calc"
+          ],
+          "inputs": [
+            "Base recipe quantities and serving sizes from the task"
+          ],
+          "outputs": [
+            {
+              "artifact": "scaled ingredients list",
+              "format": "list: ingredient x quantity (unit)"
+            }
+          ],
+          "success_criteria": [
+            "Calculations are mathematically correct based on the scaling factor"
+          ],
+          "constraints": [],
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "is_summariser": false,
+          "prompt": "You are a senior Culinary Mathematician. Your task is to scale a recipe. \n1. Calculate the scaling factor by dividing the target servings (40) by the base servings (12).\n2. Multiply each base ingredient (450g flour, 200g butter, 300g sugar) by this scaling factor.\n3. Use the `calc` tool for every operation to ensure precision.\n4. Output the results as a clear list: 'Ingredient: [Amount] [Unit]'."
+        },
+        {
+          "name": "QA Engineer",
+          "seniority": "senior",
+          "description": "A detail-oriented reviewer focused on verifying numerical accuracy and logic.",
+          "goal": "Verify that the scaled quantities are mathematically sound.",
+          "responsibilities": [
+            "Independently recalculate the scaling factor",
+            "Cross-check the Mathematician's results",
+            "Flag any rounding errors or calculation mistakes"
+          ],
+          "skills": [
+            "numerical verification",
+            "attention to detail"
+          ],
+          "tools": [
+            "calc"
+          ],
+          "inputs": [
+            "scaled ingredients list from Culinary Mathematician"
+          ],
+          "outputs": [
+            {
+              "artifact": "verification report",
+              "format": "memo: status (Pass/Fail) and corrected values if applicable"
+            }
+          ],
+          "success_criteria": [
+            "All calculations are verified as correct or corrected"
+          ],
+          "constraints": [],
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "is_summariser": false,
+          "prompt": "You are a senior QA Engineer. You must verify the calculations provided by the Culinary Mathematician.\n1. Independently calculate the scaling factor (40/12).\n2. Independently calculate the required amounts for flour, butter, and sugar.\n3. Compare your results with the provided list.\n4. If they match, output 'Status: Pass'. If they differ, output 'Status: Fail' and provide the correct values."
+        },
+        {
+          "name": "Technical Writer",
+          "seniority": "senior",
+          "description": "A specialist in formatting and delivering final reports according to strict guidelines.",
+          "goal": "Assemble the final answer including the mandatory assumptions section.",
+          "responsibilities": [
+            "Format the verified quantities into a final answer",
+            "Draft the '## Assumptions' section as per L1"
+          ],
+          "skills": [
+            "technical writing",
+            "formatting"
+          ],
+          "tools": [],
+          "inputs": [
+            "verified quantities from QA Engineer"
+          ],
+          "outputs": [
+            {
+              "artifact": "final recipe response",
+              "format": "memo: quantities followed by ## Assumptions"
+            }
+          ],
+          "success_criteria": [
+            "Final answer contains all 3 ingredients and the '## Assumptions' section"
+          ],
+          "constraints": [
+            "Must follow L1: final answer must end with '## Assumptions'"
+          ],
+          "covers": [
+            "R4"
+          ],
+          "is_summariser": true,
+          "prompt": "You are a senior Technical Writer. Your goal is to assemble the final response.\n1. Take the verified ingredient quantities.\n2. Present them clearly to the user.\n3. Create a section at the end headed '## Assumptions'.\n4. In this section, list every assumption made: linear scaling, no waste, rounding methods, and that units remain in grams. This is a mandatory requirement (L1)."
+        }
+      ],
+      "plan": [
+        {
+          "agents": [
+            "Culinary Mathematician"
+          ],
+          "text": "[Culinary Mathematician]: Calculate scaled ingredients",
+          "title": "Calculate scaled ingredients",
+          "kind": "work",
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "depends_on": [],
+          "do": "\n- Calculate scaling factor: 40 / 12\n- Calculate flour: 450 * (40/12)\n- Calculate butter: 200 * (40/12)\n- Calculate sugar: 300 * (40/12)",
+          "output": "list: ingredient x quantity (unit)",
+          "done_when": "All three ingredients have a calculated quantity."
+        },
+        {
+          "agents": [
+            "QA Engineer"
+          ],
+          "text": "[QA Engineer]: Verify calculations",
+          "title": "Verify calculations",
+          "kind": "verify",
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ],
+          "depends_on": [
+            1
+          ],
+          "do": "\n- Re-calculate scaling factor and ingredient totals independently using `calc`.\n- Compare results with Step 1.",
+          "output": "memo: status (Pass/Fail)",
+          "done_when": "Verification is complete and results are confirmed."
+        },
+        {
+          "agents": [
+            "Technical Writer"
+          ],
+          "text": "[Technical Writer]: Assemble final deliverable",
+          "title": "Assemble final deliverable",
+          "kind": "work",
+          "covers": [
+            "R4"
+          ],
+          "depends_on": [
+            2
+          ],
+          "do": "\n- Format the verified quantities.\n- Add the '## Assumptions' section listing linear scaling, unit consistency, and rounding.",
+          "output": "memo: final recipe response",
+          "done_when": "The response contains the quantities and the '## Assumptions' section."
+        }
+      ],
+      "capability_requests": [],
+      "agent_observer_raw": "<thought>Staffing Reviewer.\nJudge if roles are well-defined and if they collectively cover all requirements.\n\n        *   Task: Scale a recipe (12 servings $\\rightarrow$ 40 servings).\n        *   Ingredients: Flour (450g), Butter (200g), Sugar (300g).\n        *   Requirements: R1 (Flour), R2 (Butter), R3 (Sugar), R4 (Assumptions section).\n        *   Lessons: L1 (Mandatory '## Assumptions' section).\n        *   Roles: Culinary Mathematician, QA Engineer, Technical Writer.\n        *   Tools: `calc`, `echo`.\n\n    *   R1: Flour $\\rightarrow$ Covered by Culinary Mathematician, QA Engineer.\n    *   R2: Butter $\\rightarrow$ Covered by Culinary Mathematician, QA Engineer.\n    *   R3: Sugar $\\rightarrow$ Covered by Culinary Mathematician, QA Engineer.\n    *   R4: Assumptions section $\\rightarrow$ Covered by Technical Writer.\n    *   *Coverage is complete.*\n\n    *   *Culinary Mathematician:*\n        *   Goal: Yes.\n        *   Skills: Yes.\n        *   Inputs: Yes.\n        *   Outputs: Yes (list: ingredient x quantity (unit)).\n        *   Success Criteria: Yes.\n        *   Prompt: Detailed and actionable.\n    *   *QA Engineer:*\n        *   Goal: Yes.\n        *   Skills: Yes.\n        *   Inputs: Yes.\n        *   Outputs: Yes (memo: status and corrected values).\n        *   Success Criteria: Yes.\n        *   Prompt: Detailed and actionable.\n    *   *Technical Writer:*\n        *   Goal: Yes.\n        *   Skills: Yes.\n        *   Inputs: Yes.\n        *   Outputs: Yes (memo: quantities followed by ## Assumptions).\n        *   Success Criteria: Yes.\n        *   Prompt: Detailed and actionable.\n    *   *Definition is solid.*\n\n    *   Arithmetic/Scaling $\\rightarrow$ `calc` tool + \"arithmetic\" skill.\n    *   Verification $\\rightarrow$ \"numerical verification\" skill.\n    *   Formatting $\\rightarrow$ \"technical writing\" skill.\n    *   *Skills are sufficient.*\n\n    *   The task requires basic arithmetic. `calc` is provided.\n    *   No external data or complex code needed.\n    *   *Capabilities are sufficient.*\n\n    *   Technical Writer is marked `is_summariser: true`.\n    *   Technical Writer has no tools.\n    *   Technical Writer's prompt focuses on assembly and formatting, not new analysis.\n    *   *Summariser criteria met.*\n\n    *   3 roles (within limit of 5).\n    *   No duplicates.\n    *   All roles cover at least one requirement.\n    *   *Size is appropriate.*\n\n    *   The Technical Writer's prompt explicitly mentions L1 and the '## Assumptions' section.\n    *   The prompt lists specific assumptions to include (linear scaling, no waste, rounding, units).\n    *   *Lesson L1 is covered.*</thought>## Thought\nThe planner has provided a team of three roles to handle a simple recipe scaling task. \n\n1.  **Coverage**: R1, R2, and R3 (calculations) are covered by the Culinary Mathematician and verified by the QA Engineer. R4 (Assumptions section) is covered by the Technical Writer. All requirements are mapped.\n2.  **Definition**: Each role has a clear goal, specific skills, defined inputs/outputs with formats, success criteria, and a detailed prompt.\n3.  **Skills**: The skills listed (arithmetic, numerical verification, technical writing) are perfectly aligned with the task.\n4.  **Capabilities**: The `calc` tool is sufficient for the arithmetic required. No other capabilities are needed.\n5.  **Summariser**: The Technical Writer is the sole summariser, has no tools, and is tasked with assembly rather than new analysis.\n6.  **Size**: 3 roles is an appropriate size for this task. No duplicates.\n\nThe team is well-structured and follows the lesson L1 regarding the assumptions section.\n\n## Suggestions\nNone\n\n## Verdict\nAPPROVE",
+      "agent_observer": "None",
+      "plan_observer_raw": "<thought>Senior Delivery Reviewer.\nJudge if the plan is complete, ordered correctly, checkable, and realistic (like an experienced lead).\nScale a recipe from 12 to 40 servings (Flour 450g, Butter 200g, Sugar 300g).\n\n        *   R1: Flour for 40.\n        *   R2: Butter for 40.\n        *   R3: Sugar for 40.\n        *   R4: Final answer with '## Assumptions' section (L1).\n        *   Givens: 12 servings, 450g flour, 200g butter, 300g sugar, target 40.\n        *   Derived: Scaling factor 40/12 = 10/3.\n        *   Assumptions: Linear scaling, no pan/chemistry adjustments.\n\n        *   Culinary Mathematician (Calculates).\n        *   QA Engineer (Verifies).\n        *   Technical Writer (Formats + Assumptions).\n\n        1.  Mathematician calculates.\n        2.  QA verifies.\n        3.  Writer assembles.\n\n    *   *Coverage:*\n        *   R1, R2, R3 covered by Step 1 and Step 2.\n        *   R4 covered by Step 3.\n        *   L1 (Assumptions section) covered by Step 3.\n        *   *Verdict:* Coverage is complete.\n\n    *   *Numbers:*\n        *   Scaling factor: $40 / 12 = 3.333...$ (Correct).\n        *   Flour: $450 \\times (40/12) = 450 \\times 3.333... = 1500\\text{g}$.\n        *   Butter: $200 \\times (40/12) = 200 \\times 3.333... = 666.67\\text{g}$.\n        *   Sugar: $300 \\times (40/12) = 300 \\times 3.333... = 1000\\text{g}$.\n        *   *Verdict:* Derived figures in the \"Givens\" section are correct.\n\n    *   *Dependencies:*\n        *   Step 1 $\\rightarrow$ Step 2 $\\rightarrow$ Step 3.\n        *   Logical flow.\n        *   *Verdict:* Correct.\n\n    *   *Depth:*\n        *   Step 1: `do` is specific (calc factor, then each ingredient), `output` is clear, `done_when` is clear.\n        *   Step 2: `do` is specific (independent recalculation), `output` is clear, `done_when` is clear.\n        *   Step 3: `do` is specific (format + assumptions), `output` is clear, `done_when` is clear.\n        *   *Verdict:* Sufficient depth.\n\n    *   *Verification:*\n        *   Step 2 is a dedicated verification step by a different role (QA Engineer).\n        *   *Verdict:* Pass.\n\n    *   *Context:*\n        *   Simple math task, but treated with professional rigor (QA, Technical Writer).\n        *   *Verdict:* Pass.\n\n    *   *Risks and Decisions:*\n        *   Rounding risk identified for butter.\n        *   Decision to use QA role for reliability.\n        *   *Verdict:* Pass.\n\n    *   *Capabilities:*\n        *   `calc` tool is provided and used in the prompts/steps.\n        *   *Verdict:* Pass.\n\n    *   *User-only inputs:*\n        *   None needed.\n        *   *Verdict:* Pass.\n\n    *   *Interpretation:*\n        *   Matches the task perfectly.\n        *   *Verdict:* Pass.\n\n    *   The plan is exceptionally thorough for a simple math problem, which is exactly what a \"senior delivery lead\" would do to ensure zero errors in a production environment (even if it seems like overkill for a recipe, the prompt asks for an \"experienced lead\" approach).\n    *   L1 is explicitly addressed in the Technical Writer's prompt and the execution plan.\n    *   The roles are well-defined.\n\n    *   Is there any ambiguity?\n    *   The scaling factor $40/12$ is $3.33...$\n    *   $450 \\times 3.333... = 1500$\n    *   $200 \\times 3.333... = 666.666...$\n    *   $300 \\times 3.333... = 1000$\n    *   The plan handles the rounding risk.\n\n    *   Coverage: OK.\n    *   Numbers: OK.\n    *   Dependencies: OK.\n    *   Depth: OK.\n    *   Verification: OK.\n    *   Context: OK.\n    *   Risks: OK.\n    *   Capabilities: OK.\n    *   User-only: OK.\n    *   Interpretation: OK.</thought>## Thought\nThe plan is comprehensive and follows a professional delivery lifecycle. \n\n1.  **Coverage**: All requirements (R1, R2, R3, R4) are explicitly mapped to steps. The specific lesson L1 (Assumptions section) is integrated into the Technical Writer's role and the final execution step.\n2.  **Numbers**: The scaling factor $40/12$ (or $10/3$) is correct. The calculations for flour ($450 \\times 10/3 = 1500$), butter ($200 \\times 10/3 = 666.67$), and sugar ($300 \\times 10/3 = 1000$) are straightforward, and the plan correctly identifies the rounding risk for the butter.\n3.  **Dependencies**: The linear sequence (Calculate $\\rightarrow$ Verify $\\rightarrow$ Assemble) is correct.\n4.  **Depth**: Each step contains a clear `do`, `output`, and `done_when` criterion.\n5.  **Verification**: A dedicated QA Engineer role is used to independently verify the calculations, satisfying the requirement for a separate reviewer.\n6.  **Risks**: The rounding of the butter quantity is explicitly identified as a risk with a corresponding decision on how to handle it.\n7.  **Capabilities**: The `calc` tool is provided and correctly assigned to the roles performing arithmetic.\n\nThe plan is overkill for a simple math problem, but it perfectly mirrors how an experienced lead would structure a high-reliability delivery to ensure zero errors.\n\n## Suggestions\nNone\n\n## Verdict\nAPPROVE",
+      "plan_observer": "None",
+      "consensus": true,
+      "gate_failed": [],
+      "agent_verdict": "APPROVE",
+      "plan_verdict": "APPROVE",
+      "agent_suggestions_n": 0,
+      "plan_suggestions_n": 0
+    }
+  ],
+  "prompts": "d24",
+  "requirements": {
+    "R1": "Calculate the amount of flour needed for 40 servings.",
+    "R2": "Calculate the amount of butter needed for 40 servings.",
+    "R3": "Calculate the amount of sugar needed for 40 servings.",
+    "R4": "Deliver the final answer with a section headed '## Assumptions' listing all assumptions (L1)."
+  },
+  "givens": [
+    "given: Base servings = 12",
+    "given: Base flour = 450 g",
+    "given: Base butter = 200 g",
+    "given: Base sugar = 300 g",
+    "given: Target servings = 40",
+    "derived: Scaling factor = 40 / 12 = 3.333... (or 10/3)",
+    "assumption: The relationship between servings and ingredient quantities is linear.",
+    "assumption: Ingredients are scaled exactly without adjustments for pan size or chemistry (standard culinary scaling)."
+  ],
+  "risks": [
+    "**Risk**: Rounding errors for butter (200 * 3.333... = 666.666...).",
+    "**Decision**: The Culinary Mathematician will be instructed to maintain precision to two decimal places, and the Technical Writer will document the rounding method in the Assumptions section.",
+    "**Decision**: I have decided to use a separate QA role to ensure the arithmetic is double-checked, as is standard for high-reliability delivery leads, even for simple math."
+  ],
+  "open_questions": [],
+  "interpretation": {
+    "entities": [],
+    "working": [],
+    "ambiguous": [],
+    "gap": 0.3,
+    "question": null,
+    "context": {}
+  },
+  "quality": {
+    "checks": {
+      "requirements_covered": {
+        "ok": true,
+        "requirements": 4,
+        "uncovered_by_steps": [],
+        "uncovered_by_roles": []
+      },
+      "dependencies_valid": {
+        "ok": true,
+        "bad": []
+      },
+      "roles_fully_defined": {
+        "ok": true,
+        "defined": 3,
+        "roles": 3,
+        "thin": {}
+      },
+      "summariser": {
+        "ok": true,
+        "declared_by_planner": 1,
+        "name": "Technical Writer",
+        "tools": [],
+        "owns_steps": [
+          3
+        ]
+      },
+      "tools_accounted": {
+        "ok": true,
+        "missing_not_requested_by_planner": []
+      },
+      "verification_step": {
+        "ok": true,
+        "steps": [
+          2
+        ]
+      },
+      "independent_verification": {
+        "ok": true,
+        "candidates": [
+          {
+            "step": 2,
+            "verifiers": [
+              "QA Engineer"
+            ],
+            "producers": [
+              "Culinary Mathematician"
+            ],
+            "independent": true
+          }
+        ]
+      },
+      "task_coverage": {
+        "ok": true,
+        "numbers": [
+          "12",
+          "40",
+          "200",
+          "300",
+          "450"
+        ],
+        "missing_numbers": [],
+        "phrases": [],
+        "missing_phrases": []
+      }
+    },
+    "passed": 8,
+    "failed": 0,
+    "na": 0,
+    "failed_checks": [],
+    "hard_failed": []
+  },
+  "gate_hits": 0,
+  "requests_proposed": 0,
+  "requests_dropped_by_observers": 0
+}

@@ -1,0 +1,462 @@
+{
+  "created_roles": [
+    {
+      "name": "Calculation Specialist",
+      "description": "A detail-oriented analyst responsible for performing precise arithmetic calculations using available tools.",
+      "tools": [
+        "calc"
+      ],
+      "suggestions": "",
+      "prompt": "You are a Calculation Specialist. Using the provided parameters (Distance: 1150km, Rate: 8.2L/100km, Price: $1.59/L), perform the following steps:\n1. Calculate total litres: (Distance / 100) * Rate.\n2. Calculate total cost: Total Litres * Price.\nUse the `calc` tool for every operation to ensure precision. Output the results clearly as a memo.",
+      "missing_tools": [],
+      "is_summariser": false,
+      "seniority": "mid",
+      "goal": "Provide accurate values for fuel volume and total cost.",
+      "responsibilities": [
+        "Calculate total litres used",
+        "Calculate total cost of fuel"
+      ],
+      "skills": [
+        "basic arithmetic",
+        "unit conversion"
+      ],
+      "inputs": [
+        "Task parameters (distance, rate, price)"
+      ],
+      "outputs": [
+        {
+          "artifact": "calculation sheet",
+          "format": "memo: fuel_litres, total_cost"
+        }
+      ],
+      "success_criteria": [
+        "Calculations are mathematically correct",
+        "Units are clearly labeled"
+      ],
+      "constraints": [],
+      "covers": [
+        "R1",
+        "R2"
+      ]
+    },
+    {
+      "name": "QA Reviewer",
+      "description": "An auditor who verifies the accuracy of calculations and ensures no logic errors occurred.",
+      "tools": [
+        "calc"
+      ],
+      "suggestions": "",
+      "prompt": "You are a QA Reviewer. You will receive a calculation sheet. Your task is to independently re-calculate the fuel used and the total cost using the `calc` tool. Compare your results with the provided sheet. If they match, mark as 'Pass'. If they differ, provide the correct value. Ensure the logic (Distance/100 * Rate) is correctly applied.",
+      "missing_tools": [],
+      "is_summariser": false,
+      "seniority": "senior",
+      "goal": "Verify that the fuel and cost calculations are 100% accurate.",
+      "responsibilities": [
+        "Independent verification of calculations",
+        "Cross-check units"
+      ],
+      "skills": [
+        "mathematical auditing"
+      ],
+      "inputs": [
+        "Calculation sheet from Calculation Specialist"
+      ],
+      "outputs": [
+        {
+          "artifact": "verification report",
+          "format": "memo: status (Pass/Fail), corrected values if applicable"
+        }
+      ],
+      "success_criteria": [
+        "All calculations verified independently",
+        "Discrepancies identified and corrected"
+      ],
+      "constraints": [],
+      "covers": [
+        "R1",
+        "R2"
+      ]
+    },
+    {
+      "name": "Final Writer",
+      "description": "A communications lead who assembles the final deliverable and ensures all formatting requirements and lessons are met.",
+      "tools": [],
+      "suggestions": "",
+      "prompt": "You are the Final Writer. Take the verified calculations for fuel used and total cost. Present them clearly to the user. You MUST end the response with a section headed '## Assumptions'. In this section, list every assumption made, including rounding (e.g., to 2 decimal places), the constancy of fuel prices and consumption rates, and the units used.",
+      "missing_tools": [],
+      "is_summariser": true,
+      "seniority": "senior",
+      "goal": "Deliver the final answer with the required Assumptions section.",
+      "responsibilities": [
+        "Assemble final results",
+        "Draft the Assumptions section"
+      ],
+      "skills": [
+        "technical writing",
+        "attention to detail"
+      ],
+      "inputs": [
+        "Verified calculations from QA Reviewer"
+      ],
+      "outputs": [
+        {
+          "artifact": "final response",
+          "format": "memo: fuel used, total cost, ## Assumptions"
+        }
+      ],
+      "success_criteria": [
+        "Final answer is clear and concise",
+        "## Assumptions section is present and comprehensive per L1"
+      ],
+      "constraints": [],
+      "covers": [
+        "R3"
+      ]
+    }
+  ],
+  "plan": [
+    {
+      "index": 0,
+      "agent_names": [
+        "Calculation Specialist"
+      ],
+      "text": "[Calculation Specialist]: Compute Fuel and Cost",
+      "title": "Compute Fuel and Cost",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2"
+      ],
+      "depends_on": [],
+      "do": "\n- Calculate total litres: (1150 / 100) * 8.2\n- Calculate total cost: [Result of previous step] * 1.59",
+      "output": "memo: fuel_litres, total_cost",
+      "done_when": "both values are calculated and recorded."
+    },
+    {
+      "index": 1,
+      "agent_names": [
+        "QA Reviewer"
+      ],
+      "text": "[QA Reviewer]: Verify Calculations",
+      "title": "Verify Calculations",
+      "kind": "verify",
+      "covers": [
+        "R1",
+        "R2"
+      ],
+      "depends_on": [
+        1
+      ],
+      "do": "\n- Independently calculate (1150 / 100) * 8.2\n- Independently calculate [Result] * 1.59\n- Compare results with Step 1.",
+      "output": "memo: status (Pass/Fail)",
+      "done_when": "calculations are confirmed as correct."
+    },
+    {
+      "index": 2,
+      "agent_names": [
+        "Final Writer"
+      ],
+      "text": "[Final Writer]: Assemble Final Deliverable",
+      "title": "Assemble Final Deliverable",
+      "kind": "work",
+      "covers": [
+        "R3"
+      ],
+      "depends_on": [
+        2
+      ],
+      "do": "\n- Format the final fuel usage and cost.\n- Create the '## Assumptions' section listing all constants and rounding rules.",
+      "output": "memo: final answer with ## Assumptions",
+      "done_when": "the response contains the answers and the mandatory Assumptions section."
+    }
+  ],
+  "rounds_used": 1,
+  "consensus": true,
+  "role_feedback": "None",
+  "plan_feedback": "None",
+  "raw_draft": "<thought>Principal Engineer and Delivery Lead.\nCalculate fuel used and total fuel cost for a road trip.\n1,150 km distance, 8.2 L/100 km fuel consumption, $1.59/L fuel price.\n`calc`, `echo`.\nL1: Final answer must end with a section headed '## Assumptions'.\n\n    *   R1: Calculate the total litres of fuel used.\n    *   R2: Calculate the total fuel cost.\n    *   R3: List all assumptions (per L1).\n\n    *   Distance: 1,150 km\n    *   Consumption rate: 8.2 L / 100 km\n    *   Fuel price: $1.59 / L\n    *   Derived (Fuel used): $(1150 / 100) * 8.2 = 11.5 * 8.2 = 94.3$ L\n    *   Derived (Cost): $94.3 * 1.59 = 149.937$ (approx $149.94)\n\n    *   Tool: Arithmetic calculation (installed as `calc`).\n    *   Skill: Basic financial/mathematical calculation.\n    *   Skill: Documentation/Summarization.\n\n    *   Role 1: Calculation Specialist (performs the math).\n    *   Role 2: Quality Assurance/Reviewer (verifies the math).\n    *   Role 3: Final Writer/Summariser (assembles the final response and ensures the Assumptions section is present).\n\n    *   Step 1: Calculation Specialist calculates fuel used and cost.\n    *   Step 2: QA Reviewer verifies the calculations.\n    *   Step 3: Summariser compiles the final answer.\n\n    *   Rounding: How many decimal places for litres and currency? (Assumption: 2 decimal places).\n    *   Consistency: Fuel price and consumption rate are constant throughout the trip. (Assumption).\n\n    *   R1: Litres used.\n    *   R2: Fuel cost.\n    *   R3: Assumptions section.\n\n    *   *Calculation Specialist*:\n        *   Goal: Accurate fuel and cost figures.\n        *   Prompt: Use `calc` to find (1150/100)*8.2 and then multiply by 1.59.\n    *   *QA Reviewer*:\n        *   Goal: Zero mathematical errors.\n        *   Prompt: Re-calculate independently and compare.\n    *   *Summariser*:\n        *   Goal: Final deliverable.\n        *   Prompt: Format the results and add the ## Assumptions section.</thought>## Thought\nThe task is a straightforward mathematical calculation involving distance, fuel efficiency, and unit price. I need to ensure the calculations are precise and that the final output strictly adheres to the lesson (L1) regarding the '## Assumptions' section. I will employ a Calculation Specialist to perform the math using the `calc` tool, a QA Reviewer to verify the arithmetic, and a Summariser to package the final answer.\n\n## Requirements:\nR1: Calculate the total litres of fuel used for the 1,150 km trip.\nR2: Calculate the total fuel cost based on the calculated litres and the price of $1.59 per litre.\nR3: Deliver a final answer including a section headed '## Assumptions' listing all assumptions (per L1).\n\n## Givens and Assumptions:\n- given: distance = 1,150 km\n- given: fuel consumption = 8.2 litres / 100 km\n- given: fuel price = $1.59 / litre\n- derived: fuel used = (1150 / 100) * 8.2 = 94.3 litres\n- derived: total cost = 94.3 * 1.59 = 149.937\n- assumption: Fuel consumption remains constant at 8.2 L/100km regardless of driving conditions, load, or speed.\n- assumption: Fuel price remains constant at $1.59/L for the entire duration of the trip.\n- assumption: Currency is USD (or a generic $ unit).\n- assumption: Final cost will be rounded to two decimal places.\n\n## Open Questions:\nNone\n\n## Selected Roles List:\n```\nNone\n```\n\n## Created Roles List:\n```\n[\n  {\n    \"name\": \"Calculation Specialist\",\n    \"seniority\": \"mid\",\n    \"description\": \"A detail-oriented analyst responsible for performing precise arithmetic calculations using available tools.\",\n    \"goal\": \"Provide accurate values for fuel volume and total cost.\",\n    \"responsibilities\": [\"Calculate total litres used\", \"Calculate total cost of fuel\"],\n    \"skills\": [\"basic arithmetic\", \"unit conversion\"],\n    \"tools\": [\"calc\"],\n    \"inputs\": [\"Task parameters (distance, rate, price)\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"calculation sheet\",\n        \"format\": \"memo: fuel_litres, total_cost\"\n      }\n    ],\n    \"success_criteria\": [\"Calculations are mathematically correct\", \"Units are clearly labeled\"],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a Calculation Specialist. Using the provided parameters (Distance: 1150km, Rate: 8.2L/100km, Price: $1.59/L), perform the following steps:\\n1. Calculate total litres: (Distance / 100) * Rate.\\n2. Calculate total cost: Total Litres * Price.\\nUse the `calc` tool for every operation to ensure precision. Output the results clearly as a memo.\"\n  },\n  {\n    \"name\": \"QA Reviewer\",\n    \"seniority\": \"senior\",\n    \"description\": \"An auditor who verifies the accuracy of calculations and ensures no logic errors occurred.\",\n    \"goal\": \"Verify that the fuel and cost calculations are 100% accurate.\",\n    \"responsibilities\": [\"Independent verification of calculations\", \"Cross-check units\"],\n    \"skills\": [\"mathematical auditing\"],\n    \"tools\": [\"calc\"],\n    \"inputs\": [\"Calculation sheet from Calculation Specialist\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"verification report\",\n        \"format\": \"memo: status (Pass/Fail), corrected values if applicable\"\n      }\n    ],\n    \"success_criteria\": [\"All calculations verified independently\", \"Discrepancies identified and corrected\"],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a QA Reviewer. You will receive a calculation sheet. Your task is to independently re-calculate the fuel used and the total cost using the `calc` tool. Compare your results with the provided sheet. If they match, mark as 'Pass'. If they differ, provide the correct value. Ensure the logic (Distance/100 * Rate) is correctly applied.\"\n  },\n  {\n    \"name\": \"Final Writer\",\n    \"seniority\": \"senior\",\n    \"description\": \"A communications lead who assembles the final deliverable and ensures all formatting requirements and lessons are met.\",\n    \"goal\": \"Deliver the final answer with the required Assumptions section.\",\n    \"responsibilities\": [\"Assemble final results\", \"Draft the Assumptions section\"],\n    \"skills\": [\"technical writing\", \"attention to detail\"],\n    \"tools\": [],\n    \"inputs\": [\"Verified calculations from QA Reviewer\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"final response\",\n        \"format\": \"memo: fuel used, total cost, ## Assumptions\"\n      }\n    ],\n    \"success_criteria\": [\"Final answer is clear and concise\", \"## Assumptions section is present and comprehensive per L1\"],\n    \"constraints\": [],\n    \"covers\": [\"R3\"],\n    \"is_summariser\": true,\n    \"prompt\": \"You are the Final Writer. Take the verified calculations for fuel used and total cost. Present them clearly to the user. You MUST end the response with a section headed '## Assumptions'. In this section, list every assumption made, including rounding (e.g., to 2 decimal places), the constancy of fuel prices and consumption rates, and the units used.\"\n  }\n]\n```\n\n## Execution Plan:\n1. [Calculation Specialist]: Compute Fuel and Cost\n   kind: work\n   covers: R1, R2\n   depends_on: none\n   do: \n     - Calculate total litres: (1150 / 100) * 8.2\n     - Calculate total cost: [Result of previous step] * 1.59\n   output: memo: fuel_litres, total_cost\n   done_when: both values are calculated and recorded.\n\n2. [QA Reviewer]: Verify Calculations\n   kind: verify\n   covers: R1, R2\n   depends_on: 1\n   do: \n     - Independently calculate (1150 / 100) * 8.2\n     - Independently calculate [Result] * 1.59\n     - Compare results with Step 1.\n   output: memo: status (Pass/Fail)\n   done_when: calculations are confirmed as correct.\n\n3. [Final Writer]: Assemble Final Deliverable\n   kind: work\n   covers: R3\n   depends_on: 2\n   do: \n     - Format the final fuel usage and cost.\n     - Create the '## Assumptions' section listing all constants and rounding rules.\n   output: memo: final answer with ## Assumptions\n   done_when: the response contains the answers and the mandatory Assumptions section.\n\n## Capability Requests:\n```\nNone\n```\n\n## Risks and Decisions:\n- **Risk**: Rounding errors. **Decision**: The Calculation Specialist will provide raw numbers; the Final Writer will round the final cost to 2 decimal places for currency standard.\n- **Risk**: Missing the Assumptions section. **Decision**: The Final Writer's prompt explicitly mandates the '## Assumptions' header to satisfy L1.\n\n## RoleFeedback:\nNone\n\n## PlanFeedback:\nNone",
+  "capability_requests": [],
+  "rounds": [
+    {
+      "index": 1,
+      "planner_raw": "<thought>Principal Engineer and Delivery Lead.\nCalculate fuel used and total fuel cost for a road trip.\n1,150 km distance, 8.2 L/100 km fuel consumption, $1.59/L fuel price.\n`calc`, `echo`.\nL1: Final answer must end with a section headed '## Assumptions'.\n\n    *   R1: Calculate the total litres of fuel used.\n    *   R2: Calculate the total fuel cost.\n    *   R3: List all assumptions (per L1).\n\n    *   Distance: 1,150 km\n    *   Consumption rate: 8.2 L / 100 km\n    *   Fuel price: $1.59 / L\n    *   Derived (Fuel used): $(1150 / 100) * 8.2 = 11.5 * 8.2 = 94.3$ L\n    *   Derived (Cost): $94.3 * 1.59 = 149.937$ (approx $149.94)\n\n    *   Tool: Arithmetic calculation (installed as `calc`).\n    *   Skill: Basic financial/mathematical calculation.\n    *   Skill: Documentation/Summarization.\n\n    *   Role 1: Calculation Specialist (performs the math).\n    *   Role 2: Quality Assurance/Reviewer (verifies the math).\n    *   Role 3: Final Writer/Summariser (assembles the final response and ensures the Assumptions section is present).\n\n    *   Step 1: Calculation Specialist calculates fuel used and cost.\n    *   Step 2: QA Reviewer verifies the calculations.\n    *   Step 3: Summariser compiles the final answer.\n\n    *   Rounding: How many decimal places for litres and currency? (Assumption: 2 decimal places).\n    *   Consistency: Fuel price and consumption rate are constant throughout the trip. (Assumption).\n\n    *   R1: Litres used.\n    *   R2: Fuel cost.\n    *   R3: Assumptions section.\n\n    *   *Calculation Specialist*:\n        *   Goal: Accurate fuel and cost figures.\n        *   Prompt: Use `calc` to find (1150/100)*8.2 and then multiply by 1.59.\n    *   *QA Reviewer*:\n        *   Goal: Zero mathematical errors.\n        *   Prompt: Re-calculate independently and compare.\n    *   *Summariser*:\n        *   Goal: Final deliverable.\n        *   Prompt: Format the results and add the ## Assumptions section.</thought>## Thought\nThe task is a straightforward mathematical calculation involving distance, fuel efficiency, and unit price. I need to ensure the calculations are precise and that the final output strictly adheres to the lesson (L1) regarding the '## Assumptions' section. I will employ a Calculation Specialist to perform the math using the `calc` tool, a QA Reviewer to verify the arithmetic, and a Summariser to package the final answer.\n\n## Requirements:\nR1: Calculate the total litres of fuel used for the 1,150 km trip.\nR2: Calculate the total fuel cost based on the calculated litres and the price of $1.59 per litre.\nR3: Deliver a final answer including a section headed '## Assumptions' listing all assumptions (per L1).\n\n## Givens and Assumptions:\n- given: distance = 1,150 km\n- given: fuel consumption = 8.2 litres / 100 km\n- given: fuel price = $1.59 / litre\n- derived: fuel used = (1150 / 100) * 8.2 = 94.3 litres\n- derived: total cost = 94.3 * 1.59 = 149.937\n- assumption: Fuel consumption remains constant at 8.2 L/100km regardless of driving conditions, load, or speed.\n- assumption: Fuel price remains constant at $1.59/L for the entire duration of the trip.\n- assumption: Currency is USD (or a generic $ unit).\n- assumption: Final cost will be rounded to two decimal places.\n\n## Open Questions:\nNone\n\n## Selected Roles List:\n```\nNone\n```\n\n## Created Roles List:\n```\n[\n  {\n    \"name\": \"Calculation Specialist\",\n    \"seniority\": \"mid\",\n    \"description\": \"A detail-oriented analyst responsible for performing precise arithmetic calculations using available tools.\",\n    \"goal\": \"Provide accurate values for fuel volume and total cost.\",\n    \"responsibilities\": [\"Calculate total litres used\", \"Calculate total cost of fuel\"],\n    \"skills\": [\"basic arithmetic\", \"unit conversion\"],\n    \"tools\": [\"calc\"],\n    \"inputs\": [\"Task parameters (distance, rate, price)\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"calculation sheet\",\n        \"format\": \"memo: fuel_litres, total_cost\"\n      }\n    ],\n    \"success_criteria\": [\"Calculations are mathematically correct\", \"Units are clearly labeled\"],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a Calculation Specialist. Using the provided parameters (Distance: 1150km, Rate: 8.2L/100km, Price: $1.59/L), perform the following steps:\\n1. Calculate total litres: (Distance / 100) * Rate.\\n2. Calculate total cost: Total Litres * Price.\\nUse the `calc` tool for every operation to ensure precision. Output the results clearly as a memo.\"\n  },\n  {\n    \"name\": \"QA Reviewer\",\n    \"seniority\": \"senior\",\n    \"description\": \"An auditor who verifies the accuracy of calculations and ensures no logic errors occurred.\",\n    \"goal\": \"Verify that the fuel and cost calculations are 100% accurate.\",\n    \"responsibilities\": [\"Independent verification of calculations\", \"Cross-check units\"],\n    \"skills\": [\"mathematical auditing\"],\n    \"tools\": [\"calc\"],\n    \"inputs\": [\"Calculation sheet from Calculation Specialist\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"verification report\",\n        \"format\": \"memo: status (Pass/Fail), corrected values if applicable\"\n      }\n    ],\n    \"success_criteria\": [\"All calculations verified independently\", \"Discrepancies identified and corrected\"],\n    \"constraints\": [],\n    \"covers\": [\"R1\", \"R2\"],\n    \"is_summariser\": false,\n    \"prompt\": \"You are a QA Reviewer. You will receive a calculation sheet. Your task is to independently re-calculate the fuel used and the total cost using the `calc` tool. Compare your results with the provided sheet. If they match, mark as 'Pass'. If they differ, provide the correct value. Ensure the logic (Distance/100 * Rate) is correctly applied.\"\n  },\n  {\n    \"name\": \"Final Writer\",\n    \"seniority\": \"senior\",\n    \"description\": \"A communications lead who assembles the final deliverable and ensures all formatting requirements and lessons are met.\",\n    \"goal\": \"Deliver the final answer with the required Assumptions section.\",\n    \"responsibilities\": [\"Assemble final results\", \"Draft the Assumptions section\"],\n    \"skills\": [\"technical writing\", \"attention to detail\"],\n    \"tools\": [],\n    \"inputs\": [\"Verified calculations from QA Reviewer\"],\n    \"outputs\": [\n      {\n        \"artifact\": \"final response\",\n        \"format\": \"memo: fuel used, total cost, ## Assumptions\"\n      }\n    ],\n    \"success_criteria\": [\"Final answer is clear and concise\", \"## Assumptions section is present and comprehensive per L1\"],\n    \"constraints\": [],\n    \"covers\": [\"R3\"],\n    \"is_summariser\": true,\n    \"prompt\": \"You are the Final Writer. Take the verified calculations for fuel used and total cost. Present them clearly to the user. You MUST end the response with a section headed '## Assumptions'. In this section, list every assumption made, including rounding (e.g., to 2 decimal places), the constancy of fuel prices and consumption rates, and the units used.\"\n  }\n]\n```\n\n## Execution Plan:\n1. [Calculation Specialist]: Compute Fuel and Cost\n   kind: work\n   covers: R1, R2\n   depends_on: none\n   do: \n     - Calculate total litres: (1150 / 100) * 8.2\n     - Calculate total cost: [Result of previous step] * 1.59\n   output: memo: fuel_litres, total_cost\n   done_when: both values are calculated and recorded.\n\n2. [QA Reviewer]: Verify Calculations\n   kind: verify\n   covers: R1, R2\n   depends_on: 1\n   do: \n     - Independently calculate (1150 / 100) * 8.2\n     - Independently calculate [Result] * 1.59\n     - Compare results with Step 1.\n   output: memo: status (Pass/Fail)\n   done_when: calculations are confirmed as correct.\n\n3. [Final Writer]: Assemble Final Deliverable\n   kind: work\n   covers: R3\n   depends_on: 2\n   do: \n     - Format the final fuel usage and cost.\n     - Create the '## Assumptions' section listing all constants and rounding rules.\n   output: memo: final answer with ## Assumptions\n   done_when: the response contains the answers and the mandatory Assumptions section.\n\n## Capability Requests:\n```\nNone\n```\n\n## Risks and Decisions:\n- **Risk**: Rounding errors. **Decision**: The Calculation Specialist will provide raw numbers; the Final Writer will round the final cost to 2 decimal places for currency standard.\n- **Risk**: Missing the Assumptions section. **Decision**: The Final Writer's prompt explicitly mandates the '## Assumptions' header to satisfy L1.\n\n## RoleFeedback:\nNone\n\n## PlanFeedback:\nNone",
+      "roles": [
+        {
+          "name": "Calculation Specialist",
+          "seniority": "mid",
+          "description": "A detail-oriented analyst responsible for performing precise arithmetic calculations using available tools.",
+          "goal": "Provide accurate values for fuel volume and total cost.",
+          "responsibilities": [
+            "Calculate total litres used",
+            "Calculate total cost of fuel"
+          ],
+          "skills": [
+            "basic arithmetic",
+            "unit conversion"
+          ],
+          "tools": [
+            "calc"
+          ],
+          "inputs": [
+            "Task parameters (distance, rate, price)"
+          ],
+          "outputs": [
+            {
+              "artifact": "calculation sheet",
+              "format": "memo: fuel_litres, total_cost"
+            }
+          ],
+          "success_criteria": [
+            "Calculations are mathematically correct",
+            "Units are clearly labeled"
+          ],
+          "constraints": [],
+          "covers": [
+            "R1",
+            "R2"
+          ],
+          "is_summariser": false,
+          "prompt": "You are a Calculation Specialist. Using the provided parameters (Distance: 1150km, Rate: 8.2L/100km, Price: $1.59/L), perform the following steps:\n1. Calculate total litres: (Distance / 100) * Rate.\n2. Calculate total cost: Total Litres * Price.\nUse the `calc` tool for every operation to ensure precision. Output the results clearly as a memo."
+        },
+        {
+          "name": "QA Reviewer",
+          "seniority": "senior",
+          "description": "An auditor who verifies the accuracy of calculations and ensures no logic errors occurred.",
+          "goal": "Verify that the fuel and cost calculations are 100% accurate.",
+          "responsibilities": [
+            "Independent verification of calculations",
+            "Cross-check units"
+          ],
+          "skills": [
+            "mathematical auditing"
+          ],
+          "tools": [
+            "calc"
+          ],
+          "inputs": [
+            "Calculation sheet from Calculation Specialist"
+          ],
+          "outputs": [
+            {
+              "artifact": "verification report",
+              "format": "memo: status (Pass/Fail), corrected values if applicable"
+            }
+          ],
+          "success_criteria": [
+            "All calculations verified independently",
+            "Discrepancies identified and corrected"
+          ],
+          "constraints": [],
+          "covers": [
+            "R1",
+            "R2"
+          ],
+          "is_summariser": false,
+          "prompt": "You are a QA Reviewer. You will receive a calculation sheet. Your task is to independently re-calculate the fuel used and the total cost using the `calc` tool. Compare your results with the provided sheet. If they match, mark as 'Pass'. If they differ, provide the correct value. Ensure the logic (Distance/100 * Rate) is correctly applied."
+        },
+        {
+          "name": "Final Writer",
+          "seniority": "senior",
+          "description": "A communications lead who assembles the final deliverable and ensures all formatting requirements and lessons are met.",
+          "goal": "Deliver the final answer with the required Assumptions section.",
+          "responsibilities": [
+            "Assemble final results",
+            "Draft the Assumptions section"
+          ],
+          "skills": [
+            "technical writing",
+            "attention to detail"
+          ],
+          "tools": [],
+          "inputs": [
+            "Verified calculations from QA Reviewer"
+          ],
+          "outputs": [
+            {
+              "artifact": "final response",
+              "format": "memo: fuel used, total cost, ## Assumptions"
+            }
+          ],
+          "success_criteria": [
+            "Final answer is clear and concise",
+            "## Assumptions section is present and comprehensive per L1"
+          ],
+          "constraints": [],
+          "covers": [
+            "R3"
+          ],
+          "is_summariser": true,
+          "prompt": "You are the Final Writer. Take the verified calculations for fuel used and total cost. Present them clearly to the user. You MUST end the response with a section headed '## Assumptions'. In this section, list every assumption made, including rounding (e.g., to 2 decimal places), the constancy of fuel prices and consumption rates, and the units used."
+        }
+      ],
+      "plan": [
+        {
+          "agents": [
+            "Calculation Specialist"
+          ],
+          "text": "[Calculation Specialist]: Compute Fuel and Cost",
+          "title": "Compute Fuel and Cost",
+          "kind": "work",
+          "covers": [
+            "R1",
+            "R2"
+          ],
+          "depends_on": [],
+          "do": "\n- Calculate total litres: (1150 / 100) * 8.2\n- Calculate total cost: [Result of previous step] * 1.59",
+          "output": "memo: fuel_litres, total_cost",
+          "done_when": "both values are calculated and recorded."
+        },
+        {
+          "agents": [
+            "QA Reviewer"
+          ],
+          "text": "[QA Reviewer]: Verify Calculations",
+          "title": "Verify Calculations",
+          "kind": "verify",
+          "covers": [
+            "R1",
+            "R2"
+          ],
+          "depends_on": [
+            1
+          ],
+          "do": "\n- Independently calculate (1150 / 100) * 8.2\n- Independently calculate [Result] * 1.59\n- Compare results with Step 1.",
+          "output": "memo: status (Pass/Fail)",
+          "done_when": "calculations are confirmed as correct."
+        },
+        {
+          "agents": [
+            "Final Writer"
+          ],
+          "text": "[Final Writer]: Assemble Final Deliverable",
+          "title": "Assemble Final Deliverable",
+          "kind": "work",
+          "covers": [
+            "R3"
+          ],
+          "depends_on": [
+            2
+          ],
+          "do": "\n- Format the final fuel usage and cost.\n- Create the '## Assumptions' section listing all constants and rounding rules.",
+          "output": "memo: final answer with ## Assumptions",
+          "done_when": "the response contains the answers and the mandatory Assumptions section."
+        }
+      ],
+      "capability_requests": [],
+      "agent_observer_raw": "<thought>Staffing Reviewer.\nEvaluate if roles are well-defined and if they collectively cover all requirements.\n\n        *   Task: Calculate fuel used (litres) and cost for a 1,150 km trip (8.2L/100km, $1.59/L).\n        *   R1: Calculate total litres.\n        *   R2: Calculate total cost.\n        *   R3: Final answer with '## Assumptions' section (per L1).\n        *   L1: Final answer must end with '## Assumptions' listing all assumptions.\n\n        *   Calculation Specialist (Mid): Covers R1, R2. Goal: accurate values. Prompt: clear instructions. Tools: `calc`.\n        *   QA Reviewer (Senior): Covers R1, R2. Goal: verify accuracy. Prompt: independent re-calc. Tools: `calc`.\n        *   Final Writer (Senior): Covers R3. Goal: assemble final answer + Assumptions. Prompt: clear instructions on the section header. Tools: None. Is summariser: True.\n\n    *   *Coverage:*\n        *   R1: Covered by Calculation Specialist and QA Reviewer.\n        *   R2: Covered by Calculation Specialist and QA Reviewer.\n        *   R3: Covered by Final Writer.\n        *   All covered.\n\n    *   *Definition:*\n        *   Calculation Specialist: Goal, skills, inputs, outputs (memo), success criteria, prompt. (Complete)\n        *   QA Reviewer: Goal, skills, inputs, outputs (memo), success criteria, prompt. (Complete)\n        *   Final Writer: Goal, skills, inputs, outputs (memo), success criteria, prompt. (Complete)\n\n    *   *Skills:*\n        *   Arithmetic, auditing, technical writing. Sufficient for the task.\n\n    *   *Capabilities:*\n        *   `calc` is available for arithmetic. No external data needed (all givens provided). No code execution needed.\n\n    *   *Summariser:*\n        *   Final Writer is the summariser.\n        *   No tools assigned to Final Writer.\n        *   Creates no new analysis (just assembles and lists assumptions).\n\n    *   *Size:*\n        *   3 roles. No duplicates. All have covered requirements.\n\n    *   The roles are well-defined.\n    *   The workflow (Calc -> QA -> Writer) is logical.\n    *   The specific requirement for the '## Assumptions' section (L1/R3) is explicitly handled by the Final Writer.\n    *   The `calc` tool is used by the specialists to ensure precision.</thought>## Thought\nThe planner has provided a three-role team (Calculation Specialist, QA Reviewer, and Final Writer) to solve a straightforward arithmetic problem.\n\n1.  **Coverage**: R1 and R2 are covered by the Calculation Specialist and verified by the QA Reviewer. R3 is covered by the Final Writer. All requirements are mapped.\n2.  **Definition**: Each role has a clear goal, specific skills, defined inputs/outputs, success criteria, and a detailed prompt.\n3.  **Skills**: The skills (arithmetic, auditing, technical writing) are appropriate for the task.\n4.  **Capabilities**: The `calc` tool is sufficient for the arithmetic required. No external data or complex code is needed.\n5.  **Summariser**: The Final Writer is the sole summariser, has no tools, and focuses on assembly and formatting rather than new analysis.\n6.  **Size**: 3 roles is an appropriate size for this task. No duplicates.\n\nThe team is well-structured to ensure accuracy (via the QA role) and adherence to the specific formatting lesson (L1) via the Final Writer.\n\n## Suggestions\nNone\n\n## Verdict\nAPPROVE",
+      "agent_observer": "None",
+      "plan_observer_raw": "<thought>Senior Delivery Reviewer.\nJudge if the plan is complete, ordered correctly, checkable, and realistic (as an experienced lead would run it).\nCalculate fuel used and cost for a 1,150 km trip (8.2L/100km, $1.59/L).\n\n        *   R1: Calculate total litres.\n        *   R2: Calculate total cost.\n        *   R3: Final answer with '## Assumptions' section (per L1).\n        *   L1: Final answer must end with '## Assumptions' listing everything (rounding, fixed rates, units).\n\n        *   Calculation Specialist (Mid) -> R1, R2.\n        *   QA Reviewer (Senior) -> R1, R2.\n        *   Final Writer (Senior) -> R3.\n\n        1.  Calculation Specialist: Compute Fuel and Cost.\n        2.  QA Reviewer: Verify Calculations.\n        3.  Final Writer: Assemble Final Deliverable.\n\n    *   *Coverage:*\n        *   R1 covered by Step 1 and 2.\n        *   R2 covered by Step 1 and 2.\n        *   R3 covered by Step 3.\n        *   L1 covered by Step 3 and the Final Writer's prompt.\n        *   *Verdict:* Coverage is complete.\n\n    *   *Numbers:*\n        *   Distance: 1150 km.\n        *   Rate: 8.2 L / 100 km.\n        *   Price: $1.59 / L.\n        *   Fuel used: $(1150 / 100) \\times 8.2 = 11.5 \\times 8.2 = 94.3$ L. (Correct)\n        *   Cost: $94.3 \\times 1.59 = 149.937$. (Correct)\n        *   *Verdict:* Derived figures are correct.\n\n    *   *Dependencies:*\n        *   Step 1 (None) -> Step 2 (depends on 1) -> Step 3 (depends on 2).\n        *   Logic is linear and correct.\n        *   *Verdict:* Dependencies are correct.\n\n    *   *Depth:*\n        *   Step 1: `do` is specific, `output` is clear, `done_when` is checkable.\n        *   Step 2: `do` is specific (independent calc), `output` is clear, `done_when` is checkable.\n        *   Step 3: `do` is specific, `output` is clear, `done_when` is checkable.\n        *   *Verdict:* Depth is sufficient.\n\n    *   *Verification:*\n        *   Step 2 is a dedicated verification step by a different role (QA Reviewer vs Calculation Specialist).\n        *   *Verdict:* Verification is present.\n\n    *   *Context/Risks/Capabilities:*\n        *   Risks: Rounding and missing Assumptions section are identified and mitigated.\n        *   Capabilities: `calc` tool is available and used.\n        *   *Verdict:* Realistic.\n\n    *   *User-only inputs:* None. All data provided in the prompt.\n\n    *   *Interpretation:* Matches the task perfectly.\n\n    *   The plan is extremely robust for a simple math problem. It follows a professional software/engineering delivery lifecycle (Dev -> QA -> Release).\n    *   It explicitly addresses the \"Lesson L1\" which is a common failure point in these types of prompts.\n    *   The roles are well-defined.\n    *   The steps are checkable.</thought>## Thought\nThe plan is comprehensive and follows a professional delivery lifecycle (Execution $\\rightarrow$ Verification $\\rightarrow$ Finalization). \n\n1.  **Coverage**: R1, R2, and R3 are all explicitly covered in the execution steps. Lesson L1 is integrated into the Final Writer's prompt and the execution plan (Step 3).\n2.  **Numbers**: \n    - Fuel: $(1150 / 100) \\times 8.2 = 94.3$ litres. Correct.\n    - Cost: $94.3 \\times 1.59 = 149.937$. Correct.\n3.  **Dependencies**: The linear flow (Step 1 $\\rightarrow$ Step 2 $\\rightarrow$ Step 3) is correct. The QA Reviewer cannot verify without the Calculation Specialist's output, and the Final Writer cannot assemble without the QA's verification.\n4.  **Depth**: Each step contains a clear `do`, `output`, and `done_when` criterion.\n5.  **Verification**: Step 2 is a dedicated verification step performed by a separate role (QA Reviewer), satisfying the requirement for independent auditing.\n6.  **Risks**: The plan identifies rounding and the mandatory '## Assumptions' section as risks and provides clear decisions to mitigate them.\n7.  **Capabilities**: The `calc` tool is correctly assigned to the roles performing arithmetic.\n\nThe plan is highly realistic for a lead ensuring zero-defect delivery on a task where precision and adherence to formatting (L1) are paramount.\n\n## Suggestions\nNone\n\n## Verdict\nAPPROVE",
+      "plan_observer": "None",
+      "consensus": true,
+      "gate_failed": [],
+      "agent_verdict": "APPROVE",
+      "plan_verdict": "APPROVE",
+      "agent_suggestions_n": 0,
+      "plan_suggestions_n": 0
+    }
+  ],
+  "prompts": "d24",
+  "requirements": {
+    "R1": "Calculate the total litres of fuel used for the 1,150 km trip.",
+    "R2": "Calculate the total fuel cost based on the calculated litres and the price of $1.59 per litre.",
+    "R3": "Deliver a final answer including a section headed '## Assumptions' listing all assumptions (per L1)."
+  },
+  "givens": [
+    "given: distance = 1,150 km",
+    "given: fuel consumption = 8.2 litres / 100 km",
+    "given: fuel price = $1.59 / litre",
+    "derived: fuel used = (1150 / 100) * 8.2 = 94.3 litres",
+    "derived: total cost = 94.3 * 1.59 = 149.937",
+    "assumption: Fuel consumption remains constant at 8.2 L/100km regardless of driving conditions, load, or speed.",
+    "assumption: Fuel price remains constant at $1.59/L for the entire duration of the trip.",
+    "assumption: Currency is USD (or a generic $ unit).",
+    "assumption: Final cost will be rounded to two decimal places."
+  ],
+  "risks": [
+    "**Risk**: Rounding errors. **Decision**: The Calculation Specialist will provide raw numbers; the Final Writer will round the final cost to 2 decimal places for currency standard.",
+    "**Risk**: Missing the Assumptions section. **Decision**: The Final Writer's prompt explicitly mandates the '## Assumptions' header to satisfy L1."
+  ],
+  "open_questions": [],
+  "interpretation": {
+    "entities": [],
+    "working": [],
+    "ambiguous": [],
+    "gap": 0.3,
+    "question": null,
+    "context": {}
+  },
+  "quality": {
+    "checks": {
+      "requirements_covered": {
+        "ok": true,
+        "requirements": 3,
+        "uncovered_by_steps": [],
+        "uncovered_by_roles": []
+      },
+      "dependencies_valid": {
+        "ok": true,
+        "bad": []
+      },
+      "roles_fully_defined": {
+        "ok": true,
+        "defined": 3,
+        "roles": 3,
+        "thin": {}
+      },
+      "summariser": {
+        "ok": true,
+        "declared_by_planner": 1,
+        "name": "Final Writer",
+        "tools": [],
+        "owns_steps": [
+          3
+        ]
+      },
+      "tools_accounted": {
+        "ok": true,
+        "missing_not_requested_by_planner": []
+      },
+      "verification_step": {
+        "ok": true,
+        "steps": [
+          2
+        ]
+      },
+      "independent_verification": {
+        "ok": true,
+        "candidates": [
+          {
+            "step": 2,
+            "verifiers": [
+              "QA Reviewer"
+            ],
+            "producers": [
+              "Calculation Specialist"
+            ],
+            "independent": true
+          }
+        ]
+      },
+      "task_coverage": {
+        "ok": true,
+        "numbers": [
+          "100",
+          "8.2",
+          "1.59",
+          "1150"
+        ],
+        "missing_numbers": [],
+        "phrases": [],
+        "missing_phrases": []
+      }
+    },
+    "passed": 8,
+    "failed": 0,
+    "na": 0,
+    "failed_checks": [],
+    "hard_failed": []
+  },
+  "gate_hits": 0,
+  "requests_proposed": 0,
+  "requests_dropped_by_observers": 0
+}

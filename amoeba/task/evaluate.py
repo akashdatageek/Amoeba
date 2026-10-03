@@ -25,7 +25,7 @@ _SCALE = {"k": 1e3, "thousand": 1e3, "m": 1e6, "mn": 1e6, "million": 1e6, "bn": 
 _CURRENCY = {"$": "usd", "usd": "usd", "us$": "usd", "€": "eur", "eur": "eur", "£": "gbp", "gbp": "gbp"}
 _QTY = re.compile(
     r"(?P<cur>US\$|\$|€|£|USD|EUR|GBP)?\s?(?P<num>\d[\d,]*(?:\.\d+)?|\.\d+)\s?"
-    r"(?P<unit>KiB|MiB|GiB|TiB|PiB|KB|MB|GB|TB|PB|million|billion|thousand|bn|mn|[kKMB](?![a-zA-Z])|USD|EUR|GBP)?",
+    r"(?P<unit>KiB|MiB|GiB|TiB|PiB|KB|MB|GB|TB|PB|million|billion|thousand|bn|mn|[kKMB](?![a-zA-Z0-9²³])|USD|EUR|GBP)?",
     re.I)
 
 
@@ -45,6 +45,8 @@ def quantities(text: str) -> list[dict]:
             out.append({"kind": "bytes", "values": vals, "text": m.group(0).strip()})
             continue
         scale = _SCALE.get(unit, 1.0)
+        if m.group("unit") == "m" and not cur:   # D80a: "8 m" is metres; a lowercase m is million only after $ € £
+            scale = 1.0
         kind = _CURRENCY.get(cur) or _CURRENCY.get(unit) or "plain"
         if kind == "plain" and unit in ("b",):   # a bare 'B' after a number without a currency is ambiguous
             scale = 1.0

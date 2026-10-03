@@ -43,6 +43,16 @@ class ToolRegistry:
                 setattr(new, extra, getattr(self, extra))
         return new
 
+    def without(self, names) -> "ToolRegistry":
+        """D80 --disable-tools: a copy without these tools (web tools go too when web_search is named)."""
+        new = self.copy()
+        for n in names or ():
+            new._tools.pop(n, None)
+        if "web_search" in (names or ()) and hasattr(new, "web"):
+            new._tools.pop("fetch_url", None)
+            del new.web
+        return new
+
     def __contains__(self, name: object) -> bool:
         return name in self._tools
 

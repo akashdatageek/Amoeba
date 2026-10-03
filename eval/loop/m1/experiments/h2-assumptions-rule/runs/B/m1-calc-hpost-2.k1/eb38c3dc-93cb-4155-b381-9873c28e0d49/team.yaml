@@ -1,0 +1,234 @@
+team_id: 724782b2-bab8-4336-b308-4f00983ce988
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  839e3b60-dab4-4888-8b6d-d7008c25bb5b:
+    agent_id: 839e3b60-dab4-4888-8b6d-d7008c25bb5b
+    name: Quantity Surveyor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in material take-offs and cost estimation for construction
+      projects.
+    role_prompt: "You are a Senior Quantity Surveyor. Your task is to calculate the\
+      \ materials needed for a flooring project. \n1. Calculate the floor area (Length\
+      \ x Width).\n2. Calculate the area of a single tile (Length x Width).\n3. Calculate\
+      \ the exact number of tiles needed to cover the floor area (Floor Area / Tile\
+      \ Area).\n4. Calculate the total tiles needed including a 10% waste margin (Exact\
+      \ Tiles * 1.1).\n5. Determine the number of boxes required (Total Tiles / 8),\
+      \ rounding up to the nearest whole box.\n6. Calculate the total cost (Boxes\
+      \ * $42.50).\n\nUse the `calc` tool for every operation to ensure precision.\
+      \ Provide your output as a detailed memo showing each step."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide precise calculations for area, tile quantities, and total procurement
+      cost.
+    skills:
+    - material take-off
+    - cost estimation
+    - arithmetic
+    outputs:
+    - artifact: calculation sheet
+      format: 'memo: showing step-by-step math for area, exact tiles, total tiles,
+        boxes, and cost'
+    success_criteria:
+    - All calculations are mathematically sound
+    - Waste factor is applied correctly
+    - Box count is rounded up to the nearest whole number
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  7a3589b7-9fab-4dfb-8cc7-c8e1c6206864:
+    agent_id: 7a3589b7-9fab-4dfb-8cc7-c8e1c6206864
+    name: QA Auditor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A detail-oriented auditor focused on verifying mathematical accuracy
+      and constraint compliance.
+    role_prompt: "You are a Senior QA Auditor. Review the calculations provided by\
+      \ the Quantity Surveyor. \n1. Re-perform every calculation using the `calc`\
+      \ tool.\n2. Specifically check that the number of boxes was rounded UP to the\
+      \ nearest whole number.\n3. Verify that the 10% waste was added to the exact\
+      \ tile count.\n4. Output a list confirming each value (Area, Exact Tiles, Total\
+      \ Tiles, Boxes, Cost). If you find an error, provide the corrected value."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify that the Quantity Surveyor's calculations are correct and follow
+      all task constraints.
+    skills:
+    - mathematical verification
+    - audit
+    outputs:
+    - artifact: verification report
+      format: 'list: confirming or correcting each value'
+    success_criteria:
+    - Every number is double-checked
+    - Discrepancies are identified and corrected
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  27110173-d0ba-4f9c-80f6-1d1f8def55f9:
+    agent_id: 27110173-d0ba-4f9c-80f6-1d1f8def55f9
+    name: Project Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A delivery lead responsible for the final assembly of the project
+      deliverables and quality control.
+    role_prompt: "You are the Principal Project Lead. Your role is to assemble the\
+      \ final deliverable based on the verified data from the QA Auditor. \n\nDeliver\
+      \ the final answer clearly: \n- Floor Area: [Value] m²\n- Exact Tiles: [Value]\n\
+      - Total Cost: $[Value]\n\nCrucially, you must end the response with a section\
+      \ headed '## Assumptions'. In this section, list every assumption made during\
+      \ the process, including: \n- The shape of the floor (rectangular).\n- The method\
+      \ of calculating 'exact' tiles (area-based vs layout-based).\n- The rounding\
+      \ method for boxes (ceiling).\n- The application of the waste factor.\n\nDo\
+      \ not perform any new calculations. Only assemble the verified results."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble the final answer in the required format, ensuring all requirements
+      and lessons are met.
+    skills:
+    - technical writing
+    - quality assurance
+    outputs:
+    - artifact: final report
+      format: 'memo: containing Floor Area, Exact Tiles, and Total Cost, ending with
+        ## Assumptions'
+    success_criteria:
+    - Final answer contains all three requested values
+    - The '## Assumptions' section is present at the end
+    - No new analysis is introduced
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 839e3b60-dab4-4888-8b6d-d7008c25bb5b
+  dst: 7a3589b7-9fab-4dfb-8cc7-c8e1c6206864
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 7a3589b7-9fab-4dfb-8cc7-c8e1c6206864
+  dst: 27110173-d0ba-4f9c-80f6-1d1f8def55f9
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 839e3b60-dab4-4888-8b6d-d7008c25bb5b
+exit: 27110173-d0ba-4f9c-80f6-1d1f8def55f9
+plan:
+- index: 0
+  agent_ids:
+  - 839e3b60-dab4-4888-8b6d-d7008c25bb5b
+  text: '[Quantity Surveyor]: Initial Calculations'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: Calculate floor area, exact tile count, total tiles with waste, number of boxes
+    (rounded up), and total cost.
+  output: 'memo: calculation sheet'
+  done_when: all five values are calculated and documented.
+- index: 1
+  agent_ids:
+  - 7a3589b7-9fab-4dfb-8cc7-c8e1c6206864
+  text: '[QA Auditor]: Calculation Verification'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: Independently re-calculate all values using `calc` and verify the rounding logic
+    for boxes.
+  output: 'list: verification report'
+  done_when: all values are confirmed or corrected.
+- index: 2
+  agent_ids:
+  - 27110173-d0ba-4f9c-80f6-1d1f8def55f9
+  text: '[Project Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R4
+  - R5
+  depends_on:
+  - 2
+  do: Assemble the verified values into the final report and append the '## Assumptions'
+    section.
+  output: 'memo: final report'
+  done_when: the report contains the area, exact tiles, cost, and the Assumptions
+    section.
+requirements:
+  R1: Calculate the floor area.
+  R2: Calculate how many tiles cover the floor exactly.
+  R3: Calculate the total cost of the boxes (including 10% waste and rounding up to
+    whole boxes).
+  R4: Deliver the final results (area, exact tile count, and cost).
+  R5: Include a section headed '## Assumptions' listing every assumption the result
+    relies on.
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-2
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

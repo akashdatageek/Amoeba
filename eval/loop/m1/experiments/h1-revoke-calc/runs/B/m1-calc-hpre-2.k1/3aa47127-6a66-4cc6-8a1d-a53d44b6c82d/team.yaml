@@ -1,0 +1,218 @@
+team_id: 9ca09114-a0aa-4362-8124-2fd9ee962819
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  dbb06a9f-2803-4634-8b61-45ae38d62892:
+    agent_id: dbb06a9f-2803-4634-8b61-45ae38d62892
+    name: Fuel Consumption Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in logistics and fuel cost modeling responsible for
+      performing the primary calculations.
+    role_prompt: "You are a Senior Fuel Consumption Analyst. Your goal is to calculate\
+      \ the total fuel used and the total cost for a road trip. \n\nStep-by-step method:\n\
+      1. Calculate the total litres used: (Distance / 100) * Fuel Efficiency.\n2.\
+      \ Calculate the total cost: Total Litres * Price per Litre.\n3. Use the `calc`\
+      \ tool for every operation to ensure precision.\n\nOutput format:\n- Total Litres:\
+      \ [value] L\n- Total Cost: $[value]\n- Calculation steps: [show the expressions\
+      \ used in calc]"
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide precise calculations for fuel volume and total expenditure.
+    skills:
+    - arithmetic modeling
+    - logistics calculation
+    outputs:
+    - artifact: calculation sheet
+      format: 'memo: fuel volume and total cost with step-by-step arithmetic'
+    success_criteria:
+    - Calculations are mathematically sound
+    - All given constants are used correctly
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  1797b9f3-9cab-4691-bbc8-a821e79c1c02:
+    agent_id: 1797b9f3-9cab-4691-bbc8-a821e79c1c02
+    name: QA Auditor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An independent reviewer focused on mathematical verification and
+      edge-case checking.
+    role_prompt: "You are a Senior QA Auditor. Your task is to verify the calculations\
+      \ provided by the Analyst. \n\nMethod:\n1. Take the original givens (1150 km,\
+      \ 8.2 L/100km, $1.59/L).\n2. Perform the calculations independently using the\
+      \ `calc` tool.\n3. Compare your results with the Analyst's results.\n\nOutput\
+      \ format:\n- Status: [Verified / Discrepancy Found]\n- Verified Litres: [value]\n\
+      - Verified Cost: [value]\n- Notes: [any comments on rounding or precision]"
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify that the Analyst's calculations are 100% accurate.
+    skills:
+    - mathematical verification
+    - attention to detail
+    outputs:
+    - artifact: verification report
+      format: 'list: confirmation of accuracy or list of errors'
+    success_criteria:
+    - Independent verification matches the original result or corrects it
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  f3540317-5e27-4396-960d-280ed0afa218:
+    agent_id: f3540317-5e27-4396-960d-280ed0afa218
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: The final editor responsible for assembling the verified data into
+      the final response.
+    role_prompt: You are the Delivery Lead. Your role is to take the verified calculations
+      and present them as the final answer. Do not perform new calculations. Only
+      use the numbers that have been verified by the QA Auditor. Present the final
+      fuel usage in litres and the total cost in dollars.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answer clearly and concisely.
+    skills:
+    - technical communication
+    outputs:
+    - artifact: final answer
+      format: 'memo: final fuel usage and cost'
+    success_criteria:
+    - Final answer is based on verified data
+    - Answer directly addresses the user's questions
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: dbb06a9f-2803-4634-8b61-45ae38d62892
+  dst: 1797b9f3-9cab-4691-bbc8-a821e79c1c02
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 1797b9f3-9cab-4691-bbc8-a821e79c1c02
+  dst: f3540317-5e27-4396-960d-280ed0afa218
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- dbb06a9f-2803-4634-8b61-45ae38d62892
+exit: f3540317-5e27-4396-960d-280ed0afa218
+plan:
+- index: 0
+  agent_ids:
+  - dbb06a9f-2803-4634-8b61-45ae38d62892
+  text: '[Fuel Consumption Analyst]: Calculate Fuel and Cost'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on: []
+  do: '
+
+    - Calculate total litres using `calc`: (1150 / 100) * 8.2
+
+    - Calculate total cost using `calc`: [result of previous step] * 1.59'
+  output: 'memo: fuel volume and total cost with step-by-step arithmetic'
+  done_when: both total litres and total cost are calculated and documented.
+- index: 1
+  agent_ids:
+  - 1797b9f3-9cab-4691-bbc8-a821e79c1c02
+  text: '[QA Auditor]: Verify Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 1
+  do: '
+
+    - Independently calculate total litres using `calc`
+
+    - Independently calculate total cost using `calc`
+
+    - Compare results with Step 1'
+  output: 'list: confirmation of accuracy or list of errors'
+  done_when: the calculations are confirmed as correct or corrected.
+- index: 2
+  agent_ids:
+  - f3540317-5e27-4396-960d-280ed0afa218
+  text: '[Delivery Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 2
+  do: '
+
+    - Extract the verified litres and cost
+
+    - Format the final response for the user'
+  output: 'memo: final fuel usage and cost'
+  done_when: the final answer is delivered.
+requirements:
+  R1: Calculate the total litres of fuel used for the 1,150 km trip.
+  R2: Calculate the total fuel cost based on the fuel used and the price per litre.
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpre-2
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

@@ -1,0 +1,227 @@
+team_id: 82964c4d-351c-465f-a516-02e9d0d307ff
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  967fb013-2a8c-487d-843b-aa98c93572ae:
+    agent_id: 967fb013-2a8c-487d-843b-aa98c93572ae
+    name: Financial Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in financial mathematics and compound interest calculations.
+      Responsible for the primary computation of the investment growth.
+    role_prompt: "You are a Senior Financial Analyst. Your task is to calculate the\
+      \ future value of an investment. \n1. Use the formula A = P(1 + r/n)^(nt), where\
+      \ P is principal, r is annual rate, n is compounding frequency per year, and\
+      \ t is years.\n2. Substitute the values: P=12000, r=0.055, n=4, t=7.\n3. Calculate\
+      \ the periodic rate (r/n) and total periods (nt) first.\n4. Use the calc tool\
+      \ to find A.\n5. Calculate the total interest earned (I = A - P).\n6. Output\
+      \ a memo showing the formula, the substitution, and the final results for A\
+      \ and I rounded to 2 decimal places."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Accurately calculate the final investment value and total interest earned.
+    skills:
+    - financial mathematics
+    - compound interest modelling
+    outputs:
+    - artifact: calculation sheet
+      format: 'memo: showing formula, substitution, and results for A and I'
+    success_criteria:
+    - Calculation follows the standard compound interest formula
+    - Intermediate steps are clearly documented
+    - Final values are rounded to two decimal places
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  18a59d22-4d70-44f1-8533-e70f5c2db7bc:
+    agent_id: 18a59d22-4d70-44f1-8533-e70f5c2db7bc
+    name: QA Reviewer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in numerical verification and audit. Ensures that the
+      calculations are error-free and the logic is sound.
+    role_prompt: "You are a Senior QA Reviewer. Your goal is to verify the financial\
+      \ calculations provided. \n1. Take the inputs (P=12000, r=0.055, n=4, t=7) and\
+      \ independently perform the calculation using the compound interest formula.\n\
+      2. Compare your result for the final value (A) and total interest (I) with the\
+      \ Financial Analyst's results.\n3. If they match, output 'Pass'. If not, output\
+      \ 'Fail' and provide the correct numbers.\n4. Output a list containing the status\
+      \ and the verified values."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the accuracy of the Financial Analyst's results.
+    skills:
+    - numerical auditing
+    - financial mathematics
+    outputs:
+    - artifact: verification report
+      format: 'list: status (Pass/Fail), verified A, verified I'
+    success_criteria:
+    - Independent calculation matches the analyst's result within rounding tolerance
+    - Verification is explicit and documented
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  6dd5f8db-0f6b-4f8c-b00c-a5f2c89bec74:
+    agent_id: 6dd5f8db-0f6b-4f8c-b00c-a5f2c89bec74
+    name: Summarizer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Responsible for synthesizing the verified technical data into a clear,
+      concise final answer for the stakeholder.
+    role_prompt: "You are the Summarizer. Your task is to provide the final answer\
+      \ to the user. \n1. Review the verified results from the QA Reviewer.\n2. State\
+      \ clearly what the investment is worth at the end of the period.\n3. State clearly\
+      \ how much interest it earned.\n4. Use currency formatting (USD)."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answer to the user's question.
+    skills:
+    - technical writing
+    outputs:
+    - artifact: final answer
+      format: 'memo: final value and total interest'
+    success_criteria:
+    - The answer directly addresses both parts of the user's question
+    - No internal calculation noise is included in the final delivery
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 967fb013-2a8c-487d-843b-aa98c93572ae
+  dst: 18a59d22-4d70-44f1-8533-e70f5c2db7bc
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 18a59d22-4d70-44f1-8533-e70f5c2db7bc
+  dst: 6dd5f8db-0f6b-4f8c-b00c-a5f2c89bec74
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 967fb013-2a8c-487d-843b-aa98c93572ae
+exit: 6dd5f8db-0f6b-4f8c-b00c-a5f2c89bec74
+plan:
+- index: 0
+  agent_ids:
+  - 967fb013-2a8c-487d-843b-aa98c93572ae
+  text: '[Financial Analyst]: Calculate Investment Growth'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on: []
+  do: '
+
+    - Calculate periodic rate: 0.055 / 4
+
+    - Calculate total periods: 4 * 7
+
+    - Calculate final value A = 12000 * (1 + 0.01375)^28
+
+    - Calculate interest I = A - 12000'
+  output: 'memo: calculation sheet showing formula, substitution, and results for
+    A and I'
+  done_when: A and I are calculated and documented
+- index: 1
+  agent_ids:
+  - 18a59d22-4d70-44f1-8533-e70f5c2db7bc
+  text: '[QA Reviewer]: Verify Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 1
+  do: '
+
+    - Independently re-calculate A and I using the same parameters
+
+    - Compare results with the Financial Analyst''s output'
+  output: 'list: verification report (Pass/Fail, verified A, verified I)'
+  done_when: Results are confirmed as correct or corrected
+- index: 2
+  agent_ids:
+  - 6dd5f8db-0f6b-4f8c-b00c-a5f2c89bec74
+  text: '[Summarizer]: Final Delivery'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 2
+  do: '
+
+    - Extract the verified A and I values
+
+    - Format as the final response'
+  output: 'memo: final value and total interest'
+  done_when: Final answer is formatted and delivered
+requirements:
+  R1: Calculate the final value of the investment at the end of 7 years.
+  R2: Calculate the total interest earned over the 7-year period.
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-3
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

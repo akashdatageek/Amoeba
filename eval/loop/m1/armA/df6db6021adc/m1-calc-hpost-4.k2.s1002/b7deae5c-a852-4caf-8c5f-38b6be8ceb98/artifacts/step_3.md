@@ -1,0 +1,3 @@
+- Total kilometres per year: 10,120 km
+- Total litres per year: 789.36 L
+- Total yearly fuel cost: $1,302.444

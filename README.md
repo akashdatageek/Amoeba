@@ -255,6 +255,124 @@ if you meant Z, …". `--context user.yaml` (location, organisation, role; read-
     # user.yaml
     organisation: Purdue University Northwest
     location: Hammond, Indiana
+## Identifiers in the citation check (D78)
+
+Phone numbers, ZIP codes and street numbers are matched as whole tokens, digits only, never rounded or found inside a
+longer number. A ZIP+4 printed run together ("463243348") contains its 5-digit ZIP, so an address copied correctly
+is no longer flagged as a mislabelled citation.
+
+## Quality gate on for the plan runner (D79)
+
+`--quality-gate` is now `auto` by default: on for `--topology plan` (a draft failing a hard draft check goes back to
+the Planner within the round cap), off for flat and boss_reviewers and when `--drafts-from` reuses a saved draft.
+`--quality-gate on|off` overrides it.
+
+## Task stream (D80, Phase 2)
+
+Phase 2 (spec/BUILD_SPEC_PHASE2.md) learns from a stream of tasks. `tasks/stream_<name>.jsonl` holds practice tasks
+(with an `order`) and held-out tasks, each with its family, its D30 rubric and whether it comes before or after the
+family's shift; `tasks/stream_<name>.shifts.yaml` holds the shifts. A feedback shift adds rubric items the prompts
+never mention; a tool shift takes a tool out of the family's runs:
+
+    python -m scripts.run_task --tasks t.jsonl --topology plan --disable-tools calc,local:Bash
+
+Held-out tasks never reach the practice loop or any prompt; the loop learns only the names of the rubric items a
+practice run failed (`amoeba/adapt/stream.py::feedback`).
+
+## Team recipes (D81, Phase 2)
+
+A recipe (`amoeba/adapt/recipe.py`) is data per task family: planner rules shown to Box 2, transforms code applies to
+the drafted plan (add a check step, tighten a done-when, grant or revoke a tool, add a role rule) and whitelisted run
+options. Every family starts empty, and an empty recipe changes nothing. One typed edit makes the next version;
+`validate_recipe` refuses unknown tools, out-of-range options, long or check-weakening text, and transforms that
+break the step graph. Limits are in `amoeba/config/adapt.yaml`.
+
+## Recipes in a run (D82, Phase 2)
+
+    python -m scripts.run_task --tasks t.jsonl --topology plan --recipes eval/loop/m1/recipes
+
+loads the current recipe of each task's family (plan runner only; the baselines never get one). Its planner rules
+appear as "Lessons for this kind of task" in the d24 Planner and Observer prompts, code applies its transforms to
+the final draft (`plan.json` records them; `draft.json` keeps Box 2's own draft), and its run options overlay the run
+settings unless a flag sets them. With no recipe the run is a Phase 1 run, byte for byte.
+
+## The Experimenter (D83, Phase 2)
+
+    python -m scripts.run_experiment --stream m1 --family calc --calibrate-only  --llm openai --profile gemma-api ...
+    python -m scripts.run_experiment --stream m1 --family calc --edit edit.yaml   --llm openai --profile gemma-api ...
+
+runs the family's current recipe (A) against A plus one edit (B) on the stream's held-out tasks, 3 repeats each with
+the same seed. A transform edit reuses arm A's saved draft, so the arms differ only by the edit; a planner-rule edit
+drafts in each arm. Arm A runs are cached per recipe version. Results go to `eval/loop/<stream>/experiments/<id>/`.
+
+## The Gate (D84, Phase 2)
+
+The Gate keeps a recipe edit only when, on the held-out post tasks, its mean gain beats both the noise floor (the
+recipe against itself with other seeds) and 0.05, a one-sided paired test corrected for every hypothesis since the
+last accept is significant, the gain was predicted, the token cost is justified, honesty flags and refusals do not
+grow, and the held-out pre tasks lose nothing beyond the noise. Every calibration, hypothesis and decision is a line
+in `eval/loop/<stream>/ledger.jsonl`; thresholds are in `amoeba/config/adapt.yaml`.
+
+## Metres are not millions (D80a)
+
+The rubric's number reader used to read the "m" of "32.4 m²" or "8 m long" as million. A lowercase "m" now scales to
+a million only after a currency sign ($1.5m), and a scale letter followed by a digit, ² or ³ is no scale at all. The
+Experimenter re-scores every run from its saved answer, so a scorer fix applies to both arms alike.
+
+## Headings inside a line are text (D84a)
+
+The reply parser now starts a new section only at a "##" that begins a line (or follows a closing tag such as
+"</thought>"). A "##" quoted in the middle of a line, for example a role prompt that says "end with a section headed
+'## Assumptions'", stays text, so the role is no longer cut apart and lost.
+
+## Gate v2 (D84b, Phase 2)
+
+Gate v2 judges honesty per run: a run is flagged when it has at least one made-up or mislabelled citation, missing
+claimed file or unverified check, and the edit is rejected if the share of flagged runs grows by more than 0.2.
+Run errors are judged separately (rule 5b, error rate). Every ledger row names its gate version, and a decision made
+under v1 can be re-decided under v2 from its saved pairs, marked post hoc:
+
+    python -m scripts.run_experiment --stream m1 --family calc --redecide h2-assumptions-rule --gate-version v2
+
+## The Monitor (D85, Phase 2)
+
+After every practice run, the Monitor compares the last three scores of that kind of task with its scores since the
+last accepted change, and raises an alarm when they drop by more than max(2σ, 0.10), or when a step cause or a
+missing rubric item suddenly appears in most recent runs. It stays quiet for a few tasks after a change is accepted
+or rejected. Thresholds: `amoeba/config/adapt.yaml` monitor.
+
+## The Diagnoser (D86, Phase 2)
+
+After an alarm, the Diagnoser counts what the window's runs recorded (step causes, blocked capabilities, unused tools,
+missing files, unverified checks, citation problems, failed rubric item names) and names the cause that rose most
+compared with the runs before. The table in `amoeba/config/adapt.yaml` says which edits may answer it. No model is
+called; `--diagnoser none` gives the Architect the alarm only, with every edit allowed.
+
+## The Architect (D87, Phase 2)
+
+The Architect is the only part of the loop that calls a model. Given the diagnosis, the current recipe, the edits it
+may use and the changes already rejected, it proposes one typed edit with a reason and a predicted gain, as JSON
+(prompt: `amoeba/config/prompts/architect.txt`). Code checks the proposal (allowed, valid, not a repeat, no text or
+numbers from held-out tasks) and allows one retry; after three proposals for one alarm, the alarm waits for a person
+in `eval/loop/<stream>/human_queue.jsonl`.
+
+## The recipe store (D88, Phase 2)
+
+`eval/loop/<stream>/recipes/` holds each kind of task's recipe versions (`<family>/v<N>.yaml`), an index naming the
+current version with its history, and `experience.jsonl`, one line per decided change. Runs read it with
+`--recipes`; `--recipes-from` adds a read-only fallback store (a warm start from another stream). Only the Gate's
+accept writes a version; the rollback watch can revert to the parent.
+
+## The loop (D89, Phase 2)
+
+    python -m scripts.run_loop --stream m1 --parallel 4 --parallel-until 8 --env-file keys.env \
+        --llm openai --profile gemma-api --timezone America/Chicago --llm-cache runs/cache
+
+runs the stream's practice tasks with each kind's current recipe and, after an alarm, the Diagnoser, up to three
+Architect proposals, the Experimenter and the Gate; an accepted change becomes the next recipe version. Everything is
+written under `eval/loop/<stream>/` (practice runs, experiments, ledger, recipes, proposals, `summary.json`,
+`REPORT.md`), and running the same command again resumes where it stopped.
+
 ## Cost controls (D45–D48)
 
 ```bash

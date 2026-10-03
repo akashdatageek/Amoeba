@@ -1,0 +1,3 @@
+- Flour: 1500 g
+- Butter: 666.67 g
+- Sugar: 1000 g

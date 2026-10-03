@@ -1,0 +1,233 @@
+team_id: 156c6dd1-be95-4931-bea5-3e7777abbf91
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  430a0401-ec81-428e-8784-daebbddddb50:
+    agent_id: 430a0401-ec81-428e-8784-daebbddddb50
+    name: Quantitative Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in basic mathematical modeling and arithmetic calculations
+      to ensure precise numerical outputs.
+    role_prompt: 'You are a Quantitative Analyst. Using the provided givens, calculate
+      the following step-by-step: 1. Total annual distance (22km * 2 ways * 5 days
+      * 46 weeks). 2. Total annual fuel consumption (Total distance / 100 * 7.8L).
+      3. Total annual cost (Total fuel * 1.65). Use the ''calc'' tool for every operation.
+      Output the results as a clear list with the formula used for each.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide accurate calculations for distance, fuel volume, and cost.
+    skills:
+    - arithmetic
+    - unit conversion
+    outputs:
+    - artifact: calculation sheet
+      format: 'list: distance (km), fuel (L), cost ($)'
+    success_criteria:
+    - Calculations are mathematically sound
+    - All units are correctly handled
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  6c819d48-93c4-44ef-8f68-1175c56494cb:
+    agent_id: 6c819d48-93c4-44ef-8f68-1175c56494cb
+    name: QA Specialist
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An expert in verification and validation who ensures that calculations
+      are correct and logic is sound.
+    role_prompt: You are a QA Specialist. Review the calculations provided by the
+      Quantitative Analyst. Independently perform the calculations using the 'calc'
+      tool to verify the annual distance, fuel consumption, and cost. Ensure the 'each
+      way' factor was applied. Output a memo stating whether the results are correct
+      or providing the corrected values.
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the accuracy of the Quantitative Analyst's results.
+    skills:
+    - verification
+    - mathematical auditing
+    outputs:
+    - artifact: verification report
+      format: 'memo: status (Pass/Fail) and corrected values if applicable'
+    success_criteria:
+    - All numbers are double-checked
+    - Discrepancies are identified and resolved
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  9373c31f-5f39-4c3b-b158-616df244d76a:
+    agent_id: 9373c31f-5f39-4c3b-b158-616df244d76a
+    name: Technical Writer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in assembling technical data into a final deliverable,
+      ensuring all formatting and compliance requirements (like L1) are met.
+    role_prompt: You are a Technical Writer. Take the verified calculations and present
+      them clearly. You must include a section headed '## Assumptions' that lists
+      every single assumption the result relies on, including rounding, fixed rates,
+      and the exclusion of other trips. Ensure the final output is professional and
+      concise.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble the final response including the required assumptions section.
+    skills:
+    - technical writing
+    - compliance checking
+    outputs:
+    - artifact: final response
+      format: 'memo: distance, fuel, cost, and ## Assumptions section'
+    success_criteria:
+    - Final answers are clearly presented
+    - The '## Assumptions' section is present and exhaustive per L1
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 430a0401-ec81-428e-8784-daebbddddb50
+  dst: 6c819d48-93c4-44ef-8f68-1175c56494cb
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 6c819d48-93c4-44ef-8f68-1175c56494cb
+  dst: 9373c31f-5f39-4c3b-b158-616df244d76a
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 430a0401-ec81-428e-8784-daebbddddb50
+exit: 9373c31f-5f39-4c3b-b158-616df244d76a
+plan:
+- index: 0
+  agent_ids:
+  - 430a0401-ec81-428e-8784-daebbddddb50
+  text: '[Quantitative Analyst]: Calculate Annual Metrics'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate total annual distance: 22 * 2 * 5 * 46
+
+    - Calculate total annual fuel: (distance / 100) * 7.8
+
+    - Calculate total annual cost: fuel * 1.65'
+  output: 'list: annual distance, annual fuel, annual cost'
+  done_when: all three values are calculated using the calc tool
+- index: 1
+  agent_ids:
+  - 6c819d48-93c4-44ef-8f68-1175c56494cb
+  text: '[QA Specialist]: Verify Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Re-run the distance calculation
+
+    - Re-run the fuel calculation
+
+    - Re-run the cost calculation
+
+    - Compare results with Step 1'
+  output: 'memo: verification status'
+  done_when: results are confirmed as accurate or corrected
+- index: 2
+  agent_ids:
+  - 9373c31f-5f39-4c3b-b158-616df244d76a
+  text: '[Technical Writer]: Assemble Final Deliverable'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  depends_on:
+  - 2
+  do: '
+
+    - Extract final verified numbers
+
+    - Create the final response with distance, fuel, and cost
+
+    - Write the ''## Assumptions'' section listing all implicit and explicit assumptions'
+  output: 'memo: final answer and assumptions'
+  done_when: all requirements (R1-R4) are met and L1 is satisfied
+requirements:
+  R1: Calculate the total kilometres driven per year.
+  R2: Calculate the total litres of fuel used per year.
+  R3: Calculate the total yearly fuel cost.
+  R4: Deliver a section headed '## Assumptions' listing every assumption the result
+    relies on (L1).
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-4
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

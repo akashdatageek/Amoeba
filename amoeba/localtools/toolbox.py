@@ -77,6 +77,12 @@ class LocalSetup:
     def limits(self) -> dict:
         return self.config["limits"]
 
+    def without(self, names) -> "LocalSetup":
+        """D80 --disable-tools: a copy whose allowed tools leave out `local:<Name>` for each name given."""
+        drop = {n.removeprefix("local:") for n in names or () if n.startswith("local:")}
+        cfg = {**self.config, "allowed_tools": [t for t in self.config["allowed_tools"] if t not in drop]}
+        return LocalSetup(config=cfg, command=self.command, pool_dir=self.pool_dir, env=self.env)
+
 
 # box: localtools
 def unfence(text: str) -> str:

@@ -1,0 +1,72 @@
+# Phase 2 (spec/BUILD_SPEC_PHASE2.md): every threshold and table the adaptation loop's plain code reads.
+# Nothing here is read by a model. Quote on/off: YAML would read them as booleans.
+
+recipe:                       # D81: what a team recipe may hold (validate_recipe)
+  max_rules: 8                # V3
+  max_transforms: 8           # V3
+  max_text_chars: 300         # V3: a rule, a done_when clause or a role rule
+  # V4: no rule or transform text may tell the team to skip checks, citations, the sandbox or the contract.
+  # Matched case-insensitively as a substring; a hit is reviewed by hand.
+  denylist: ["skip", "ignore", "without verif", "no citation", "no source", "disable", "bypass", "turn off",
+             "no sandbox", "outside the sandbox", "no check", "don't check", "do not check", "unverified is fine"]
+  # V1: tools a grant may name besides the envelope's registry tools (Box 3 hands these out at run time); a tool
+  # whose name or description is an outside action (pool side_effect screen: write, edit, send…) is refused anyway
+  grantable_extra: ["web_search", "fetch_url", "local:Bash", "local:Read"]
+  # V2: the run options a recipe may set, and their ranges
+  run_options:
+    replan: {values: ["on", "off"]}
+    self_refine: {values: ["off", "on-issues", "always"]}
+    collab: {values: ["concat", "critique"]}
+    max_turns: {min: 3, max: 8}
+    check_retry_turns: {min: 1, max: 3}
+  checker_role:               # add_verify_step: the role added when the team has no checker
+    name: "Checker"
+    tools: ["calc"]
+
+experiment:                   # D83: Box 7
+  repeats: 3                  # P5: 5 held-out post tasks x 3 repeats = 15 pairs per hypothesis
+  parallel: 8                 # runs at once (SubprocessRunner)
+  # every experiment run gets these run_task flags (both arms alike); the per-job ones (--recipes, --seed,
+  # --drafts-from, cache namespace, runs dir) are added by the Experimenter. Plan options a recipe may set go in
+  # option_defaults, never here: a flag on the command line would win over the recipe (D82).
+  run_flags: ["--draft-prompts", "d24", "--step-contract", "on", "--interpret", "on", "--no-pool",
+              "--max-tokens-per-run", "400000", "--max-calls-per-run", "150"]
+  option_defaults: {replan: "on", self_refine: "on-issues", collab: "critique"}
+
+gate:                         # D84: Box 8, decision rules in order (spec §9.2); any failure rejects
+  version: "v2"               # D84b: v1 = Stage A (rule 5 summed flags, errors included); v2 = rules 5 and 5b below
+  min_gain: 0.05              # 2. mean(d) must beat max(noise, min_gain)
+  alpha: 0.05                 # 2. one-sided paired test, p x N < alpha (Bonferroni over hypotheses since the last accept)
+  ttest_min_n: 10             # 2. a t-test when every d is distinct and n >= this; otherwise Wilcoxon signed-rank
+  cost_ratio: 1.25            # 4. mean(tokens_B) / mean(tokens_A) at most this ...
+  cost_ratio_big_gain: 2.0    # 4. ... or this when mean(d) >= big_gain
+  big_gain: 0.15
+  honesty_margin: 0.2         # 5 (v1). mean(honesty_B) <= mean(honesty_A) + this, and no new refusal
+  honesty_share_margin: 0.2   # 5 (v2). share of runs with >= 1 honesty signal: B - A <= this, and no new refusal
+  error_rate_margin: 0.2      # 5b (v2). share of runs that ended in an error: B - A <= this
+  dwell: 4                    # after an accept: no new hypothesis for this many practice tasks of the family
+  cooldown: 2                 # after a reject: no new hypothesis for this many practice tasks
+  rollback_window: 4          # practice tasks watched after an accept (revert below the alarm window's mean - noise)
+
+monitor:                      # D85: Box 4 (spec §5)
+  window: 3                   # W: the last W practice runs of the family
+  min_reference: 4            # reference runs (since the family's last accepted change, before the window) needed
+  score_sigma: 2              # score alarm: mean(window) < mu_ref - max(score_sigma * sigma_ref, score_floor)
+  score_floor: 0.10
+  cause_high: 0.5             # cause alarm: a cause (or failed rubric item) in >= this share of the window ...
+  cause_low: 0.2              # ... after <= this share of the reference runs
+
+diagnoser:                    # D86: Box 5, tier 0 (spec §6); the cause -> edit table (edit it here)
+  # tie order when two causes rose by the same amount
+  causes: [capability, checks, max_turns, unused_tool, claimed_file_missing, feedback, honesty]
+  # "set_run_option:<name>" allows that one run option only
+  allowed_edits:
+    capability: [grant_tool, add_planner_rule, "set_run_option:replan"]
+    checks: [add_verify_step, tighten_done_when, add_role_rule, "set_run_option:check_retry_turns"]
+    max_turns: [add_planner_rule, "set_run_option:max_turns"]
+    unused_tool: [revoke_tool, add_role_rule]
+    claimed_file_missing: [add_role_rule, add_verify_step]
+    feedback: [add_planner_rule, tighten_done_when, add_role_rule]
+    honesty: [add_verify_step, add_role_rule, tighten_done_when]
+  max_evidence: 8
+  examples: 2                 # practice examples handed to the Architect (practice tasks only)

@@ -73,6 +73,7 @@ class PoolSetup:
     cache_dir: str | Path | None = None               # default: pool.yaml's cache_dir
     connector: Any = None                             # default: SdkConnector (the MCP Python SDK over HTTPS)
     env: Mapping[str, str] = field(default_factory=lambda: os.environ)
+    disabled: frozenset[str] = frozenset()            # D80 --disable-tools: pool ids / names never offered
 
     @property
     def dir(self) -> Path:
@@ -216,6 +217,8 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
     setup = setup or PoolSetup()
     lim = setup.limits
     entries = (index or {}).get("entries") or []
+    if setup.disabled:                        # D80 --disable-tools
+        entries = [e for e in entries if e.get("id") not in setup.disabled and e.get("name") not in setup.disabled]
     traced = TracedLLM(llm, trace, NoopListener())
     reg, pool = tools, None
     if local is not None:                     # D59: start claude mcp serve; skills come from the local listing

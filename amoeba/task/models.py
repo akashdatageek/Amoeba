@@ -6,7 +6,7 @@ import re
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
 
 class RubricItem(BaseModel):
@@ -261,6 +261,16 @@ class Draft(BaseModel):
     gate_hits: int = 0                                             # D28: rounds the --quality-gate sent back
     requests_proposed: int = 0                 # distinct capabilities asked for in round 1
     requests_dropped_by_observers: int = 0     # of those, how many the final draft no longer asks for
+    # D82: what a Phase 2 recipe did to this draft (transforms applied by code); left out of the dump when None, so
+    # a Phase 1 draft (plan.json, eval_draft files) is unchanged
+    recipe_applied: dict | None = None
+
+    @model_serializer(mode="wrap")
+    def _drop_unset_phase2(self, handler):
+        out = handler(self)
+        if isinstance(out, dict) and out.get("recipe_applied", 0) is None:
+            out.pop("recipe_applied")
+        return out
 
 
 # box: runresult
@@ -304,3 +314,6 @@ class RunResult(BaseModel):
     skills_attached: list[dict] | None = None
     clarification: str | None = None   # D53 --interactive: the user's edit appended to the task before one re-draft
     rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric
+    # Phase 2 fields, left out of result.json when None (a Phase 1 run's record is unchanged)
+    disabled_tools: list[str] | None = None   # D80 --disable-tools: tools taken out of this run
+    recipe: dict | None = None   # D82 --recipes: the family's recipe, the transforms applied and the run options

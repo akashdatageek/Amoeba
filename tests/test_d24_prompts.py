@@ -55,5 +55,5 @@ def test_unknown_prompt_set_is_refused(task, envelope, trace):
 
 def test_d24_template_leaves_no_placeholder_unfilled():
     body = render(PROMPT.d24_create_team, context="c", existing_roles="[]", tools="t", history="h", suggestions="s",
-                  max_agents="5", format_example="f")
+                  max_agents="5", format_example="f", lessons="")
     assert "${" not in body
