@@ -1,0 +1,236 @@
+team_id: ffedca8b-96c3-4d21-9cb1-3db2f985fd53
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  309cb7c2-70e9-4f94-9dcd-d60f8582650b:
+    agent_id: 309cb7c2-70e9-4f94-9dcd-d60f8582650b
+    name: Financial Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in Cost-Volume-Profit (CVP) analysis and business mathematics.
+      Responsible for calculating break-even points and target profit volumes.
+    role_prompt: "You are a Senior Financial Analyst. Your task is to perform a break-even\
+      \ analysis for a bakery. \n1. Calculate the Contribution Margin per unit: Price\
+      \ - Variable Cost.\n2. Calculate the Break-Even Quantity (BEQ): Fixed Costs\
+      \ / Contribution Margin.\n3. Calculate the Break-Even Revenue (BER): BEQ * Price.\n\
+      4. Calculate the Target Profit Quantity (TPQ): (Fixed Costs + Target Profit)\
+      \ / Contribution Margin.\n\nUse the `calc` tool for every arithmetic operation\
+      \ to ensure precision. \n\nOutput format:\n## Calculations\n- Contribution Margin:\
+      \ [formula] = [result]\n- Break-Even Quantity: [formula] = [result]\n- Break-Even\
+      \ Revenue: [formula] = [result]\n- Target Profit Quantity: [formula] = [result]"
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide accurate calculations for break-even units, break-even revenue,
+      and target profit units.
+    skills:
+    - CVP Analysis
+    - Business Mathematics
+    outputs:
+    - artifact: calculation_sheet
+      format: 'memo: showing step-by-step arithmetic for BEQ, BER, and TPQ'
+    success_criteria:
+    - Calculations are mathematically sound and follow CVP formulas.
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  d110a59d-7380-420c-ad70-08ef33158a7f:
+    agent_id: d110a59d-7380-420c-ad70-08ef33158a7f
+    name: Financial Auditor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in verifying financial models and arithmetic accuracy.
+      Ensures that the logic used by the analyst is correct and the numbers are precise.
+    role_prompt: "You are a Senior Financial Auditor. Review the calculations provided\
+      \ by the Financial Analyst. \n1. Independently re-calculate the Contribution\
+      \ Margin, BEQ, BER, and TPQ using the `calc` tool.\n2. Compare your results\
+      \ with the analyst's results.\n3. If they match, confirm each value. If they\
+      \ differ, provide the correct value and explain the error.\n\nOutput format:\n\
+      ## Verification\n- Contribution Margin: [Confirmed/Corrected]\n- BEQ: [Confirmed/Corrected]\n\
+      - BER: [Confirmed/Corrected]\n- TPQ: [Confirmed/Corrected]"
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the accuracy of the Financial Analyst's calculations.
+    skills:
+    - Financial Auditing
+    - Arithmetic Verification
+    outputs:
+    - artifact: verification_report
+      format: 'list: confirmation of each value or a list of corrections'
+    success_criteria:
+    - All calculations are double-checked and confirmed correct.
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  5a3c89f1-f8b3-4f76-9a36-0bf3cb1a2ec3:
+    agent_id: 5a3c89f1-f8b3-4f76-9a36-0bf3cb1a2ec3
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Responsible for the final assembly of the deliverable, ensuring all
+      requirements are met and the house style (including assumptions) is followed.
+    role_prompt: "You are the Delivery Lead. Assemble the final response based on\
+      \ the verified calculations. \n1. State the number of cakes to break even.\n\
+      2. State the revenue at break-even.\n3. State the number of cakes for a profit\
+      \ of $9,000.\n4. Create a section '## Assumptions' listing every assumption\
+      \ made (e.g., constant prices, constant fixed costs, no taxes, all units sold,\
+      \ rounding). \n\nDo not perform new analysis. Only summarize the verified results."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answers and the mandatory assumptions section.
+    skills:
+    - Technical Writing
+    - Quality Assurance
+    outputs:
+    - artifact: final_answer
+      format: 'memo: Final answers followed by ## Assumptions'
+    success_criteria:
+    - All three questions answered correctly; Assumptions section present and comprehensive.
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 309cb7c2-70e9-4f94-9dcd-d60f8582650b
+  dst: d110a59d-7380-420c-ad70-08ef33158a7f
+  type: sequential
+  schema_id: text
+  condition: null
+- src: d110a59d-7380-420c-ad70-08ef33158a7f
+  dst: 5a3c89f1-f8b3-4f76-9a36-0bf3cb1a2ec3
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 309cb7c2-70e9-4f94-9dcd-d60f8582650b
+exit: 5a3c89f1-f8b3-4f76-9a36-0bf3cb1a2ec3
+plan:
+- index: 0
+  agent_ids:
+  - 309cb7c2-70e9-4f94-9dcd-d60f8582650b
+  text: '[Financial Analyst]: Perform CVP Calculations'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate contribution margin per cake.
+
+    - Calculate break-even quantity.
+
+    - Calculate break-even revenue.
+
+    - Calculate quantity for $9,000 profit.'
+  output: 'memo: calculation_sheet'
+  done_when: All four values are calculated and formulas are shown.
+- index: 1
+  agent_ids:
+  - d110a59d-7380-420c-ad70-08ef33158a7f
+  text: '[Financial Auditor]: Verify Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Independently re-calculate all four values using `calc`.
+
+    - Compare results with the Financial Analyst''s output.'
+  output: 'list: verification_report'
+  done_when: All values are confirmed or corrected.
+- index: 2
+  agent_ids:
+  - 5a3c89f1-f8b3-4f76-9a36-0bf3cb1a2ec3
+  text: '[Delivery Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  depends_on:
+  - 2
+  do: '
+
+    - Extract the verified values.
+
+    - Format the final answers.
+
+    - Write the ''## Assumptions'' section.'
+  output: 'memo: final_answer'
+  done_when: Final answers are provided and the Assumptions section is present.
+requirements:
+  R1: Calculate how many cakes must it sell to break even.
+  R2: Calculate what the revenue is at break-even.
+  R3: Calculate how many cakes give a profit of $9,000.
+  R4: Deliver a final section headed '## Assumptions' that lists every assumption
+    the result relies on (L1).
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpre-3
+  draft_rounds: 3
+  consensus: false
+  dependency_relinked: []
+  capability_requests: []

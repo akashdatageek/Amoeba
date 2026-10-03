@@ -108,3 +108,12 @@ def test_rubric_never_reaches_box2_or_box3_prompts(prompts, topology, tmp_path, 
     sent = json.dumps([c["messages"] for c in llm.calls])
     assert [s for s in SENTINELS if s in sent] == []
     assert r.rubric["total"] == 4                                   # Box 1 did score it, after the run
+
+
+def test_d80a_metres_are_not_millions():
+    from amoeba.task.evaluate import number_found, quantities
+    assert number_found("Floor Area: 32.4 m²", 32.4, "") == "32.4"
+    assert number_found("Volume ordered: 3.5 m³", 3.5, "") == "3.5"
+    assert number_found("The pool is 8 m long", 8, "") == "8 m"
+    assert number_found("a $1.5m budget", 1_500_000, "USD") and number_found("2M users", 2, "million")
+    assert [q["values"] for q in quantities("$1.5m")] == [[1500000.0]]

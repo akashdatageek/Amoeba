@@ -1,0 +1,289 @@
+"""D89 — the loop driver (Phase 2 spec §11): Monitor → Diagnoser → Architect → Experimenter → Gate → Memory over a
+task stream. Resumable (D73): a practice run with a finished result is not run again, a decided hypothesis is not
+re-tried, and the loop state is saved after every practice task.
+
+    calibrate the noise floor for each family (current recipe, active held-out post slice)
+    for each practice task, by order:
+        run Boxes 1–3 with the family's current recipe (shifts apply: feedback rubrics, disabled tools)
+        rollback watch (§9.3)
+        alarm = monitor(family)                        Box 4 (none during dwell / cool-down)
+        diagnosis = diagnose(alarm)                    Box 5
+        up to 3 times: hypothesis = architect(...)     Box 6 (the only model call of the loop)
+                       result = experiment(...)        Box 7
+                       decision = gate(...)            Box 8 (v2)
+                       accept → store.commit           Box 9; dwell
+        no accept → unresolved (human_queue.jsonl); cool-down
+    summary.json and REPORT.md
+
+Practice orders ≤ parallel_until run as one batch before the loop looks at them (the recipe cannot change before an
+alarm); the monitor still looks at them in order. Later tasks run one at a time, because each can trigger a change.
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from statistics import mean
+from typing import Callable
+
+from pydantic import BaseModel, Field
+
+from amoeba.adapt.architect import MAX_PER_ALARM, log_unresolved, propose
+from amoeba.adapt.diagnoser import diagnose, diagnose_none
+from amoeba.adapt.experimenter import Job, experiment
+from amoeba.adapt.gate import cfg as gate_cfg, decide, decision_row, rollback_watch
+from amoeba.adapt.ledger import Ledger
+from amoeba.adapt.monitor import LoopState, PracticeRecord, monitor, practice_record
+from amoeba.adapt.recipe import apply_edit
+from amoeba.adapt.stream import Stream, StreamTask
+from amoeba.interp.trace import TraceWriter
+from amoeba.memory.recipes import RecipeStore
+
+
+# box: loop
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+# box: loop
+class FamilyState(LoopState):
+    watch: dict | None = None            # after an accept: {"accept_order", "alarm_mean", "noise", "version"}
+
+
+# box: loop
+class Loop(BaseModel):
+    """The loop's state on disk (eval/loop/<stream>/loop_state.json)."""
+
+    stream: str
+    families: dict[str, FamilyState] = Field(default_factory=dict)
+    processed: list[int] = Field(default_factory=list)        # practice orders whose alarm step is done
+    events: list[dict] = Field(default_factory=list)          # alarms, hypotheses, decisions, reverts, unresolved
+
+
+# box: loop
+class LoopIO:
+    def __init__(self, root: Path):
+        self.root = Path(root)
+        self.state_file = self.root / "loop_state.json"
+        self.practice_file = self.root / "practice.jsonl"
+
+    def load(self, stream: Stream) -> Loop:
+        if self.state_file.exists():
+            return Loop.model_validate_json(self.state_file.read_text(encoding="utf-8"))
+        return Loop(stream=stream.name, families={f: FamilyState(family=f) for f in stream.families()})
+
+    def save(self, loop: Loop) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.state_file.write_text(loop.model_dump_json(indent=2), encoding="utf-8")
+
+    def records(self) -> list[PracticeRecord]:
+        if not self.practice_file.exists():
+            return []
+        return [PracticeRecord.model_validate_json(l) for l in self.practice_file.read_text(encoding="utf-8").splitlines()
+                if l.strip()]
+
+    def add(self, rec: PracticeRecord) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        with open(self.practice_file, "a", encoding="utf-8") as fh:
+            fh.write(rec.model_dump_json() + "\n")
+
+
+# box: loop
+def _slug(s: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_." else "-" for c in s)[:80]
+
+
+# box: loop
+def practice_jobs(tasks: list[StreamTask], stream: Stream, store: RecipeStore, root: Path) -> list[Job]:
+    """One practice run per task with its family's current recipe (the store itself is the run's --recipes)."""
+    jobs = []
+    for t in tasks:
+        v = store.current_or_seed(t.family).version
+        jobs.append(Job(arm="P", task=t, k=0, seed=0, store=store.root, out=root / "practice" / f"{t.order:02d}-{t.id}",
+                        namespace=_slug(f"{stream.name}-practice-{t.id}-v{v}"), disabled_tools=stream.disabled_tools(t)))
+    return jobs
+
+
+# box: loop
+def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], object], repeats: int = 3,
+             parallel_until: int = 0, diagnoser: str = "tier0", envelope=None, calibrate: Callable | None = None,
+             log: Callable[[str], None] = print) -> dict:
+    """The loop over the stream's practice tasks. llm_for(hypothesis_id) gives the Architect's client; calibrate(
+    stream, family, runner, root, store, repeats) -> calibration row (scripts/run_experiment.ensure_calibration)."""
+    from scripts.run_experiment import ensure_calibration, sample_draft
+    calibrate = calibrate or ensure_calibration
+    root = Path(root)
+    io = LoopIO(root)
+    store = RecipeStore(root / "recipes")
+    ledger = Ledger(root / "ledger.jsonl")
+    g = gate_cfg()
+    loop = io.load(stream)
+    for fam in stream.families():
+        store.ensure_seed(fam)
+        loop.families.setdefault(fam, FamilyState(family=fam))
+        if not loop.processed:                   # a fresh loop; a later recipe version is calibrated when first tested
+            calibrate(stream, fam, runner, root, store.root, repeats)
+    io.save(loop)
+    done = {r.order: r for r in io.records()}
+
+    def run_practice(tasks: list[StreamTask]) -> None:
+        todo = [t for t in tasks if t.order not in done]
+        for t, rec in zip(todo, runner.run(practice_jobs(todo, stream, store, root)) if todo else []):
+            v = store.current_or_seed(t.family).version
+            pr = practice_record(t, rec.run_dir, v) if rec.run_dir else \
+                PracticeRecord(order=t.order, task_id=t.id, family=t.family, score=None, error=rec.error,
+                               recipe_version=v)
+            io.add(pr)
+            done[t.order] = pr
+            log(f"[practice] #{t.order} {t.id} v{v} score={pr.score} failed={pr.failed_items} error={pr.error}")
+
+    practice = stream.practice()
+    run_practice([t for t in practice if t.order <= parallel_until])
+    for t in practice:
+        run_practice([t])
+        if t.order in loop.processed:
+            continue
+        st = loop.families[t.family]
+        recs = [done[o] for o in sorted(done) if o <= t.order]
+        _watch(st, recs, t, store, ledger, loop, log)
+        alarm = monitor(recs, st)
+        if alarm is not None:
+            loop.events.append({"ts": _now(), "event": "alarm", "order": t.order, **alarm.model_dump()})
+            log(f"[alarm] #{t.order} {alarm.kind}: {alarm.before:.3f} -> {alarm.after:.3f} {alarm.signals}")
+            _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser,
+                    envelope, calibrate, sample_draft, g, log)
+        loop.processed.append(t.order)
+        io.save(loop)
+    summary = write_summary(stream, root, io.records(), ledger, store, loop)
+    return summary
+
+
+# box: loop
+def _watch(st: FamilyState, recs: list[PracticeRecord], t: StreamTask, store: RecipeStore, ledger: Ledger,
+           loop: Loop, log) -> None:
+    """§9.3 rollback watch over the practice tasks after an accept."""
+    if not st.watch:
+        return
+    after = [r.score or 0.0 for r in recs if r.family == st.family and r.order > st.watch["accept_order"]]
+    verdict = rollback_watch(after, st.watch["alarm_mean"], st.watch["noise"])
+    if verdict == "watching":
+        return
+    window = int(gate_cfg()["rollback_window"])
+    row = {"event": "reverted" if verdict == "reverted" else "kept", "family": st.family, "order": t.order,
+           "version": st.watch["version"], "practice_mean": round(mean(after[:window]), 4),
+           "alarm_mean": st.watch["alarm_mean"], "noise": st.watch["noise"]}
+    if verdict == "reverted":
+        back = store.revert(st.family, f"rollback watch: practice mean {row['practice_mean']} < alarm window mean "
+                                       f"{st.watch['alarm_mean']} - noise {st.watch['noise']}")
+        row["reverted_to"] = back.version
+        ledger.append({**row, "gate_version": loop_gate_version()})
+    loop.events.append({"ts": _now(), **row})
+    log(f"[watch] {row}")
+    st.watch = None
+
+
+# box: loop
+def loop_gate_version() -> str:
+    return gate_cfg().get("version", "v2")
+
+
+# box: loop
+def _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser, envelope,
+            calibrate, sample_draft, g, log) -> None:
+    diag = diagnose(alarm, recs, stream) if diagnoser != "none" else diagnose_none(alarm)
+    (root / "diagnoses").mkdir(parents=True, exist_ok=True)
+    (root / "diagnoses" / f"o{t.order:02d}-{t.family}.json").write_text(diag.model_dump_json(indent=2), encoding="utf-8")
+    loop.events.append({"ts": _now(), "event": "diagnosis", "order": t.order, "family": t.family,
+                        "cause": diag.cause, "symptom": diag.symptom, "allowed_edits": diag.allowed_edits})
+    log(f"[diagnosis] {diag.cause}: {diag.symptom} -> {diag.allowed_edits}")
+    heldout = stream.heldout(t.family, everything=True)
+    tried, accepted = [], False
+    for attempt in range(1, MAX_PER_ALARM + 1):
+        hid = f"{stream.name}-{t.family}-o{t.order:02d}-h{attempt}"
+        decided = [r for r in ledger.rows(t.family, "decision") if r.get("hypothesis_id") == hid and not r.get("post_hoc")]
+        recipe = store.current_or_seed(t.family)
+        if decided:                                    # resumed: this hypothesis was already decided
+            row, tried = decided[-1], tried + [hid]
+            if row["decision"] == "accept":
+                accepted = True
+                break
+            continue
+        cal = calibrate(stream, t.family, runner, root, store.root, repeats)
+        arch_dir = root / "architect"
+        arch_dir.mkdir(parents=True, exist_ok=True)
+        saved = arch_dir / f"{hid}.json"
+        if saved.exists() and json.loads(saved.read_text(encoding="utf-8")).get("hypothesis"):
+            from amoeba.adapt.gate import Hypothesis
+            h = Hypothesis.model_validate(json.loads(saved.read_text(encoding="utf-8"))["hypothesis"])
+        else:
+            trace = TraceWriter(arch_dir / f"{hid}.trace.jsonl", episode_id=hid)
+            h, rec = propose(diag, recipe, ledger.failed(t.family), heldout, llm_for(hid), trace, hid, seed=attempt,
+                             envelope=envelope)
+            trace.close()
+            saved.write_text(json.dumps(rec, indent=2, ensure_ascii=False), encoding="utf-8")
+        if h is None:
+            ledger.append({"event": "no_hypothesis", "family": t.family, "hypothesis_id": hid, "order": t.order,
+                           "gate_version": loop_gate_version()})
+            loop.events.append({"ts": _now(), "event": "no_hypothesis", "order": t.order, "hypothesis_id": hid})
+            log(f"[architect] {hid}: no valid hypothesis after one retry")
+            break
+        log(f"[architect] {hid}: {h.edit.op} {json.dumps(h.edit.params)[:200]} predicted {h.predicted_delta:+.2f}")
+        ledger.append({"event": "hypothesis", "family": t.family, "hypothesis_id": hid, "recipe_from": recipe.version,
+                       "edit": h.edit.model_dump(), "predicted_delta": h.predicted_delta, "rationale": h.rationale,
+                       "created_by": "architect", "order": t.order, "diagnosis": diag.cause,
+                       "gate_version": loop_gate_version()})
+        res = experiment(recipe, h.edit, hid, stream, runner, root, repeats, created_by="architect")
+        recipe_B = apply_edit(recipe, h.edit, created_by="architect", hypothesis_id=hid)
+        dec = decide(recipe, recipe_B, h, res, cal["noise"], ledger.tried_since_accept(t.family) + 1, heldout,
+                     envelope, sample_draft(res))
+        row = ledger.append({**decision_row(h, recipe, recipe_B, dec, f"experiments/{hid}/"), "order": t.order})
+        store.record(diag.model_dump(exclude={"examples"}), h.model_dump(mode="json"), row)
+        tried.append(hid)
+        loop.events.append({"ts": _now(), "event": "decision", "order": t.order, "hypothesis_id": hid,
+                            "decision": dec.decision, "reasons": dec.reasons, "observed_delta": dec.observed_delta})
+        log(f"[gate] {hid}: {dec.decision} d={dec.observed_delta:+.3f} {dec.reasons}")
+        if dec.decision == "accept":
+            store.commit(recipe_B, row)
+            st.reference_from = t.order + 1
+            st.quiet_until = t.order + int(g["dwell"])
+            st.watch = {"accept_order": t.order, "alarm_mean": alarm.after, "noise": cal["noise"],
+                        "version": recipe_B.version}
+            accepted = True
+            break
+    if not accepted:
+        row = log_unresolved(root, alarm.model_dump(), diag, tried)
+        ledger.append({"event": "unresolved", "family": t.family, "order": t.order, "hypotheses_tried": tried,
+                       "gate_version": loop_gate_version()})
+        loop.events.append({"ts": _now(), "event": "unresolved", "order": t.order, "hypotheses_tried": tried})
+        st.quiet_until = t.order + int(g["cooldown"])
+        log(f"[unresolved] #{t.order}: {tried}")
+
+
+# ---- outputs -------------------------------------------------------------------------------------------------------
+# box: loop
+def write_summary(stream: Stream, root: Path, records: list[PracticeRecord], ledger: Ledger, store: RecipeStore,
+                  loop: Loop) -> dict:
+    """summary.json and a plain REPORT.md next to the ledger."""
+    recs = sorted(records, key=lambda r: r.order)
+    rows = ledger.rows()
+    summary = {"stream": stream.name, "practice": [r.model_dump(include={"order", "task_id", "family", "score",
+                                                                         "failed_items", "recipe_version", "error"})
+                                                   for r in recs],
+               "alarms": [e for e in loop.events if e["event"] == "alarm"],
+               "decisions": [r for r in rows if r.get("event") == "decision"],
+               "unresolved": [r for r in rows if r.get("event") == "unresolved"],
+               "reverts": [r for r in rows if r.get("event") == "reverted"],
+               "recipes": store.index()}
+    (root / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    lines = [f"# Loop run on stream {stream.name}", "", "| order | task | phase | recipe | score | failed items |",
+             "|---|---|---|---|---|---|"]
+    phase = {t.id: t.phase for t in stream.practice()}
+    for r in recs:
+        lines.append(f"| {r.order} | {r.task_id} | {phase.get(r.task_id, '')} | v{r.recipe_version} | {r.score} | "
+                     f"{', '.join(r.failed_items) or '—'} |")
+    lines += ["", "## Events", ""]
+    for e in loop.events:
+        lines.append("- " + json.dumps({k: v for k, v in e.items() if k not in ("window", "reference_orders")},
+                                       ensure_ascii=False)[:600])
+    (root / "REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return summary

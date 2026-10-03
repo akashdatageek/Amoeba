@@ -1,0 +1,272 @@
+team_id: aa7ccbe2-1744-472d-bc0a-b19e45a03490
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  8164589b-491d-4bcc-a30f-c6ac40e21401:
+    agent_id: 8164589b-491d-4bcc-a30f-c6ac40e21401
+    name: Construction Estimator
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in material take-offs and cost estimation. They translate
+      physical dimensions into purchasing quantities.
+    role_prompt: 'You are a Senior Construction Estimator. Your task is to calculate
+      the materials for a flooring project.
+
+      1. Calculate the floor area (Length * Width).
+
+      2. Calculate the area of a single tile (Length * Width).
+
+      3. Calculate the exact number of tiles needed to cover the floor (Floor Area
+      / Tile Area).
+
+      4. Calculate the total tiles to order by adding 10% to the exact count (Exact
+      Tiles * 1.1).
+
+      5. Calculate the number of boxes needed. Since tiles come in boxes of 8 and
+      you can only buy whole boxes, divide the order quantity by 8 and round up to
+      the nearest whole number.
+
+      6. Calculate the total cost (Boxes * Price per box).
+
+
+      Use the ''calc'' tool for every step to ensure precision. Output your results
+      in a clear memo format.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide accurate area, tile counts, and total material costs.
+    skills:
+    - Area calculation
+    - Material take-off
+    - Cost estimation
+    outputs:
+    - artifact: Quantity and Cost Sheet
+      format: 'memo: Area, Exact Tiles, Order Tiles, Boxes, Total Cost'
+    success_criteria:
+    - All calculations are mathematically correct
+    - Whole-box constraint is applied (rounded up)
+    - Waste percentage is correctly applied
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  13ba2e3d-ccd7-4b64-a537-e7b9a846c582:
+    agent_id: 13ba2e3d-ccd7-4b64-a537-e7b9a846c582
+    name: QA Auditor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A quality assurance specialist responsible for verifying mathematical
+      accuracy and logic in material estimates.
+    role_prompt: 'You are a QA Auditor. Your role is to verify the work of the Construction
+      Estimator.
+
+      1. Review the Quantity and Cost Sheet.
+
+      2. Use the ''calc'' tool to independently re-calculate the floor area, the exact
+      tile count, the order quantity (including 10% waste), the box count (ensuring
+      it is rounded up to the nearest whole number), and the final cost.
+
+      3. Compare your results with the Estimator''s results.
+
+      4. Output a list indicating whether each value passed or failed verification.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Independently verify that the Construction Estimator's calculations are
+      correct.
+    skills:
+    - Mathematical verification
+    - Audit
+    outputs:
+    - artifact: Verification Report
+      format: 'list: Pass/Fail for each calculation'
+    success_criteria:
+    - Every calculation is independently verified
+    - Discrepancies are flagged
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  da4d9dbb-c73a-4fc6-a052-04d7325ed653:
+    agent_id: da4d9dbb-c73a-4fc6-a052-04d7325ed653
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A principal lead responsible for final assembly and delivery. They
+      ensure the final output meets all formatting and requirement constraints.
+    role_prompt: 'You are the Delivery Lead. Your role is to assemble the final deliverable
+      based on the verified data.
+
+      1. Review the Quantity and Cost Sheet and the Verification Report.
+
+      2. Assemble the final response. It must clearly state: the floor area, the number
+      of tiles that cover it exactly, and the total cost of the boxes.
+
+      3. Crucially, end the response with a section headed ''## Assumptions''. List
+      every assumption made, including the shape of the room, the method of rounding,
+      and the treatment of the 10% waste.
+
+      4. Do not perform any new calculations or use any tools.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver a verified, accurate final answer including the required assumptions
+      section.
+    skills:
+    - Technical Writing
+    - Requirement Traceability
+    outputs:
+    - artifact: Final Project Report
+      format: 'memo: Area, Exact Tiles, Cost, ## Assumptions'
+    success_criteria:
+    - Final output contains exactly the three requested answers
+    - The '## Assumptions' section is present and comprehensive
+    - No new calculations are performed
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 8164589b-491d-4bcc-a30f-c6ac40e21401
+  dst: 13ba2e3d-ccd7-4b64-a537-e7b9a846c582
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 13ba2e3d-ccd7-4b64-a537-e7b9a846c582
+  dst: da4d9dbb-c73a-4fc6-a052-04d7325ed653
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 8164589b-491d-4bcc-a30f-c6ac40e21401
+exit: da4d9dbb-c73a-4fc6-a052-04d7325ed653
+plan:
+- index: 0
+  agent_ids:
+  - 8164589b-491d-4bcc-a30f-c6ac40e21401
+  text: '[Construction Estimator]: Material Take-off'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate floor area
+
+    - Calculate exact tile count
+
+    - Calculate order quantity (including 10% waste)
+
+    - Calculate number of boxes (rounding up)
+
+    - Calculate total cost'
+  output: 'memo: Quantity and Cost Sheet'
+  done_when: All five values (Area, Exact Tiles, Order Tiles, Boxes, Cost) are calculated.
+- index: 1
+  agent_ids:
+  - 13ba2e3d-ccd7-4b64-a537-e7b9a846c582
+  text: '[QA Auditor]: Calculation Verification'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Re-calculate floor area using `calc`
+
+    - Re-calculate exact tile count using `calc`
+
+    - Re-calculate box count and cost using `calc`
+
+    - Compare results with Step 1'
+  output: 'list: Verification results (Pass/Fail)'
+  done_when: All calculations are confirmed as correct.
+- index: 2
+  agent_ids:
+  - da4d9dbb-c73a-4fc6-a052-04d7325ed653
+  text: '[Delivery Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R4
+  - R5
+  depends_on:
+  - 2
+  do: '
+
+    - Format the final answers for area, exact tiles, and cost.
+
+    - Create the ''## Assumptions'' section listing all project assumptions.'
+  output: 'memo: Final Project Report'
+  done_when: Final report is produced with the required answers and the Assumptions
+    section.
+requirements:
+  R1: Calculate the floor area.
+  R2: Calculate how many tiles cover the floor exactly.
+  R3: Calculate the total cost of the boxes (including 10% for cuts/breakage and the
+    whole-box constraint).
+  R4: Deliver the final answers for area, exact tile count, and cost.
+  R5: Include a section headed '## Assumptions' listing all assumptions (L1).
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-2
+  draft_rounds: 2
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

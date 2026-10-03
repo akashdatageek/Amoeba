@@ -35,6 +35,8 @@ from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
 from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
+from amoeba.adapt.recipe import Recipe, apply_transforms, lessons_text, overlay_run_options
+from amoeba.memory.recipes import load_family_recipe
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
@@ -45,6 +47,7 @@ from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
+PHASE2_FIELDS = {"disabled_tools", "recipe"}           # left out of result.json when None (Phase 1 records unchanged)
 
 
 # box: ov_leave, capreq, runresult
@@ -54,7 +57,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
             local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
             picks_only: bool = False, timezone: str | None = None, interpret: bool = False,
-            context=None) -> RunResult:
+            context=None, disabled_tools=(), recipe: Recipe | None = None,
+            cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
+            default_max_turns: int | None = None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -62,7 +67,15 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     picks_file: D70 — one pool pick per task and request, shared by every run of the task; picks_only: stop after
     the toolbox step (a pre-pass that makes the picks before the architectures run).
     interpret: D77 — read the task before planning (task interpretation step); context: the read-only user context
-    (--context, amoeba.memory.context.load_context) it reads."""
+    (--context, amoeba.memory.context.load_context) it reads.
+    disabled_tools: D80 --disable-tools — already taken out of `tools`, `pool` and `local` by the caller
+    (disable_tools); recorded, and left out of the toolbox Box 2 is shown.
+    recipe: D82 --recipes — the task family's team recipe (plan runner only; the baselines never get one): its
+    planner rules fill the d24 prompts' {lessons} slot, its transforms are applied by code to the final draft, its
+    run options overlay plan_options and the helpers' max_turns unless the CLI set them (cli_explicit: the flags
+    given on the command line). With a saved draft only the transforms and run options apply."""
+    if recipe is not None and topology != "plan":
+        raise ValueError("recipes are for Amoeba's plan runner only; the baselines never get one (D82)")
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -70,6 +83,28 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
     t0 = time.perf_counter()
+    if disabled_tools:
+        trace.event("tools_disabled", {"amoeba.box": "stream", "amoeba.tools": list(disabled_tools)})
+    lessons = lessons_text(recipe) if saved_draft is None else {}               # D82: Box 2's {lessons} slot
+    plan_options, recipe_turns, opts_applied, opts_cli = overlay_run_options(plan_options, recipe, cli_explicit)
+    # --max-turns given on the command line wins over the recipe; a harness default (--option-defaults) yields to it
+    max_turns = max_turns or recipe_turns or default_max_turns
+    recipe_rec: dict | None = None
+    if recipe is not None:
+        recipe_rec = {"family": recipe.family, "version": recipe.version, "hash": recipe.hash(),
+                      "rules": [r.model_dump() for r in recipe.planner_rules],
+                      "rules_applied": bool(recipe.planner_rules) and saved_draft is None and draft_prompts == "d24",
+                      "transforms_applied": [], "run_options": opts_applied, "run_options_overridden_by_cli": opts_cli}
+        if recipe.planner_rules and saved_draft is not None:
+            recipe_rec["rules_note"] = "saved draft reused (D45): planner rules need a fresh draft and were not applied"
+        elif recipe.planner_rules and draft_prompts != "d24":
+            recipe_rec["rules_note"] = "planner rules are shown by the d24 prompts only"
+        trace.event("recipe_loaded", {"amoeba.box": "recipe", "amoeba.recipe.family": recipe.family,
+                                      "amoeba.recipe.version": recipe.version, "amoeba.recipe.hash": recipe.hash(),
+                                      "amoeba.recipe.rules": len(recipe.planner_rules),
+                                      "amoeba.recipe.transforms": len(recipe.transforms),
+                                      "amoeba.recipe.run_options": opts_applied})
+    box2_draft = None
     draft = ep = failed = clarification = None
     answer = error = None
     team_id = ""
@@ -85,7 +120,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             interp = draft.interpretation or None                                  # D77: read when it was drafted
             trace.event("draft_reused", {"amoeba.draft_source": saved_draft.source, "amoeba.task_id": task.id})
         else:
-            toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None)
+            toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None,
+                                   disabled=disabled_tools)
             if interpret:             # D77: what the task is about is settled before the Planner drafts
                 interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed)
                 if interp["ambiguous"] and ask is not None:
@@ -93,7 +129,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     trace.event("interpretation_question", {"amoeba.question": interp["question"]})
             task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
-                               quality_gate=quality_gate, toolbox=toolbox, interpretation=interp)   # D68, D77
+                               quality_gate=quality_gate, toolbox=toolbox, interpretation=interp,   # D68, D77
+                               lessons=lessons)                                                       # D82
             if ask is not None:       # D53: the user reads the draft's intake before Box 3 runs
                 print(intake_text(draft))
                 clarification = ask_user(ask)
@@ -103,9 +140,20 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     task = task.model_copy(update={"prompt": f"{task.prompt}\n\nUser clarification: {clarification}"})
                     draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                        quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
-                                       toolbox=toolbox, interpretation=interp)
+                                       toolbox=toolbox, interpretation=interp, lessons=lessons)
         task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})    # D77: Box 3 reads it too
+        if recipe is not None and recipe.transforms:     # D82: Box 2 → 3, code applies the recipe's transforms
+            box2_draft = draft
+            draft, applied = apply_transforms(draft, recipe)
+            draft = draft.model_copy(update={"recipe_applied": {"family": recipe.family, "version": recipe.version,
+                                                                "transforms": applied}})
+            recipe_rec["transforms_applied"] = applied
+            trace.event("recipe_applied", {"amoeba.box": "recipe", "amoeba.recipe.version": recipe.version,
+                                           "amoeba.recipe.transforms_applied": applied})
         cfg = instantiate(draft, topology, task, envelope)
+        if max_turns is not None:                         # --max-turns, else a recipe's max_turns run option (D82)
+            for a in cfg.agents.values():
+                a.limits.max_turns = max_turns
         team_id = cfg.team_id
         requests = [q.model_copy(deep=True) for q in draft.capability_requests]
         picks = SharedPicks(picks_file, task.id) if picks_file else None           # D70
@@ -146,6 +194,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         saved = draft.model_dump(mode="json") if draft else \
             {"error": error, "rounds": [r.model_dump(mode="json") for r in (failed.rounds if failed else [])]}
         (run_dir / "plan.json").write_text(json.dumps(saved, indent=2, ensure_ascii=False), encoding="utf-8")
+        if box2_draft is not None:    # D82: the draft as Box 2 made it, before the transforms (what D45 reuses)
+            (run_dir / "draft.json").write_text(box2_draft.model_dump_json(indent=2), encoding="utf-8")
         if box is not None:           # D59: the server is closed and the workspace copied, whatever happened
             local_out = box.finish()
             trace.event("local_summary", {"amoeba.box": "localtools", **{f"amoeba.local.{k}": v for k, v in local_out.items()}})
@@ -179,10 +229,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace),
         replan=ep.replan if ep else {},
         interpretation=interpretation_of(interp, stated),
-        pool=pool_summary, **local_out)
+        pool=pool_summary, disabled_tools=list(disabled_tools) or None, recipe=recipe_rec, **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
-    (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=None if box else LOCAL_FIELDS),
-                                         encoding="utf-8")
+    exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
+    (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
     return result
 
 
@@ -285,12 +335,46 @@ def blocked_of(ep) -> dict:
     return dict(sorted(counts.items()))
 
 
+# box: checks
+def quality_gate_on(choice: str | bool, topology: str, drafts_from: str | None = None) -> bool:
+    """D79: the Box 2 quality gate (D28) is on by default for Amoeba's plan runner, off for the baselines (flat,
+    boss_reviewers keep their papers' drafting) and when a saved draft is reused (nothing is drafted)."""
+    if isinstance(choice, bool):
+        return choice
+    if choice == "auto":
+        return topology == "plan" and not drafts_from
+    return choice == "on"
+
+
+# box: stream
+def disable_tools(names, tools: ToolRegistry, pool: PoolSetup | None = None, local: LocalSetup | None = None):
+    """D80 --disable-tools a,b: one run without these tools — out of the registry (and so the envelope Box 2 is
+    shown), out of the pool (by id or name) and, for local:<Name>, out of the local tools' allow list."""
+    names = [n.strip() for n in names or () if n.strip()]
+    if not names:
+        return tools, pool, local
+    if pool is not None:
+        pool = PoolSetup(config=pool.config, cache_dir=pool.cache_dir, connector=pool.connector, env=pool.env,
+                         disabled=frozenset(names))
+    return tools.without(names), pool, (local.without(names) if local is not None else None)
+
+
+OPTION_FLAGS = {"replan": "--replan", "self_refine": "--self-refine", "collab": "--collab",
+                "check_retry_turns": "--check-retry-turns", "max_turns": "--max-turns"}
+
+
+def explicit_flags(argv: list[str]) -> frozenset:
+    """D82: the option flags given on the command line (a recipe's run option yields to these)."""
+    return frozenset(a.split("=", 1)[0] for a in argv if a.startswith("--"))
+
+
 def cli_plan_options(args: argparse.Namespace):
     """The plan runner's settings from the command line (D39+)."""
     from amoeba.interp.plan_runner import PlanOptions
+    extra = {"check_retry_turns": args.check_retry_turns} if getattr(args, "check_retry_turns", None) else {}
     return PlanOptions(rerun_stale=args.rerun_stale, max_input_chars=args.max_input_chars,
                        max_summary_input_chars=args.max_summary_input_chars, self_refine=args.self_refine,
-                       collab=args.collab, contract=args.step_contract, replan=args.replan)
+                       collab=args.collab, contract=args.step_contract, replan=args.replan, **extra)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -393,8 +477,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="Planner reply limit (default $AMOEBA_MAX_TOKENS_PLANNER or 8192; D27)")
     p.add_argument("--observer-max-tokens", type=int, default=None,
                    help="both observers' reply limit (default $AMOEBA_MAX_TOKENS_OBSERVER or 8192; D27)")
-    p.add_argument("--quality-gate", action="store_true",
-                   help="send a draft back (within the round cap) when a hard draft_quality check fails (D28)")
+    p.add_argument("--quality-gate", nargs="?", choices=["on", "off", "auto"], const="on", default="auto",
+                   help="send a draft back (within the round cap) when a hard draft_quality check fails (D28). "
+                        "auto (default, D79): on for --topology plan, off for the baselines and with --drafts-from "
+                        "(no drafting); a bare --quality-gate means on")
     p.add_argument("--web-tools", action="store_true",
                    help="give Box 3 web_search and fetch_url (Tavily; needs TAVILY_API_KEY). The plan runner hands "
                         "them to roles that asked for web search (D32); Box 2 never sees them")
@@ -454,6 +540,23 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--timezone", default=None, metavar="IANA",
                    help="D75: the run's time zone for today's date and weekday in every step prompt, e.g. "
                         "America/Chicago (default: the machine's local zone)")
+    p.add_argument("--recipes", default=None, metavar="DIR",
+                   help="D82: a Phase 2 recipe store (index.json, <family>/v<N>.yaml); the current recipe of the "
+                        "task's family is applied — planner rules to Box 2, transforms to the draft, run options to "
+                        "Box 3. Plan runner only; without it, or with no recipe for the family, nothing changes")
+    p.add_argument("--recipes-from", default=None, metavar="DIR",
+                   help="D88: a second, read-only recipe store used when --recipes has no recipe for the family (a "
+                        "warm start from another stream's store)")
+    p.add_argument("--check-retry-turns", type=int, default=None,
+                   help="plan: turns a failed-check retry gets (D42; default 2). Set here, it wins over a recipe")
+    p.add_argument("--max-turns", type=int, default=None,
+                   help="turns per step for every helper (default 5). Set here, it wins over a recipe")
+    p.add_argument("--option-defaults", default="", metavar="K=V,...",
+                   help="D83: harness defaults for the options a recipe may set (replan, self_refine, collab, "
+                        "check_retry_turns, max_turns), e.g. replan=on; unlike a flag they yield to a recipe")
+    p.add_argument("--disable-tools", default="", metavar="A,B",
+                   help="D80: take these tools out of the registry, the pool and the local tools for this run (e.g. "
+                        "calc,local:Bash); used by remove_tool shifts")
     p.add_argument("--picks-only", action="store_true",
                    help="D70: stop after the toolbox step (make the picks for --picks-file before the runs)")
     p.add_argument("--rerun-stale", action="store_true",
@@ -470,6 +573,16 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         p.error("give a prompt, --toy or --tasks")
     if args.interactive and args.drafts_from:
         p.error("--interactive reviews a fresh draft; it cannot be combined with --drafts-from")
+    if (args.recipes or args.recipes_from) and args.topology != "plan":
+        p.error("--recipes is for --topology plan only; the baselines never get recipes (D82)")
+    args.explicit = explicit_flags(argv if argv is not None else sys.argv[1:])
+    for kv in filter(None, args.option_defaults.split(",")):            # D83: defaults that yield to a recipe
+        k, _, v = kv.partition("=")
+        k = k.strip().replace("-", "_")
+        if k not in OPTION_FLAGS:
+            p.error(f"--option-defaults: {k!r} is not one of {sorted(OPTION_FLAGS)}")
+        if OPTION_FLAGS[k] not in args.explicit:
+            setattr(args, k, int(v) if k in ("check_retry_turns", "max_turns") else v.strip())
     if args.local_tools == "on":
         try:
             require_sandbox()
@@ -482,7 +595,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     llm = build_llm(args)
-    tools = default_registry()
+    disabled = [n.strip() for n in args.disable_tools.split(",") if n.strip()]          # D80
+    tools, _, _ = disable_tools(disabled, default_registry())
     envelope = Envelope.from_registry(tools, model=llm.model)
     if args.tasks:
         tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -492,6 +606,7 @@ def main(argv: list[str] | None = None) -> int:
     pool = PoolSetup(cache_dir=args.pool_dir) if args.pool else None   # D56
     local = LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir) \
         if args.local_tools == "on" else None                            # D59
+    _, pool, local = disable_tools(disabled, tools, pool, local)        # D80
     results = []
     for task in tasks:
         chosen = None
@@ -501,14 +616,21 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[{args.topology}] {task.id}: no saved draft #{args.draft_pick} in {args.drafts_from} — skipped")
                 continue
         box3_tools = build_box3_tools(args, tools)   # a fresh source list per run (D32)
+        if disabled:                                 # D80
+            box3_tools = box3_tools.without(disabled)
         r = run_one(task, args.topology, llm, envelope, box3_tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
-                    max_tokens=cli_token_limits(args), quality_gate=args.quality_gate,
+                    max_tokens=cli_token_limits(args),
+                    quality_gate=quality_gate_on(args.quality_gate, args.topology, args.drafts_from),
                     plan_options=cli_plan_options(args), saved_draft=chosen,
                     limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
                     ask=input if args.interactive else None, pool=pool, local=local,
                     equal_tools=args.equal_tools == "on", picks_file=args.picks_file, picks_only=args.picks_only,
-                    timezone=args.timezone, interpret=args.interpret == "on", context=load_context(args.context))
+                    timezone=args.timezone, interpret=args.interpret == "on", context=load_context(args.context),
+                    disabled_tools=disabled, cli_explicit=args.explicit,
+                    max_turns=args.max_turns if "--max-turns" in args.explicit else None,
+                    default_max_turns=None if "--max-turns" in args.explicit else args.max_turns,
+                    recipe=load_family_recipe(task.family, args.recipes, args.recipes_from))   # D82, D88
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

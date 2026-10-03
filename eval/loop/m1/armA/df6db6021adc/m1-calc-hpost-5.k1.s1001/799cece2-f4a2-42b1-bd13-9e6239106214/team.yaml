@@ -1,0 +1,229 @@
+team_id: f36273cf-89b0-44aa-9ef7-7d84171a5c3f
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  ea4e37e4-048b-4409-8932-37b2c7751b17:
+    agent_id: ea4e37e4-048b-4409-8932-37b2c7751b17
+    name: Culinary Mathematician
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in recipe scaling and precise measurement conversions.
+      They ensure that ratios are maintained exactly when scaling production volumes.
+    role_prompt: "You are a senior Culinary Mathematician. Your task is to scale a\
+      \ recipe from 12 servings to 40 servings. \n1. Calculate the scaling factor:\
+      \ 40 divided by 12.\n2. For each ingredient (Flour: 450g, Butter: 200g, Sugar:\
+      \ 300g), multiply the original quantity by this scaling factor.\n3. Use the\
+      \ `calc` tool for every operation to ensure precision.\n4. Output a markdown\
+      \ table with columns: Ingredient, Original Quantity (12 servings), and Scaled\
+      \ Quantity (40 servings). Keep at least 2 decimal places for the scaled quantities."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide precise scaled quantities for all ingredients.
+    skills:
+    - arithmetic
+    - recipe scaling
+    outputs:
+    - artifact: scaled ingredients table
+      format: 'table: ingredient x original_qty x scaled_qty'
+    success_criteria:
+    - All ingredients are scaled by the exact ratio of 40/12
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  f13e30d7-5cf6-46fe-b46d-28ee558426b4:
+    agent_id: f13e30d7-5cf6-46fe-b46d-28ee558426b4
+    name: QA Reviewer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An expert in verification and validation who independently checks
+      calculations to ensure accuracy.
+    role_prompt: "You are a senior QA Reviewer. You will receive a table of scaled\
+      \ ingredients. \n1. Independently calculate the scaling factor (40/12).\n2.\
+      \ For each ingredient, multiply the original quantity by this factor using the\
+      \ `calc` tool.\n3. Compare your results with the provided table.\n4. If they\
+      \ match, output 'Status: Pass'. If they differ, output 'Status: Fail' and specify\
+      \ the error. \n5. Provide the verification arithmetic for each ingredient."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify that the scaled quantities are mathematically correct.
+    skills:
+    - mathematical verification
+    outputs:
+    - artifact: verification report
+      format: 'memo: status (Pass/Fail) and verification details'
+    success_criteria:
+    - Calculations are verified to be correct within 0.01g
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  18dc34f7-26b7-4de9-b3ba-a7ce5ab2d1cb:
+    agent_id: 18dc34f7-26b7-4de9-b3ba-a7ce5ab2d1cb
+    name: Technical Writer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A professional communicator responsible for assembling technical
+      data into a clear, user-facing final deliverable.
+    role_prompt: "You are a senior Technical Writer. Your goal is to present the final\
+      \ answer to the user. \n1. Review the scaled ingredients table and the QA verification\
+      \ report.\n2. Extract the final, verified quantities for Flour, Butter, and\
+      \ Sugar for 40 servings.\n3. Present the results as a clean, concise list. \n\
+      4. Do not include the internal scaling factor or verification steps in the final\
+      \ output unless they add clarity to the final answer."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final ingredient list for 40 servings.
+    skills:
+    - technical communication
+    - formatting
+    outputs:
+    - artifact: final recipe quantities
+      format: 'list: ingredient: quantity'
+    success_criteria:
+    - The final output contains only the required quantities for 40 servings, clearly
+      labeled
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: ea4e37e4-048b-4409-8932-37b2c7751b17
+  dst: f13e30d7-5cf6-46fe-b46d-28ee558426b4
+  type: sequential
+  schema_id: text
+  condition: null
+- src: f13e30d7-5cf6-46fe-b46d-28ee558426b4
+  dst: 18dc34f7-26b7-4de9-b3ba-a7ce5ab2d1cb
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- ea4e37e4-048b-4409-8932-37b2c7751b17
+exit: 18dc34f7-26b7-4de9-b3ba-a7ce5ab2d1cb
+plan:
+- index: 0
+  agent_ids:
+  - ea4e37e4-048b-4409-8932-37b2c7751b17
+  text: '[Culinary Mathematician]: Calculate scaled ingredients'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate scaling factor (40/12)
+
+    - Calculate scaled flour (450 * factor)
+
+    - Calculate scaled butter (200 * factor)
+
+    - Calculate scaled sugar (300 * factor)'
+  output: 'table: ingredient x original_qty x scaled_qty'
+  done_when: All three ingredients have a calculated scaled quantity.
+- index: 1
+  agent_ids:
+  - f13e30d7-5cf6-46fe-b46d-28ee558426b4
+  text: '[QA Reviewer]: Verify calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Independently calculate scaling factor
+
+    - Independently calculate scaled quantities for flour, butter, and sugar
+
+    - Compare results with Step 1'
+  output: 'memo: verification status and arithmetic'
+  done_when: All calculations are cross-checked and status is marked as Pass or Fail.
+- index: 2
+  agent_ids:
+  - 18dc34f7-26b7-4de9-b3ba-a7ce5ab2d1cb
+  text: '[Technical Writer]: Assemble final answer'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 2
+  do: '
+
+    - Extract verified quantities from the previous steps
+
+    - Format as a final list for the user'
+  output: 'list: ingredient: quantity'
+  done_when: The final quantities for 40 servings are clearly listed.
+requirements:
+  R1: Calculate the amount of flour needed for 40 servings.
+  R2: Calculate the amount of butter needed for 40 servings.
+  R3: Calculate the amount of sugar needed for 40 servings.
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-5
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

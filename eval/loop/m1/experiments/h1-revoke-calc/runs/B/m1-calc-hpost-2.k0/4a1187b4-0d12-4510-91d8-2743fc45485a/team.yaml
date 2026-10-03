@@ -1,0 +1,236 @@
+team_id: 40b8aa90-e041-406c-a1b4-585a15a8de7e
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  f4e11a94-c349-40b0-9d1d-e9fe15fda17f:
+    agent_id: f4e11a94-c349-40b0-9d1d-e9fe15fda17f
+    name: Quantity Surveyor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in material take-offs and procurement calculations. Responsible
+      for translating dimensions into order quantities.
+    role_prompt: "You are a Senior Quantity Surveyor. Calculate the following step-by-step\
+      \ using the 'calc' tool: \n1. Floor Area = length * width.\n2. Exact Tiles =\
+      \ Floor Area / (tile_length * tile_width).\n3. Total Tiles = Exact Tiles * 1.10.\n\
+      4. Boxes = ceil(Total Tiles / 8).\n5. Total Cost = Boxes * 42.50.\n\nProvide\
+      \ your output as a memo showing each step and the final result."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide accurate material quantities and total cost based on project constraints.
+    skills:
+    - geometry
+    - procurement math
+    - material take-off
+    outputs:
+    - artifact: calculation sheet
+      format: 'memo: Area, Exact Tiles, Total Tiles (with buffer), Boxes, Total Cost'
+    success_criteria:
+    - All calculations are mathematically sound
+    - Rounding for boxes is handled correctly
+    constraints:
+    - Must use whole boxes for cost calculation
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  fa77fad2-5ca9-4a95-988a-cca3a4963f2d:
+    agent_id: fa77fad2-5ca9-4a95-988a-cca3a4963f2d
+    name: Project Auditor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in quality assurance and mathematical verification. Ensures
+      no rounding errors or logic gaps exist in the take-off.
+    role_prompt: "You are a Project Auditor. Review the Quantity Surveyor's calculations.\
+      \ Re-run the math independently using the 'calc' tool. Specifically check: \n\
+      - Is the area correct?\n- Is the exact tile count correct?\n- Was the 10% buffer\
+      \ added to the tile count?\n- Was the box count rounded UP to the nearest whole\
+      \ number?\n- Is the final cost correct based on that box count?\n\nOutput a\
+      \ list of Pass/Fail for each step."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the accuracy of the Quantity Surveyor's calculations.
+    skills:
+    - mathematical verification
+    - QA
+    outputs:
+    - artifact: verification report
+      format: 'list: Pass/Fail for each requirement with notes'
+    success_criteria:
+    - All calculations are verified as correct or corrected
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  19a58830-e571-475e-b7e2-8803464c49df:
+    agent_id: 19a58830-e571-475e-b7e2-8803464c49df
+    name: Technical Writer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Responsible for synthesizing technical calculations into a clear,
+      concise final answer for the client.
+    role_prompt: "You are a Technical Writer. Take the verified calculations and present\
+      \ the final answers to the three questions: \n1. What is the floor area?\n2.\
+      \ How many tiles cover it exactly?\n3. What do the boxes cost?\n\nDo not show\
+      \ the internal scratchpad or the audit process; just the final answers."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final requested values in a clean format.
+    skills:
+    - technical communication
+    outputs:
+    - artifact: final answer
+      format: 'memo: Floor Area, Exact Tiles, Total Cost'
+    success_criteria:
+    - Only the requested final values are presented clearly
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: f4e11a94-c349-40b0-9d1d-e9fe15fda17f
+  dst: fa77fad2-5ca9-4a95-988a-cca3a4963f2d
+  type: sequential
+  schema_id: text
+  condition: null
+- src: f4e11a94-c349-40b0-9d1d-e9fe15fda17f
+  dst: 19a58830-e571-475e-b7e2-8803464c49df
+  type: sequential
+  schema_id: text
+  condition: null
+- src: fa77fad2-5ca9-4a95-988a-cca3a4963f2d
+  dst: 19a58830-e571-475e-b7e2-8803464c49df
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- f4e11a94-c349-40b0-9d1d-e9fe15fda17f
+exit: 19a58830-e571-475e-b7e2-8803464c49df
+plan:
+- index: 0
+  agent_ids:
+  - f4e11a94-c349-40b0-9d1d-e9fe15fda17f
+  text: '[Quantity Surveyor]: Material Take-off'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate floor area (7.2 * 4.5)
+
+    - Calculate exact tile count (Area / (0.6 * 0.6))
+
+    - Calculate total tiles with 10% buffer
+
+    - Calculate number of boxes (Total tiles / 8, rounded up)
+
+    - Calculate total cost (Boxes * 42.50)'
+  output: 'memo: Area, Exact Tiles, Total Tiles (with buffer), Boxes, Total Cost'
+  done_when: All five values are calculated and listed.
+- index: 1
+  agent_ids:
+  - fa77fad2-5ca9-4a95-988a-cca3a4963f2d
+  text: '[Project Auditor]: Calculation Verification'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Independently recalculate floor area
+
+    - Independently recalculate exact tile count
+
+    - Verify buffer application and box rounding
+
+    - Verify final cost multiplication'
+  output: 'list: Pass/Fail for each calculation step'
+  done_when: All calculations are confirmed as correct.
+- index: 2
+  agent_ids:
+  - 19a58830-e571-475e-b7e2-8803464c49df
+  text: '[Technical Writer]: Final Delivery'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  - 2
+  do: '
+
+    - Extract the final area, exact tile count, and total cost from the verified data.
+
+    - Format as a clear final response.'
+  output: 'memo: Final answers for Area, Exact Tiles, and Cost'
+  done_when: The three specific questions from the task are answered.
+requirements:
+  R1: Calculate the floor area.
+  R2: Calculate how many tiles cover the floor exactly.
+  R3: Calculate the total cost of the boxes (including 10% buffer and rounding up
+    to whole boxes).
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-2
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

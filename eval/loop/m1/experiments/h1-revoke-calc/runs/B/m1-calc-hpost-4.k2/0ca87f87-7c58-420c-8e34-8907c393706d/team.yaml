@@ -1,0 +1,232 @@
+team_id: 772ae7d1-b101-42a0-80ff-39a1ea290177
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  afe463b7-2b79-44eb-8e70-ae796d400804:
+    agent_id: afe463b7-2b79-44eb-8e70-ae796d400804
+    name: Quantitative Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in precise numerical calculations and logistics modelling.
+      Responsible for translating the word problem into a series of arithmetic operations.
+    role_prompt: "You are a Senior Quantitative Analyst. Your goal is to solve the\
+      \ fuel cost problem with absolute precision. \n\nStep-by-step method:\n1. Calculate\
+      \ total annual distance: (22 km * 2 ways) * 5 days * 46 weeks.\n2. Calculate\
+      \ total annual litres: (Total Distance / 100) * 7.8.\n3. Calculate total annual\
+      \ cost: Total Litres * 1.65.\n\nUse the `calc` tool for every operation to avoid\
+      \ manual error. \n\nOutput format:\n- Total Kilometres: [value] km\n- Total\
+      \ Litres: [value] L\n- Total Cost: $[value]"
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide accurate raw calculations for distance, fuel volume, and cost.
+    skills:
+    - arithmetic
+    - logistics calculation
+    outputs:
+    - artifact: calculation sheet
+      format: 'list: step-by-step calculations with results'
+    success_criteria:
+    - All three requirements (R1, R2, R3) are calculated
+    - Calculations follow the provided givens exactly
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  eb7cf8a4-43c8-4e51-a308-2e25dffd967a:
+    agent_id: eb7cf8a4-43c8-4e51-a308-2e25dffd967a
+    name: QA Auditor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A detail-oriented reviewer who verifies calculations by re-performing
+      them using a different logical path or checking for common pitfalls.
+    role_prompt: "You are a Senior QA Auditor. Your task is to verify the calculations\
+      \ provided by the Analyst. \n\nMethod:\n1. Independently re-calculate the annual\
+      \ distance, litres, and cost using the `calc` tool.\n2. Compare your results\
+      \ with the Analyst's results.\n3. If they match, issue a 'Verified' status.\
+      \ If they differ, specify exactly where the error occurred.\n\nOutput format:\n\
+      - Distance: [Verified/Incorrect]\n- Litres: [Verified/Incorrect]\n- Cost: [Verified/Incorrect]\n\
+      - Final Verdict: [Pass/Fail]"
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the accuracy of the Quantitative Analyst's results.
+    skills:
+    - mathematical verification
+    - attention to detail
+    outputs:
+    - artifact: verification report
+      format: 'memo: confirmation of accuracy or list of errors'
+    success_criteria:
+    - All numbers are verified
+    - Any discrepancies are flagged
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  54d469fd-79c8-48ae-a932-c2427a07fe03:
+    agent_id: 54d469fd-79c8-48ae-a932-c2427a07fe03
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: The final editor who assembles the verified data into the final response
+      for the user.
+    role_prompt: 'You are the Delivery Lead. Your job is to take the verified calculations
+      and present them as the final answer. Do not include the QA process or the analyst''s
+      scratchpad. Simply provide the three requested values clearly.
+
+
+      Format:
+
+      - Yearly distance: [X] km
+
+      - Yearly fuel: [X] litres
+
+      - Yearly cost: $[X]'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answers to the three specific questions asked in the task.
+    skills:
+    - technical writing
+    outputs:
+    - artifact: final answer
+      format: 'memo: yearly km, yearly litres, yearly cost'
+    success_criteria:
+    - The final output answers all three questions
+    - No internal working/QA notes are included in the final answer
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: afe463b7-2b79-44eb-8e70-ae796d400804
+  dst: eb7cf8a4-43c8-4e51-a308-2e25dffd967a
+  type: sequential
+  schema_id: text
+  condition: null
+- src: eb7cf8a4-43c8-4e51-a308-2e25dffd967a
+  dst: 54d469fd-79c8-48ae-a932-c2427a07fe03
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- afe463b7-2b79-44eb-8e70-ae796d400804
+exit: 54d469fd-79c8-48ae-a932-c2427a07fe03
+plan:
+- index: 0
+  agent_ids:
+  - afe463b7-2b79-44eb-8e70-ae796d400804
+  text: '[Quantitative Analyst]: Calculate annual metrics'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate total km: 22 * 2 * 5 * 46
+
+    - Calculate total litres: (Total km / 100) * 7.8
+
+    - Calculate total cost: Total litres * 1.65'
+  output: 'list: step-by-step calculations with results'
+  done_when: all three values (km, L, $) are produced
+- index: 1
+  agent_ids:
+  - eb7cf8a4-43c8-4e51-a308-2e25dffd967a
+  text: '[QA Auditor]: Verify calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Independently re-calculate the three metrics using `calc`
+
+    - Compare results with Step 1'
+  output: 'memo: confirmation of accuracy or list of errors'
+  done_when: a Pass/Fail verdict is issued
+- index: 2
+  agent_ids:
+  - 54d469fd-79c8-48ae-a932-c2427a07fe03
+  text: '[Delivery Lead]: Assemble final response'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 2
+  do: '
+
+    - Extract the verified values from the Analyst''s output
+
+    - Format as the final answer'
+  output: 'memo: yearly km, yearly litres, yearly cost'
+  done_when: final answer is formatted and delivered
+requirements:
+  R1: Calculate the total kilometres driven per year.
+  R2: Calculate the total litres of fuel used per year.
+  R3: Calculate the total yearly fuel cost.
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-4
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

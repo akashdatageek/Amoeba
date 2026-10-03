@@ -1,0 +1,12 @@
+Verdict: PASS
+Issues: none
+
+Verification Report:
+- Total Lease Cost: Correct
+- Net Buy Cost: Correct
+- Savings from Buying: Correct
+
+Re-checks:
+- Re-calculated lease cost: `calc(1150 * 36)` returned 41400.
+- Re-calculated net buy cost: `calc(38500 - 6000)` returned 32500.
+- Re-calculated difference: `calc(41400 - 32500)` returned 8900.

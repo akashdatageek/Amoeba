@@ -1,0 +1,235 @@
+team_id: 0f8d26ba-1332-4cd6-8156-a5e8cd198c62
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  36e2033d-23d0-48da-aa93-19161c4ac02b:
+    agent_id: 36e2033d-23d0-48da-aa93-19161c4ac02b
+    name: Calculation Specialist
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist focused on precise arithmetic and proportional scaling.
+    role_prompt: "You are a Calculation Specialist. Your task is to scale a recipe\
+      \ from 12 servings to 40 servings. \n1. Calculate the scaling factor: 40 / 12.\n\
+      2. Multiply each ingredient (450g flour, 200g butter, 300g sugar) by this factor.\n\
+      3. Use the `calc` tool for every operation to ensure precision.\n4. Output a\
+      \ list showing: Ingredient | Original (12) | Scaling Factor | Result (40)."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide accurate scaled quantities for all ingredients.
+    skills:
+    - proportional reasoning
+    - arithmetic
+    outputs:
+    - artifact: calculation sheet
+      format: 'list: ingredient x original x factor x result'
+    success_criteria:
+    - Calculations are mathematically sound
+    - All ingredients are covered
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  467150d1-0db0-4b2e-b0be-74665029c8db:
+    agent_id: 467150d1-0db0-4b2e-b0be-74665029c8db
+    name: QA Specialist
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A detail-oriented reviewer who verifies numerical accuracy and logic.
+    role_prompt: "You are a QA Specialist. Review the calculation sheet provided.\
+      \ \n1. Re-calculate the scaling factor (40/12).\n2. Re-calculate each ingredient\
+      \ result using the `calc` tool.\n3. Compare your results with the provided sheet.\n\
+      4. Output a memo stating 'Pass' if they match, or 'Fail' with the specific correction\
+      \ needed."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Ensure the calculations are error-free.
+    skills:
+    - verification
+    - mathematical auditing
+    outputs:
+    - artifact: verification report
+      format: 'memo: status (Pass/Fail) and notes'
+    success_criteria:
+    - All numbers are verified as correct
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  f4209fca-4384-4f5e-abad-b1c4bc4a876c:
+    agent_id: f4209fca-4384-4f5e-abad-b1c4bc4a876c
+    name: Technical Writer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A writer responsible for final delivery and compliance with formatting
+      constraints.
+    role_prompt: "You are a Technical Writer. Assemble the final response based on\
+      \ the verified calculations. \n1. State the required amounts for flour, butter,\
+      \ and sugar for 40 servings clearly.\n2. Create a section headed '## Assumptions'.\n\
+      3. In that section, list every assumption made: linear scaling, units (grams),\
+      \ and rounding precision. \nDo not add any new analysis; only summarize the\
+      \ verified data."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answer in the required format, including the Assumptions
+      section.
+    skills:
+    - technical writing
+    - compliance
+    outputs:
+    - artifact: final response
+      format: 'memo: results and assumptions'
+    success_criteria:
+    - Final answer is clear
+    - '## Assumptions section is present and comprehensive'
+    constraints:
+    - Must follow L1
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 36e2033d-23d0-48da-aa93-19161c4ac02b
+  dst: 467150d1-0db0-4b2e-b0be-74665029c8db
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 36e2033d-23d0-48da-aa93-19161c4ac02b
+  dst: f4209fca-4384-4f5e-abad-b1c4bc4a876c
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 467150d1-0db0-4b2e-b0be-74665029c8db
+  dst: f4209fca-4384-4f5e-abad-b1c4bc4a876c
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 36e2033d-23d0-48da-aa93-19161c4ac02b
+exit: f4209fca-4384-4f5e-abad-b1c4bc4a876c
+plan:
+- index: 0
+  agent_ids:
+  - 36e2033d-23d0-48da-aa93-19161c4ac02b
+  text: '[Calculation Specialist]: Scale Ingredients'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate scaling factor (40/12)
+
+    - Calculate flour: 450 * (40/12)
+
+    - Calculate butter: 200 * (40/12)
+
+    - Calculate sugar: 300 * (40/12)'
+  output: 'list: ingredient x original x factor x result'
+  done_when: all three ingredients have a calculated value for 40 servings
+- index: 1
+  agent_ids:
+  - 467150d1-0db0-4b2e-b0be-74665029c8db
+  text: '[QA Specialist]: Verify Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Independently calculate the scaling factor and ingredient totals using `calc`
+
+    - Compare results with Step 1'
+  output: 'memo: Pass/Fail status'
+  done_when: calculations are confirmed as correct
+- index: 2
+  agent_ids:
+  - f4209fca-4384-4f5e-abad-b1c4bc4a876c
+  text: '[Technical Writer]: Final Assembly'
+  kind: work
+  covers:
+  - R4
+  - R5
+  depends_on:
+  - 1
+  - 2
+  do: '
+
+    - Extract final values from the calculation sheet
+
+    - Format the final answer
+
+    - Write the ''## Assumptions'' section per L1'
+  output: 'memo: final results and assumptions'
+  done_when: final response contains results and the required assumptions section
+requirements:
+  R1: Calculate the amount of flour needed for 40 servings.
+  R2: Calculate the amount of butter needed for 40 servings.
+  R3: Calculate the amount of sugar needed for 40 servings.
+  R4: Deliver the final quantities for all three ingredients.
+  R5: Include a section headed '## Assumptions' listing all assumptions (per L1).
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-5
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

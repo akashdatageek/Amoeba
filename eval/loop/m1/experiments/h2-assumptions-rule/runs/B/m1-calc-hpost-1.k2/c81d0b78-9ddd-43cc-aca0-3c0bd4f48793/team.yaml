@@ -1,0 +1,232 @@
+team_id: 2b666e2b-2364-4376-a49b-eb09b1dc94fb
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  e1e95e63-afac-4895-9877-319a5f07e35f:
+    agent_id: e1e95e63-afac-4895-9877-319a5f07e35f
+    name: Financial Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in cost modeling and TCO analysis responsible for performing
+      the primary calculations.
+    role_prompt: "You are a Senior Financial Analyst. Your task is to calculate the\
+      \ total cost of leasing vs buying a machine. \n1. Calculate total lease cost:\
+      \ monthly payment * number of months.\n2. Calculate net buy cost: purchase price\
+      \ - resale value.\n3. Calculate the difference: total lease cost - net buy cost.\n\
+      Use the 'calc' tool for all arithmetic to ensure precision. \nOutput your results\
+      \ in a clear memo format showing the formula used and the result for each of\
+      \ the three requirements."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide accurate total costs for leasing and buying scenarios.
+    skills:
+    - TCO modelling
+    - basic arithmetic
+    outputs:
+    - artifact: cost_analysis
+      format: 'memo: breakdown of lease cost, buy cost, and difference'
+    success_criteria:
+    - Calculations are mathematically correct based on givens
+    constraints:
+    - Ignore interest
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  7f137104-816a-431b-a57f-07214ca8f63b:
+    agent_id: 7f137104-816a-431b-a57f-07214ca8f63b
+    name: QA Reviewer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An independent reviewer who verifies the accuracy of financial calculations.
+    role_prompt: You are a Senior QA Reviewer. Review the cost analysis provided.
+      Re-calculate every value using the 'calc' tool. If the values match, confirm
+      them. If they differ, provide the correct value. Ensure that the 'ignore interest'
+      constraint was followed.
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Ensure the calculations are error-free and align with the task requirements.
+    skills:
+    - audit
+    - verification
+    outputs:
+    - artifact: verification_report
+      format: 'list: confirmation of each value or correction'
+    success_criteria:
+    - All numbers are double-checked and confirmed
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  3408b854-d988-43c1-a03d-cd074cf58ac5:
+    agent_id: 3408b854-d988-43c1-a03d-cd074cf58ac5
+    name: Technical Writer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: The final editor who assembles the verified data into the required
+      final format.
+    role_prompt: "You are a Technical Writer. Your job is to assemble the final response.\
+      \ Use the verified numbers from the QA Reviewer. \n1. State the total lease\
+      \ cost.\n2. State the net cost of buying.\n3. State how much cheaper buying\
+      \ is.\n4. Create a section headed '## Assumptions' and list every assumption\
+      \ the result relies on (e.g., no interest, no taxes, fixed prices, units). \n\
+      Do not perform new calculations."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answer with all required sections, including assumptions.
+    skills:
+    - technical writing
+    - formatting
+    outputs:
+    - artifact: final_answer
+      format: 'memo: final costs and assumptions'
+    success_criteria:
+    - 'Final output contains all three requested values and the ## Assumptions section'
+    constraints:
+    - 'Must follow L1: include ## Assumptions section'
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: e1e95e63-afac-4895-9877-319a5f07e35f
+  dst: 7f137104-816a-431b-a57f-07214ca8f63b
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 7f137104-816a-431b-a57f-07214ca8f63b
+  dst: 3408b854-d988-43c1-a03d-cd074cf58ac5
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- e1e95e63-afac-4895-9877-319a5f07e35f
+exit: 3408b854-d988-43c1-a03d-cd074cf58ac5
+plan:
+- index: 0
+  agent_ids:
+  - e1e95e63-afac-4895-9877-319a5f07e35f
+  text: '[Financial Analyst]: Calculate Costs'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate total lease cost (1150 * 36)
+
+    - Calculate net buy cost (38500 - 6000)
+
+    - Calculate the difference (Lease Total - Buy Net)'
+  output: 'memo: breakdown of lease cost, buy cost, and difference'
+  done_when: all three values are calculated and documented
+- index: 1
+  agent_ids:
+  - 7f137104-816a-431b-a57f-07214ca8f63b
+  text: '[QA Reviewer]: Verify Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Independently re-calculate lease cost
+
+    - Independently re-calculate buy cost
+
+    - Independently re-calculate difference
+
+    - Compare results with Step 1'
+  output: 'list: confirmation of each value'
+  done_when: all values are verified as correct
+- index: 2
+  agent_ids:
+  - 3408b854-d988-43c1-a03d-cd074cf58ac5
+  text: '[Technical Writer]: Assemble Final Deliverable'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  depends_on:
+  - 2
+  do: '
+
+    - Extract verified numbers
+
+    - Format the final response
+
+    - Draft the ''## Assumptions'' section based on the givens and constraints'
+  output: 'memo: final costs and assumptions'
+  done_when: final response contains all three values and the Assumptions section
+requirements:
+  R1: Calculate the total lease cost.
+  R2: Calculate the net cost of buying.
+  R3: Calculate how much cheaper buying is than leasing.
+  R4: Deliver a final section headed '## Assumptions' listing all assumptions (L1).
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-1
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

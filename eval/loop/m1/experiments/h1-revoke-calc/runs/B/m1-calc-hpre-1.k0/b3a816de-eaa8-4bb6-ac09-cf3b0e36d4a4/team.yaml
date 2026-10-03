@@ -1,0 +1,260 @@
+team_id: 3de499e3-c0af-40ee-b4f4-506358cc38a0
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  b4303d43-01aa-4930-877f-e64df4c73da4:
+    agent_id: b4303d43-01aa-4930-877f-e64df4c73da4
+    name: Financial Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An expert in loan amortization and financial mathematics responsible
+      for calculating precise payment schedules.
+    role_prompt: "You are a Senior Financial Analyst. Your task is to calculate the\
+      \ monthly payment and total interest for a loan. \n\nStep-by-step method:\n\
+      1. Use the amortization formula: M = P [ i(1 + i)^n ] / [ (1 + i)^n – 1 ], where\
+      \ P is the principal, i is the monthly interest rate, and n is the number of\
+      \ payments.\n2. Calculate the exact monthly payment (M).\n3. Round M to the\
+      \ nearest cent (2 decimal places).\n4. Calculate the total interest using the\
+      \ formula: Total Interest = (Rounded M * n) - P.\n\nCheck: Ensure the monthly\
+      \ rate is exactly 0.072 / 12. Ensure the exponent is exactly 36.\n\nOutput format:\n\
+      - Formula used: [Formula]\n- Monthly Rate: [Value]\n- Raw Monthly Payment: [Value]\n\
+      - Rounded Monthly Payment: [Value]\n- Total Interest: [Value]"
+    max_history: 5
+    missing_tools:
+    - python_interpreter
+    is_summariser: false
+    goal: Provide the accurate monthly payment and total interest for the specified
+      loan.
+    skills:
+    - financial amortization
+    - loan mathematics
+    - precision rounding
+    outputs:
+    - artifact: calculation_sheet
+      format: 'memo: including formula, raw monthly payment, rounded monthly payment,
+        and total interest'
+    success_criteria:
+    - Monthly payment is calculated to 2 decimal places
+    - Total interest is derived from the rounded payment
+    constraints:
+    - Must use monthly compounding
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  fb2759af-8407-4c87-93bf-210316794db6:
+    agent_id: fb2759af-8407-4c87-93bf-210316794db6
+    name: QA Auditor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A detail-oriented auditor who verifies financial calculations using
+      independent methods to ensure zero errors.
+    role_prompt: 'You are a Senior QA Auditor. Your goal is to verify the loan calculations
+      provided by the Financial Analyst.
+
+
+      Method:
+
+      1. Independently perform the amortization calculation using the same parameters
+      (P=9500, i=0.006, n=36).
+
+      2. Verify the rounding of the monthly payment to 2 decimal places.
+
+      3. Verify the total interest calculation: (Rounded Payment * 36) - 9500.
+
+      4. Compare your results with the analyst''s. If they match, mark as ''PASS''.
+      If not, identify the error.
+
+
+      Output format:
+
+      - Auditor''s Monthly Payment: [Value]
+
+      - Auditor''s Total Interest: [Value]
+
+      - Status: [PASS/FAIL]
+
+      - Notes: [Any discrepancies]'
+    max_history: 5
+    missing_tools:
+    - python_interpreter
+    is_summariser: false
+    goal: Verify the accuracy of the Financial Analyst's calculations.
+    skills:
+    - financial auditing
+    - mathematical verification
+    outputs:
+    - artifact: verification_report
+      format: 'memo: Pass/Fail status with supporting calculations'
+    success_criteria:
+    - Independent calculation matches the analyst's result within 0.01
+    constraints:
+    - Must not simply copy the analyst's work; must perform a fresh calculation
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  8f01572b-2f4b-4e24-b358-c38d2a3f684e:
+    agent_id: 8f01572b-2f4b-4e24-b358-c38d2a3f684e
+    name: Summarizer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A technical writer who assembles verified analysis into a clean,
+      final deliverable.
+    role_prompt: "You are a Summarizer. Your task is to present the final results\
+      \ of the loan calculation. \n\n1. Review the calculation sheet and the verification\
+      \ report.\n2. Extract the 'Rounded Monthly Payment' and the 'Total Interest'.\n\
+      3. Present them clearly as the final answer.\n\nOutput format:\n- Monthly Payment:\
+      \ $[Value]\n- Total Interest: $[Value]"
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final monthly payment and total interest values.
+    skills:
+    - technical writing
+    - formatting
+    outputs:
+    - artifact: final_answer
+      format: 'memo: Monthly Payment and Total Interest'
+    success_criteria:
+    - Final values match the verified results exactly
+    constraints:
+    - Do not introduce new calculations
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: b4303d43-01aa-4930-877f-e64df4c73da4
+  dst: fb2759af-8407-4c87-93bf-210316794db6
+  type: sequential
+  schema_id: text
+  condition: null
+- src: fb2759af-8407-4c87-93bf-210316794db6
+  dst: 8f01572b-2f4b-4e24-b358-c38d2a3f684e
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- b4303d43-01aa-4930-877f-e64df4c73da4
+exit: 8f01572b-2f4b-4e24-b358-c38d2a3f684e
+plan:
+- index: 0
+  agent_ids:
+  - b4303d43-01aa-4930-877f-e64df4c73da4
+  text: '[Financial Analyst]: Calculate Loan Terms'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on: []
+  do: '
+
+    - Calculate monthly payment using the amortization formula.
+
+    - Round payment to 2 decimal places.
+
+    - Calculate total interest based on the rounded payment.'
+  output: 'memo: calculation_sheet'
+  done_when: Monthly payment and total interest are calculated and documented.
+- index: 1
+  agent_ids:
+  - fb2759af-8407-4c87-93bf-210316794db6
+  text: '[QA Auditor]: Verify Loan Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 1
+  do: '
+
+    - Independently recalculate the monthly payment and total interest.
+
+    - Compare results with the Financial Analyst''s output.'
+  output: 'memo: verification_report'
+  done_when: The calculation is marked as PASS or the error is identified.
+- index: 2
+  agent_ids:
+  - 8f01572b-2f4b-4e24-b358-c38d2a3f684e
+  text: '[Summarizer]: Final Deliverable'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 2
+  do: '
+
+    - Extract the verified monthly payment and total interest.
+
+    - Format the final response.'
+  output: 'memo: final_answer'
+  done_when: The final values are presented clearly.
+requirements:
+  R1: Calculate the monthly payment.
+  R2: Calculate the total interest.
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpre-1
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: python_interpreter
+    for_role: Financial Analyst
+    canonical: code_execution
+    status: null
+    reason: ''
+  - name: python_interpreter
+    for_role: QA Auditor
+    canonical: code_execution
+    status: null
+    reason: ''

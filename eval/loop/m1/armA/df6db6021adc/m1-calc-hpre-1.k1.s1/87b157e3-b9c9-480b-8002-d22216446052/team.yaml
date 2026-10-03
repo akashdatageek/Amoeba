@@ -1,0 +1,322 @@
+team_id: 44b63d02-23ee-4afa-ba39-0b6149259bff
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  1f3162b3-d128-40dd-91c6-42545689208a:
+    agent_id: 1f3162b3-d128-40dd-91c6-42545689208a
+    name: Financial Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in loan amortization and financial mathematics responsible
+      for the primary calculations.
+    role_prompt: 'You are a senior financial analyst. Your task is to calculate the
+      monthly payment and total interest for a loan.
+
+      1. Identify variables: Principal (P) = 9500, Monthly Interest Rate (i) = 0.006,
+      and Number of Payments (n) = 36.
+
+      2. Use the amortization formula: M = P * [ i(1 + i)^n ] / [ (1 + i)^n – 1 ]
+      to calculate the monthly payment (M).
+
+      3. Keep at least 6 decimal places during intermediate steps to avoid rounding
+      drift.
+
+      4. Calculate the total interest paid using the formula: Total Interest = (M
+      * n) - P.
+
+      5. Round the final Monthly Payment and Total Interest to 2 decimal places.
+
+
+      Output format:
+
+      ## Variables
+
+      - Principal: [Value]
+
+      - Monthly Rate: [Value]
+
+      - Term: [Value]
+
+
+      ## Monthly Payment Calculation
+
+      - Formula: [Formula used]
+
+      - Step-by-step result: [Calculation]
+
+      - Final Monthly Payment: [Value]
+
+
+      ## Total Interest Calculation
+
+      - Formula: [Formula used]
+
+      - Step-by-step result: [Calculation]
+
+      - Final Total Interest: [Value]'
+    max_history: 5
+    missing_tools:
+    - python_interpreter
+    is_summariser: false
+    goal: Accurately calculate the monthly payment and total interest for the specified
+      loan.
+    skills:
+    - Financial Amortization Modeling
+    - Precision Arithmetic
+    outputs:
+    - artifact: Calculation Memo
+      format: 'memo: with sections for Variables, Monthly Payment Calculation, and
+        Total Interest Calculation'
+    success_criteria:
+    - Calculations are performed with high precision (6+ decimal places) before final
+      rounding
+    - Formula used is the standard amortization formula
+    constraints:
+    - Round final currency values to 2 decimal places
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  736e0982-51d2-442c-b931-19cfdd83b5df:
+    agent_id: 736e0982-51d2-442c-b931-19cfdd83b5df
+    name: Financial Auditor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A quality assurance specialist who independently verifies financial
+      calculations to ensure zero errors.
+    role_prompt: 'You are a senior financial auditor. Your task is to verify the calculations
+      provided by the analyst.
+
+      1. Receive the analyst''s variables and results.
+
+      2. Independently re-calculate the monthly payment (M) using the formula M =
+      P * [ i(1 + i)^n ] / [ (1 + i)^n – 1 ] with P=9500, i=0.006, n=36.
+
+      3. Independently re-calculate the total interest using (M * n) - P.
+
+      4. Compare your results with the analyst''s results.
+
+      5. If they match within $0.01, mark the status as ''Verified''. Otherwise, mark
+      as ''Incorrect'' and provide the correct values.
+
+
+      Output format:
+
+      ## Verification Process
+
+      - Independent Calculation for M: [Value]
+
+      - Independent Calculation for Total Interest: [Value]
+
+
+      ## Conclusion
+
+      - Status: [Verified/Incorrect]
+
+      - Final Verified Monthly Payment: [Value]
+
+      - Final Verified Total Interest: [Value]'
+    max_history: 5
+    missing_tools:
+    - python_interpreter
+    is_summariser: false
+    goal: Verify the accuracy of the Financial Analyst's results.
+    skills:
+    - Financial Amortization Modeling
+    - Audit and Verification
+    outputs:
+    - artifact: Verification Report
+      format: 'memo: with sections for Verification Process and Conclusion'
+    success_criteria:
+    - Independent calculation matches analyst's result within $0.01
+    - Discrepancies are clearly identified and corrected
+    constraints:
+    - Must not simply copy the analyst's work; must re-run the calculation
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  47d4ac80-9e01-41ef-b9c0-1ef42210d321:
+    agent_id: 47d4ac80-9e01-41ef-b9c0-1ef42210d321
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: The final reviewer and editor who assembles the verified data into
+      the final deliverable.
+    role_prompt: 'You are the delivery lead. Your task is to assemble the final answer
+      based on the verified calculations. Do not perform any new analysis or calculations.
+
+      1. Review the Auditor''s ''Final Verified'' values.
+
+      2. Present the final monthly payment and total interest clearly and concisely.
+
+
+      Output format:
+
+      - Monthly Payment: [Value]
+
+      - Total Interest: [Value]'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final, verified monthly payment and total interest.
+    skills:
+    - Technical Writing
+    outputs:
+    - artifact: Final Answer
+      format: 'memo: concise statement of the two requested values'
+    success_criteria:
+    - Final values match the Auditor's verified results exactly
+    - No unnecessary analysis or intermediate steps are included in the final output
+    constraints:
+    - Must not create new analysis; only assemble verified outputs
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 1f3162b3-d128-40dd-91c6-42545689208a
+  dst: 736e0982-51d2-442c-b931-19cfdd83b5df
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 736e0982-51d2-442c-b931-19cfdd83b5df
+  dst: 47d4ac80-9e01-41ef-b9c0-1ef42210d321
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 1f3162b3-d128-40dd-91c6-42545689208a
+exit: 47d4ac80-9e01-41ef-b9c0-1ef42210d321
+plan:
+- index: 0
+  agent_ids:
+  - 1f3162b3-d128-40dd-91c6-42545689208a
+  text: '[Financial Analyst]: Calculate Loan Details'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on: []
+  do: '
+
+    - Define loan variables (P=9500, i=0.006, n=36)
+
+    - Calculate monthly payment using the amortization formula
+
+    - Calculate total interest paid'
+  output: 'memo: Calculation Memo'
+  done_when: Monthly payment and total interest are calculated and documented.
+- index: 1
+  agent_ids:
+  - 736e0982-51d2-442c-b931-19cfdd83b5df
+  text: '[Financial Auditor]: Verify Loan Details'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 1
+  do: '
+
+    - Independently re-calculate the monthly payment and total interest
+
+    - Compare results with the Financial Analyst''s memo
+
+    - Confirm or correct the values'
+  output: 'memo: Verification Report'
+  done_when: Calculations are cross-checked and confirmed as correct.
+- index: 2
+  agent_ids:
+  - 47d4ac80-9e01-41ef-b9c0-1ef42210d321
+  text: '[Delivery Lead]: Final Summary'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 2
+  do: '
+
+    - Extract verified values from the auditor''s report
+
+    - Format the final answer'
+  output: 'memo: Final Answer'
+  done_when: Final values are presented.
+requirements:
+  R1: Calculate the monthly payment.
+  R2: Calculate the total interest paid.
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpre-1
+  draft_rounds: 3
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: python_interpreter
+    for_role: Financial Analyst, Financial Auditor
+    canonical: code_execution
+    status: null
+    reason: ''
+  - name: Financial Amortization Modeling
+    for_role: Financial Analyst, Financial Auditor
+    canonical: Financial Amortization Modeling
+    status: null
+    reason: ''
+  - name: python_interpreter
+    for_role: Financial Analyst
+    canonical: code_execution
+    status: null
+    reason: ''
+  - name: python_interpreter
+    for_role: Financial Auditor
+    canonical: code_execution
+    status: null
+    reason: ''

@@ -1,0 +1,222 @@
+team_id: ad3ffa2a-e139-4a34-aa02-0d7cfb4288fa
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  903d0e68-7234-4976-974f-e392c6a59562:
+    agent_id: 903d0e68-7234-4976-974f-e392c6a59562
+    name: Quantitative Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in mathematical modeling and precise calculations who
+      ensures all derived metrics are logically sound.
+    role_prompt: "You are a Senior Quantitative Analyst. Your goal is to calculate\
+      \ the annual commuting costs. \nStep 1: Calculate total annual distance: (22\
+      \ km * 2 ways/day) * (5 days/week) * (46 weeks/year). Use the `calc` tool for\
+      \ each step.\nStep 2: Calculate total annual fuel consumption: (Annual Distance\
+      \ / 100) * 7.8 litres. Use the `calc` tool.\nStep 3: Calculate total annual\
+      \ cost: Annual Fuel * 1.65 USD. Use the `calc` tool.\nOutput the results in\
+      \ a markdown table with columns: Metric, Value, Unit."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Produce accurate annual distance, fuel, and cost figures.
+    skills:
+    - arithmetic modeling
+    - unit conversion
+    outputs:
+    - artifact: calculation sheet
+      format: 'table: metric x value x unit'
+    success_criteria:
+    - All three requirements (R1, R2, R3) are calculated with full precision
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  addb6f50-045c-4eca-8eae-3517a62d30a6:
+    agent_id: addb6f50-045c-4eca-8eae-3517a62d30a6
+    name: QA Engineer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A verification expert focused on identifying calculation errors and
+      ensuring logical consistency.
+    role_prompt: 'You are a Senior QA Engineer. You will receive a calculation sheet.
+      Your task is to independently verify the numbers using the `calc` tool. Do not
+      trust the provided numbers; re-run the arithmetic from the raw givens: 22km/way,
+      2 ways/day, 5 days/week, 46 weeks/year, 7.8L/100km, $1.65/L. If the results
+      match exactly, output ''Status: Pass''. If they differ, output ''Status: Fail''
+      and explain the discrepancy.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the accuracy of the Quantitative Analyst's results.
+    skills:
+    - mathematical verification
+    - attention to detail
+    outputs:
+    - artifact: verification report
+      format: 'memo: status (Pass/Fail) and discrepancy notes'
+    success_criteria:
+    - Verification is performed independently and results are confirmed
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  a4037919-214c-4955-aad1-55805868e9f6:
+    agent_id: a4037919-214c-4955-aad1-55805868e9f6
+    name: Technical Writer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A communications specialist who synthesizes technical data into a
+      clear, final answer.
+    role_prompt: You are a Senior Technical Writer. Your task is to assemble the final
+      answer. Take the verified values for annual kilometres, annual litres, and annual
+      fuel cost. Present them clearly and concisely. Do not include the internal calculation
+      steps or verification logs, only the final results.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answers to the user in a concise format.
+    skills:
+    - technical communication
+    - formatting
+    outputs:
+    - artifact: final answer
+      format: 'memo: clear answers to the three questions'
+    success_criteria:
+    - 'The final output contains exactly the three requested values: km, litres, and
+      cost'
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 903d0e68-7234-4976-974f-e392c6a59562
+  dst: addb6f50-045c-4eca-8eae-3517a62d30a6
+  type: sequential
+  schema_id: text
+  condition: null
+- src: addb6f50-045c-4eca-8eae-3517a62d30a6
+  dst: a4037919-214c-4955-aad1-55805868e9f6
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 903d0e68-7234-4976-974f-e392c6a59562
+exit: a4037919-214c-4955-aad1-55805868e9f6
+plan:
+- index: 0
+  agent_ids:
+  - 903d0e68-7234-4976-974f-e392c6a59562
+  text: '[Quantitative Analyst]: Calculate annual metrics'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate annual distance: 22 * 2 * 5 * 46
+
+    - Calculate annual fuel: (distance / 100) * 7.8
+
+    - Calculate annual cost: fuel * 1.65'
+  output: 'table: metric x value x unit'
+  done_when: all three values are calculated and tabled
+- index: 1
+  agent_ids:
+  - addb6f50-045c-4eca-8eae-3517a62d30a6
+  text: '[QA Engineer]: Verify calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Independently re-calculate annual distance, fuel, and cost using `calc`
+
+    - Compare results with the table from step 1'
+  output: 'memo: verification status'
+  done_when: status is 'Pass' or discrepancies are documented
+- index: 2
+  agent_ids:
+  - a4037919-214c-4955-aad1-55805868e9f6
+  text: '[Technical Writer]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 2
+  do: '
+
+    - Extract the verified values
+
+    - Format as a final response'
+  output: 'memo: final answers'
+  done_when: final answers for km, litres, and cost are delivered
+requirements:
+  R1: Calculate total kilometres driven per year.
+  R2: Calculate total litres of fuel used per year.
+  R3: Calculate total yearly fuel cost.
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-4
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

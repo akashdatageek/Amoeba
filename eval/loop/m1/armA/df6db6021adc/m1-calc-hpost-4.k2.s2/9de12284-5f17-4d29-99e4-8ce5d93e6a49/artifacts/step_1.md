@@ -1,0 +1,3 @@
+- Total Kilometres: 10120 km
+- Total Litres: 789.36 L
+- Total Cost: $1302.444

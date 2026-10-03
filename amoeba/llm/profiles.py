@@ -20,7 +20,8 @@ ROLE_GROUPS = ("planner", "observers", "workers", "reviewers", "summariser", "po
 PROFILE_KEYS = {"base_url", "model", "api_key_env", "merge_system", "reasoning_effort", "max_tokens", "roles"}
 ROLE_KEYS = {"model", "max_tokens"}
 BOX2_GROUPS = {"planner": "planner", "agent_observer": "observers", "plan_observer": "observers",
-               "interpreter": "planner"}   # D77: the task interpretation step
+               "interpreter": "planner",   # D77: the task interpretation step
+               "architect": "planner"}     # D87: the Architect (Box 6) uses the planner's model
 
 
 @dataclass
