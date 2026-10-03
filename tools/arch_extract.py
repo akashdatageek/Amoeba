@@ -822,6 +822,19 @@ BOXES: list[dict] = [
          proposes="One typed edit, a rationale and a predicted change in score.",
          disposes="Plain code checks the proposal; the Experimenter and the Gate decide whether it is kept.",
          prompts=["architect"], anchors=[]),
+    dict(id="memory", view="adapt", title="9 · Recipe store (D88)", kind="code", plan=None,
+         sentence="Keeps every kind of task's recipe versions, which one is current, and a log of every decided change; "
+                  "only the Gate writes it.",
+         what=["A folder per stream: one YAML file per recipe version of each kind, an index naming the current version "
+               "with the full history (parent, the hypothesis that made it, when it was accepted or reverted), and an "
+               "experience log with one line per decided hypothesis.",
+               "A run reads the current recipe of its kind with --recipes; --recipes-from is a second, read-only store "
+               "used when the first has none (a warm start from another stream).",
+               "Only a Gate accept writes a version (a post-hoc decision never does); the rollback watch can send a kind "
+               "back to its parent version."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code writes versions on the Gate's accept and reverts on the rollback watch.",
+         anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and

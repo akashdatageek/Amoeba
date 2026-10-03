@@ -356,6 +356,13 @@ may use and the changes already rejected, it proposes one typed edit with a reas
 numbers from held-out tasks) and allows one retry; after three proposals for one alarm, the alarm waits for a person
 in `eval/loop/<stream>/human_queue.jsonl`.
 
+## The recipe store (D88, Phase 2)
+
+`eval/loop/<stream>/recipes/` holds each kind of task's recipe versions (`<family>/v<N>.yaml`), an index naming the
+current version with its history, and `experience.jsonl`, one line per decided change. Runs read it with
+`--recipes`; `--recipes-from` adds a read-only fallback store (a warm start from another stream). Only the Gate's
+accept writes a version; the rollback watch can revert to the parent.
+
 ## Cost controls (D45–D48)
 
 ```bash

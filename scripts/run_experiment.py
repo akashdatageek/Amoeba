@@ -30,6 +30,7 @@ from amoeba.adapt.gate import Hypothesis, decide, decision_row, noise_floor
 from amoeba.adapt.ledger import Ledger
 from amoeba.adapt.recipe import adapt_config, apply_edit, load_recipe, seed_recipe, write_store
 from amoeba.adapt.stream import Stream, load_stream
+from amoeba.memory.recipes import RecipeStore
 from amoeba.safety.envelope import Envelope
 from amoeba.task.models import Draft
 from amoeba.tools.registry import default_registry
@@ -143,8 +144,10 @@ def hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | 
     dec = decide(recipe_A, recipe_B, h, res, cal["noise"], ledger.tried_since_accept(h.family) + 1,
                  stream.heldout(h.family, everything=True), Envelope.from_registry(tools), sample_draft(res))
     row = ledger.append(decision_row(h, recipe_A, recipe_B, dec, f"experiments/{h.hypothesis_id}/"))
-    if dec.decision == "accept":                   # Box 9, minimal: the store's current version (D88 adds history)
-        write_store(store, [recipe_B])
+    mem = RecipeStore(store)
+    mem.record(None, h.model_dump(mode="json"), row)
+    if dec.decision == "accept":                   # Box 9 (D88): only the Gate's accept writes a version
+        mem.commit(recipe_B, row)
     return row
 
 
@@ -172,7 +175,6 @@ def redecide(stream: Stream, hypothesis_id: str, root: Path, store: Path | None 
     res = ReplayResult.model_validate({**meta, "pairs": [x.model_dump() for x in pairs]})
     h = Hypothesis.model_validate({"hypothesis_id": hypothesis_id, "family": hyp["family"], "edit": hyp["edit"],
                                    "predicted_delta": hyp["predicted_delta"], "rationale": hyp.get("rationale", "")})
-    from amoeba.adapt.recipe import Recipe, write_store as _ws  # noqa: F401
     recipe_A = (load_recipe(store, h.family) if store else None)
     recipe_A = recipe_A if recipe_A is not None and recipe_A.version == orig["recipe_from"] else seed_recipe(h.family)
     recipe_B = apply_edit(recipe_A, h.edit, created_by="human", hypothesis_id=h.hypothesis_id)

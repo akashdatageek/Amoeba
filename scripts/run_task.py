@@ -35,7 +35,8 @@ from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
 from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
-from amoeba.adapt.recipe import Recipe, apply_transforms, lessons_text, load_recipe, overlay_run_options
+from amoeba.adapt.recipe import Recipe, apply_transforms, lessons_text, overlay_run_options
+from amoeba.memory.recipes import load_family_recipe
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
@@ -543,6 +544,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="D82: a Phase 2 recipe store (index.json, <family>/v<N>.yaml); the current recipe of the "
                         "task's family is applied — planner rules to Box 2, transforms to the draft, run options to "
                         "Box 3. Plan runner only; without it, or with no recipe for the family, nothing changes")
+    p.add_argument("--recipes-from", default=None, metavar="DIR",
+                   help="D88: a second, read-only recipe store used when --recipes has no recipe for the family (a "
+                        "warm start from another stream's store)")
     p.add_argument("--check-retry-turns", type=int, default=None,
                    help="plan: turns a failed-check retry gets (D42; default 2). Set here, it wins over a recipe")
     p.add_argument("--max-turns", type=int, default=None,
@@ -569,7 +573,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         p.error("give a prompt, --toy or --tasks")
     if args.interactive and args.drafts_from:
         p.error("--interactive reviews a fresh draft; it cannot be combined with --drafts-from")
-    if args.recipes and args.topology != "plan":
+    if (args.recipes or args.recipes_from) and args.topology != "plan":
         p.error("--recipes is for --topology plan only; the baselines never get recipes (D82)")
     args.explicit = explicit_flags(argv if argv is not None else sys.argv[1:])
     for kv in filter(None, args.option_defaults.split(",")):            # D83: defaults that yield to a recipe
@@ -626,7 +630,7 @@ def main(argv: list[str] | None = None) -> int:
                     disabled_tools=disabled, cli_explicit=args.explicit,
                     max_turns=args.max_turns if "--max-turns" in args.explicit else None,
                     default_max_turns=None if "--max-turns" in args.explicit else args.max_turns,
-                    recipe=load_recipe(args.recipes, task.family) if args.recipes else None)   # D82
+                    recipe=load_family_recipe(task.family, args.recipes, args.recipes_from))   # D82, D88
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

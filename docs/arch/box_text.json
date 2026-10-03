@@ -656,6 +656,169 @@
    "It runs every round, even after it has once agreed."
   ]
  },
+ "architect": {
+  "checked_at": "a4be313",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "The reply, parsed strictly: exactly these keys.",
+     "fields": [
+      [
+       "edit",
+       "Edit"
+      ],
+      [
+       "rationale",
+       "str"
+      ],
+      [
+       "predicted_delta",
+       "float"
+      ],
+      [
+       "metric",
+       "str"
+      ],
+      [
+       "hypothesis_id",
+       "str | None"
+      ],
+      [
+       "family",
+       "str | None"
+      ],
+      [
+       "diagnosis_ref",
+       "str | None"
+      ]
+     ],
+     "key": "amoeba/adapt/architect.py::ArchitectReply",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/architect.py::allowed_text",
+      "amoeba/adapt/architect.py::diagnosis_text",
+      "amoeba/adapt/architect.py::examples_text",
+      "amoeba/adapt/architect.py::failed_text",
+      "amoeba/config/prompts/__init__.py::render"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/architect.py::build_prompt",
+     "signature": "build_prompt(d: Diagnosis, recipe: Recipe, failed: list[dict]) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/architect.py::_allowed_ok",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/recipe.py::Edit.key",
+      "amoeba/adapt/recipe.py::Edit.texts",
+      "amoeba/adapt/recipe.py::apply_edit",
+      "amoeba/adapt/recipe.py::validate_recipe",
+      "amoeba/adapt/stream.py::leaks",
+      "amoeba/llm/cache.py::CachedLLM.key",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/pool/stock.py::SharedPicks.key"
+     ],
+     "doc": "Plain code's checks of one proposal; empty when it may go to the Experimenter.",
+     "key": "amoeba/adapt/architect.py::check",
+     "signature": "check(reply: ArchitectReply, d: Diagnosis, recipe: Recipe, failed: list[dict], heldout: list, envelope=None, sample_draft=None) -> list[str]"
+    },
+    {
+     "callees": [],
+     "doc": "After MAX_PER_ALARM hypotheses (or none), the alarm waits for a person: eval/loop/<stream>/human_queue.jsonl.",
+     "key": "amoeba/adapt/architect.py::log_unresolved",
+     "signature": "log_unresolved(root: str | Path, alarm: dict, diagnosis: Diagnosis, tried: list[str]) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/architect.py::build_prompt",
+      "amoeba/adapt/architect.py::check",
+      "amoeba/adapt/architect.py::parse_reply",
+      "amoeba/adapt/gate.py::Hypothesis",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/cache.py::CachedLLM.chat_messages",
+      "amoeba/llm/client.py::LLMClient.chat_messages",
+      "amoeba/llm/client.py::MockLLMClient.chat_messages",
+      "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
+      "amoeba/llm/limits.py::RunLimits.check",
+      "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/pool/mcp.py::PoolTools.call.check",
+      "scripts/eval_draft.py::Recording.chat_messages"
+     ],
+     "doc": "One hypothesis, or None after one retry. Returns (hypothesis, record of the attempt(s)).",
+     "key": "amoeba/adapt/architect.py::propose",
+     "signature": "propose(d: Diagnosis, recipe: Recipe, failed: list[dict], heldout: list, llm, trace, hypothesis_id: str, seed: int=0, envelope=None, sample_draft=None) -> tuple[Hypothesis | None, dict]"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if e.key() in keys",
+     "add 'this edit was already tried and rejected for this kind of task'"
+    ],
+    [
+     "correct",
+     "if not _allowed_ok(e, d.allowed_edits)",
+     "add f'edit {e.op!r} is not allowed for cause {d.cause!r}; allowed: {d.allowed_edits}'"
+    ],
+    [
+     "decide",
+     "if reply is not None and (not problems)",
+     "set h = Hypothesis(hypothesis_id=hypothesis_id, family=d.family, edit=reply.edit, rationale=re"
+    ],
+    [
+     "fallback",
+     "except (ValueError, ValidationError, json.JSONDecodeError)",
+     "set reply, problems = (None, [f'the reply is not valid: {str(x)[:500]}'])"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "add str(x)"
+    ],
+    [
+     "filter",
+     "keep only if r.get('edit')",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if not -1 <= v <= 1",
+     "raise ValueError"
+    ]
+   ],
+   "kind": "llm",
+   "numbers": [
+    "AgentSpec.max_tokens",
+    "Episode.seed",
+    "MAX_TOKENS",
+    "propose.seed"
+   ],
+   "prompts": {
+    "architect": "d994b7943114"
+   },
+   "title": "6 · Architect (D87)"
+  },
+  "facts_hash": "a798a748ff827f03",
+  "seed_hash": "f8fe62b1f0fa2f99",
+  "sentence": "An AI reads the diagnosis, the current recipe and the changes already rejected, and proposes one typed change with a reason and a predicted gain; plain code checks it before anything is tested.",
+  "source": "hand",
+  "what": [
+   "The only box of the loop that calls a model (Gemma). It sees the diagnosis, the recipe, the edits the diagnosis allows with their exact parameter shapes, the kind's rejected changes with their results, and up to two practice examples — never a held-out task.",
+   "It must reply with one JSON object: one edit, a short reason, a signed predicted change in score.",
+   "Plain code checks the reply: it parses strictly, the edit is allowed and valid, the new recipe passes V1–V5, it repeats no rejected change, it holds no text, number or id from a held-out task, and the prediction is between −1 and 1. A refused reply gets one retry with the problems shown.",
+   "At most three proposals per alarm; after that the alarm waits for a person in human_queue.jsonl."
+  ]
+ },
  "artifacts": {
   "checked_at": "db2244d",
   "facts": {
@@ -12586,7 +12749,7 @@
   ]
  },
  "trace": {
-  "checked_at": "986c371",
+  "checked_at": "a4be313",
   "facts": {
    "anchors": [
     {
@@ -12621,6 +12784,7 @@
     },
     {
      "callees": [
+      "amoeba/adapt/architect.py::check",
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/interp/trace.py::NoopListener.on_llm_call",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -12674,7 +12838,7 @@
    "prompts": {},
    "title": "Every AI call → one trace line"
   },
-  "facts_hash": "9f37b21ba1c95622",
+  "facts_hash": "7523c244d4b82b0a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0f5f3df261f75ad2",
   "sentence": "Writes one log line per AI call and tool call: who, which model, tokens, reasoning tokens, and time. Nothing enforces a budget.",
