@@ -1,0 +1,231 @@
+team_id: 96cd9e3e-2b77-4505-94d9-40a9c62ee86b
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  b7e40401-c441-412b-b9e9-263ba42c0745:
+    agent_id: b7e40401-c441-412b-b9e9-263ba42c0745
+    name: Financial Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in loan amortization and financial mathematics. Responsible
+      for the primary calculation of payments and interest.
+    role_prompt: "You are a Senior Financial Analyst. Calculate the monthly payment\
+      \ (M) and total interest for a loan using the formula: M = P [ r(1+r)^n ] /\
+      \ [ (1+r)^n - 1 ], where P is principal, r is monthly interest rate, and n is\
+      \ number of payments. \n\nStep-by-step:\n1. Define P = 9500, r = 0.072/12, n\
+      \ = 36.\n2. Calculate (1+r)^n.\n3. Solve for M, rounding to 2 decimal places.\n\
+      4. Calculate Total Repayment = M * n.\n5. Calculate Total Interest = Total Repayment\
+      \ - P.\n\nOutput the result as a memo showing each step clearly."
+    max_history: 5
+    missing_tools:
+    - python_interpreter
+    is_summariser: false
+    goal: Provide precise monthly payment and total interest figures.
+    skills:
+    - financial mathematics
+    - amortization scheduling
+    outputs:
+    - artifact: calculation_sheet
+      format: 'memo: showing formula, step-by-step substitution, and final values
+        for monthly payment and total interest'
+    success_criteria:
+    - Calculations are mathematically sound
+    - Formula used is explicitly stated
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  e3c10cc4-2529-4843-854d-5ca675e8814b:
+    agent_id: e3c10cc4-2529-4843-854d-5ca675e8814b
+    name: QA Reviewer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in numerical verification and audit. Ensures that the
+      financial calculations are accurate and free of rounding errors.
+    role_prompt: You are a Senior QA Reviewer. Your task is to audit the calculations
+      provided by the Financial Analyst. Do not simply trust their numbers; perform
+      the calculation independently using a Python script to ensure maximum precision
+      before rounding. Compare your result for the monthly payment and total interest
+      with the analyst's. If they match, output 'Verified'. If not, specify the discrepancy.
+    max_history: 5
+    missing_tools:
+    - python_interpreter
+    is_summariser: false
+    goal: Verify the accuracy of the Financial Analyst's results.
+    skills:
+    - numerical analysis
+    - financial auditing
+    outputs:
+    - artifact: verification_report
+      format: 'memo: stating ''Verified'' or ''Error'' with supporting calculations'
+    success_criteria:
+    - Independent verification matches the analyst's result within 1 cent
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  73cd3ae3-f1d9-4a27-9f91-e40463582da4:
+    agent_id: 73cd3ae3-f1d9-4a27-9f91-e40463582da4
+    name: Summarizer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Delivery lead responsible for final formatting and compliance with
+      all task constraints, including lesson L1.
+    role_prompt: "You are the Delivery Lead. Assemble the final answer based on the\
+      \ verified calculations. \n\nFormat:\n- Monthly Payment: [Value]\n- Total Interest:\
+      \ [Value]\n\n## Assumptions\n- List every assumption used (e.g., ordinary annuity,\
+      \ constant rate, rounding to 2 decimal places, monthly compounding).\n\nDo not\
+      \ add any conversational filler. Only provide the requested values and the assumptions\
+      \ section."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble the final answer in the required format.
+    skills:
+    - technical writing
+    - compliance checking
+    outputs:
+    - artifact: final_answer
+      format: 'markdown: Monthly Payment, Total Interest, and ## Assumptions section'
+    success_criteria:
+    - All requirements (R1, R2, R3) are met
+    - L1 is strictly followed
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: b7e40401-c441-412b-b9e9-263ba42c0745
+  dst: e3c10cc4-2529-4843-854d-5ca675e8814b
+  type: sequential
+  schema_id: text
+  condition: null
+- src: b7e40401-c441-412b-b9e9-263ba42c0745
+  dst: 73cd3ae3-f1d9-4a27-9f91-e40463582da4
+  type: sequential
+  schema_id: text
+  condition: null
+- src: e3c10cc4-2529-4843-854d-5ca675e8814b
+  dst: 73cd3ae3-f1d9-4a27-9f91-e40463582da4
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- b7e40401-c441-412b-b9e9-263ba42c0745
+exit: 73cd3ae3-f1d9-4a27-9f91-e40463582da4
+plan:
+- index: 0
+  agent_ids:
+  - b7e40401-c441-412b-b9e9-263ba42c0745
+  text: '[Financial Analyst]: Calculate Payment and Interest'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on: []
+  do: Use the amortization formula to calculate the monthly payment and total interest.
+  output: 'memo: calculation_sheet'
+  done_when: Monthly payment and total interest are calculated and documented.
+- index: 1
+  agent_ids:
+  - e3c10cc4-2529-4843-854d-5ca675e8814b
+  text: '[QA Reviewer]: Verify Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 1
+  do: Independently calculate the values using a Python script and compare them to
+    the analyst's output.
+  output: 'memo: verification_report'
+  done_when: The results are confirmed as accurate or corrections are provided.
+- index: 2
+  agent_ids:
+  - 73cd3ae3-f1d9-4a27-9f91-e40463582da4
+  text: '[Summarizer]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  - 2
+  do: Combine the verified results into the final format, ensuring the '## Assumptions'
+    section is included.
+  output: 'memo: final_answer'
+  done_when: The final answer contains the payment, interest, and the assumptions
+    section.
+requirements:
+  R1: Calculate the monthly payment for a $9,500 loan.
+  R2: Calculate the total interest paid over the life of the loan.
+  R3: Deliver a final answer including a section headed '## Assumptions' listing every
+    assumption (L1).
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpre-1
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: python_interpreter
+    for_role: Financial Analyst
+    canonical: code_execution
+    status: null
+    reason: ''
+  - name: python_interpreter
+    for_role: QA Reviewer
+    canonical: code_execution
+    status: null
+    reason: ''

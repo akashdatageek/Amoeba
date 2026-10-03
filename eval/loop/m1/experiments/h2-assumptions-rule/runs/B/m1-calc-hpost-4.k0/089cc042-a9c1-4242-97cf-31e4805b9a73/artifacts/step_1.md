@@ -1,0 +1,3 @@
+- Annual distance: 22 * 2 * 5 * 46 = 10,120 km [S1]
+- Annual fuel: (10,120 / 100) * 7.8 = 789.36 L [S2]
+- Annual cost: 789.36 * 1.65 = $1,302.444 [S3]

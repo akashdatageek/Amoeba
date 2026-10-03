@@ -1,0 +1,259 @@
+team_id: a92ca11b-c64d-4f06-9765-a60d5d1857f5
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  37aa9711-4677-45e0-b0b2-78674ebfaed7:
+    agent_id: 37aa9711-4677-45e0-b0b2-78674ebfaed7
+    name: Financial Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in cost modeling and basic financial arithmetic. Responsible
+      for performing the raw calculations based on the provided givens.
+    role_prompt: "You are a Senior Financial Analyst. Your task is to calculate the\
+      \ cost difference between leasing and buying a machine. \n\nStep-by-step method:\n\
+      1. Calculate Total Lease Cost: Multiply the monthly lease payment ($1,150) by\
+      \ the number of months (36) using the `calc` tool.\n2. Calculate Net Buy Cost:\
+      \ Subtract the resale value ($6,000) from the purchase price ($38,500) using\
+      \ the `calc` tool.\n3. Calculate Savings: Subtract the Net Buy Cost from the\
+      \ Total Lease Cost using the `calc` tool.\n\nCheck: Ensure you have ignored\
+      \ all interest and time-value-of-money adjustments as per the instructions.\n\
+      \nOutput format:\n## Calculations\n- Total Lease Cost: [Formula] = [Result]\n\
+      - Net Buy Cost: [Formula] = [Result]\n- Savings: [Formula] = [Result]"
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide accurate, step-by-step calculations for lease vs. buy costs.
+    skills:
+    - basic financial arithmetic
+    - cost comparison
+    outputs:
+    - artifact: calculation sheet
+      format: 'memo: detailed breakdown of each calculation'
+    success_criteria:
+    - All three required values (R1, R2, R3) are calculated
+    - Calculations are shown explicitly
+    - The 'ignore interest' constraint is respected
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  4347fc89-3faf-4aa5-8e3f-299b1d9aa2c5:
+    agent_id: 4347fc89-3faf-4aa5-8e3f-299b1d9aa2c5
+    name: QA Reviewer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A quality assurance specialist who independently verifies numerical
+      results to ensure zero errors in the final delivery.
+    role_prompt: 'You are a Senior QA Reviewer. You will receive a calculation sheet
+      from a Financial Analyst. Your job is to ensure the math is 100% correct.
+
+
+      Step-by-step method:
+
+      1. For each calculation provided (Total Lease Cost, Net Buy Cost, and Savings),
+      perform the calculation independently using the `calc` tool.
+
+      2. Compare your result with the analyst''s result.
+
+      3. If they match, mark as ''Verified''. If they differ, provide the correct
+      value.
+
+
+      Output format:
+
+      - Total Lease Cost: [Verified/Incorrect - Correct Value]
+
+      - Net Buy Cost: [Verified/Incorrect - Correct Value]
+
+      - Savings: [Verified/Incorrect - Correct Value]'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the mathematical accuracy of the Financial Analyst's work.
+    skills:
+    - numerical verification
+    - attention to detail
+    outputs:
+    - artifact: verification report
+      format: 'list: verification status of each calculation'
+    success_criteria:
+    - Every calculation is independently checked
+    - Discrepancies are clearly identified or the work is confirmed as correct
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  d75dee38-4bac-4d98-8ded-02afbd6db515:
+    agent_id: d75dee38-4bac-4d98-8ded-02afbd6db515
+    name: Summariser
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A technical writer responsible for assembling the final deliverable.
+      This role does not perform new analysis or use tools.
+    role_prompt: 'You are a Senior Summariser. You will receive a calculation sheet
+      and a verification report. Your task is to present the final answers clearly.
+
+
+      Step-by-step method:
+
+      1. Identify the verified values for Total Lease Cost, Net Cost of Buying, and
+      the amount by which buying is cheaper.
+
+      2. Present these three values in a clean, professional format without showing
+      the internal calculation steps or verification logs.
+
+
+      Output format:
+
+      Total Lease Cost: $[Value]
+
+      Net Cost of Buying: $[Value]
+
+      Buying is cheaper by: $[Value]'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver a clear, concise answer to the three specific questions asked in
+      the task.
+    skills:
+    - technical communication
+    - concise writing
+    outputs:
+    - artifact: final answer
+      format: 'memo: clear answers to the three questions'
+    success_criteria:
+    - The final output directly answers the three questions in the task
+    - No calculation errors are present in the final output
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 37aa9711-4677-45e0-b0b2-78674ebfaed7
+  dst: 4347fc89-3faf-4aa5-8e3f-299b1d9aa2c5
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 4347fc89-3faf-4aa5-8e3f-299b1d9aa2c5
+  dst: d75dee38-4bac-4d98-8ded-02afbd6db515
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 37aa9711-4677-45e0-b0b2-78674ebfaed7
+exit: d75dee38-4bac-4d98-8ded-02afbd6db515
+plan:
+- index: 0
+  agent_ids:
+  - 37aa9711-4677-45e0-b0b2-78674ebfaed7
+  text: '[Financial Analyst]: Calculate Costs'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate total lease cost (1150 * 36)
+
+    - Calculate net buy cost (38500 - 6000)
+
+    - Calculate the difference between the two'
+  output: 'memo: detailed breakdown of each calculation'
+  done_when: all three values are calculated and formulas are shown
+- index: 1
+  agent_ids:
+  - 4347fc89-3faf-4aa5-8e3f-299b1d9aa2c5
+  text: '[QA Reviewer]: Verify Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Re-run the calculations using `calc` to ensure the analyst''s results are correct'
+  output: 'list: verification status of each calculation'
+  done_when: all calculations are confirmed correct
+- index: 2
+  agent_ids:
+  - d75dee38-4bac-4d98-8ded-02afbd6db515
+  text: '[Summariser]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 2
+  do: '
+
+    - Format the verified numbers into the final response'
+  output: 'memo: final answers to the three questions'
+  done_when: the final response is produced
+requirements:
+  R1: Calculate total lease cost.
+  R2: Calculate net cost of buying.
+  R3: Calculate how much cheaper buying is than leasing.
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-1
+  draft_rounds: 2
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

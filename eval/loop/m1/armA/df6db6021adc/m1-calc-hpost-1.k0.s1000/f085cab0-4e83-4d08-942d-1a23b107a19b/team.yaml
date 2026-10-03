@@ -1,0 +1,239 @@
+team_id: 3e4a847a-4f73-4025-9d36-b16ccaf4694a
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  8899181b-0f7f-4874-b309-df3260ec3fd5:
+    agent_id: 8899181b-0f7f-4874-b309-df3260ec3fd5
+    name: Financial Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in cost modeling and basic financial arithmetic responsible
+      for calculating the TCO of the two options.
+    role_prompt: "You are a Senior Financial Analyst. Your goal is to calculate the\
+      \ total cost of leasing vs buying a machine. \n\nStep-by-step method:\n1. Calculate\
+      \ Total Lease Cost: Multiply the monthly lease payment ($1,150) by the number\
+      \ of months (36) using the calc tool.\n2. Calculate Net Buy Cost: Subtract the\
+      \ resale value ($6,000) from the purchase price ($38,500) using the calc tool.\n\
+      3. Calculate Savings: Subtract the Net Buy Cost from the Total Lease Cost using\
+      \ the calc tool.\n\nCheck: Ensure you have not applied any interest or discounting.\n\
+      \nOutput format:\n- Total Lease Cost: [Value]\n- Net Buy Cost: [Value]\n- Savings\
+      \ (Buying vs Leasing): [Value]"
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Provide accurate total costs for leasing and buying the machine.
+    skills:
+    - cost modelling
+    - basic arithmetic
+    outputs:
+    - artifact: cost calculation sheet
+      format: 'memo: breakdown of lease cost, buy cost, and difference'
+    success_criteria:
+    - All three required values (R1, R2, R3) are calculated correctly using the provided
+      givens.
+    constraints:
+    - Must ignore interest as per task instructions
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  2bb2aae3-6c50-4bf8-8e5d-4abe08af2349:
+    agent_id: 2bb2aae3-6c50-4bf8-8e5d-4abe08af2349
+    name: QA Reviewer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An auditor responsible for verifying the accuracy of financial calculations.
+    role_prompt: 'You are a Senior QA Reviewer. Your goal is to verify the calculations
+      provided by the Financial Analyst.
+
+
+      Step-by-step method:
+
+      1. Re-calculate the Total Lease Cost (1150 * 36) using the calc tool.
+
+      2. Re-calculate the Net Buy Cost (38500 - 6000) using the calc tool.
+
+      3. Re-calculate the difference between the two results using the calc tool.
+
+      4. Compare your results with the Analyst''s results.
+
+
+      Output format:
+
+      - R1 (Lease Cost): [Pass/Fail] - [Your Value]
+
+      - R2 (Buy Cost): [Pass/Fail] - [Your Value]
+
+      - R3 (Difference): [Pass/Fail] - [Your Value]'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Ensure the calculations are mathematically sound and adhere to the constraints.
+    skills:
+    - mathematical verification
+    outputs:
+    - artifact: verification report
+      format: 'list: Pass/Fail for each calculation'
+    success_criteria:
+    - All calculations are verified as correct or corrected.
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  b65826c4-a3b2-48c8-bee1-c7f5186aab84:
+    agent_id: b65826c4-a3b2-48c8-bee1-c7f5186aab84
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: The final editor who assembles the verified data into the final response.
+    role_prompt: You are the Delivery Lead. Your task is to take the verified calculations
+      and present them as the final answer. Do not perform new analysis. Simply state
+      the total lease cost, the net cost of buying, and the amount by which buying
+      is cheaper.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answer to the user clearly and concisely.
+    skills:
+    - technical writing
+    outputs:
+    - artifact: final answer
+      format: 'memo: final costs and savings'
+    success_criteria:
+    - The final output answers all three questions posed in the task.
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 8899181b-0f7f-4874-b309-df3260ec3fd5
+  dst: 2bb2aae3-6c50-4bf8-8e5d-4abe08af2349
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 2bb2aae3-6c50-4bf8-8e5d-4abe08af2349
+  dst: b65826c4-a3b2-48c8-bee1-c7f5186aab84
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 8899181b-0f7f-4874-b309-df3260ec3fd5
+exit: b65826c4-a3b2-48c8-bee1-c7f5186aab84
+plan:
+- index: 0
+  agent_ids:
+  - 8899181b-0f7f-4874-b309-df3260ec3fd5
+  text: '[Financial Analyst]: Calculate Costs'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate total lease cost (1150 * 36)
+
+    - Calculate net buy cost (38500 - 6000)
+
+    - Calculate the difference'
+  output: 'memo: breakdown of lease cost, buy cost, and difference'
+  done_when: all three values are calculated
+- index: 1
+  agent_ids:
+  - 2bb2aae3-6c50-4bf8-8e5d-4abe08af2349
+  text: '[QA Reviewer]: Verify Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Independently re-run calculations using `calc`
+
+    - Compare results against the Financial Analyst''s output'
+  output: 'list: Pass/Fail for each calculation'
+  done_when: all calculations are confirmed correct
+- index: 2
+  agent_ids:
+  - b65826c4-a3b2-48c8-bee1-c7f5186aab84
+  text: '[Delivery Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 2
+  do: '
+
+    - Extract the verified numbers
+
+    - Format the final answer as requested by the task'
+  output: 'memo: final costs and savings'
+  done_when: final answer is produced
+requirements:
+  R1: Calculate the total lease cost.
+  R2: Calculate the net cost of buying.
+  R3: Calculate how much cheaper buying is than leasing.
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-1
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

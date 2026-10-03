@@ -1,0 +1,3 @@
+- Total Kilometres: 10120 km ((22 * 2 [unverified]) * 5 * 46 = 10120)
+- Total Litres: 789.36 L ((10120 / 100) * 7.8 = 789.36)
+- Total Cost: $1302.444 (789.36 * 1.65 = 1302.444)

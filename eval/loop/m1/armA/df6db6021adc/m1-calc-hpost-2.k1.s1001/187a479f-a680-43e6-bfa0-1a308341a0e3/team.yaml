@@ -1,0 +1,250 @@
+team_id: 8a2654d3-d558-4320-9ed8-1a471cde246b
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  f59d7d68-e70e-4000-ad55-159c294b9ffb:
+    agent_id: f59d7d68-e70e-4000-ad55-159c294b9ffb
+    name: Materials Planner
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in construction quantity surveying responsible for calculating
+      precise material requirements based on dimensions and waste factors.
+    role_prompt: "You are a Senior Materials Planner. Your goal is to provide the\
+      \ precise quantities and cost for a flooring project. \nStep 1: Calculate the\
+      \ floor area (Length x Width).\nStep 2: Calculate the area of a single tile\
+      \ (Length x Width).\nStep 3: Divide the floor area by the tile area to find\
+      \ the 'exact' number of tiles needed for coverage.\nStep 4: Multiply the exact\
+      \ tile count by 1.10 to account for the 10% waste/cuts allowance.\nStep 5: Divide\
+      \ the total tiles by the tiles per box (8) and round UP to the nearest whole\
+      \ number to find the total boxes required.\nStep 6: Multiply the total boxes\
+      \ by the price per box ($42.50) to find the total cost.\n\nOutput the results\
+      \ as a clear list: \n- Floor Area: [value] m2\n- Exact Tiles: [value]\n- Total\
+      \ Tiles (with waste): [value]\n- Total Boxes: [value]\n- Total Cost: [value]"
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Determine the exact area, theoretical tile count, and total cost.
+    skills:
+    - quantity surveying
+    - construction mathematics
+    outputs:
+    - artifact: quantity_breakdown
+      format: 'list: area, exact_tiles, total_tiles, boxes_needed, total_cost'
+    success_criteria:
+    - Calculations are mathematically accurate
+    - Box count is rounded up to the nearest whole integer
+    constraints:
+    - Must use 10% waste factor
+    - Must use whole boxes only
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  d8c7dc3e-db2f-4a07-bfab-41e4e98c8563:
+    agent_id: d8c7dc3e-db2f-4a07-bfab-41e4e98c8563
+    name: Project Auditor
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A quality assurance specialist who verifies the mathematical logic
+      and accuracy of material estimates.
+    role_prompt: "You are a Project Auditor. Your goal is to verify the Materials\
+      \ Planner's work. \n1. Recalculate the floor area using 7.2m and 4.5m.\n2. Recalculate\
+      \ the exact tile count using 0.6m x 0.6m tiles.\n3. Verify that 10% waste was\
+      \ added and that the resulting box count was rounded UP to the nearest whole\
+      \ number.\n4. Verify the total cost calculation (Boxes * $42.50).\n\nOutput\
+      \ a memo stating 'Verified' if all numbers are correct, or list the specific\
+      \ discrepancies found."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify that the Materials Planner's calculations are correct based on the
+      provided givens.
+    skills:
+    - mathematical verification
+    - QA
+    outputs:
+    - artifact: verification_report
+      format: 'memo: status, discrepancies'
+    success_criteria:
+    - All calculations are verified against the givens
+    - Any rounding errors are identified
+    constraints:
+    - Must independently recalculate to verify
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  d87c280f-ab12-41a5-aa54-e0196482b4b8:
+    agent_id: d87c280f-ab12-41a5-aa54-e0196482b4b8
+    name: Project Lead
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: The final delivery lead responsible for assembling the verified results
+      into the final answer.
+    role_prompt: "You are the Project Lead. Your task is to assemble the final answer.\
+      \ \n1. Review the Materials Planner's breakdown and the Project Auditor's verification.\n\
+      2. Extract the following three values: Floor Area, Exact Tiles, and Total Cost.\n\
+      3. Present these three values clearly as the final answer."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final answers for floor area, exact tiles, and total cost.
+    skills:
+    - technical communication
+    outputs:
+    - artifact: final_report
+      format: 'memo: area, exact_tiles, total_cost'
+    success_criteria:
+    - Only the three requested values are provided
+    - Data matches the verified breakdown
+    constraints:
+    - No new analysis
+    - No tools
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: f59d7d68-e70e-4000-ad55-159c294b9ffb
+  dst: d8c7dc3e-db2f-4a07-bfab-41e4e98c8563
+  type: sequential
+  schema_id: text
+  condition: null
+- src: f59d7d68-e70e-4000-ad55-159c294b9ffb
+  dst: d87c280f-ab12-41a5-aa54-e0196482b4b8
+  type: sequential
+  schema_id: text
+  condition: null
+- src: d8c7dc3e-db2f-4a07-bfab-41e4e98c8563
+  dst: d87c280f-ab12-41a5-aa54-e0196482b4b8
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- f59d7d68-e70e-4000-ad55-159c294b9ffb
+exit: d87c280f-ab12-41a5-aa54-e0196482b4b8
+plan:
+- index: 0
+  agent_ids:
+  - f59d7d68-e70e-4000-ad55-159c294b9ffb
+  text: '[Materials Planner]: Quantity and Cost Calculation'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on: []
+  do: '
+
+    - Calculate floor area (7.2 * 4.5)
+
+    - Calculate tile area (0.6 * 0.6)
+
+    - Calculate exact tiles (Area / Tile Area)
+
+    - Calculate total tiles with 10% waste
+
+    - Calculate total boxes (Total Tiles / 8, rounded up)
+
+    - Calculate total cost (Boxes * 42.50)'
+  output: 'list: area, exact_tiles, total_tiles, boxes_needed, total_cost'
+  done_when: All five values are calculated and the box count is a whole number.
+- index: 1
+  agent_ids:
+  - d8c7dc3e-db2f-4a07-bfab-41e4e98c8563
+  text: '[Project Auditor]: Verification'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  do: '
+
+    - Independently recalculate area, exact tiles, box count (with ceiling), and total
+    cost.
+
+    - Compare results with the Materials Planner''s output.'
+  output: 'memo: verification_status, discrepancies'
+  done_when: The calculations are confirmed as correct or discrepancies are listed.
+- index: 2
+  agent_ids:
+  - d87c280f-ab12-41a5-aa54-e0196482b4b8
+  text: '[Project Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 1
+  - 2
+  do: '
+
+    - Extract the floor area, exact tile count, and total cost from the verified breakdown.
+
+    - Format as the final answer.'
+  output: 'memo: final_answers'
+  done_when: All three requested values are presented clearly.
+requirements:
+  R1: Calculate the floor area.
+  R2: Calculate how many tiles cover the floor exactly.
+  R3: Calculate the total cost of the boxes required (including 10% for cuts/breakage
+    and rounding up to whole boxes).
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-2
+  draft_rounds: 2
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

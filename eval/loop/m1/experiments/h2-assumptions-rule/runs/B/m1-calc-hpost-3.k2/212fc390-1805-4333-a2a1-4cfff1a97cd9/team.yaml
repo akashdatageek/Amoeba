@@ -1,0 +1,237 @@
+team_id: cfc17fab-aa67-44e9-8562-9c1780e4cca5
+version: 1
+parent_version: null
+name: team-plan-m1-calc-
+topology: plan
+agents:
+  3a99c3c9-6690-4a16-829f-3a77b822f7ad:
+    agent_id: 3a99c3c9-6690-4a16-829f-3a77b822f7ad
+    name: Financial Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in time-value-of-money calculations and financial modeling.
+      Responsible for the primary computation of investment growth.
+    role_prompt: "You are a Senior Financial Analyst. Your task is to calculate the\
+      \ future value of an investment. \n1. Use the formula A = P(1 + r/n)^(nt), where\
+      \ P is principal, r is annual rate, n is compounding frequency per year, and\
+      \ t is years.\n2. Break the calculation into steps: \n   a. Calculate the periodic\
+      \ rate (r/n).\n   b. Calculate the total number of periods (nt).\n   c. Calculate\
+      \ the growth factor (1 + periodic rate)^total periods.\n   d. Multiply by principal\
+      \ to find A.\n   e. Subtract P from A to find the total interest I.\n3. Use\
+      \ the 'calc' tool for every arithmetic step to ensure precision.\n4. Output\
+      \ a memo showing each step clearly."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Accurately calculate the future value and total interest of the investment.
+    skills:
+    - compound interest modeling
+    - financial arithmetic
+    outputs:
+    - artifact: calculation_sheet
+      format: 'memo: showing formula, substitution, intermediate steps, and final
+        results for A and I'
+    success_criteria:
+    - Calculation follows the formula A = P(1 + r/n)^(nt)
+    - Interest is correctly derived as A - P
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  aea257ef-d535-42d9-a60b-aeadafd76a7e:
+    agent_id: aea257ef-d535-42d9-a60b-aeadafd76a7e
+    name: QA Analyst
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in numerical verification and error detection. Ensures
+      that the financial calculations are mathematically sound.
+    role_prompt: "You are a Senior QA Analyst. You will receive a calculation sheet.\
+      \ Your job is to verify it. \n1. Independently perform the calculation using\
+      \ the 'calc' tool.\n2. Compare your result for the final value (A) and total\
+      \ interest (I) with the analyst's results.\n3. If they match, issue a confirmation.\
+      \ If they differ, identify the exact step where the error occurred.\n4. Output\
+      \ a brief verification memo."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the accuracy of the Financial Analyst's results.
+    skills:
+    - numerical verification
+    - financial auditing
+    outputs:
+    - artifact: verification_report
+      format: 'memo: confirming accuracy or listing discrepancies'
+    success_criteria:
+    - The verified result matches the analyst's result within 0.01 units
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  a056b00e-0ec6-4ff6-88a1-f535f677a73a:
+    agent_id: a056b00e-0ec6-4ff6-88a1-f535f677a73a
+    name: Technical Writer
+    role: worker
+    model: gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in synthesizing technical data into clear, client-ready deliverables.
+      Ensures all task constraints and formatting rules are met.
+    role_prompt: "You are a Senior Technical Writer. Your goal is to produce the final\
+      \ response for the user. \n1. Take the verified final value and total interest\
+      \ from the provided documents.\n2. Present the answer clearly: 'The investment\
+      \ is worth [Value] at the end, and it earns [Interest] in interest.'\n3. Create\
+      \ a section headed '## Assumptions'. List every assumption made during the process,\
+      \ including: \n   - The constant nature of the interest rate.\n   - The lack\
+      \ of additional deposits/withdrawals.\n   - The rounding precision used (e.g.,\
+      \ 2 decimal places).\n   - The interpretation of 'compounded quarterly' as n=4.\n\
+      4. Do not add any new analysis; only summarize the verified results."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble the final answer and the mandatory assumptions section.
+    skills:
+    - technical communication
+    - document formatting
+    outputs:
+    - artifact: final_answer
+      format: 'memo: Final value, Total interest, and ## Assumptions section'
+    success_criteria:
+    - Final value and interest are clearly stated
+    - The '## Assumptions' section is present and exhaustive
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 3a99c3c9-6690-4a16-829f-3a77b822f7ad
+  dst: aea257ef-d535-42d9-a60b-aeadafd76a7e
+  type: sequential
+  schema_id: text
+  condition: null
+- src: aea257ef-d535-42d9-a60b-aeadafd76a7e
+  dst: a056b00e-0ec6-4ff6-88a1-f535f677a73a
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 3a99c3c9-6690-4a16-829f-3a77b822f7ad
+exit: a056b00e-0ec6-4ff6-88a1-f535f677a73a
+plan:
+- index: 0
+  agent_ids:
+  - 3a99c3c9-6690-4a16-829f-3a77b822f7ad
+  text: '[Financial Analyst]: Calculate Investment Growth'
+  kind: work
+  covers:
+  - R1
+  - R2
+  depends_on: []
+  do: '
+
+    - Calculate periodic rate (0.055 / 4)
+
+    - Calculate total periods (4 * 7)
+
+    - Calculate final amount A using the compound interest formula
+
+    - Calculate total interest I = A - P'
+  output: 'memo: calculation_sheet'
+  done_when: Final value A and Interest I are calculated and documented.
+- index: 1
+  agent_ids:
+  - aea257ef-d535-42d9-a60b-aeadafd76a7e
+  text: '[QA Analyst]: Verify Calculations'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  depends_on:
+  - 1
+  do: '
+
+    - Re-run the calculations independently using the ''calc'' tool
+
+    - Compare results with the calculation_sheet'
+  output: 'memo: verification_report'
+  done_when: Results are confirmed as accurate or corrected.
+- index: 2
+  agent_ids:
+  - a056b00e-0ec6-4ff6-88a1-f535f677a73a
+  text: '[Technical Writer]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  depends_on:
+  - 2
+  do: '
+
+    - Extract the verified final value and interest
+
+    - Format the final response
+
+    - Draft the ''## Assumptions'' section based on the givens and derived logic'
+  output: 'memo: final_answer'
+  done_when: The final response contains the value, the interest, and the Assumptions
+    section.
+requirements:
+  R1: Calculate the final value of the investment after 7 years.
+  R2: Calculate the total interest earned over the 7 years.
+  R3: Deliver a section headed '## Assumptions' listing every assumption the result
+    relies on (L1).
+max_inner_turns: 3
+meta:
+  task_id: m1-calc-hpost-3
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []
