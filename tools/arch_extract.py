@@ -808,6 +808,20 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code counts the records, names the cause and limits the edits.",
          anchors=[]),
+    dict(id="architect", view="adapt", title="6 · Architect (D87)", kind="llm", plan=None, ai="architect",
+         sentence="An AI reads the diagnosis, the current recipe and the changes already rejected, and proposes one "
+                  "typed change with a reason and a predicted gain; plain code checks it before anything is tested.",
+         what=["The only box of the loop that calls a model (Gemma). It sees the diagnosis, the recipe, the edits the "
+               "diagnosis allows with their exact parameter shapes, the kind's rejected changes with their results, "
+               "and up to two practice examples — never a held-out task.",
+               "It must reply with one JSON object: one edit, a short reason, a signed predicted change in score.",
+               "Plain code checks the reply: it parses strictly, the edit is allowed and valid, the new recipe passes "
+               "V1–V5, it repeats no rejected change, it holds no text, number or id from a held-out task, and the "
+               "prediction is between −1 and 1. A refused reply gets one retry with the problems shown.",
+               "At most three proposals per alarm; after that the alarm waits for a person in human_queue.jsonl."],
+         proposes="One typed edit, a rationale and a predicted change in score.",
+         disposes="Plain code checks the proposal; the Experimenter and the Gate decide whether it is kept.",
+         prompts=["architect"], anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and

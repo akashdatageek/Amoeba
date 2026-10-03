@@ -168,7 +168,7 @@ def test_no_model_call_in_boxes_7_and_8():
     """The Experimenter and the Gate are plain code: no import of the LLM clients, no chat call."""
     import ast
     from pathlib import Path
-    for f in ("experimenter.py", "gate.py", "ledger.py", "recipe.py", "stream.py"):
+    for f in ("experimenter.py", "gate.py", "ledger.py", "recipe.py", "stream.py", "monitor.py", "diagnoser.py"):
         tree = ast.parse((Path("amoeba/adapt") / f).read_text())
         mods = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)} | \
                {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}

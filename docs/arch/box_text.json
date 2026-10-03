@@ -1946,6 +1946,161 @@
    "A reply that cannot be read twice in a row is treated as silent, which counts as agreeing."
   ]
  },
+ "diagnoser": {
+  "checked_at": "1d81dc4",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "family",
+       "str"
+      ],
+      [
+       "symptom",
+       "str"
+      ],
+      [
+       "cause",
+       "Literal['capability', 'checks', 'max_turns', 'unused_tool', 'claimed_file_missing', 'feedback', 'honesty', 'alarm_only']"
+      ],
+      [
+       "where",
+       "dict"
+      ],
+      [
+       "evidence",
+       "list[str]"
+      ],
+      [
+       "counts",
+       "dict[str, int]"
+      ],
+      [
+       "allowed_edits",
+       "list[str]"
+      ],
+      [
+       "examples",
+       "list[dict]"
+      ],
+      [
+       "alarm",
+       "dict"
+      ],
+      [
+       "shares",
+       "dict[str, dict]"
+      ]
+     ],
+     "key": "amoeba/adapt/diagnoser.py::Diagnosis",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/diagnoser.py::Diagnosis",
+      "amoeba/adapt/diagnoser.py::_allowed",
+      "amoeba/adapt/diagnoser.py::_where",
+      "amoeba/adapt/diagnoser.py::diagnose.share",
+      "amoeba/adapt/diagnoser.py::examples",
+      "amoeba/adapt/diagnoser.py::run_signals",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "Box 5: count the window's run records, name the cause that rose most, and say which edits may answer it.",
+     "key": "amoeba/adapt/diagnoser.py::diagnose",
+     "signature": "diagnose(alarm: Alarm, records: list[PracticeRecord], stream: Stream) -> Diagnosis"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/diagnoser.py::Diagnosis"
+     ],
+     "doc": "--diagnoser none: the alarm only, every edit allowed (the untargeted baseline of the ablation).",
+     "key": "amoeba/adapt/diagnoser.py::diagnose_none",
+     "signature": "diagnose_none(alarm: Alarm) -> Diagnosis"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/diagnoser.py::_load",
+      "amoeba/adapt/diagnoser.py::_plan",
+      "amoeba/adapt/diagnoser.py::_steps",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/saved_drafts.py::_load"
+     ],
+     "doc": "What one run shows, by cause: {cause: [evidence lines]} and the raw counts.",
+     "key": "amoeba/adapt/diagnoser.py::run_signals",
+     "signature": "run_signals(run_dir: str | Path, failed_items: list[str]) -> dict"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "decide",
+     "if cause == 'feedback' and items",
+     "set name, n = items.most_common(1)[0]"
+    ],
+    [
+     "decide",
+     "if hall",
+     "set counts['hallucinated_citations'] += hall"
+    ],
+    [
+     "decide",
+     "if not present",
+     "set cause = 'feedback' if any((r.failed_items for r in window)) else order[0]"
+    ],
+    [
+     "decide",
+     "if s.get('unverified_check')",
+     "set counts['unverified_check'] += 1"
+    ],
+    [
+     "fallback",
+     "'feedback' if any((r.failed_items for r in window)) else order[0]",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "sum((bool(s['by_cause'].get(cause)) for s in sigs)) / len(sigs) if sigs else 0.0",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if o in by_order",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if shares[k]['window'] > 0",
+     "drop the rest"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "RubricMustNot.window"
+   ],
+   "prompts": {},
+   "title": "5 · Diagnoser (D86)"
+  },
+  "facts_hash": "46fd6b138fba5a12",
+  "seed_hash": "9faebe54a7745a22",
+  "sentence": "Counts what the runs of the alarm's window recorded and names the cause that rose most, with the edits that may answer it.",
+  "source": "hand",
+  "what": [
+   "It reads the window's run folders: step causes recorded by the step contract (with the step's kind, roles and their tools), blocked capabilities, unused tools, missing files, unverified checks, made-up or mislabelled citations and the names of the failed rubric items.",
+   "The cause is the one whose share of runs rose most from the reference runs to the window — a cause that was always there does not explain an alarm — then the most frequent, then the table order.",
+   "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice examples (never held-out tasks) go to the Architect with the evidence lines.",
+   "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation)."
+  ]
+ },
  "disagree": {
   "checked_at": "1d5eeb0",
   "facts": {

@@ -348,6 +348,14 @@ missing files, unverified checks, citation problems, failed rubric item names) a
 compared with the runs before. The table in `amoeba/config/adapt.yaml` says which edits may answer it. No model is
 called; `--diagnoser none` gives the Architect the alarm only, with every edit allowed.
 
+## The Architect (D87, Phase 2)
+
+The Architect is the only part of the loop that calls a model. Given the diagnosis, the current recipe, the edits it
+may use and the changes already rejected, it proposes one typed edit with a reason and a predicted gain, as JSON
+(prompt: `amoeba/config/prompts/architect.txt`). Code checks the proposal (allowed, valid, not a repeat, no text or
+numbers from held-out tasks) and allows one retry; after three proposals for one alarm, the alarm waits for a person
+in `eval/loop/<stream>/human_queue.jsonl`.
+
 ## Cost controls (D45–D48)
 
 ```bash
