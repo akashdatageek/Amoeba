@@ -25,6 +25,7 @@ from pathlib import Path
 
 import yaml
 
+from amoeba.adapt.evidence import EvidenceLog, experiment_refs, refuse_cloud_vars, run_env
 from amoeba.adapt.experimenter import SubprocessRunner, calibrate, experiment, experiment_flags
 from amoeba.adapt.gate import Hypothesis, decide, decision_row, noise_floor, noise_floor_tasks, task_spread
 from amoeba.adapt.ledger import Ledger
@@ -43,14 +44,18 @@ OVERRIDES = ("AMOEBA_BASE_URL", "AMOEBA_MODEL", "AMOEBA_API_KEY")   # would over
 
 # box: experimenter
 def load_env(files: list[str]) -> dict:
-    """The runs' environment: this one without the AMOEBA_* model overrides, plus the KEY=VALUE files."""
-    e = {k: v for k, v in os.environ.items() if k not in OVERRIDES}
+    """The runs' environment: this one without the AMOEBA_* model overrides and without any cloud credential (D95),
+    plus the KEY=VALUE files (a file that sets a cloud credential is refused)."""
+    e = run_env({k: v for k, v in os.environ.items() if k not in OVERRIDES})
     for f in files or []:
+        pairs = {}
         for line in Path(f).read_text(encoding="utf-8").splitlines():
             line = line.strip().removeprefix("export ").strip()
             if "=" in line and not line.startswith("#"):
                 k, v = line.split("=", 1)
-                e[k.strip()] = v.strip().strip('"').strip("'")
+                pairs[k.strip()] = v.strip().strip('"').strip("'")
+        refuse_cloud_vars(Path(f).name, pairs)
+        e.update(pairs)
     return e
 
 
@@ -114,7 +119,7 @@ def ensure_calibration(stream: Stream, family: str, runner, root: Path, store: P
     extra = {"n_tasks": len(spread), "task_spread": spread,
              "mean_task_spread": round(sum(e["spread"] for e in spread.values()) / len(spread), 4) if spread else None,
              "pairs_equal": sum(abs(p.d) < 1e-9 for p in post)} if v3 else {}
-    return ledger.append({"event": "calibration", "family": family, "recipe_from": recipe_A.version,
+    row = ledger.append({"event": "calibration", "family": family, "recipe_from": recipe_A.version,
                           "recipe_hash": recipe_A.hash(), "noise": noise_floor_tasks(cal) if v3 else noise_floor(cal),
                           "n": len(post), **extra,
                           "d_AA_mean": round(sum(p.d for p in post) / len(post), 4) if post else None,
@@ -124,6 +129,11 @@ def ensure_calibration(stream: Stream, family: str, runner, root: Path, store: P
                           "tokens_A2_mean": round(sum(p.tokens_B for p in post) / len(post)) if post else None,
                           "runs": f"experiments/{cal.hypothesis_id}/", "gate_version": cfg_gate_version(),
                           **({"slice": key} if key else {})})
+    EvidenceLog(root).append("calibration", row, experiment_refs(root, root / "experiments" / cal.hypothesis_id),
+                             key=f"calibration:{family}:{recipe_A.hash()}:{key}")
+    return row
+
+
 
 
 # box: gate
@@ -142,11 +152,13 @@ def hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | 
     done = [r for r in ledger.rows(h.family, "decision") if r.get("hypothesis_id") == h.hypothesis_id]
     if done:                                       # decided already: the ledger row stands, nothing is re-run
         return done[-1]
+    ev = EvidenceLog(root)
     if not [r for r in ledger.rows(h.family, "hypothesis") if r.get("hypothesis_id") == h.hypothesis_id]:
-        ledger.append({"event": "hypothesis", "family": h.family, "hypothesis_id": h.hypothesis_id,
-                       "recipe_from": recipe_A.version, "edit": h.edit.model_dump(),
-                       "predicted_delta": h.predicted_delta, "rationale": h.rationale, "created_by": "human",
-                       **({"check": True} if check else {})})
+        hrow = ledger.append({"event": "hypothesis", "family": h.family, "hypothesis_id": h.hypothesis_id,
+                              "recipe_from": recipe_A.version, "edit": h.edit.model_dump(),
+                              "predicted_delta": h.predicted_delta, "rationale": h.rationale, "created_by": "human",
+                              **({"check": True} if check else {})})
+        ev.append("hypothesis", hrow, key=f"hypothesis:{h.hypothesis_id}")
     # (resumed after a crash: the hypothesis row is already there and finished runs are reused, D73)
     res = experiment(recipe_A, h.edit, h.hypothesis_id, stream, runner, root, repeats)
     print(summary(res), flush=True)
@@ -159,8 +171,12 @@ def hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | 
     dec = decide(recipe_A, recipe_B, h, res, cal["noise"], ledger.tried_since_accept(h.family) + 1,
                  stream.heldout(h.family, everything=True), Envelope.from_registry(tools), sample_draft(res),
                  hypothesis_index=quota, alpha=float(g["v3"]["check_alpha"]) if check else None)
+    exp_dir = root / "experiments" / h.hypothesis_id
+    ev.append("experiment", json.loads((exp_dir / "experiment.json").read_text(encoding="utf-8")),
+              experiment_refs(root, exp_dir), key=f"experiment:{h.hypothesis_id}")
     row = ledger.append({**decision_row(h, recipe_A, recipe_B, dec, f"experiments/{h.hypothesis_id}/"),
                          **({"check": True} if check else {})})
+    ev.append("decision", row, key=f"decision:{h.hypothesis_id}")
     if check:                                      # D91: a person's test; the store and the experience log stay out
         return row
     mem = RecipeStore(store)

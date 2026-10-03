@@ -30,7 +30,7 @@ VIEWS = {
     "run": {"h": 1320, "label": "3 · Team runs the task", "heading": "INSIDE BOX 3 · TEAM RUNS THE TASK",
             "note": "Three runners, chosen when the run starts: flat and boss + reviewers are the AutoAgents / AgentVerse "
                     "baselines; plan runs the step graph (ours, D31–D36). All write the same log and result record."},
-    "adapt": {"h": 620, "label": "4–9 · Adaptation loop", "heading": "PHASE 2 · THE ADAPTATION LOOP (WEEK 1: MEASURING HALF)",
+    "adapt": {"h": 690, "label": "4–9 · Adaptation loop", "heading": "PHASE 2 · THE ADAPTATION LOOP (WEEK 1: MEASURING HALF)",
               "note": "Only Amoeba's plan runner gets recipes. Nothing here calls an AI: the change is hand-written in "
                       "week 1, and plain code decides what is kept."},
 }
@@ -40,6 +40,7 @@ L = {  # id: (x, y, w, h)
     "stream": (30, 70, 260, 150), "recipe": (320, 70, 260, 150),
     "experimenter": (610, 70, 260, 150), "gate": (900, 70, 260, 150),
     "loop": (30, 430, 1130, 120),
+    "evidence": (30, 570, 1130, 90),
     "memory": (900, 250, 260, 150),
     "architect": (610, 250, 260, 150),
     "diagnoser": (320, 250, 260, 150),

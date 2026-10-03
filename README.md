@@ -409,6 +409,16 @@ evidence.
 A rubric item can list task-specific entities. Its section then passes only if the text under the heading names at
 least one of them, so a heading with nothing under it fails.
 
+## The evidence log (D95, Phase 2)
+
+Everything the loop does goes into `eval/loop/<stream>/events.jsonl`, written only by the harness. Each line carries
+the fingerprint (SHA-256) of the line before it and of every run folder it refers to, so any later change shows:
+
+    python -m scripts.verify_evidence --stream m2      # prints the first break, exit 1; or "ok"
+
+Finished runs are key-scanned and queued for an off-container copy in a cloud bucket; what has not been shipped yet
+is listed in `loop_state.json`. Agents never see the cloud credentials, and their local tools cannot reach the log.
+
 ## Cost controls (D45–D48)
 
 ```bash

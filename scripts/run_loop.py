@@ -5,7 +5,8 @@
 
 Everything under eval/loop/<stream>/: practice/ (one run per practice task), practice.jsonl, armA/ and experiments/
 (Box 7), ledger.jsonl (Box 8), recipes/ (Box 9), architect/ (each proposal with its trace), diagnoses/,
-human_queue.jsonl, loop_state.json, summary.json, REPORT.md. Every flag this script does not know is passed to each
+human_queue.jsonl, loop_state.json, summary.json, REPORT.md, and events.jsonl (D95: the hash-chained evidence log;
+check it with scripts/verify_evidence.py). Every flag this script does not know is passed to each
 run_task run and to the Architect's client. Keys come from --env-file files and are never printed.
 """
 from __future__ import annotations
@@ -16,6 +17,7 @@ import os
 import sys
 from pathlib import Path
 
+from amoeba.adapt.evidence import secret_values
 from amoeba.adapt.experimenter import SubprocessRunner, experiment_flags
 from amoeba.adapt.loop import run_loop
 from amoeba.adapt.recipe import adapt_config
@@ -69,7 +71,7 @@ def main(argv=None) -> int:
     summary = run_loop(stream, runner, root, architect_llm(passthrough, stream.name),
                        repeats=args.repeats or cfg.get("repeats", 3), parallel_until=args.parallel_until,
                        diagnoser=args.diagnoser, envelope=Envelope.from_registry(default_registry()),
-                       log=lambda m: print(m, flush=True))
+                       log=lambda m: print(m, flush=True), secrets=secret_values(env))
     print(json.dumps({k: summary[k] for k in ("alarms", "unresolved", "reverts")}, indent=2)[:3000])
     print(json.dumps({"decisions": [(d["hypothesis_id"], d["decision"], d["reasons"]) for d in summary["decisions"]],
                       "recipes": summary["recipes"]}, indent=2))

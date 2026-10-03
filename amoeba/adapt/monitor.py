@@ -85,6 +85,7 @@ class Alarm(BaseModel):
     signals: list[str] = Field(default_factory=list)       # cause alarms: the cause(s) that rose
     window_orders: list[int] = Field(default_factory=list)
     reference_orders: list[int] = Field(default_factory=list)
+    inputs: dict = Field(default_factory=dict)   # D95: window and reference scores, reference mean and spread, threshold
 
 
 # box: monitor
@@ -112,7 +113,16 @@ def monitor(records: list[PracticeRecord], state: LoopState) -> Alarm | None:
     scores_ref = [r.score or 0.0 for r in ref]
     mu, sd = mean(scores_ref), (stdev(scores_ref) if len(scores_ref) > 1 else 0.0)
     after = mean(r.score or 0.0 for r in window)
-    if after < mu - max(c["score_sigma"] * sd, c["score_floor"]):
+    threshold = mu - max(c["score_sigma"] * sd, c["score_floor"])
+    common["inputs"] = {"window_runs": common["window"], "window_scores": [r.score for r in window],
+                        "reference_runs": [Path(r.run_dir).name or r.task_id for r in ref],
+                        "reference_scores": [r.score for r in ref], "reference_mean": round(mu, 4),
+                        "reference_sd": round(sd, 4), "score_threshold": round(threshold, 4),
+                        "window_mean": round(after, 4), "cause_rates": {s: {"window": round(_rate(window, s), 3),
+                                                                           "reference": round(_rate(ref, s), 3)}
+                                                                       for s in rose},
+                        "cause_high": c["cause_high"], "cause_low": c["cause_low"]}
+    if after < threshold:
         return Alarm(kind="score", before=round(mu, 4), after=round(after, 4), signals=rose, **common)
     if rose:
         s = rose[0]

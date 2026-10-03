@@ -153,7 +153,7 @@ def propose(d: Diagnosis, recipe: Recipe, failed: list[dict], heldout: list, llm
     tl = TracedLLM(llm, trace)
     prompt = build_prompt(d, recipe, failed)
     messages = [{"role": "user", "content": prompt}]
-    record = {"hypothesis_id": hypothesis_id, "attempts": []}
+    record = {"hypothesis_id": hypothesis_id, "prompt": prompt, "attempts": []}     # D95: kept in full
     for attempt in (1, 2):
         raw = tl.chat_messages(messages, seed=seed, max_tokens=MAX_TOKENS, agent_name="architect",
                                role="planner").content
@@ -162,7 +162,7 @@ def propose(d: Diagnosis, recipe: Recipe, failed: list[dict], heldout: list, llm
             problems = check(reply, d, recipe, failed, heldout, envelope, sample_draft)
         except (ValueError, ValidationError, json.JSONDecodeError) as x:
             reply, problems = None, [f"the reply is not valid: {str(x)[:500]}"]
-        record["attempts"].append({"attempt": attempt, "reply": raw[-4000:], "problems": problems})
+        record["attempts"].append({"attempt": attempt, "reply": raw, "problems": problems})   # D95: no truncation
         trace.event("architect_proposal", {"amoeba.box": "architect", "amoeba.attempt": attempt,
                                            "amoeba.problems": problems, "amoeba.hypothesis_id": hypothesis_id})
         if reply is not None and not problems:

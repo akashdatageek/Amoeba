@@ -38,6 +38,7 @@ from amoeba.adapt.recipe import apply_edit
 from amoeba.adapt.stream import Stream, StreamTask
 from amoeba.interp.trace import TraceWriter
 from amoeba.memory.recipes import RecipeStore
+from amoeba.adapt.evidence import EvidenceLog, Shipper, experiment_refs
 
 
 # box: loop
@@ -58,6 +59,8 @@ class Loop(BaseModel):
     families: dict[str, FamilyState] = Field(default_factory=dict)
     processed: list[int] = Field(default_factory=list)        # practice orders whose alarm step is done
     events: list[dict] = Field(default_factory=list)          # alarms, hypotheses, decisions, reverts, unresolved
+    unshipped: list[dict] = Field(default_factory=list)       # D95: runs and event rows not yet in the bucket
+    ship_blocked: list[dict] = Field(default_factory=list)    # D95: runs the key scan stopped (never shipped)
 
 
 # box: loop
@@ -107,9 +110,11 @@ def practice_jobs(tasks: list[StreamTask], stream: Stream, store: RecipeStore, r
 # box: loop
 def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], object], repeats: int = 3,
              parallel_until: int = 0, diagnoser: str = "tier0", envelope=None, calibrate: Callable | None = None,
-             log: Callable[[str], None] = print) -> dict:
+             log: Callable[[str], None] = print, secrets: list[str] = (), upload: Callable | None = None) -> dict:
     """The loop over the stream's practice tasks. llm_for(hypothesis_id) gives the Architect's client; calibrate(
-    stream, family, runner, root, store, repeats) -> calibration row (scripts/run_experiment.ensure_calibration)."""
+    stream, family, runner, root, store, repeats) -> calibration row (scripts/run_experiment.ensure_calibration).
+    D95: every event goes to <root>/events.jsonl (hash-chained); each finished run is key-scanned against `secrets`
+    and queued for `upload(local_path, object_name)` (None: no bucket yet; the queue stays in loop_state.json)."""
     from scripts.run_experiment import ensure_calibration, sample_draft
     calibrate = calibrate or ensure_calibration
     root = Path(root)
@@ -118,6 +123,8 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
     ledger = Ledger(root / "ledger.jsonl")
     g = gate_cfg()
     loop = io.load(stream)
+    ev = EvidenceLog(root)
+    shipper = Shipper(root, upload, secrets, prefix=f"{stream.name}/", pending=loop.unshipped)
     for fam in stream.families():
         store.ensure_seed(fam)
         loop.families.setdefault(fam, FamilyState(family=fam))
@@ -135,7 +142,19 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
                                recipe_version=v)
             io.add(pr)
             done[t.order] = pr
+            ev.append("practice_run", pr.model_dump(), [rec.run_dir] if rec.run_dir else [], key=f"practice:{t.order}")
+            if rec.run_dir:
+                shipper.queue_run(Path(rec.run_dir))
             log(f"[practice] #{t.order} {t.id} v{v} score={pr.score} failed={pr.failed_items} error={pr.error}")
+        if todo:
+            ship()
+
+    def ship() -> None:
+        shipper.queue_events()
+        loop.unshipped = shipper.flush()
+        loop.ship_blocked += [b for b in shipper.blocked if b not in loop.ship_blocked]
+        shipper.blocked = []
+        io.save(loop)
 
     practice = stream.practice()
     run_practice([t for t in practice if t.order <= parallel_until])
@@ -145,13 +164,15 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
             continue
         st = loop.families[t.family]
         recs = [done[o] for o in sorted(done) if o <= t.order]
-        _watch(st, recs, t, store, ledger, loop, log)
+        _watch(st, recs, t, store, ledger, loop, log, ev)
         alarm = monitor(recs, st)
         if alarm is not None:
             loop.events.append({"ts": _now(), "event": "alarm", "order": t.order, **alarm.model_dump()})
+            ev.append("alarm", {"order": t.order, **alarm.model_dump()}, key=f"alarm:{t.order}:{t.family}")
             log(f"[alarm] #{t.order} {alarm.kind}: {alarm.before:.3f} -> {alarm.after:.3f} {alarm.signals}")
             _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser,
-                    envelope, calibrate, sample_draft, g, log)
+                    envelope, calibrate, sample_draft, g, log, ev)
+            ship()
         loop.processed.append(t.order)
         io.save(loop)
     summary = write_summary(stream, root, io.records(), ledger, store, loop)
@@ -160,7 +181,7 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
 
 # box: loop
 def _watch(st: FamilyState, recs: list[PracticeRecord], t: StreamTask, store: RecipeStore, ledger: Ledger,
-           loop: Loop, log) -> None:
+           loop: Loop, log, ev: EvidenceLog | None = None) -> None:
     """§9.3 rollback watch over the practice tasks after an accept."""
     if not st.watch:
         return
@@ -178,6 +199,8 @@ def _watch(st: FamilyState, recs: list[PracticeRecord], t: StreamTask, store: Re
         row["reverted_to"] = back.version
         ledger.append({**row, "gate_version": loop_gate_version()})
     loop.events.append({"ts": _now(), **row})
+    if ev is not None:
+        ev.append(row["event"], row, key=f"{row['event']}:{st.family}:{t.order}")
     log(f"[watch] {row}")
     st.watch = None
 
@@ -189,8 +212,10 @@ def loop_gate_version() -> str:
 
 # box: loop
 def _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser, envelope,
-            calibrate, sample_draft, g, log) -> None:
+            calibrate, sample_draft, g, log, ev=None) -> None:
+    ev = ev or EvidenceLog(root)
     diag = diagnose(alarm, recs, stream) if diagnoser != "none" else diagnose_none(alarm)
+    ev.append("diagnosis", diag.model_dump(), key=f"diagnosis:{t.family}:{t.order}")
     (root / "diagnoses").mkdir(parents=True, exist_ok=True)
     (root / "diagnoses" / f"o{t.order:02d}-{t.family}.json").write_text(diag.model_dump_json(indent=2), encoding="utf-8")
     loop.events.append({"ts": _now(), "event": "diagnosis", "order": t.order, "family": t.family,
@@ -210,8 +235,9 @@ def _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_f
             continue
         quota = ledger.hypotheses_used(t.family) + 1 if loop_gate_version() == "v3" else None
         if quota is not None and alpha_for(quota) is None:      # D91: the family's fixed quota is spent
-            ledger.append({"event": "quota_spent", "family": t.family, "order": t.order, "hypothesis_id": hid,
-                           "gate_version": "v3"})
+            qrow = ledger.append({"event": "quota_spent", "family": t.family, "order": t.order,
+                                  "hypothesis_id": hid, "gate_version": "v3"})
+            ev.append("quota_spent", qrow, key=f"quota_spent:{hid}")
             loop.events.append({"ts": _now(), "event": "quota_spent", "order": t.order, "family": t.family})
             log(f"[gate] {t.family}: hypothesis quota spent; no Architect call")
             tried.append("quota_spent")
@@ -229,22 +255,29 @@ def _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_f
                              envelope=envelope)
             trace.close()
             saved.write_text(json.dumps(rec, indent=2, ensure_ascii=False), encoding="utf-8")
+            ev.append("architect", rec, [saved, arch_dir / f"{hid}.trace.jsonl"], key=f"architect:{hid}")
         if h is None:
-            ledger.append({"event": "no_hypothesis", "family": t.family, "hypothesis_id": hid, "order": t.order,
-                           "gate_version": loop_gate_version()})
+            nrow = ledger.append({"event": "no_hypothesis", "family": t.family, "hypothesis_id": hid,
+                                  "order": t.order, "gate_version": loop_gate_version()})
+            ev.append("no_hypothesis", nrow, key=f"no_hypothesis:{hid}")
             loop.events.append({"ts": _now(), "event": "no_hypothesis", "order": t.order, "hypothesis_id": hid})
             log(f"[architect] {hid}: no valid hypothesis after one retry")
             break
         log(f"[architect] {hid}: {h.edit.op} {json.dumps(h.edit.params)[:200]} predicted {h.predicted_delta:+.2f}")
-        ledger.append({"event": "hypothesis", "family": t.family, "hypothesis_id": hid, "recipe_from": recipe.version,
-                       "edit": h.edit.model_dump(), "predicted_delta": h.predicted_delta, "rationale": h.rationale,
-                       "created_by": "architect", "order": t.order, "diagnosis": diag.cause,
-                       "gate_version": loop_gate_version()})
+        hrow = ledger.append({"event": "hypothesis", "family": t.family, "hypothesis_id": hid,
+                              "recipe_from": recipe.version, "edit": h.edit.model_dump(),
+                              "predicted_delta": h.predicted_delta, "rationale": h.rationale,
+                              "created_by": "architect", "order": t.order, "diagnosis": diag.cause,
+                              "gate_version": loop_gate_version()})
+        ev.append("hypothesis", hrow, key=f"hypothesis:{hid}")
         res = experiment(recipe, h.edit, hid, stream, runner, root, repeats, created_by="architect")
+        ev.append("experiment", res.model_dump(exclude={"pairs"}) | {"n_pairs": len(res.pairs)},
+                  experiment_refs(root, root / "experiments" / hid), key=f"experiment:{hid}")
         recipe_B = apply_edit(recipe, h.edit, created_by="architect", hypothesis_id=hid)
         dec = decide(recipe, recipe_B, h, res, cal["noise"], ledger.tried_since_accept(t.family) + 1, heldout,
                      envelope, sample_draft(res), hypothesis_index=quota)
         row = ledger.append({**decision_row(h, recipe, recipe_B, dec, f"experiments/{hid}/"), "order": t.order})
+        ev.append("decision", row, key=f"decision:{hid}")
         store.record(diag.model_dump(exclude={"examples"}), h.model_dump(mode="json"), row)
         tried.append(hid)
         loop.events.append({"ts": _now(), "event": "decision", "order": t.order, "hypothesis_id": hid,
@@ -260,6 +293,7 @@ def _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_f
             break
     if not accepted:
         row = log_unresolved(root, alarm.model_dump(), diag, tried)
+        ev.append("human_queue", row, key=f"human_queue:{t.family}:{t.order}")
         ledger.append({"event": "unresolved", "family": t.family, "order": t.order, "hypotheses_tried": tried,
                        "gate_version": loop_gate_version()})
         loop.events.append({"ts": _now(), "event": "unresolved", "order": t.order, "hypotheses_tried": tried})

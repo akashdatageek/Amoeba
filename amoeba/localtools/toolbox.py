@@ -126,13 +126,18 @@ class LocalToolbox:
         self.office: dict | None = None              # D71: office_check(), run when the xlsx skill is attached
 
     # ---- the server -------------------------------------------------------------------------------------------
+    def server_env(self) -> dict[str, str]:
+        """Exactly what the local-tool server (and every agent command it runs) gets: no keys, no proxy, no cloud
+        credentials (D95)."""
+        return {"PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]),
+                "HOME": str(self.home.resolve()), "LANG": "C.UTF-8", "MPLBACKEND": "Agg",
+                "PYTHONDONTWRITEBYTECODE": "1", "AMOEBA_SANDBOX": "1"}
+
     def start(self) -> None:
         cmd = self.setup.command or list(self.setup.config["command"])
         self.home.mkdir(parents=True, exist_ok=True)
-        env = {"PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]),
-               "HOME": str(self.home.resolve()), "LANG": "C.UTF-8", "MPLBACKEND": "Agg",
-               "PYTHONDONTWRITEBYTECODE": "1", "AMOEBA_SANDBOX": "1"}
-        self.server = StdioServer(cmd, self.workspace.resolve(), env, errlog=self.run_dir / "localtools.stderr.log")
+        self.server = StdioServer(cmd, self.workspace.resolve(), self.server_env(),
+                                  errlog=self.run_dir / "localtools.stderr.log")
         try:
             self.listing = self.server.start()
         except Exception as e:                        # no CLI, no start: the run goes on without local tools

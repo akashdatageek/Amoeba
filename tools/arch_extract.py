@@ -835,6 +835,19 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes versions on the Gate's accept and reverts on the rollback watch.",
          anchors=[]),
+    dict(id="evidence", view="adapt", title="Evidence log (D95)", kind="code", plan=None,
+         sentence="Writes every loop event to one append-only, hash-chained log outside the agents' reach, with a "
+                  "fingerprint of every run folder it refers to, and queues finished runs for an off-container copy.",
+         what=["One events.jsonl per stream, written only by the harness: alarms with their inputs, diagnoses, every "
+               "Architect prompt and full reply, experiments, Gate decisions, reverts, human-queue entries and "
+               "finished practice runs.",
+               "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; "
+               "scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
+               "A finished run is key-scanned and queued for the bucket copy; unshipped items are listed in "
+               "loop_state.json. Cloud credentials are removed from every run's environment."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code writes, chains and verifies the log.",
+         anchors=[]),
     dict(id="loop", view="adapt", title="Loop driver (D89)", kind="code", plan=None,
          sentence="Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes "
                   "it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
