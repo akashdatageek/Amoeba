@@ -38,6 +38,7 @@ class Diagnosis(BaseModel):
     shares: dict[str, dict] = Field(default_factory=dict)   # cause -> {"window": share, "reference": share}
 
 
+# box: diagnoser
 def _load(p: Path) -> dict:
     try:
         return json.loads(p.read_text(encoding="utf-8"))
@@ -45,10 +46,12 @@ def _load(p: Path) -> dict:
         return {}
 
 
+# box: diagnoser
 def _steps(run_dir: Path) -> list[dict]:
     return [s for f in sorted((run_dir / "artifacts").glob("step_*.json")) if (s := _load(f))]
 
 
+# box: diagnoser
 def _plan(run_dir: Path) -> dict:
     return _load(run_dir / "plan.json")
 
@@ -95,6 +98,7 @@ def run_signals(run_dir: str | Path, failed_items: list[str]) -> dict:
     return {"by_cause": out, "counts": counts, "tools": tools, "steps_by_n": by_step}
 
 
+# box: diagnoser
 def _allowed(cause: str) -> list[str]:
     return list(adapt_config()["diagnoser"]["allowed_edits"].get(cause, []))
 
@@ -138,6 +142,7 @@ def diagnose(alarm: Alarm, records: list[PracticeRecord], stream: Stream) -> Dia
                      alarm=alarm.model_dump(), shares=shares)
 
 
+# box: diagnoser
 def _where(cause: str, sigs: list[dict]) -> dict:
     """A Selector-shaped hint: the step kind where the cause shows most, and a tool its roles hold."""
     kinds: Counter = Counter()
@@ -156,6 +161,7 @@ def _where(cause: str, sigs: list[dict]) -> dict:
     return out
 
 
+# box: diagnoser
 def examples(window: list[PracticeRecord], sigs: list[dict], cause: str, stream: Stream, k: int) -> list[dict]:
     """Up to k practice examples: the task prompt, the failing (else the answer) step's do / output / done_when, and
     the evidence lines. Held-out tasks never appear here."""

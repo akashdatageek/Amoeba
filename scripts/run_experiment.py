@@ -93,6 +93,7 @@ def sample_draft(res) -> Draft | None:
     return None
 
 
+# box: experimenter
 def cfg_gate_version() -> str:
     return adapt_config()["gate"].get("version", "v2")
 

@@ -79,6 +79,7 @@ class Alarm(BaseModel):
     reference_orders: list[int] = Field(default_factory=list)
 
 
+# box: monitor
 def _rate(recs: list[PracticeRecord], sig: str) -> float:
     return sum(sig in r.signals() for r in recs) / len(recs)
 

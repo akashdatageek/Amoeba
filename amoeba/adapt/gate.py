@@ -264,6 +264,7 @@ def honesty_shares(post: list) -> tuple:
     return share("A"), share("B"), errs("A"), errs("B")
 
 
+# box: gate
 def _counts(post: list, arm: str) -> dict:
     out: dict = {}
     for p in post:

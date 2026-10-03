@@ -835,6 +835,21 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes versions on the Gate's accept and reverts on the rollback watch.",
          anchors=[]),
+    dict(id="loop", view="adapt", title="Loop driver (D89)", kind="code", plan=None,
+         sentence="Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes "
+                  "it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
+         what=["Calibrates the noise floor first, then runs every practice task with its kind's current recipe (shifts "
+               "apply: the later rubrics ask for more, a removed tool is taken out). Tasks before the shift may run in "
+               "one batch; later ones run one at a time, because each can trigger a change.",
+               "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then "
+               "up to three Architect proposals, each measured by the Experimenter and decided by the Gate; an accept "
+               "goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a "
+               "cool-down.",
+               "Everything it does is on disk — practice runs, experiments, ledger, recipes, proposals, diagnoses, "
+               "state — so a crash resumes where it stopped, and it writes summary.json and a plain report."],
+         proposes="Nothing itself; the Architect inside it proposes.",
+         disposes="Plain code orders the runs and calls every box in turn.",
+         anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and

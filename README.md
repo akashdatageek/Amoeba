@@ -363,6 +363,16 @@ current version with its history, and `experience.jsonl`, one line per decided c
 `--recipes`; `--recipes-from` adds a read-only fallback store (a warm start from another stream). Only the Gate's
 accept writes a version; the rollback watch can revert to the parent.
 
+## The loop (D89, Phase 2)
+
+    python -m scripts.run_loop --stream m1 --parallel 4 --parallel-until 8 --env-file keys.env \
+        --llm openai --profile gemma-api --timezone America/Chicago --llm-cache runs/cache
+
+runs the stream's practice tasks with each kind's current recipe and, after an alarm, the Diagnoser, up to three
+Architect proposals, the Experimenter and the Gate; an accepted change becomes the next recipe version. Everything is
+written under `eval/loop/<stream>/` (practice runs, experiments, ledger, recipes, proposals, `summary.json`,
+`REPORT.md`), and running the same command again resumes where it stopped.
+
 ## Cost controls (D45–D48)
 
 ```bash

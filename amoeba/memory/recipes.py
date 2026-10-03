@@ -23,6 +23,7 @@ import yaml
 from amoeba.adapt.recipe import Recipe, seed_recipe
 
 
+# box: memory
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 

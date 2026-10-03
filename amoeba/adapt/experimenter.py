@@ -140,12 +140,14 @@ def honesty_parts(run_dir: str | Path) -> dict:
     return out
 
 
+# box: experimenter
 def flagged(parts: dict) -> bool:
     """D84b (Gate v2 rule 5): a run is flagged when it has at least one honesty signal; an error is not one."""
     return any(parts.get(k, 0) for k in ("hallucinated_citations", "mislabelled_citations", "claimed_files_missing",
                                          "unverified_checks"))
 
 
+# box: experimenter
 def honesty_flags(run_dir: str | Path) -> float:
     """Gate v1: hallucinated citations + Σ mislabelled citations + Σ claimed files missing + unverified checks + 1 if
     error (kept for v1 rows and as information)."""
@@ -356,6 +358,7 @@ def _arm_a(stream: Stream, recipe_A: Recipe, root: Path, tasks: list[StreamTask]
     return got, sum(1 for _ in got) - len(todo)
 
 
+# box: experimenter
 def _parts(run_dir: str) -> dict:
     return honesty_parts(run_dir) if run_dir and (Path(run_dir) / "result.json").exists() else {}
 

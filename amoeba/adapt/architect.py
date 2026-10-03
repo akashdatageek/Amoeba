@@ -62,6 +62,7 @@ class ArchitectReply(BaseModel):
         return v
 
 
+# box: architect
 def _allowed_ok(edit: Edit, allowed: list[str]) -> bool:
     """An allowed entry is an op, or "set_run_option:<name>" for one run option only."""
     if edit.op in allowed:
@@ -69,6 +70,7 @@ def _allowed_ok(edit: Edit, allowed: list[str]) -> bool:
     return edit.op == "set_run_option" and f"set_run_option:{edit.params.get('name')}" in allowed
 
 
+# box: architect
 def allowed_text(allowed: list[str]) -> str:
     lines = []
     for a in allowed:
@@ -80,6 +82,7 @@ def allowed_text(allowed: list[str]) -> str:
     return "\n".join(lines)
 
 
+# box: architect
 def failed_text(failed: list[dict]) -> str:
     if not failed:
         return "None yet."
@@ -87,6 +90,7 @@ def failed_text(failed: list[dict]) -> str:
                      f"reasons {r.get('reasons')}" for r in failed)
 
 
+# box: architect
 def examples_text(examples: list[dict]) -> str:
     out = []
     for i, e in enumerate(examples, 1):
@@ -96,6 +100,7 @@ def examples_text(examples: list[dict]) -> str:
     return "\n\n".join(out) or "None."
 
 
+# box: architect
 def diagnosis_text(d: Diagnosis) -> str:
     keep = {k: v for k, v in d.model_dump().items() if k in ("symptom", "cause", "where", "evidence", "counts")}
     return yaml.safe_dump(keep, sort_keys=False, allow_unicode=True).strip()
@@ -109,6 +114,7 @@ def build_prompt(d: Diagnosis, recipe: Recipe, failed: list[dict]) -> str:
                   examples=examples_text(d.examples))
 
 
+# box: architect
 def parse_reply(text: str) -> ArchitectReply:
     """The first JSON object in the reply (a <thought> block or a code fence around it is allowed)."""
     t = re.sub(r"<thought>.*?</thought>", "", text or "", flags=re.S)

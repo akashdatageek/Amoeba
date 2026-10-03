@@ -143,6 +143,7 @@ class Stream(BaseModel):
         return sorted({t.family for t in self.tasks})
 
 
+# box: stream
 def _natural(s: str) -> list:
     return [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", s)]
 
