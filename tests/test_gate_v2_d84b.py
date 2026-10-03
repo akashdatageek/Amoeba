@@ -60,7 +60,7 @@ def test_rule_5b_errors_are_reliability_not_honesty():
     assert edge.decision == "accept"                           # exactly the margin is not "more than" it
 
 
-def test_ledger_rows_carry_the_gate_version_and_calibration_is_per_slice(tmp_path):
+def test_ledger_rows_carry_the_gate_version_and_calibration_is_per_slice(tmp_path, gate_v2):
     from scripts.run_experiment import hand_check
     s = stream()
     row = hand_check(s, Hypothesis(hypothesis_id="h-rule", family="calc", edit=RULE, predicted_delta=0.3), Arms(),

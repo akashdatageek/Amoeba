@@ -24,7 +24,7 @@ recipe:                       # D81: what a team recipe may hold (validate_recip
     tools: ["calc"]
 
 experiment:                   # D83: Box 7
-  repeats: 3                  # P5: 5 held-out post tasks x 3 repeats = 15 pairs per hypothesis
+  repeats: 3                  # P5: 5 held-out post tasks x 3 repeats = 15 pairs; D91/D92: 15 gate tasks x 3
   parallel: 8                 # runs at once (SubprocessRunner)
   # every experiment run gets these run_task flags (both arms alike); the per-job ones (--recipes, --seed,
   # --drafts-from, cache namespace, runs dir) are added by the Experimenter. Plan options a recipe may set go in
@@ -34,7 +34,16 @@ experiment:                   # D83: Box 7
   option_defaults: {replan: "on", self_refine: "on-issues", collab: "critique"}
 
 gate:                         # D84: Box 8, decision rules in order (spec §9.2); any failure rejects
-  version: "v2"               # D84b: v1 = Stage A (rule 5 summed flags, errors included); v2 = rules 5 and 5b below
+  version: "v3"               # D84b: v1 = Stage A (rule 5 summed flags, errors included); v2 = rules 5 and 5b below;
+                              # D91: v3 = rule 2 on per-task means, permutation test, fixed budget, no rule 3
+  v3:                         # D91 (fixed Oct 3, 2026, before any gate-set data)
+    # alpha_i of the i-th hypothesis of a family in one stream (0.05 / 6 each); the list length is the budget
+    alphas: [0.008333333333333333, 0.008333333333333333, 0.008333333333333333,
+             0.008333333333333333, 0.008333333333333333, 0.008333333333333333]
+    check_alpha: 0.05         # the single pre-registered check (rows marked "check": true; no budget, no store change)
+    exact_max_tasks: 20       # the permutation test enumerates all 2^n sign assignments up to this many tasks ...
+    random_assignments: 100000   # ... otherwise this many, drawn with the seed below
+    seed: 0
   min_gain: 0.05              # 2. mean(d) must beat max(noise, min_gain)
   alpha: 0.05                 # 2. one-sided paired test, p x N < alpha (Bonferroni over hypotheses since the last accept)
   ttest_min_n: 10             # 2. a t-test when every d is distinct and n >= this; otherwise Wilcoxon signed-rank

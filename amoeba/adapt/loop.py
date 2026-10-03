@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 from amoeba.adapt.architect import MAX_PER_ALARM, log_unresolved, propose
 from amoeba.adapt.diagnoser import diagnose, diagnose_none
 from amoeba.adapt.experimenter import Job, experiment
-from amoeba.adapt.gate import cfg as gate_cfg, decide, decision_row, rollback_watch
+from amoeba.adapt.gate import alpha_for, cfg as gate_cfg, decide, decision_row, rollback_watch
 from amoeba.adapt.ledger import Ledger
 from amoeba.adapt.monitor import LoopState, PracticeRecord, monitor, practice_record
 from amoeba.adapt.recipe import apply_edit
@@ -208,6 +208,14 @@ def _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_f
                 accepted = True
                 break
             continue
+        quota = ledger.hypotheses_used(t.family) + 1 if loop_gate_version() == "v3" else None
+        if quota is not None and alpha_for(quota) is None:      # D91: the family's fixed quota is spent
+            ledger.append({"event": "quota_spent", "family": t.family, "order": t.order, "hypothesis_id": hid,
+                           "gate_version": "v3"})
+            loop.events.append({"ts": _now(), "event": "quota_spent", "order": t.order, "family": t.family})
+            log(f"[gate] {t.family}: hypothesis quota spent; no Architect call")
+            tried.append("quota_spent")
+            break
         cal = calibrate(stream, t.family, runner, root, store.root, repeats)
         arch_dir = root / "architect"
         arch_dir.mkdir(parents=True, exist_ok=True)
@@ -235,7 +243,7 @@ def _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_f
         res = experiment(recipe, h.edit, hid, stream, runner, root, repeats, created_by="architect")
         recipe_B = apply_edit(recipe, h.edit, created_by="architect", hypothesis_id=hid)
         dec = decide(recipe, recipe_B, h, res, cal["noise"], ledger.tried_since_accept(t.family) + 1, heldout,
-                     envelope, sample_draft(res))
+                     envelope, sample_draft(res), hypothesis_index=quota)
         row = ledger.append({**decision_row(h, recipe, recipe_B, dec, f"experiments/{hid}/"), "order": t.order})
         store.record(diag.model_dump(exclude={"examples"}), h.model_dump(mode="json"), row)
         tried.append(hid)
@@ -273,7 +281,8 @@ def write_summary(stream: Stream, root: Path, records: list[PracticeRecord], led
                "decisions": [r for r in rows if r.get("event") == "decision"],
                "unresolved": [r for r in rows if r.get("event") == "unresolved"],
                "reverts": [r for r in rows if r.get("event") == "reverted"],
-               "recipes": store.index()}
+               "recipes": store.index(),
+               "prediction_accuracy": prediction_accuracy(rows)}
     (root / "summary.json").write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     lines = [f"# Loop run on stream {stream.name}", "", "| order | task | phase | recipe | score | failed items |",
              "|---|---|---|---|---|---|"]
@@ -281,9 +290,35 @@ def write_summary(stream: Stream, root: Path, records: list[PracticeRecord], led
     for r in recs:
         lines.append(f"| {r.order} | {r.task_id} | {phase.get(r.task_id, '')} | v{r.recipe_version} | {r.score} | "
                      f"{', '.join(r.failed_items) or '—'} |")
+    pa = summary["prediction_accuracy"]
+    lines += ["", "## Prediction accuracy (reported, never a Gate rule: D91)", "",
+              f"{pa['n']} decided hypotheses; sign right in {pa['sign_right']} "
+              f"({pa['sign_share'] if pa['sign_share'] is not None else '—'}); mean absolute size error "
+              f"{pa['mean_abs_error'] if pa['mean_abs_error'] is not None else '—'}.", ""]
+    for r in pa["rows"]:
+        lines.append(f"- {r['hypothesis_id']}: predicted {r['predicted']:+.3f}, observed {r['observed']:+.3f}, "
+                     f"sign {'right' if r['sign_ok'] else 'wrong'}, error {r['abs_error']:.3f}")
     lines += ["", "## Events", ""]
     for e in loop.events:
         lines.append("- " + json.dumps({k: v for k, v in e.items() if k not in ("window", "reference_orders")},
                                        ensure_ascii=False)[:600])
     (root / "REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return summary
+
+
+# box: loop
+def prediction_accuracy(rows: list[dict]) -> dict:
+    """D91: how well the Architect's predicted_delta matched the observed gain (sign and size), over the stream's
+    decided hypotheses (post-hoc rows and the pre-registered check left out)."""
+    out = []
+    for r in rows:
+        if r.get("event") != "decision" or r.get("post_hoc") or r.get("check") or r.get("observed_delta") is None \
+                or r.get("predicted_delta") is None:
+            continue
+        p, o = float(r["predicted_delta"]), float(r["observed_delta"])
+        out.append({"hypothesis_id": r.get("hypothesis_id"), "predicted": p, "observed": o,
+                    "sign_ok": (p > 0) - (p < 0) == (o > 0) - (o < 0), "abs_error": round(abs(p - o), 4)})
+    n = len(out)
+    right = sum(x["sign_ok"] for x in out)
+    return {"n": n, "sign_right": right, "sign_share": round(right / n, 3) if n else None,
+            "mean_abs_error": round(sum(x["abs_error"] for x in out) / n, 4) if n else None, "rows": out}

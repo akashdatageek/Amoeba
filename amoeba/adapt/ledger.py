@@ -37,12 +37,20 @@ class Ledger:
         return n
 
     def failed(self, family: str) -> list[dict]:
-        """The family's rejected hypotheses (edit and observed result), for the Architect and the repeat check."""
-        return [r for r in self.rows(family, "decision") if r.get("decision") == "reject"]
+        """The family's rejected hypotheses (edit and observed result), for the Architect and the repeat check. A
+        pre-registered check (D91, "check": true) is a person's test, not the loop's: never shown to the Architect."""
+        return [r for r in self.rows(family, "decision") if r.get("decision") == "reject" and not r.get("check")]
 
-    def calibration(self, family: str, recipe_hash: str, slice_key: str | None = None) -> dict | None:
+    def hypotheses_used(self, family: str) -> int:
+        """D91: hypotheses of the family that reached a v3 Gate decision in this stream (accepts included; no reset);
+        post-hoc re-decisions and the pre-registered check do not count. The next one is number this + 1."""
+        return sum(1 for r in self.rows(family, "decision") if r.get("gate_version") == "v3"
+                   and not r.get("post_hoc") and not r.get("check"))
+
+    def calibration(self, family: str, recipe_hash: str, slice_key: str | None = None,
+                    v3_only: bool = False) -> dict | None:
         """The calibration of a recipe version on a held-out post slice (D84b: kept per slice; Stage A rows carry no
-        slice and match slice_key None)."""
+        slice and match slice_key None). v3_only (D91): only a calibration with per-task noise counts."""
         rows = [r for r in self.rows(family, "calibration") if r.get("recipe_hash") == recipe_hash
-                and r.get("slice") == slice_key]
+                and r.get("slice") == slice_key and (not v3_only or r.get("gate_version") == "v3")]
         return rows[-1] if rows else None

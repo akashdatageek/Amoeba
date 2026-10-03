@@ -26,7 +26,7 @@ from pathlib import Path
 import yaml
 
 from amoeba.adapt.experimenter import SubprocessRunner, calibrate, experiment, experiment_flags
-from amoeba.adapt.gate import Hypothesis, decide, decision_row, noise_floor
+from amoeba.adapt.gate import Hypothesis, decide, decision_row, noise_floor, noise_floor_tasks, task_spread
 from amoeba.adapt.ledger import Ledger
 from amoeba.adapt.recipe import adapt_config, apply_edit, load_recipe, seed_recipe, write_store
 from amoeba.adapt.stream import Stream, load_stream
@@ -104,13 +104,19 @@ def ensure_calibration(stream: Stream, family: str, runner, root: Path, store: P
     ledger = Ledger(root / "ledger.jsonl")
     recipe_A = load_recipe(store, family) or seed_recipe(family)
     key = stream.slice_key(family, "post")
-    row = ledger.calibration(family, recipe_A.hash(), key)
+    v3 = cfg_gate_version() == "v3"
+    row = ledger.calibration(family, recipe_A.hash(), key, v3_only=v3)
     if row is not None:
         return row
     cal = calibrate(recipe_A, stream, runner, root, repeats)
     post = cal.post()
+    spread = task_spread(cal) if v3 else {}          # D91: per-task noise across seeds, not only pair equality
+    extra = {"n_tasks": len(spread), "task_spread": spread,
+             "mean_task_spread": round(sum(e["spread"] for e in spread.values()) / len(spread), 4) if spread else None,
+             "pairs_equal": sum(abs(p.d) < 1e-9 for p in post)} if v3 else {}
     return ledger.append({"event": "calibration", "family": family, "recipe_from": recipe_A.version,
-                          "recipe_hash": recipe_A.hash(), "noise": noise_floor(cal), "n": len(post),
+                          "recipe_hash": recipe_A.hash(), "noise": noise_floor_tasks(cal) if v3 else noise_floor(cal),
+                          "n": len(post), **extra,
                           "d_AA_mean": round(sum(p.d for p in post) / len(post), 4) if post else None,
                           "score_A_mean": round(sum(p.score_A for p in post) / len(post), 4) if post else None,
                           "score_A2_mean": round(sum(p.score_B for p in post) / len(post), 4) if post else None,
@@ -122,9 +128,11 @@ def ensure_calibration(stream: Stream, family: str, runner, root: Path, store: P
 
 # box: gate
 def hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | None = None,
-               repeats: int = 3) -> dict:
+               repeats: int = 3, check: bool = False) -> dict:
     """One hand-written hypothesis through Box 7 and Box 8: calibration if needed, the experiment, the decision.
-    Returns the ledger's decision row; on accept recipe B becomes the family's current version in `store`."""
+    Returns the ledger's decision row; on accept recipe B becomes the family's current version in `store`.
+    check (D91): the single pre-registered check — decided under v3 at gate.v3.check_alpha, rows marked
+    "check": true, outside the loop's quota, and the recipe store is never changed."""
     root = Path(root)
     store = Path(store or root / "recipes")
     ledger = Ledger(root / "ledger.jsonl")
@@ -137,14 +145,24 @@ def hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | 
     if not [r for r in ledger.rows(h.family, "hypothesis") if r.get("hypothesis_id") == h.hypothesis_id]:
         ledger.append({"event": "hypothesis", "family": h.family, "hypothesis_id": h.hypothesis_id,
                        "recipe_from": recipe_A.version, "edit": h.edit.model_dump(),
-                       "predicted_delta": h.predicted_delta, "rationale": h.rationale, "created_by": "human"})
+                       "predicted_delta": h.predicted_delta, "rationale": h.rationale, "created_by": "human",
+                       **({"check": True} if check else {})})
     # (resumed after a crash: the hypothesis row is already there and finished runs are reused, D73)
     res = experiment(recipe_A, h.edit, h.hypothesis_id, stream, runner, root, repeats)
     print(summary(res), flush=True)
     tools = default_registry()
+    g = adapt_config()["gate"]
+    v3 = cfg_gate_version() == "v3"
+    if check and not v3:
+        raise SystemExit("--check is a Gate v3 pre-registered check (D91)")
+    quota = None if check or not v3 else ledger.hypotheses_used(h.family) + 1
     dec = decide(recipe_A, recipe_B, h, res, cal["noise"], ledger.tried_since_accept(h.family) + 1,
-                 stream.heldout(h.family, everything=True), Envelope.from_registry(tools), sample_draft(res))
-    row = ledger.append(decision_row(h, recipe_A, recipe_B, dec, f"experiments/{h.hypothesis_id}/"))
+                 stream.heldout(h.family, everything=True), Envelope.from_registry(tools), sample_draft(res),
+                 hypothesis_index=quota, alpha=float(g["v3"]["check_alpha"]) if check else None)
+    row = ledger.append({**decision_row(h, recipe_A, recipe_B, dec, f"experiments/{h.hypothesis_id}/"),
+                         **({"check": True} if check else {})})
+    if check:                                      # D91: a person's test; the store and the experience log stay out
+        return row
     mem = RecipeStore(store)
     mem.record(None, h.model_dump(mode="json"), row)
     if dec.decision == "accept":                   # Box 9 (D88): only the Gate's accept writes a version
@@ -199,7 +217,10 @@ def parse(argv=None):
     p.add_argument("--calibrate-only", action="store_true", help="run the noise-floor calibration (A vs A') only")
     p.add_argument("--redecide", default=None, metavar="HYPOTHESIS_ID",
                    help="D84b: decide a hypothesis again from its saved pairs (no runs); the row is marked post_hoc")
-    p.add_argument("--gate-version", default="v2", choices=["v1", "v2"], help="with --redecide")
+    p.add_argument("--gate-version", default="v2", choices=["v1", "v2", "v3"], help="with --redecide")
+    p.add_argument("--check", action="store_true",
+                   help="D91: the single pre-registered check (Gate v3 at gate.v3.check_alpha, rows marked check, "
+                        "outside the loop's quota, recipe store unchanged)")
     p.add_argument("--env-file", action="append", default=[], help="KEY=VALUE files for the runs (never printed)")
     return p.parse_known_args(argv)
 
@@ -224,7 +245,7 @@ def main(argv=None) -> int:
         print("give --edit or --calibrate-only")
         return 2
     h = Hypothesis.model_validate({"family": args.family, **yaml.safe_load(Path(args.edit).read_text(encoding="utf-8"))})
-    row = hand_check(stream, h, runner, root, store, repeats)
+    row = hand_check(stream, h, runner, root, store, repeats, check=args.check)
     print(json.dumps(row, indent=2))
     return 0
 

@@ -36,7 +36,7 @@ def hyp(edit=RULE, predicted=0.2):
     return Hypothesis(hypothesis_id="h", family="calc", edit=edit, predicted_delta=predicted)
 
 
-def run(res, h=None, noise=0.06, N=1, heldout=(), version=None):
+def run(res, h=None, noise=0.06, N=1, heldout=(), version="v2"):
     h = h or hyp()
     a = seed_recipe("calc")
     return decide(a, apply_edit(a, h.edit), h, res, noise, N, list(heldout), ENV, version=version)
@@ -139,7 +139,7 @@ class Arms(InProcessRunner):
         return mock(planner=[DIAMOND], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=reply)
 
 
-def test_the_hand_check_end_to_end(tmp_path):
+def test_the_hand_check_end_to_end(tmp_path, gate_v2):
     from scripts.run_experiment import hand_check
     h = Hypothesis(hypothesis_id="h-rule", family="calc", edit=RULE, predicted_delta=0.3)
     row = hand_check(stream(), h, Arms(), tmp_path, repeats=3)

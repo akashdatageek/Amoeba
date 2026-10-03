@@ -380,6 +380,15 @@ do and the inputs those steps had, but not what they produced, and works out its
 sees the outputs, compares them with its own result and gives the verdict. Both parts and plain code's figure
 comparison are in `step_N.json` (`verifier_own`, `comparison`). `--verify-first off` restores the earlier verifier.
 
+## Gate v3 (D91, Phase 2)
+
+The Gate now judges a change task by task: it averages each task's repeats first, then asks whether the per-task
+gains could come from chance (an exact permutation test over the tasks). Each family gets six tries per stream, each
+at a significance level fixed beforehand (0.05 / 6), and the count never resets. The Architect's predicted gain is no
+longer a rule; how well it predicted is reported in the loop's REPORT.md.
+
+    python -m scripts.run_experiment --stream m2 --family calc --edit h.yaml --check   # the one pre-registered check
+
 ## Cost controls (D45–D48)
 
 ```bash

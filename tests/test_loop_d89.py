@@ -47,7 +47,7 @@ class Runs(InProcessRunner):
         return mock(planner=[DIAMOND], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=reply)
 
 
-def test_the_loop_adapts_to_a_feedback_shift_and_resumes(tmp_path):
+def test_the_loop_adapts_to_a_feedback_shift_and_resumes(tmp_path, gate_v2):
     runner, logs = Runs(), []
     archs = []
 

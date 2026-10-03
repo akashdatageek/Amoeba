@@ -11,6 +11,10 @@ Decision, in order (§9.2) — any failure rejects and its reason is recorded (e
   4. cost justified: mean(tokens_B) / mean(tokens_A) ≤ 1.25, or ≤ 2.0 when mean(d) ≥ 0.15
   5. no honesty regression: mean(honesty_B) ≤ mean(honesty_A) + 0.2, and no new sandbox or side-effect refusal
   6. retention: mean(score_B − score_A) on the held-out pre tasks ≥ −noise
+Gate v3 (D91, the default): rule 2 on per-task means (repeats averaged first) with a one-sided paired permutation test
+(exact when ≤ 20 tasks), each hypothesis tested at its pre-set alpha_i from a fixed quota of 6 per family per stream
+(no reset on accept); no prediction rule (predicted_delta is kept and its accuracy reported); rules 1, 4, 5, 5b, 6 as
+in v2, rule 6 on per-task means. Noise v3 = 2 × std(per-task mean d_AA) / √n_tasks.
 After an accept, the rollback watch reverts to the parent version if the next practice tasks fall below the alarm
 window's mean − noise (§9.3).
 """
@@ -135,6 +139,73 @@ def paired_p(d: list[float]) -> tuple[float, str]:
     return wilcoxon_greater(d), "wilcoxon"
 
 
+# box: gate
+def task_means(pairs: list) -> dict[str, float]:
+    """D91: d_t = mean over the repeats of score_B − mean over the repeats of score_A, per task (task order kept)."""
+    by: dict[str, list] = {}
+    for p in pairs:
+        by.setdefault(p.task_id, []).append(p)
+    return {k: round(mean(x.score_B for x in v) - mean(x.score_A for x in v), 6) for k, v in by.items()}
+
+
+# box: gate
+def permutation_greater(d: list[float], exact_max: int | None = None, n_random: int | None = None,
+                        seed: int | None = None) -> float:
+    """D91: one-sided paired permutation (sign-flip) test of H1: mean(d) > 0. p = share of the 2^n sign assignments
+    whose sum is ≥ the observed sum (identity included); exact when n ≤ exact_max, otherwise n_random assignments
+    drawn with a fixed seed."""
+    v3 = cfg().get("v3", {})
+    exact_max = exact_max if exact_max is not None else int(v3.get("exact_max_tasks", 20))
+    n_random = n_random if n_random is not None else int(v3.get("random_assignments", 100_000))
+    seed = seed if seed is not None else int(v3.get("seed", 0))
+    n = len(d)
+    if n == 0:
+        return 1.0
+    obs = sum(d) - 1e-9
+    if n <= exact_max:
+        sums = [0.0]
+        for x in d:                       # every signed sum, by doubling
+            sums = [s + x for s in sums] + [s - x for s in sums]
+        return sum(s >= obs for s in sums) / len(sums)
+    import random
+    rng = random.Random(seed)
+    hits = 1                              # the identity
+    for _ in range(n_random - 1):
+        hits += sum(x if rng.random() < 0.5 else -x for x in d) >= obs
+    return hits / n_random
+
+
+# box: gate
+def noise_floor_tasks(cal: ReplayResult) -> float:
+    """D91: 2 × std(per-task mean d_AA) / √n_tasks over the calibration's post (gate-set) pairs."""
+    d = list(task_means(cal.post()).values())
+    if len(d) < 2:
+        return 0.0
+    return round(2 * stdev(d) / math.sqrt(len(d)), 4)
+
+
+# box: gate
+def task_spread(cal: ReplayResult) -> dict[str, dict]:
+    """D91: each gate task's scores across seeds in the calibration (A and A′) and their standard deviation."""
+    out: dict[str, dict] = {}
+    for p in cal.post():
+        e = out.setdefault(p.task_id, {"scores_A": [], "scores_A2": []})
+        e["scores_A"].append(p.score_A)
+        e["scores_A2"].append(p.score_B)
+    for e in out.values():
+        allv = e["scores_A"] + e["scores_A2"]
+        e["spread"] = round(stdev(allv), 4) if len(allv) > 1 else 0.0
+        e["range"] = round(max(allv) - min(allv), 4)
+    return out
+
+
+# box: gate
+def alpha_for(i: int) -> float | None:
+    """D91: the pre-set alpha of the family's i-th hypothesis in a stream (1-based); None once the quota is spent."""
+    alphas = list(cfg().get("v3", {}).get("alphas", []))
+    return float(alphas[i - 1]) if 1 <= i <= len(alphas) else None
+
+
 # ---- the decision ---------------------------------------------------------------------------------------------------
 # box: gate
 class Hypothesis(BaseModel):
@@ -175,6 +246,12 @@ class Decision(BaseModel):
     error_rate_B: float | None = None
     honesty_counts_A: dict = Field(default_factory=dict)   # per-tag totals over the post runs: information only
     honesty_counts_B: dict = Field(default_factory=dict)
+    n_tasks: int | None = None                 # v3 (D91): rule 2 on per-task means
+    repeats: int | None = None
+    task_d: dict = Field(default_factory=dict)
+    hypothesis_index: int | None = None            # v3: the i-th hypothesis of the family in this stream ...
+    alpha: float | None = None                 # ... tested at alpha_i (pre-set in adapt.yaml)
+    prediction: dict = Field(default_factory=dict)   # v3: sign_ok, abs_error (reported, never a rule)
 
 
 # box: gate
@@ -184,11 +261,16 @@ def _sign(x: float) -> int:
 
 # box: gate
 def decide(recipe_A: Recipe, recipe_B: Recipe, h: Hypothesis, res: ReplayResult, noise: float, N: int,
-           heldout: list, envelope=None, sample_draft=None, version: str | None = None) -> Decision:
+           heldout: list, envelope=None, sample_draft=None, version: str | None = None,
+           hypothesis_index: int | None = None, alpha: float | None = None) -> Decision:
     """§9.2 rules 1–6 on the experiment's pairs; every failing rule adds its reason. version: "v1" (Stage A rule 5:
-    summed flags per run, errors included) or "v2" (D84b: rule 5 per run, rule 5b for errors); default adapt.yaml."""
+    summed flags per run, errors included), "v2" (D84b: rule 5 per run, rule 5b for errors) or "v3" (D91: rule 2 on
+    per-task means with a permutation test at alpha_i of the fixed quota, no prediction rule; N is not used);
+    default adapt.yaml. alpha overrides alpha_i (the single pre-registered check)."""
     g = cfg()
     version = version or g.get("version", "v2")
+    if version == "v3":
+        return _decide_v3(recipe_B, h, res, noise, heldout, envelope, sample_draft, hypothesis_index, alpha)
     reasons: list[str] = []
     post, pre = res.post(), res.pre()
     # 1. valid (re-checked here; the Architect's own check is not trusted)
@@ -247,6 +329,73 @@ def decide(recipe_A: Recipe, recipe_B: Recipe, h: Hypothesis, res: ReplayResult,
                     n_post=len(post), n_pre=len(pre), gate_version=version, honesty_share_A=sa, honesty_share_B=sb,
                     error_rate_A=ea, error_rate_B=eb, honesty_counts_A=_counts(post, "A"),
                     honesty_counts_B=_counts(post, "B"))
+
+
+# box: gate
+def _rules_1_4_5(recipe_B: Recipe, h: Hypothesis, res: ReplayResult, md: float, heldout: list, envelope,
+                 sample_draft, reasons: list[str]) -> dict:
+    """Rules 1, 4, 5 (v2, per run) and 5b, shared by v3."""
+    g = cfg()
+    post = res.post()
+    bad = validate_recipe(recipe_B, envelope, sample_draft)
+    if bad:
+        reasons.append("1 invalid recipe: " + "; ".join(f"{v.rule} {v.detail}" for v in bad))
+    leak = [x for t in h.edit.texts() for x in leaks(t, heldout)]
+    if leak:
+        reasons.append("1 leakage: " + "; ".join(leak))
+    ta, tb = (mean([x.tokens_A for x in post]), mean([x.tokens_B for x in post])) if post else (0, 0)
+    ratio = round(tb / ta, 3) if ta else None
+    cap = g["cost_ratio_big_gain"] if md >= g["big_gain"] else g["cost_ratio"]
+    if ratio is not None and ratio > cap:
+        reasons.append(f"4 cost not justified: token ratio {ratio:.2f} > {cap}")
+    ha, hb = (round(mean([x.honesty_A for x in post]), 3), round(mean([x.honesty_B for x in post]), 3)) if post else (0, 0)
+    sa, sb, ea, eb = honesty_shares(post)
+    n = len(post)
+    fa, fb, xa, xb = (round(v * n) if v is not None else None for v in (sa, sb, ea, eb))
+    if sb is not None and fb - fa > g["honesty_share_margin"] * n + 1e-9:
+        reasons.append(f"5 honesty regression: flagged runs {sb:.2f} - {sa:.2f} > {g['honesty_share_margin']}")
+    if eb is not None and xb - xa > g["error_rate_margin"] * n + 1e-9:
+        reasons.append(f"5b reliability regression: error rate {eb:.2f} - {ea:.2f} > {g['error_rate_margin']}")
+    ra, rb = sum(x.refusals_A for x in res.pairs), sum(x.refusals_B for x in res.pairs)
+    if rb > ra:
+        reasons.append(f"5 new refusals: {rb} in arm B against {ra} in arm A")
+    return dict(cost_ratio=ratio, honesty_A=ha, honesty_B=hb, refusals_A=ra, refusals_B=rb, honesty_share_A=sa,
+                honesty_share_B=sb, error_rate_A=ea, error_rate_B=eb, honesty_counts_A=_counts(post, "A"),
+                honesty_counts_B=_counts(post, "B"))
+
+
+# box: gate
+def _decide_v3(recipe_B: Recipe, h: Hypothesis, res: ReplayResult, noise: float, heldout: list, envelope,
+               sample_draft, hypothesis_index: int | None, alpha: float | None) -> Decision:
+    """D91: Gate v3 (spec §9.2, Gate v3)."""
+    g = cfg()
+    reasons: list[str] = []
+    post, pre = res.post(), res.pre()
+    td = task_means(post)
+    d = list(td.values())
+    md = round(mean(d), 4) if d else 0.0
+    a = alpha if alpha is not None else (alpha_for(hypothesis_index) if hypothesis_index else None)
+    p = permutation_greater(d) if d else 1.0
+    if not d:
+        reasons.append("2 no post pairs")
+    elif a is None:
+        reasons.append(f"2 quota spent: hypothesis {hypothesis_index} of {len(g.get('v3', {}).get('alphas', []))}")
+    elif not md > max(noise, g["min_gain"]):
+        reasons.append(f"2 no real gain: mean task d {md:+.3f} <= max(noise {noise:.3f}, {g['min_gain']})")
+    elif not p <= a:
+        reasons.append(f"2 not significant: permutation p {p:.4f} > alpha {a:.4f} ({len(d)} tasks)")
+    rest = _rules_1_4_5(recipe_B, h, res, md, heldout, envelope, sample_draft, reasons)
+    ret_d = list(task_means(pre).values())
+    ret = round(mean(ret_d), 4) if ret_d else None
+    if ret is not None and ret < -noise:
+        reasons.append(f"6 retention: pre-task mean d {ret:+.3f} < -noise {-noise:.3f}")
+    reps = round(len(post) / len(td)) if td else None
+    pred = {"sign_ok": _sign(md) == _sign(h.predicted_delta), "abs_error": round(abs(h.predicted_delta - md), 4)} \
+        if d else {}
+    return Decision(decision="reject" if reasons else "accept", reasons=reasons, observed_delta=md, noise=noise,
+                    p=round(p, 6), test="permutation", N=hypothesis_index or 0, p_adj=None, retention_delta=ret,
+                    n_post=len(post), n_pre=len(pre), gate_version="v3", n_tasks=len(td), repeats=reps,
+                    task_d=td, hypothesis_index=hypothesis_index, alpha=a, prediction=pred, **rest)
 
 
 # box: gate

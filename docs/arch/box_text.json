@@ -7435,7 +7435,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "a371bd0",
+  "checked_at": "b43cb8b",
   "facts": {
    "anchors": [
     {
@@ -7465,6 +7465,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
       "amoeba/interp/plan_runner.py::PlanRunner.ledger_update",
       "amoeba/interp/plan_runner.py::PlanRunner.mark_stale",
+      "amoeba/interp/plan_runner.py::PlanRunner.own_result",
       "amoeba/interp/plan_runner.py::PlanRunner.raw_results_text",
       "amoeba/interp/plan_runner.py::PlanRunner.refine",
       "amoeba/interp/plan_runner.py::PlanRunner.rework_producers",
@@ -7476,6 +7477,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.web_ids",
       "amoeba/interp/plan_runner.py::_Work",
       "amoeba/interp/plan_runner.py::blocked_marks",
+      "amoeba/interp/plan_runner.py::compare_figures",
       "amoeba/interp/plan_runner.py::conclusion_check",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/plan_runner.py::parse_verdict_block",
@@ -7718,6 +7720,16 @@
     ],
     [
      "decide",
+     "if mine and (not mine['reused'])",
+     "set w.calls, w.tool_results = (list(mine['tool_calls']), list(mine['tool_results']))"
+    ],
+    [
+     "decide",
+     "if mine is not None",
+     "set meta['verifier_own'] = {k: v for k, v in mine.items() if k != 'tool_results'}"
+    ],
+    [
+     "decide",
      "if mislabelled",
      "set status = 'partial' if status == 'done' else status"
     ],
@@ -7840,6 +7852,11 @@
      "decide",
      "if verifier and on",
      "set granted = self.verifier_tools(agents)"
+    ],
+    [
+     "decide",
+     "if verifier and self.opt.verify_first == 'on'",
+     "set own_writers = agents[:1] if self.opt.collab == 'critique' and len(agents) > 1 else agents"
     ],
     [
      "fallback",
@@ -8083,12 +8100,22 @@
     ],
     [
      "filter",
+     "keep only if d in self.artifacts",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if getattr(step, k)",
      "drop the rest"
     ],
     [
      "filter",
      "keep only if hit",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k != 'tool_results'",
      "drop the rest"
     ],
     [
@@ -8219,17 +8246,17 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "3ee93dd1c4106067",
+  "facts_hash": "975282009b907ac3",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search or lacks specific tools gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information.",
-   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); the step keeps one output.",
+   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check before the final output is kept.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
   ]
  },
@@ -10744,7 +10771,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "ecf0733",
+  "checked_at": "b43cb8b",
   "facts": {
    "anchors": [
     {
@@ -10945,6 +10972,21 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/interp/plan_runner.py::PlanRunner.cap",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/interp/plan_runner.py::step_detail",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D90: what a verify step sees before its own result: each step it checks (its instruction, not its output)",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.blind_inputs_text",
+     "signature": "blind_inputs_text(self, deps: list[int], n: int) -> tuple[str, list[int]]"
+    },
+    {
+     "callees": [
       "amoeba/interp/provenance.py::numbers_in"
      ],
      "doc": "D74: numbers no source has to back: those given in the task and today's date parts (D75 gives it).",
@@ -10968,6 +11010,18 @@
      "doc": "D61: the files the team made in the workspace (of step n, or all), that still exist.",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.files_of",
      "signature": "files_of(self, n: int | None=None) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner._loop",
+      "amoeba/interp/plan_runner.py::PlanRunner._text",
+      "amoeba/interp/plan_runner.py::PlanRunner.blind_inputs_text",
+      "amoeba/interp/plan_runner.py::_Work",
+      "amoeba/interp/trace.py::TraceWriter.event"
+     ],
+     "doc": "D90: the verifier's own result, made in a fresh turn loop that never sees the checked steps' outputs (nor",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.own_result",
+     "signature": "own_result(self, step: PlanStep, n: int, deps: list[int], writers: list[AgentSpec], extra: str) -> dict"
     },
     {
      "callees": [
@@ -11011,6 +11065,16 @@
      "doc": "D76: what the claims being checked are made of: their numbers and times, quoted phrases, and the words of the",
      "key": "amoeba/interp/plan_runner.py::claim_terms",
      "signature": "claim_terms(text: str) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/interp/plan_runner.py::compare_figures.floats",
+      "amoeba/interp/provenance.py::claim_numbers"
+     ],
+     "doc": "D90: plain code's comparison of the verifier's own result with the outputs it checks: the figures of its own",
+     "key": "amoeba/interp/plan_runner.py::compare_figures",
+     "signature": "compare_figures(own: str, outputs: dict[int, str]) -> dict"
     },
     {
      "callees": [
@@ -11154,6 +11218,11 @@
     ],
     [
      "fallback",
+     "' (one you check: output not shown)' if g in checked else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'' if calls else ' (none)'",
      "choose value"
     ],
@@ -11189,6 +11258,11 @@
     ],
     [
      "fallback",
+     "except ValueError",
+     "pass"
+    ],
+    [
+     "fallback",
      "f\"skill {', '.join(skills)}\" if skills else LOCAL_TOOLS",
      "choose value"
     ],
@@ -11200,6 +11274,16 @@
     [
      "fallback",
      "m.group(1).upper() if m else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "matched if any((same(v, d, x, dx) for x, dx in theirs)) else own_only",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(len(matched) / total, 3) if total else None",
      "choose value"
     ],
     [
@@ -11354,6 +11438,11 @@
     ],
     [
      "stop",
+     "if n in self.own_results",
+     "return {**self.own_results[n], 'reused': True}"
+    ],
+    [
+     "stop",
      "if not lines",
      "return ''"
     ],
@@ -11396,16 +11485,18 @@
    "kind": "code",
    "numbers": [
     "EVIDENCE_CAP",
+    "Limits.max_turns",
+    "PlanOptions.max_input_chars",
     "excerpt.keep_head"
    ],
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "8e72b6b25f079eb9",
+  "facts_hash": "34a72488811bac81",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "13e802c0beb63a4e",
-  "sentence": "Checks each step's output against its requirements, contract, and provenance; reads verdicts, gaps, and citation accuracy.",
-  "source": "model: kept",
+  "sentence": "Checks each step's output against requirements, contract, and provenance; reads verdicts, gaps, and citation accuracy, while comparing its own results against checked steps.",
+  "source": "model: rewritten",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
@@ -11413,7 +11504,7 @@
    "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them.",
    "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, earns one refine turn and then makes the step partial (not declared / attached unused).",
    "A verify step also sees each checked step's sources, tool calls, figure counts, files, and citation labels (D61, D74). A producer whose only problem is a missing capability is not sent back (rework_skipped).",
-   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial. Evidence is capped at {EVIDENCE_CAP} characters and excerpts are limited to {excerpt.keep_head} characters."
+   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial. Evidence is capped at {EVIDENCE_CAP} characters, excerpts are limited to {excerpt.keep_head} characters, and the verifier's own result is generated in a fresh loop."
   ]
  },
  "stream": {

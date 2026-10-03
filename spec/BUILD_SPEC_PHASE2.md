@@ -364,6 +364,40 @@ Every ledger row carries `gate_version` (`v1` or `v2`). Rows decided under v1 ar
 decided under v1 may get one more decision row under v2, computed from its saved pairs without new runs and marked
 `"post_hoc": true`; it is reported whatever it says, and it does not change the recipe store.
 
+#### Gate v3 (D91, written Oct 3, 2026, before any run on the gate set)
+
+The research review found three faults in v1/v2 that are not about thresholds but about the test itself. First, the
+pairs of one task are not independent (the same task, three seeds), so a paired test over 15 pairs from 5 tasks
+counts each task three times. Second, a Bonferroni N that resets on every accept lets a long stream spend an
+unbounded error rate. Third, the prediction-sign rule rejects real gains the Architect mis-predicted and says
+nothing a ledger column could not say. Gate v3 is the default from D91 on; it is fixed here before any data on the
+gate set (D92) exists.
+
+- **Data.** The family's gate set (D92: 15 held-out post tasks) and its held-out pre tasks (retention), `r` repeats
+  per task (adapt.yaml `experiment.repeats`, 3). For each task t: `d_t = mean_k score_B(t, k) − mean_k score_A(t, k)`.
+- **Noise (v3).** Calibration runs A against A′ (other seeds) on the gate set; `noise = 2 × std(d_t^AA) / √n_tasks`
+  over the per-task means. The calibration row also records each task's spread across seeds (the standard deviation
+  of its 2r scores, and A's and A′'s scores), so the report shows per-task noise, not only whether pairs were equal.
+- **2. Real gain (v3), task level.** `mean_t(d_t) > max(noise, 0.05)` **and** a one-sided paired permutation
+  (sign-flip) test on the per-task means has `p ≤ alpha_i`. The test statistic is `Σ_t d_t`; `p` is the share of the
+  `2^n` sign assignments whose sum is ≥ the observed one (identity included), enumerated exactly when n ≤ 20 tasks,
+  otherwise 100,000 random assignments with a fixed seed.
+- **Fixed error budget.** At most 6 hypotheses per family per stream reach the Gate. The i-th one (i = 1..6, in
+  ledger order, counted from the family's v3 decision rows of that stream, accepts included) is tested at
+  `alpha_i = 0.05 / 6`, the list fixed in adapt.yaml (`gate.v3.alphas`) before the run. No reset on accept. When the
+  budget is spent, an alarm for that family goes to the human queue (`quota_spent`; in code the error budget is the hypothesis quota) and no Architect call is made.
+- **3. Prediction (v3): no rule.** `predicted_delta` stays in the ledger; the loop report gives prediction accuracy
+  (sign agreement and absolute size error of `predicted_delta` against `mean_t(d_t)`).
+- **Kept from v2:** rule 1 (valid, leakage), rule 4 (cost, per run), rule 5 (share of runs with ≥ 1 honesty flag, per
+  run) and 5b (error rate), rule 6 (retention: `mean_t(d_t)` on the pre tasks ≥ −noise), and the rollback watch, the
+  dwell and the cool-down (§9.3).
+- **Ledger.** Rows carry `gate_version: "v3"`, `test: "permutation"`, `n_tasks`, `repeats`, `hypothesis_index`, `alpha`,
+  `task_d` (per-task means) and `prediction` (`sign_ok`, `abs_error`). v1 and v2 rows are never rewritten.
+- **The pre-registered Assumptions re-test.** Before M-P2, Stage A's helpful hand edit (h2, the Assumptions planner
+  rule) is re-tested once on the gate set under v3 as a single pre-registered confirmatory test at `alpha = 0.05`.
+  Its rows are marked `"check": true`; it does not use the loop's budget and never changes the recipe store, so
+  M-P2 still starts from the seed recipe with no hand edits.
+
 ### 9.3 After the decision
 
 - **Accept:** Box 9 stores `recipe_B` as the family's current version. The family enters a dwell period: no new
@@ -486,6 +520,8 @@ the report too.
 | D87 | Architect prompt and checks | `amoeba/adapt/architect.py`, `amoeba/config/prompts/architect.txt` | B |
 | D88 | Recipe store, `--recipes`, `--recipes-from` | `amoeba/memory/recipes.py` | B |
 | D89 | Loop driver, M-P2 run, report | `scripts/run_loop.py`, `eval/loop/m1/`, `docs/eval/loop_m1/REPORT.md` | B |
+| D90 | The verifier answers first: own result in a fresh context without the checked outputs, then compare; both in step_N.json | `amoeba/interp/plan_runner.py`, `amoeba/config/prompts/plan_verify_own.txt` | B |
+| D91 | Gate v3: per-task means, permutation test, fixed quota of 6 hypotheses per family per stream at alpha 0.05/6, no prediction rule; the pre-registered check | `amoeba/adapt/gate.py`, `amoeba/adapt/ledger.py`, `amoeba/config/adapt.yaml` | B |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit
