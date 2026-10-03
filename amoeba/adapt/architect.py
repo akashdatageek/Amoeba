@@ -103,6 +103,8 @@ def examples_text(examples: list[dict]) -> str:
 # box: architect
 def diagnosis_text(d: Diagnosis) -> str:
     keep = {k: v for k, v in d.model_dump().items() if k in ("symptom", "cause", "where", "evidence", "counts")}
+    if d.supporting:                  # D93: the model's own claims, shown apart; they did not choose the cause
+        keep["supporting (declared by the team's model, not checked by code)"] = d.supporting
     return yaml.safe_dump(keep, sort_keys=False, allow_unicode=True).strip()
 
 

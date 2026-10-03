@@ -6,6 +6,9 @@ raises an alarm when the scores drop or a cause appears. Thresholds: amoeba/conf
   alarm).
 - Cause alarm: a D61 cause (capability, checks, max_turns, unused_tool, claimed_file_missing) or a failed rubric item
   (the feedback channel, "feedback:<item>") is in ≥ 50% of the window after ≤ 20% of the reference runs.
+- D93: only observed signals raise an alarm. A capability cause counts only when plain code found the gap
+  (contract_missing); a step whose only capability evidence is the helper's own BLOCKED line is declared (kept in
+  `declared`, never an alarm signal).
 - No alarm while the family is in a dwell period after an accept or cooling down after a reject (LoopState.quiet_until).
 """
 from __future__ import annotations
@@ -33,7 +36,8 @@ class PracticeRecord(BaseModel):
     run_dir: str = ""
     score: float | None = None
     failed_items: list[str] = Field(default_factory=list)
-    causes: list[str] = Field(default_factory=list)          # distinct D61 causes in any step of the run
+    causes: list[str] = Field(default_factory=list)          # distinct observed D61 causes in any step (D93)
+    declared: list[str] = Field(default_factory=list)        # D93: causes only the model's own words support
     recipe_version: int = 1
     error: str | None = None
 
@@ -46,14 +50,18 @@ def practice_record(task: StreamTask, run_dir: str | Path, recipe_version: int =
     """Read one practice run's folder: score, failed item names (feedback channel), D61 causes, error."""
     d = Path(run_dir)
     r = json.loads((d / "result.json").read_text(encoding="utf-8"))
-    causes = set()
+    causes, declared = set(), set()
     for f in sorted((d / "artifacts").glob("step_*.json")):
         try:
-            causes |= set(json.loads(f.read_text(encoding="utf-8")).get("causes") or [])
+            s = json.loads(f.read_text(encoding="utf-8"))
         except ValueError:
-            pass
+            continue
+        for c in s.get("causes") or []:
+            blocked_only = c == "capability" and not s.get("contract_missing") and "blocked_canonical" in s
+            (declared if blocked_only else causes).add(c)
     return PracticeRecord(order=task.order, task_id=task.id, family=task.family, run_dir=str(d), score=r.get("score"),
                           failed_items=feedback(r.get("rubric")), causes=sorted(c for c in causes if c in D61_CAUSES),
+                          declared=sorted(c for c in declared - causes if c in D61_CAUSES),
                           recipe_version=recipe_version, error=r.get("error"))
 
 

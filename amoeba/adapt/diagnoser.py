@@ -8,6 +8,12 @@ feedback channel). The cause is the one that rose most from the reference runs t
 a cause that was always there does not explain it), then the most frequent, then the table order. The allowed edits
 come from the cause → edit table in amoeba/config/adapt.yaml. `--diagnoser none` (diagnose_none) hands the Architect
 the alarm only, with every edit allowed — the untargeted baseline.
+
+D93 provenance: every counted signal is tagged *observed* (written by the runner: tool calls, files, source matches,
+rubric results, turn caps, format checks) or *declared* (written by the model: BLOCKED / NOT NEEDED lines, [S#] tags,
+verifier verdicts and the rework they ask for). The cause is chosen from observed signals only; declared ones are
+reported beside it as supporting evidence (`supporting`) and never pick the cause. With no observed signal in the
+window the cause is `alarm_only` (every edit allowed).
 """
 from __future__ import annotations
 
@@ -23,6 +29,21 @@ from amoeba.adapt.recipe import EDIT_OPS, adapt_config
 from amoeba.adapt.stream import Stream, assert_practice
 
 
+# D93: where each counted signal comes from (counts keys; "cause:<c>" of a D61 cause, and "feedback:<item>")
+PROVENANCE = {"cause:checks": "observed", "cause:max_turns": "observed", "cause:unused_tool": "observed",
+              "cause:claimed_file_missing": "observed", "cause:capability": "observed",
+              "cause:capability_blocked": "declared", "contract_missing": "observed", "unused": "observed",
+              "claimed_files_missing": "observed", "unverified_check": "observed",
+              "mislabelled_citations": "observed", "feedback": "observed", "blocked_canonical": "declared",
+              "not_needed": "declared", "hallucinated_citations": "declared", "cited_figures_left_out": "declared",
+              "verdict_fail": "declared", "rework": "declared"}
+
+
+# box: diagnoser
+def provenance_of(key: str) -> str:
+    return PROVENANCE.get(key) or PROVENANCE.get(key.split(":")[0], "declared")
+
+
 # box: diagnoser
 class Diagnosis(BaseModel):
     family: str
@@ -36,6 +57,9 @@ class Diagnosis(BaseModel):
     examples: list[dict] = Field(default_factory=list) # practice examples for the Architect (practice tasks only)
     alarm: dict = Field(default_factory=dict)
     shares: dict[str, dict] = Field(default_factory=dict)   # cause -> {"window": share, "reference": share}
+    supporting: list[str] = Field(default_factory=list)     # D93: declared signals for the cause (never choose it)
+    declared_shares: dict[str, dict] = Field(default_factory=dict)   # D93: the same shares over declared signals
+    provenance: dict[str, str] = Field(default_factory=dict)         # D93: counts key -> observed | declared
 
 
 # box: diagnoser
@@ -58,44 +82,52 @@ def _plan(run_dir: Path) -> dict:
 
 # box: diagnoser
 def run_signals(run_dir: str | Path, failed_items: list[str]) -> dict:
-    """What one run shows, by cause: {cause: [evidence lines]} and the raw counts."""
+    """What one run shows, by cause and provenance (D93): {"by_cause": observed {cause: [evidence lines]},
+    "declared": declared {cause: [lines]}, "counts": raw counts}."""
     d = Path(run_dir)
     r = _load(d / "result.json")
     plan = _plan(d)
     by_step = {s.get("index", i) + 1: s for i, s in enumerate(plan.get("plan") or [])}
     tools = {x.get("name"): x.get("tools", []) for x in plan.get("created_roles") or []}
-    out: dict[str, list[str]] = {}
+    obs: dict[str, list[str]] = {}
+    dec: dict[str, list[str]] = {}
     counts: Counter = Counter()
+
+    def add(cause, line, key):
+        (obs if provenance_of(key) == "observed" else dec).setdefault(cause, []).append(line)
+        counts[key] += 1
     for s in _steps(d):
         n = s.get("step")
         f = f"{d.name}/artifacts/step_{n}.json"
+        where = f"(kind {(by_step.get(n) or {}).get('kind') or 'work'}, roles {s.get('roles')})"
         for c in s.get("causes") or []:
-            out.setdefault(c, []).append(f"{f} causes {c} (kind {(by_step.get(n) or {}).get('kind') or 'work'}, "
-                                         f"roles {s.get('roles')})")
-            counts[f"cause:{c}"] += 1
-        for k in ("blocked_canonical", "contract_missing", "unused", "claimed_files_missing"):
+            # a capability gap is observed when plain code found it (contract_missing), declared when only the
+            # helper's BLOCKED line says so
+            key = f"cause:{c}" if c != "capability" or s.get("contract_missing") or "blocked_canonical" not in s \
+                else "cause:capability_blocked"
+            add(c, f"{f} causes {c} {where}", key)
+        for k, cause in (("blocked_canonical", "capability"), ("contract_missing", "capability"),
+                         ("unused", "unused_tool"), ("claimed_files_missing", "claimed_file_missing"),
+                         ("not_needed", "unused_tool")):
             for v in s.get(k) or []:
-                counts[k] += 1
-                cause = {"blocked_canonical": "capability", "contract_missing": "capability", "unused": "unused_tool",
-                         "claimed_files_missing": "claimed_file_missing"}[k]
-                out.setdefault(cause, []).append(f"{f} {k} {v}")
+                add(cause, f"{f} {k} {v if isinstance(v, str) else json.dumps(v)[:120]}", k)
         if s.get("unverified_check"):
-            counts["unverified_check"] += 1
-            out.setdefault("honesty", []).append(f"{f} unverified_check true")
+            add("honesty", f"{f} unverified_check true", "unverified_check")
         for m in s.get("mislabelled_citations") or []:
-            counts["mislabelled_citations"] += 1
-            out.setdefault("honesty", []).append(f"{f} mislabelled_citations {m.get('source')} {m.get('claim')}")
+            add("honesty", f"{f} mislabelled_citations {m.get('source')} {m.get('claim')}", "mislabelled_citations")
+        if s.get("verification") and s.get("verdict") == "FAIL":
+            add("checks", f"{f} verdict FAIL {where}", "verdict_fail")
+        if s.get("rework_of"):
+            add("checks", f"{f} rework asked by step {(s.get('rework_of') or {}).get('by_step')}", "rework")
     hall = int(((r.get("provenance") or {}).get("total") or {}).get("hallucinated_citations") or 0)
     if hall:
-        counts["hallucinated_citations"] += hall
-        out.setdefault("honesty", []).append(f"{d.name}/result.json provenance.total.hallucinated_citations {hall}")
+        add("honesty", f"{d.name}/result.json provenance.total.hallucinated_citations {hall}", "hallucinated_citations")
+        counts["hallucinated_citations"] += hall - 1
     for v in (r.get("summary_check") or {}).get("cited_figures_left_out") or []:
-        counts["cited_figures_left_out"] += 1
-        out.setdefault("honesty", []).append(f"{d.name}/result.json summary_check.cited_figures_left_out {v}")
+        add("honesty", f"{d.name}/result.json summary_check.cited_figures_left_out {v}", "cited_figures_left_out")
     for item in failed_items:
-        counts[f"feedback:{item}"] += 1
-        out.setdefault("feedback", []).append(f"{d.name}/result.json rubric failed item {item!r}")
-    return {"by_cause": out, "counts": counts, "tools": tools, "steps_by_n": by_step}
+        add("feedback", f"{d.name}/result.json rubric failed item {item!r}", f"feedback:{item}")
+    return {"by_cause": obs, "declared": dec, "counts": counts, "tools": tools, "steps_by_n": by_step}
 
 
 # box: diagnoser
@@ -113,13 +145,15 @@ def diagnose(alarm: Alarm, records: list[PracticeRecord], stream: Stream) -> Dia
     sig_w = [run_signals(r.run_dir, r.failed_items) for r in window]
     sig_r = [run_signals(r.run_dir, r.failed_items) for r in ref]
 
-    def share(sigs, cause):
-        return sum(bool(s["by_cause"].get(cause)) for s in sigs) / len(sigs) if sigs else 0.0
+    def share(sigs, cause, part="by_cause"):
+        return sum(bool(s[part].get(cause)) for s in sigs) / len(sigs) if sigs else 0.0
     order = list(c["causes"])
     shares = {k: {"window": round(share(sig_w, k), 3), "reference": round(share(sig_r, k), 3)} for k in order}
-    present = [k for k in order if shares[k]["window"] > 0]
+    declared = {k: {"window": round(share(sig_w, k, "declared"), 3),
+                    "reference": round(share(sig_r, k, "declared"), 3)} for k in order}
+    present = [k for k in order if shares[k]["window"] > 0]       # D93: observed signals only choose the cause
     if not present:
-        cause = "feedback" if any(r.failed_items for r in window) else order[0]
+        cause = "alarm_only"
     else:
         cause = sorted(present, key=lambda k: (-(shares[k]["window"] - shares[k]["reference"]),
                                                -shares[k]["window"], order.index(k)))[0]
@@ -127,8 +161,15 @@ def diagnose(alarm: Alarm, records: list[PracticeRecord], stream: Stream) -> Dia
     for s in sig_w:
         counts += s["counts"]
     evidence = [e for s in sig_w for e in s["by_cause"].get(cause, [])][: int(c["max_evidence"])]
+    supporting = [e for s in sig_w for e in s["declared"].get(cause, [])][: int(c["max_evidence"])] \
+        if cause != "alarm_only" else [e for s in sig_w for v in s["declared"].values() for e in v][: int(c["max_evidence"])]
     items = Counter(i for r in window for i in r.failed_items)
-    if cause == "feedback" and items:
+    if cause == "alarm_only":
+        symptom = (f"{alarm.kind} alarm at order {alarm.at_order}: {alarm.before:.2f} -> {alarm.after:.2f}; no observed "
+                   f"cause in the window" + ("; declared only: " + ", ".join(k for k in order if declared[k]["window"])
+                                             if any(declared[k]["window"] for k in order) else ""))
+        where = {}
+    elif cause == "feedback" and items:
         name, n = items.most_common(1)[0]
         symptom = f"feedback: {name} missing in {n}/{len(window)} runs"
         where = {"last_work_step": True}
@@ -137,9 +178,11 @@ def diagnose(alarm: Alarm, records: list[PracticeRecord], stream: Stream) -> Dia
         symptom = f"{cause} in {n}/{len(window)} runs (reference {shares[cause]['reference']:.0%})"
         where = _where(cause, sig_w)
     return Diagnosis(family=alarm.family, symptom=symptom, cause=cause, where=where, evidence=evidence,
-                     counts=dict(sorted(counts.items())), allowed_edits=_allowed(cause),
+                     counts=dict(sorted(counts.items())),
+                     allowed_edits=list(EDIT_OPS) if cause == "alarm_only" else _allowed(cause),
                      examples=examples(window, sig_w, cause, stream, int(c["examples"])),
-                     alarm=alarm.model_dump(), shares=shares)
+                     alarm=alarm.model_dump(), shares=shares, supporting=supporting, declared_shares=declared,
+                     provenance={k: provenance_of(k) for k in counts})
 
 
 # box: diagnoser

@@ -397,6 +397,13 @@ checked once on the audit set, and the claim is logged before the runs:
 
     python -m scripts.run_audit --stream m2 --family calc --claim C1 --statement "..." --recipes-b eval/loop/m2/recipes ...
 
+## Observed and declared signals (D93, Phase 2)
+
+The Diagnoser tags each signal it counts: *observed* when the runner measured it (tool calls, files, source matches,
+rubric results) and *declared* when the model wrote it (BLOCKED / NOT NEEDED lines, [S#] tags, verifier verdicts).
+Alarms and the chosen cause use observed signals only; declared ones are listed beside the diagnosis as supporting
+evidence.
+
 ## Cost controls (D45–D48)
 
 ```bash
