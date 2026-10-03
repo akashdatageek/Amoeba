@@ -374,7 +374,8 @@ def cli_plan_options(args: argparse.Namespace):
     extra = {"check_retry_turns": args.check_retry_turns} if getattr(args, "check_retry_turns", None) else {}
     return PlanOptions(rerun_stale=args.rerun_stale, max_input_chars=args.max_input_chars,
                        max_summary_input_chars=args.max_summary_input_chars, self_refine=args.self_refine,
-                       collab=args.collab, contract=args.step_contract, replan=args.replan, **extra)
+                       collab=args.collab, contract=args.step_contract, replan=args.replan,
+                       verify_first=getattr(args, "verify_first", "off"), **extra)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -505,6 +506,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "and every tool or skill attached to it is used, marked BLOCKED or marked NOT NEEDED, else "
                         "the step is partial and the answer's Limitations say so; verifiers see each step's sources "
                         "and tool calls; the answer is checked for files and cited figures it left out (D61)")
+    p.add_argument("--verify-first", choices=["on", "off"], default="on",
+                   help="plan: a verify step first works out its own result from the checked steps' inputs and its "
+                        "tools, without their outputs, in a fresh context; then it sees the outputs and compares. "
+                        "Both are recorded in step_N.json (D90)")
     p.add_argument("--replan", choices=["on", "off"], default="off",
                    help="plan: the Action Observer (D63) — after a wave in which a step lacked a capability, a verify "
                         "step still failed, a step reported a missing input or the team got a tool the plan never "

@@ -63,6 +63,10 @@ class PlanOptions:
     # a single planner call proposes one typed decision for the steps that have not run, and plain code validates
     # it before anything changes. The CLI default is off.
     replan: str = "off"
+    # D90: on = a verify step first works out its own result from the checked steps' inputs and its tools, without
+    # their outputs (a separate turn loop, plan_verify_own.txt); only then are the outputs shown and compared. Both
+    # are recorded in step_N.json. The CLI default is on; this library default keeps the earlier behaviour.
+    verify_first: str = "off"
     max_replans: int = 2             # D63: observer calls per run
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
 
@@ -178,6 +182,10 @@ LAST_TURN_NOTE = ("THIS IS YOUR LAST TURN. No more tool calls: choose Final Outp
 LAST_TURN_AGAIN = ("Your last turn must be Final Output with a written conclusion (not a search query or a tool "
                    "request). Answer now from what you have.")
 
+VERIFY_COMPARE_NOTE = """
+Your inputs end with your own result, which you worked out before you saw the steps' outputs. Compare the outputs with
+it: where they differ, find out which one is right (re-check with your tools) and list each difference that would
+change a number or a conclusion as an issue. Name the differences you found, and which side was right."""
 REWORK_NOTE = """
 
 REWORK: verification step {by} found issues with this step's earlier output. Fix them and give the whole corrected
@@ -270,6 +278,30 @@ def cap_key(name: str) -> str:
 def names_match(a: str, b: str) -> bool:
     ka, kb = cap_key(a), cap_key(b)
     return bool(ka and kb) and (ka == kb or (min(len(ka), len(kb)) >= 4 and (ka in kb or kb in ka)))
+
+
+# box: step_check
+def compare_figures(own: str, outputs: dict[int, str]) -> dict:
+    """D90: plain code's comparison of the verifier's own result with the outputs it checks: the figures of its own
+    result (labels and [S#] tags left out) that some checked output states too — equal at the coarser of the two
+    precisions written (41.60 = 41.6, 1230 ≠ 1229) — and the ones none does."""
+    def floats(text):
+        out = []
+        for tok in claim_numbers(text):
+            bare = tok.replace(",", "").strip("$€£%")
+            try:
+                out.append((tok, float(bare), len(bare.partition(".")[2])))
+            except ValueError:
+                pass
+        return out
+    theirs = [(v, d) for text in outputs.values() for _, v, d in floats(text)]
+    same = lambda a, da, b, db: abs(round(a, min(da, db)) - round(b, min(da, db))) < 1e-9
+    matched, own_only = [], []
+    for tok, v, d in sorted(floats(own), key=lambda x: x[1]):
+        (matched if any(same(v, d, x, dx) for x, dx in theirs) else own_only).append(tok)
+    total = len(matched) + len(own_only)
+    return {"own_figures": total, "matched": matched[:30], "own_only": own_only[:30],
+            "agreement": round(len(matched) / total, 3) if total else None}
 
 
 class _Work:
@@ -499,6 +531,7 @@ class PlanRunner:
         self.artifacts: dict[int, dict] = {}     # step number -> {"text", "meta"}
         self.reworked: set[int] = set()          # D34: at most one rework per step
         self.ledger: dict[str, dict] = {}        # D43: figure -> its first status and the step that first wrote it
+        self.own_results: dict[int, dict] = {}   # D90: each verify step's own result, made once
         self.inferred_logged: set[int] = set()   # D37: steps whose verifier status came from the keyword fallback
         self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
         self.web = getattr(interp.tools, "web", None)
@@ -813,6 +846,44 @@ class PlanRunner:
                                                "amoeba.chars_passed": len(out)})
         return f"{out}\n[shortened by plain code from {len(text):,} characters: head, result lines and tail kept]"
 
+    # box: step_check
+    def blind_inputs_text(self, deps: list[int], n: int) -> tuple[str, list[int]]:
+        """D90: what a verify step sees before its own result: each step it checks (its instruction, not its output)
+        and the outputs that step was given, except those of other steps it checks. Returns the text and the steps
+        whose outputs it shows."""
+        checked = set(deps)
+        all_deps = dependencies(self.cfg.plan)
+        given = [d for d in sorted({g for c in deps for g in all_deps.get(c, [])} - checked) if d in self.artifacts]
+        parts = []
+        for c in deps:
+            gets = all_deps.get(c, [])
+            names = ", ".join(f"step {g}" + (" (one you check: output not shown)" if g in checked else "")
+                              for g in gets) or "the task alone"
+            parts.append(f"## Step {c} ({', '.join(self.agents[a].name for a in self.steps[c].agent_ids)}): you check "
+                         f"it; its output is not shown yet\n{step_detail(self.steps[c])}\nGiven: {names}")
+        for g in given:
+            body = self.cap(self.artifacts[g]["text"], self.opt.max_input_chars, n, g, "blind_input")
+            parts.append(f"## Output of step {g} (an input of the steps you check)\n{body}")
+        return "\n\n".join(parts), given
+
+    # box: step_check
+    def own_result(self, step: PlanStep, n: int, deps: list[int], writers: list[AgentSpec], extra: str) -> dict:
+        """D90: the verifier's own result, made in a fresh turn loop that never sees the checked steps' outputs (nor
+        the team's history). Made once per verify step: a re-check after rework reuses it."""
+        if n in self.own_results:
+            return {**self.own_results[n], "reused": True}
+        inputs, given = self.blind_inputs_text(deps, n)
+        w0 = _Work(max_turns=writers[0].limits.max_turns)
+        self._loop(step, n, writers, inputs, extra, w0, PROMPT.plan_verify_own)
+        text = self._text(writers, w0)
+        rec = {"text": text, "turns": w0.turn, "tool_calls": w0.calls, "tool_results": w0.tool_results,
+               "outputs_shown": given, "outputs_hidden": list(deps), "input_chars": len(inputs), "reused": False}
+        self.own_results[n] = rec
+        self.i.trace.event("verifier_own", {"amoeba.step": n, "amoeba.turns": w0.turn,
+                                            "amoeba.tool_calls": len(w0.calls), "amoeba.chars": len(text),
+                                            "amoeba.outputs_hidden": list(deps), "amoeba.outputs_shown": given})
+        return rec
+
     def inputs_text(self, deps: list[int], n: int | None = None, evidence: bool = False) -> str:
         if not deps:
             return "None: this step starts from the task alone."
@@ -862,6 +933,13 @@ class PlanRunner:
             extra += FRESH_NOTE                                                    # D67: the latest figure, dated
         if self.opt.replan == "on" and deps and not summarising:                  # D63: a missing input is a trigger
             extra += MISSING_INPUT_NOTE
+        mine = None
+        if verifier and self.opt.verify_first == "on":        # D90: the verifier's own result before the outputs
+            own_writers = agents[:1] if self.opt.collab == "critique" and len(agents) > 1 else agents
+            mine = self.own_result(step, n, deps, own_writers, extra.replace(VERIFY_NOTE, "").replace(VERIFY_TOOLS_NOTE, ""))
+            inputs += ("\n\n## Your own result (you worked it out before you saw the outputs above)\n"
+                       + (mine["text"].strip() or "(you wrote no result)"))
+            extra += VERIFY_COMPARE_NOTE
         if reverify:
             extra += REVERIFY_NOTE.format(steps=", ".join(map(str, reverify["reworked"])),
                                           issues=reverify["first_issues"].strip())
@@ -869,6 +947,8 @@ class PlanRunner:
             extra += REWORK_NOTE.format(by=rework["by_step"], issues=rework["issues"].strip(),
                                         previous=self.artifacts[n]["text"].strip())
         w = _Work(max_turns=agents[0].limits.max_turns)
+        if mine and not mine["reused"]:          # D90: the re-checks of the verifier's own result are its tool calls too
+            w.calls, w.tool_results = list(mine["tool_calls"]), list(mine["tool_results"])
         template = PROMPT.plan_summarise if summarising else PROMPT.plan_step
         # D51: with critique, the first role drafts and the others review; the step's output is the drafter's
         writers = agents[:1] if self.opt.collab == "critique" and len(agents) > 1 else agents
@@ -1001,6 +1081,11 @@ class PlanRunner:
                          "unverified_check": bool(unchecked)})
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
+            if mine is not None:                                                   # D90: both sides, recorded
+                meta["verifier_own"] = {k: v for k, v in mine.items() if k != "tool_results"}
+                meta["comparison"] = {"verdict": meta["verdict"], "issues": meta["issues"],
+                                      "figures": compare_figures(mine["text"], {d: self.artifacts[d]["text"]
+                                                                              for d in deps if d in self.artifacts})}
             # D38: both verdicts are kept; `verdict` is always the latest one
             meta["verdict_first"] = reverify["first_verdict"] if reverify else meta["verdict"]
             meta["verdict_after_rework"] = meta["verdict"] if reverify else None

@@ -373,6 +373,13 @@ Architect proposals, the Experimenter and the Gate; an accepted change becomes t
 written under `eval/loop/<stream>/` (practice runs, experiments, ledger, recipes, proposals, `summary.json`,
 `REPORT.md`), and running the same command again resumes where it stopped.
 
+## The verifier answers first (D90)
+
+A verify step works in two parts. First, in a fresh context, it sees the task, what each step it checks was asked to
+do and the inputs those steps had, but not what they produced, and works out its own result with its tools. Then it
+sees the outputs, compares them with its own result and gives the verdict. Both parts and plain code's figure
+comparison are in `step_N.json` (`verifier_own`, `comparison`). `--verify-first off` restores the earlier verifier.
+
 ## Cost controls (D45–D48)
 
 ```bash
