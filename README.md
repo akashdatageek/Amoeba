@@ -334,6 +334,13 @@ under v1 can be re-decided under v2 from its saved pairs, marked post hoc:
 
     python -m scripts.run_experiment --stream m1 --family calc --redecide h2-assumptions-rule --gate-version v2
 
+## The Monitor (D85, Phase 2)
+
+After every practice run, the Monitor compares the last three scores of that kind of task with its scores since the
+last accepted change, and raises an alarm when they drop by more than max(2σ, 0.10), or when a step cause or a
+missing rubric item suddenly appears in most recent runs. It stays quiet for a few tasks after a change is accepted
+or rejected. Thresholds: `amoeba/config/adapt.yaml` monitor.
+
 ## Cost controls (D45–D48)
 
 ```bash

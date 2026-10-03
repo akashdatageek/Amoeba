@@ -780,6 +780,20 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code computes the noise floor, applies rules 1–6 and writes the ledger and the store.",
          anchors=[]),
+    dict(id="monitor", view="adapt", title="4 · Monitor (D85)", kind="code", plan=None,
+         sentence="Watches each kind of task's practice scores and raises an alarm when the last few drop below what was "
+                  "normal, or when a cause or a missing rubric item suddenly appears.",
+         what=["After every practice run it reads the run's score, the names of the rubric items it failed and the "
+               "step causes recorded by the step contract.",
+               "Score alarm: the mean of the last three scores falls below the reference mean minus twice its spread "
+               "(at least 0.10); the reference is the kind's practice runs since its last accepted change, before the "
+               "window, and there must be at least four.",
+               "Cause alarm: a cause or a failed item is in at least half of the last three runs after at most a fifth "
+               "of the reference runs.",
+               "No alarm while the kind is in its dwell period after an accept or cooling down after a reject."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code computes the window and the reference and decides whether to raise an alarm.",
+         anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and

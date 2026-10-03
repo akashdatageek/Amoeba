@@ -30,7 +30,7 @@ VIEWS = {
     "run": {"h": 1320, "label": "3 · Team runs the task", "heading": "INSIDE BOX 3 · TEAM RUNS THE TASK",
             "note": "Three runners, chosen when the run starts: flat and boss + reviewers are the AutoAgents / AgentVerse "
                     "baselines; plan runs the step graph (ours, D31–D36). All write the same log and result record."},
-    "adapt": {"h": 420, "label": "4–9 · Adaptation loop", "heading": "PHASE 2 · THE ADAPTATION LOOP (WEEK 1: MEASURING HALF)",
+    "adapt": {"h": 620, "label": "4–9 · Adaptation loop", "heading": "PHASE 2 · THE ADAPTATION LOOP (WEEK 1: MEASURING HALF)",
               "note": "Only Amoeba's plan runner gets recipes. Nothing here calls an AI: the change is hand-written in "
                       "week 1, and plain code decides what is kept."},
 }
@@ -39,6 +39,7 @@ L = {  # id: (x, y, w, h)
     "ov_leave": (30, 245, 1125, 68), "ov_adapt": (30, 335, 1125, 80),
     "stream": (30, 70, 260, 150), "recipe": (320, 70, 260, 150),
     "experimenter": (610, 70, 260, 150), "gate": (900, 70, 260, 150),
+    "monitor": (30, 250, 260, 150),
     "toy_source": (30, 60, 240, 130), "free_text": (30, 210, 240, 100), "task_record": (370, 105, 230, 120),
     "handoff": (670, 115, 210, 100), "scoring": (930, 95, 230, 140),
     "planner": (50, 96, 215, 140), "split": (295, 96, 185, 140), "agent_obs": (510, 84, 270, 96),
