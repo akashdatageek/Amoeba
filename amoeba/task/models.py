@@ -10,10 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serial
 
 
 class RubricItem(BaseModel):
-    """A deliverable or constraint: passes when any regex in any_of (case-insensitive) matches the answer."""
+    """A deliverable or constraint: passes when any regex in any_of (case-insensitive) matches the answer. D94: with
+    `entities`, any_of finds a section's heading and the item passes only if the section's body (up to the next
+    heading) names at least one of these task-specific entities; an empty heading fails."""
 
     name: str
     any_of: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _default_pattern(self):

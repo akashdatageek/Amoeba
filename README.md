@@ -404,6 +404,11 @@ rubric results) and *declared* when the model wrote it (BLOCKED / NOT NEEDED lin
 Alarms and the chosen cause use observed signals only; declared ones are listed beside the diagnosis as supporting
 evidence.
 
+## Sections are scored on content (D94)
+
+A rubric item can list task-specific entities. Its section then passes only if the text under the heading names at
+least one of them, so a heading with nothing under it fails.
+
 ## Cost controls (D45–D48)
 
 ```bash
