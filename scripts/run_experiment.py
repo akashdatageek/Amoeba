@@ -122,9 +122,14 @@ def hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | 
     cal = ensure_calibration(stream, h.family, runner, root, store, repeats)
     recipe_A = load_recipe(store, h.family) or seed_recipe(h.family)
     recipe_B = apply_edit(recipe_A, h.edit, created_by="human", hypothesis_id=h.hypothesis_id)
-    ledger.append({"event": "hypothesis", "family": h.family, "hypothesis_id": h.hypothesis_id,
-                   "recipe_from": recipe_A.version, "edit": h.edit.model_dump(), "predicted_delta": h.predicted_delta,
-                   "rationale": h.rationale, "created_by": "human"})
+    done = [r for r in ledger.rows(h.family, "decision") if r.get("hypothesis_id") == h.hypothesis_id]
+    if done:                                       # decided already: the ledger row stands, nothing is re-run
+        return done[-1]
+    if not [r for r in ledger.rows(h.family, "hypothesis") if r.get("hypothesis_id") == h.hypothesis_id]:
+        ledger.append({"event": "hypothesis", "family": h.family, "hypothesis_id": h.hypothesis_id,
+                       "recipe_from": recipe_A.version, "edit": h.edit.model_dump(),
+                       "predicted_delta": h.predicted_delta, "rationale": h.rationale, "created_by": "human"})
+    # (resumed after a crash: the hypothesis row is already there and finished runs are reused, D73)
     res = experiment(recipe_A, h.edit, h.hypothesis_id, stream, runner, root, repeats)
     print(summary(res), flush=True)
     tools = default_registry()

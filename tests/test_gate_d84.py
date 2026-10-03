@@ -159,6 +159,9 @@ def test_the_hand_check_end_to_end(tmp_path):
     # arm B reused arm A's draft: A's drafting tokens are counted for B, so the cost ratio compares full runs
     assert 0.8 < row2["cost_ratio"] < 1.25
     assert len(led.rows(event="calibration")) == 2
+    # resuming a decided hypothesis re-runs nothing and writes no second row
+    assert hand_check(stream(), useless, InProcessRunner(Arms().make), tmp_path, repeats=3) == row2
+    assert len(led.rows(event="hypothesis")) == 2 and len(led.rows(event="decision")) == 2
 
 
 def test_no_model_call_in_boxes_7_and_8():
