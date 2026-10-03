@@ -4387,9 +4387,11 @@
   },
   "facts_hash": "471b08c4c8c1a6c9",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "4c2430febe590fc4",
   "seed_hash": "38d5bf9c1121e7e6",
   "sentence": "Keeps a recipe change only when its gain on held-out tasks beats the measured noise, was predicted, is worth its cost, keeps the team honest and loses nothing on the tasks that already worked.",
   "source": "model: kept",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Noise floor, once per kind and recipe version: the recipe against itself with other seeds on the held-out after-shift tasks; noise = 2 × the spread of those score differences / √(pairs).",
    "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from held-out tasks; 2 the mean gain beats the noise (and a floor), and a one-sided paired test, corrected for every hypothesis tried since the last accept, is significant; {hand_check.repeats} the gain has the predicted sign; 4 the token cost is justified; 5 the share of runs with an honesty signal grows by no more than 0.2, and no new refusals; 5b the share of runs ending in an error grows by no more than 0.2; 6 no loss on the before-shift tasks beyond the noise (Gate v2, D84b; Stage A decided under v1, which summed tags per run).",
@@ -5965,7 +5967,7 @@
   ]
  },
  "loop": {
-  "checked_at": "ecf0733",
+  "checked_at": "c4c3742",
   "facts": {
    "anchors": [
     {
@@ -6029,10 +6031,12 @@
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::calibrate",
       "amoeba/adapt/experimenter.py::experiment",
+      "amoeba/adapt/gate.py::alpha_for",
       "amoeba/adapt/gate.py::decide",
       "amoeba/adapt/gate.py::decision_row",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/adapt/ledger.py::Ledger.failed",
+      "amoeba/adapt/ledger.py::Ledger.hypotheses_used",
       "amoeba/adapt/ledger.py::Ledger.rows",
       "amoeba/adapt/ledger.py::Ledger.tried_since_accept",
       "amoeba/adapt/loop.py::_now",
@@ -6108,6 +6112,18 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D91: how well the Architect's predicted_delta matched the observed gain (sign and size), over the stream's",
+     "key": "amoeba/adapt/loop.py::prediction_accuracy",
+     "signature": "prediction_accuracy(rows: list[dict]) -> dict"
+    },
+    {
+     "callees": [
       "amoeba/adapt/experimenter.py::InProcessRunner.run",
       "amoeba/adapt/experimenter.py::SubprocessRunner.run",
       "amoeba/adapt/experimenter.py::calibrate",
@@ -6146,6 +6162,7 @@
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/adapt/ledger.py::Ledger.rows",
+      "amoeba/adapt/loop.py::prediction_accuracy",
       "amoeba/adapt/stream.py::Stream.practice",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/memory/recipes.py::RecipeStore.get",
@@ -6202,6 +6219,11 @@
      "add {'event': 'no_hypothesis', 'family': t.family, 'hypothesis_id': hid, 'order': t.order, 'gate_version': loop_gate_version()}"
     ],
     [
+     "correct",
+     "if quota is not None and alpha_for(quota) is None",
+     "add {'event': 'quota_spent', 'family': t.family, 'order': t.order, 'hypothesis_id': hid, 'gate_version': 'v3'}"
+    ],
+    [
      "decide",
      "if dec.decision == 'accept'",
      "set st.reference_from = t.order + 1"
@@ -6238,6 +6260,11 @@
     ],
     [
      "fallback",
+     "'right' if r['sign_ok'] else 'wrong'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "c if c.isalnum() or c in '-_.' else '-'",
      "choose value"
     ],
@@ -6248,7 +6275,32 @@
     ],
     [
      "fallback",
+     "ledger.hypotheses_used(t.family) + 1 if loop_gate_version() == 'v3' else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "pa['mean_abs_error'] if pa['mean_abs_error'] is not None else '—'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "pa['sign_share'] if pa['sign_share'] is not None else '—'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "practice_record(t, rec.run_dir, v) if rec.run_dir else PracticeRecord(order=t.order, task_id=t.id, family=t.family, score=None, error=rec.error, recipe_version=v)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(right / n, 3) if n else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(sum((x['abs_error'] for x in out)) / n, 4) if n else None",
      "choose value"
     ],
     [
@@ -6318,6 +6370,11 @@
     ],
     [
      "reject",
+     "if r.get('event') != 'decision' or r.get('post_hoc') or r.get('check') or (r.get('observed_delta') is None) or (r.get('predicted_delta') is None)",
+     "skip (continue)"
+    ],
+    [
+     "reject",
      "if t.order in loop.processed",
      "skip (continue)"
     ],
@@ -6358,10 +6415,11 @@
    "prompts": {},
    "title": "Loop driver (D89)"
   },
-  "facts_hash": "71f58d54ac3160d9",
+  "facts_hash": "55dc5d319f72c340",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "8e2e699426ec6515",
   "sentence": "Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Calibrates the noise floor first, then runs every practice task with its kind's current recipe (shifts apply: the later rubrics ask for more, a removed tool is taken out). Tasks before the shift may run in one batch; later ones run one at a time, because each can trigger a change.",
    "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then up to three Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down.",

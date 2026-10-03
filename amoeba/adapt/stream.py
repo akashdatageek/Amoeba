@@ -1,6 +1,7 @@
 """D80 — Box 0, the task stream (Phase 2 spec §2).
 
-`tasks/stream_<name>.jsonl`: one task per line, the Phase 1 Task fields plus `split` (practice | heldout), `phase`
+`tasks/stream_<name>.jsonl`: one task per line, the Phase 1 Task fields plus `split` (practice | gate; `heldout` is
+the Stage A name of the gate set), `phase`
 (pre | post the family's shift) and `order` (the position in the stream; practice tasks only).
 `tasks/stream_<name>.shifts.yaml`: the shifts — a `feedback` shift (the post-phase rubrics carry new item(s) that the
 prompts never mention) or a `remove_tool` shift (code takes a tool out of the family's runs, `--disable-tools`).
@@ -8,6 +9,11 @@ prompts never mention) or a `remove_tool` shift (code takes a tool out of the fa
 Held-out tasks are never run as stream tasks and never reach the practice loop or any prompt: `Stream.practice()` is
 the only way the loop gets tasks, and `heldout()` is for Box 7 only. The only rubric information the loop ever sees
 is the feedback channel: the names of the rubric items a practice run failed (`feedback`).
+
+D92: three task sets per family — practice (used freely), gate (held-out, for the Experimenter and the Gate) and final
+audit (`tasks/audit/stream_<name>.audit.jsonl`). No loop component may read the audit set: `load_stream` refuses a
+path under tasks/audit/ and any task whose split is `audit`; only `scripts/run_audit.py` reads it, once per thesis
+claim, logged.
 """
 from __future__ import annotations
 
@@ -22,6 +28,7 @@ from pydantic import BaseModel, Field, model_validator
 from amoeba.task.models import Task
 
 TASKS_DIR = Path(__file__).resolve().parents[2] / "tasks"
+HELD_OUT = ("heldout", "gate")           # D92: the gate set (Stage A called it heldout)
 
 
 # box: stream
@@ -30,8 +37,13 @@ class HeldOutLeak(RuntimeError):
 
 
 # box: stream
+class AuditLeak(RuntimeError):
+    """D92: a final-audit task (or the audit file) was about to reach a loop component."""
+
+
+# box: stream
 class StreamTask(Task):
-    split: Literal["practice", "heldout"]
+    split: Literal["practice", "heldout", "gate"]
     phase: Literal["pre", "post"]
     order: int | None = None
 
@@ -39,7 +51,7 @@ class StreamTask(Task):
     def _order(self):
         if self.split == "practice" and self.order is None:
             raise ValueError(f"{self.id}: a practice task needs an order")
-        if self.split == "heldout" and self.order is not None:
+        if self.split in HELD_OUT and self.order is not None:
             raise ValueError(f"{self.id}: a held-out task has no order")
         if self.rubric is None:
             raise ValueError(f"{self.id}: a stream task is scored by its D30 rubric")
@@ -130,7 +142,7 @@ class Stream(BaseModel):
     def heldout(self, family: str, phase: str | None = None, everything: bool = False) -> list[StreamTask]:
         """The family's held-out tasks in use (post first, then pre) — for the Experimenter only. everything: also
         the retired ones (the leakage screen checks an edit against every held-out task ever used)."""
-        xs = [t for t in self.tasks if t.split == "heldout" and t.family == family and phase in (None, t.phase)]
+        xs = [t for t in self.tasks if t.split in HELD_OUT and t.family == family and phase in (None, t.phase)]
         if not everything:
             xs = [t for t in xs if t.phase not in self.slices or t.id in self.slices[t.phase]]
         return sorted(xs, key=lambda t: (t.phase != "post", _natural(t.id)))
@@ -150,7 +162,7 @@ def _natural(s: str) -> list:
 
 # box: stream
 def assert_practice(task) -> None:
-    if getattr(task, "split", "practice") == "heldout":
+    if getattr(task, "split", "practice") in HELD_OUT:
         raise HeldOutLeak(f"held-out task {task.id} reached the practice loop")
 
 
@@ -165,13 +177,18 @@ def stream_paths(name_or_path: str | Path) -> tuple[Path, Path]:
 # box: stream
 def load_stream(name_or_path: str | Path) -> Stream:
     tasks_file, shifts_file = stream_paths(name_or_path)
-    tasks = [StreamTask.model_validate_json(l) for l in tasks_file.read_text(encoding="utf-8").splitlines() if l.strip()]
+    if (TASKS_DIR / "audit").resolve() in tasks_file.resolve().parents or ".audit." in tasks_file.name:
+        raise AuditLeak(f"{tasks_file} is a final-audit file: no loop component reads it (D92)")
+    lines = [l for l in tasks_file.read_text(encoding="utf-8").splitlines() if l.strip()]
+    if any(json.loads(l).get("split") == "audit" for l in lines):
+        raise AuditLeak(f"{tasks_file} holds final-audit tasks: they live in tasks/audit/ only (D92)")
+    tasks = [StreamTask.model_validate_json(l) for l in lines]
     shifts = (yaml.safe_load(shifts_file.read_text(encoding="utf-8")) or {}).get("shifts", []) \
         if shifts_file.exists() else []
     name = tasks_file.stem.removeprefix("stream_")
     slices_file = tasks_file.with_name(tasks_file.stem + ".slices.yaml")
     slices = (yaml.safe_load(slices_file.read_text(encoding="utf-8")) or {}) if slices_file.exists() else {}
-    known = {t.id for t in tasks if t.split == "heldout"}
+    known = {t.id for t in tasks if t.split in HELD_OUT}
     bad = [i for ids in slices.values() for i in ids if i not in known]
     if bad:
         raise ValueError(f"slices name tasks that are not held-out tasks of the stream: {bad}")

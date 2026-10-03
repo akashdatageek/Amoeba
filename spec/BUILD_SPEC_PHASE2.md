@@ -522,6 +522,7 @@ the report too.
 | D89 | Loop driver, M-P2 run, report | `scripts/run_loop.py`, `eval/loop/m1/`, `docs/eval/loop_m1/REPORT.md` | B |
 | D90 | The verifier answers first: own result in a fresh context without the checked outputs, then compare; both in step_N.json | `amoeba/interp/plan_runner.py`, `amoeba/config/prompts/plan_verify_own.txt` | B |
 | D91 | Gate v3: per-task means, permutation test, fixed quota of 6 hypotheses per family per stream at alpha 0.05/6, no prediction rule; the pre-registered check | `amoeba/adapt/gate.py`, `amoeba/adapt/ledger.py`, `amoeba/config/adapt.yaml` | B |
+| D92 | Three task sets per family: practice, gate (15 held-out post + retention pre), final audit (10, `tasks/audit/`, read by no loop component; `scripts/run_audit.py` once per claim, logged) | `amoeba/adapt/stream.py`, `scripts/run_audit.py`, `tasks/stream_m2*`, `tasks/audit/` | B |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit

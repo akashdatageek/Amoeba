@@ -389,6 +389,14 @@ longer a rule; how well it predicted is reported in the loop's REPORT.md.
 
     python -m scripts.run_experiment --stream m2 --family calc --edit h.yaml --check   # the one pre-registered check
 
+## Three task sets (D92, Phase 2)
+
+Each task kind has practice tasks (the loop learns from them), gate tasks (held out; only the Experimenter and the
+Gate run them) and final-audit tasks in `tasks/audit/`, which no part of the loop can read. A claim about the loop is
+checked once on the audit set, and the claim is logged before the runs:
+
+    python -m scripts.run_audit --stream m2 --family calc --claim C1 --statement "..." --recipes-b eval/loop/m2/recipes ...
+
 ## Cost controls (D45–D48)
 
 ```bash
