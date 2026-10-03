@@ -17,6 +17,9 @@ class Ledger:
         if not self.path.exists():
             return []
         out = [json.loads(l) for l in self.path.read_text(encoding="utf-8").splitlines() if l.strip()]
+        for r in out:                    # D84b: rows written before gate versions existed were decided under v1
+            if r.get("event") == "decision":
+                r.setdefault("gate_version", "v1")
         return [r for r in out if family in (None, r.get("family")) and event in (None, r.get("event"))]
 
     def append(self, row: dict) -> dict:
@@ -37,6 +40,9 @@ class Ledger:
         """The family's rejected hypotheses (edit and observed result), for the Architect and the repeat check."""
         return [r for r in self.rows(family, "decision") if r.get("decision") == "reject"]
 
-    def calibration(self, family: str, recipe_hash: str) -> dict | None:
-        rows = [r for r in self.rows(family, "calibration") if r.get("recipe_hash") == recipe_hash]
+    def calibration(self, family: str, recipe_hash: str, slice_key: str | None = None) -> dict | None:
+        """The calibration of a recipe version on a held-out post slice (D84b: kept per slice; Stage A rows carry no
+        slice and match slice_key None)."""
+        rows = [r for r in self.rows(family, "calibration") if r.get("recipe_hash") == recipe_hash
+                and r.get("slice") == slice_key]
         return rows[-1] if rows else None

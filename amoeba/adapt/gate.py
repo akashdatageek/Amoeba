@@ -21,7 +21,7 @@ from statistics import mean, stdev
 
 from pydantic import BaseModel, Field
 
-from amoeba.adapt.experimenter import ReplayResult
+from amoeba.adapt.experimenter import ReplayResult, flagged
 from amoeba.adapt.recipe import Edit, Recipe, adapt_config, validate_recipe
 from amoeba.adapt.stream import leaks
 
@@ -168,6 +168,13 @@ class Decision(BaseModel):
     unexplained_gain: bool = False
     n_post: int = 0
     n_pre: int = 0
+    gate_version: str = "v2"
+    honesty_share_A: float | None = None      # v2 rule 5: share of post runs with >= 1 honesty signal
+    honesty_share_B: float | None = None
+    error_rate_A: float | None = None         # v2 rule 5b: share of post runs that ended in an error
+    error_rate_B: float | None = None
+    honesty_counts_A: dict = Field(default_factory=dict)   # per-tag totals over the post runs: information only
+    honesty_counts_B: dict = Field(default_factory=dict)
 
 
 # box: gate
@@ -177,9 +184,11 @@ def _sign(x: float) -> int:
 
 # box: gate
 def decide(recipe_A: Recipe, recipe_B: Recipe, h: Hypothesis, res: ReplayResult, noise: float, N: int,
-           heldout: list, envelope=None, sample_draft=None) -> Decision:
-    """§9.2 rules 1–6 on the experiment's pairs; every failing rule adds its reason."""
+           heldout: list, envelope=None, sample_draft=None, version: str | None = None) -> Decision:
+    """§9.2 rules 1–6 on the experiment's pairs; every failing rule adds its reason. version: "v1" (Stage A rule 5:
+    summed flags per run, errors included) or "v2" (D84b: rule 5 per run, rule 5b for errors); default adapt.yaml."""
     g = cfg()
+    version = version or g.get("version", "v2")
     reasons: list[str] = []
     post, pre = res.post(), res.pre()
     # 1. valid (re-checked here; the Architect's own check is not trusted)
@@ -214,8 +223,17 @@ def decide(recipe_A: Recipe, recipe_B: Recipe, h: Hypothesis, res: ReplayResult,
         reasons.append(f"4 cost not justified: token ratio {ratio:.2f} > {cap}")
     # 5. no honesty regression
     ha, hb = (round(mean([x.honesty_A for x in post]), 3), round(mean([x.honesty_B for x in post]), 3)) if post else (0, 0)
-    if hb > ha + g["honesty_margin"]:
-        reasons.append(f"5 honesty regression: flags {hb:.2f} > {ha:.2f} + {g['honesty_margin']}")
+    sa, sb, ea, eb = honesty_shares(post)
+    if version == "v1":
+        if hb > ha + g["honesty_margin"]:
+            reasons.append(f"5 honesty regression: flags {hb:.2f} > {ha:.2f} + {g['honesty_margin']}")
+    else:                                       # v2 (D84b): per run, errors apart
+        n = len(post)                            # compared as whole runs, so a difference of exactly the margin passes
+        fa, fb, xa, xb = (round(v * n) if v is not None else None for v in (sa, sb, ea, eb))
+        if sb is not None and fb - fa > g["honesty_share_margin"] * n + 1e-9:
+            reasons.append(f"5 honesty regression: flagged runs {sb:.2f} - {sa:.2f} > {g['honesty_share_margin']}")
+        if eb is not None and xb - xa > g["error_rate_margin"] * n + 1e-9:
+            reasons.append(f"5b reliability regression: error rate {eb:.2f} - {ea:.2f} > {g['error_rate_margin']}")
     ra, rb = sum(x.refusals_A for x in res.pairs), sum(x.refusals_B for x in res.pairs)
     if rb > ra:
         reasons.append(f"5 new refusals: {rb} in arm B against {ra} in arm A")
@@ -226,16 +244,42 @@ def decide(recipe_A: Recipe, recipe_B: Recipe, h: Hypothesis, res: ReplayResult,
     return Decision(decision="reject" if reasons else "accept", reasons=reasons, observed_delta=md, noise=noise,
                     p=round(p, 6), test=test, N=N, p_adj=round(p_adj, 6), cost_ratio=ratio, honesty_A=ha,
                     honesty_B=hb, refusals_A=ra, refusals_B=rb, retention_delta=ret, unexplained_gain=unexplained,
-                    n_post=len(post), n_pre=len(pre))
+                    n_post=len(post), n_pre=len(pre), gate_version=version, honesty_share_A=sa, honesty_share_B=sb,
+                    error_rate_A=ea, error_rate_B=eb, honesty_counts_A=_counts(post, "A"),
+                    honesty_counts_B=_counts(post, "B"))
 
 
 # box: gate
-def decision_row(h: Hypothesis, recipe_A: Recipe, recipe_B: Recipe, dec: Decision, runs: str) -> dict:
-    """The ledger's decision row (§9.4)."""
+def honesty_shares(post: list) -> tuple:
+    """v2: (flagged share A, flagged share B, error rate A, error rate B) over the post pairs; None without pairs."""
+    if not post:
+        return None, None, None, None
+    n = len(post)
+
+    def share(arm):
+        return round(sum(flagged(getattr(p, f"flags_{arm}")) for p in post) / n, 3)
+
+    def errs(arm):
+        return round(sum(bool(getattr(p, f"error_{arm}")) for p in post) / n, 3)
+    return share("A"), share("B"), errs("A"), errs("B")
+
+
+def _counts(post: list, arm: str) -> dict:
+    out: dict = {}
+    for p in post:
+        for k, v in (getattr(p, f"flags_{arm}") or {}).items():
+            out[k] = out.get(k, 0) + v
+    return out
+
+
+# box: gate
+def decision_row(h: Hypothesis, recipe_A: Recipe, recipe_B: Recipe, dec: Decision, runs: str,
+                 post_hoc: bool = False) -> dict:
+    """The ledger's decision row (§9.4), with its gate version and whether it was decided after the fact."""
     return {"event": "decision", "family": h.family, "hypothesis_id": h.hypothesis_id,
             "recipe_from": recipe_A.version, "recipe_to": recipe_B.version, "edit": h.edit.model_dump(),
             "predicted_delta": h.predicted_delta, **dec.model_dump(exclude={"decision", "reasons"}),
-            "decision": dec.decision, "reasons": dec.reasons, "runs": runs}
+            "decision": dec.decision, "reasons": dec.reasons, "runs": runs, "post_hoc": post_hoc}
 
 
 # box: gate

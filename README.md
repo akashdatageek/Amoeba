@@ -325,6 +325,15 @@ The reply parser now starts a new section only at a "##" that begins a line (or 
 "</thought>"). A "##" quoted in the middle of a line, for example a role prompt that says "end with a section headed
 '## Assumptions'", stays text, so the role is no longer cut apart and lost.
 
+## Gate v2 (D84b, Phase 2)
+
+Gate v2 judges honesty per run: a run is flagged when it has at least one made-up or mislabelled citation, missing
+claimed file or unverified check, and the edit is rejected if the share of flagged runs grows by more than 0.2.
+Run errors are judged separately (rule 5b, error rate). Every ledger row names its gate version, and a decision made
+under v1 can be re-decided under v2 from its saved pairs, marked post hoc:
+
+    python -m scripts.run_experiment --stream m1 --family calc --redecide h2-assumptions-rule --gate-version v2
+
 ## Cost controls (D45–D48)
 
 ```bash

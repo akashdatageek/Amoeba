@@ -92,12 +92,17 @@ def sample_draft(res) -> Draft | None:
     return None
 
 
+def cfg_gate_version() -> str:
+    return adapt_config()["gate"].get("version", "v2")
+
+
 # box: gate
 def ensure_calibration(stream: Stream, family: str, runner, root: Path, store: Path, repeats: int) -> dict:
     """§9.1: the calibration row of the family's current recipe, run (A vs A′) when the ledger has none."""
     ledger = Ledger(root / "ledger.jsonl")
     recipe_A = load_recipe(store, family) or seed_recipe(family)
-    row = ledger.calibration(family, recipe_A.hash())
+    key = stream.slice_key(family, "post")
+    row = ledger.calibration(family, recipe_A.hash(), key)
     if row is not None:
         return row
     cal = calibrate(recipe_A, stream, runner, root, repeats)
@@ -108,7 +113,9 @@ def ensure_calibration(stream: Stream, family: str, runner, root: Path, store: P
                           "score_A_mean": round(sum(p.score_A for p in post) / len(post), 4) if post else None,
                           "score_A2_mean": round(sum(p.score_B for p in post) / len(post), 4) if post else None,
                           "tokens_A_mean": round(sum(p.tokens_A for p in post) / len(post)) if post else None,
-                          "runs": f"experiments/{cal.hypothesis_id}/"})
+                          "tokens_A2_mean": round(sum(p.tokens_B for p in post) / len(post)) if post else None,
+                          "runs": f"experiments/{cal.hypothesis_id}/", "gate_version": cfg_gate_version(),
+                          **({"slice": key} if key else {})})
 
 
 # box: gate
@@ -134,11 +141,46 @@ def hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | 
     print(summary(res), flush=True)
     tools = default_registry()
     dec = decide(recipe_A, recipe_B, h, res, cal["noise"], ledger.tried_since_accept(h.family) + 1,
-                 stream.heldout(h.family), Envelope.from_registry(tools), sample_draft(res))
+                 stream.heldout(h.family, everything=True), Envelope.from_registry(tools), sample_draft(res))
     row = ledger.append(decision_row(h, recipe_A, recipe_B, dec, f"experiments/{h.hypothesis_id}/"))
     if dec.decision == "accept":                   # Box 9, minimal: the store's current version (D88 adds history)
         write_store(store, [recipe_B])
     return row
+
+
+# box: gate
+def redecide(stream: Stream, hypothesis_id: str, root: Path, store: Path | None = None, version: str = "v2") -> dict:
+    """D84b: decide a hypothesis again under `version` from its saved pairs — no new runs. The original rows are not
+    touched; the new decision row is marked post_hoc and does not change the recipe store."""
+    from amoeba.adapt.experimenter import Pair, ReplayResult, honesty_parts
+    root = Path(root)
+    ledger = Ledger(root / "ledger.jsonl")
+    hyp = [r for r in ledger.rows(event="hypothesis") if r.get("hypothesis_id") == hypothesis_id][-1]
+    orig = [r for r in ledger.rows(event="decision") if r.get("hypothesis_id") == hypothesis_id and not r.get("post_hoc")][-1]
+    exp = root / "experiments" / hypothesis_id
+    meta = json.loads((exp / "experiment.json").read_text(encoding="utf-8"))
+    pairs = []
+    for line in (exp / "pairs.jsonl").read_text(encoding="utf-8").splitlines():
+        p = Pair.model_validate_json(line)
+        upd = {}
+        for arm in ("A", "B"):
+            run = Path(getattr(p, f"run_{arm}"))
+            run = run if run.is_absolute() else ROOT / run
+            if not getattr(p, f"flags_{arm}") and (run / "result.json").exists():
+                upd[f"flags_{arm}"] = honesty_parts(run)
+        pairs.append(p.model_copy(update=upd))
+    res = ReplayResult.model_validate({**meta, "pairs": [x.model_dump() for x in pairs]})
+    h = Hypothesis.model_validate({"hypothesis_id": hypothesis_id, "family": hyp["family"], "edit": hyp["edit"],
+                                   "predicted_delta": hyp["predicted_delta"], "rationale": hyp.get("rationale", "")})
+    from amoeba.adapt.recipe import Recipe, write_store as _ws  # noqa: F401
+    recipe_A = (load_recipe(store, h.family) if store else None)
+    recipe_A = recipe_A if recipe_A is not None and recipe_A.version == orig["recipe_from"] else seed_recipe(h.family)
+    recipe_B = apply_edit(recipe_A, h.edit, created_by="human", hypothesis_id=h.hypothesis_id)
+    cal = ledger.calibration(h.family, res.recipe_A_hash, None)          # the Stage A slice had no slices file
+    dec = decide(recipe_A, recipe_B, h, res, cal["noise"] if cal else orig["noise"], orig["N"],
+                 stream.heldout(h.family, everything=True), Envelope.from_registry(default_registry()),
+                 sample_draft(res), version=version)
+    return ledger.append(decision_row(h, recipe_A, recipe_B, dec, orig["runs"], post_hoc=True))
 
 
 # box: experimenter
@@ -152,6 +194,9 @@ def parse(argv=None):
     p.add_argument("--repeats", type=int, default=None)
     p.add_argument("--parallel", type=int, default=None)
     p.add_argument("--calibrate-only", action="store_true", help="run the noise-floor calibration (A vs A') only")
+    p.add_argument("--redecide", default=None, metavar="HYPOTHESIS_ID",
+                   help="D84b: decide a hypothesis again from its saved pairs (no runs); the row is marked post_hoc")
+    p.add_argument("--gate-version", default="v2", choices=["v1", "v2"], help="with --redecide")
     p.add_argument("--env-file", action="append", default=[], help="KEY=VALUE files for the runs (never printed)")
     return p.parse_known_args(argv)
 
@@ -166,6 +211,9 @@ def main(argv=None) -> int:
                               parallel=args.parallel or cfg.get("parallel", 8), scratch=root / "jobs")
     repeats = args.repeats or cfg.get("repeats", 3)
     store = Path(args.recipes or root / "recipes")
+    if args.redecide:
+        print(json.dumps(redecide(stream, args.redecide, root, store, args.gate_version), indent=2))
+        return 0
     if args.calibrate_only:
         print(json.dumps(ensure_calibration(stream, args.family, runner, root, store, repeats)))
         return 0

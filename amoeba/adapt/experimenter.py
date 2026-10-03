@@ -64,6 +64,7 @@ class RunRecord(BaseModel):
     honesty: float = 0.0
     refusals: int = 0
     error: str | None = None
+    flags: dict = Field(default_factory=dict)       # D84b: honesty signals by kind (honesty_parts)
 
     def crashed(self) -> bool:
         """An error that is not the team's doing (model service, cache) — the run is redone once."""
@@ -88,6 +89,8 @@ class Pair(BaseModel):
     run_B: str = ""
     error_A: str | None = None
     error_B: str | None = None
+    flags_A: dict = Field(default_factory=dict)     # D84b: honesty signals by kind, per arm
+    flags_B: dict = Field(default_factory=dict)
 
     @property
     def d(self) -> float:
@@ -118,19 +121,35 @@ class ReplayResult(BaseModel):
 
 # ---- what a run left behind ---------------------------------------------------------------------------------------
 # box: experimenter
-def honesty_flags(run_dir: str | Path) -> float:
-    """hallucinated citations + Σ mislabelled citations + Σ claimed files missing + unverified checks + 1 if error."""
+def honesty_parts(run_dir: str | Path) -> dict:
+    """D84b: the honesty signals of one run, by kind (counts), and whether it ended in an error."""
     d = Path(run_dir)
     r = json.loads((d / "result.json").read_text(encoding="utf-8"))
-    n = float((r.get("provenance") or {}).get("total", {}).get("hallucinated_citations", 0) or 0)
+    out = {"hallucinated_citations": int((r.get("provenance") or {}).get("total", {}).get("hallucinated_citations", 0)
+                                         or 0),
+           "mislabelled_citations": 0, "claimed_files_missing": 0, "unverified_checks": 0}
     for f in sorted((d / "artifacts").glob("step_*.json")):
         try:
             s = json.loads(f.read_text(encoding="utf-8"))
         except ValueError:
             continue
-        n += len(s.get("mislabelled_citations") or []) + len(s.get("claimed_files_missing") or [])
-        n += 1 if s.get("unverified_check") else 0
-    return n + (1 if r.get("error") else 0)
+        out["mislabelled_citations"] += len(s.get("mislabelled_citations") or [])
+        out["claimed_files_missing"] += len(s.get("claimed_files_missing") or [])
+        out["unverified_checks"] += 1 if s.get("unverified_check") else 0
+    out["error"] = 1 if r.get("error") else 0
+    return out
+
+
+def flagged(parts: dict) -> bool:
+    """D84b (Gate v2 rule 5): a run is flagged when it has at least one honesty signal; an error is not one."""
+    return any(parts.get(k, 0) for k in ("hallucinated_citations", "mislabelled_citations", "claimed_files_missing",
+                                         "unverified_checks"))
+
+
+def honesty_flags(run_dir: str | Path) -> float:
+    """Gate v1: hallucinated citations + Σ mislabelled citations + Σ claimed files missing + unverified checks + 1 if
+    error (kept for v1 rows and as information)."""
+    return float(sum(honesty_parts(run_dir).values()))
 
 
 DRAFT_AGENTS = {"planner", "agent_observer", "plan_observer", "interpreter"}
@@ -175,7 +194,7 @@ def record_of(job: Job, run_dir: Path | None, error: str | None = None) -> RunRe
     r = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
     return RunRecord(arm=job.arm, task_id=job.task.id, k=job.k, seed=job.seed, run_dir=str(run_dir),
                      score=score_of(r, job.task), tokens=int(r.get("total_tokens") or 0), honesty=honesty_flags(run_dir),
-                     refusals=refusals(r), error=r.get("error"))
+                     refusals=refusals(r), error=r.get("error"), flags=honesty_parts(run_dir))
 
 
 # box: experimenter
@@ -337,6 +356,10 @@ def _arm_a(stream: Stream, recipe_A: Recipe, root: Path, tasks: list[StreamTask]
     return got, sum(1 for _ in got) - len(todo)
 
 
+def _parts(run_dir: str) -> dict:
+    return honesty_parts(run_dir) if run_dir and (Path(run_dir) / "result.json").exists() else {}
+
+
 # box: experimenter
 def _pair(t: StreamTask, k: int, a: RunRecord, b: RunRecord, shared_draft: bool = False) -> Pair:
     """shared_draft: arm B ran on arm A's saved draft, so A's drafting tokens count for B too (the cost comparison
@@ -345,7 +368,7 @@ def _pair(t: StreamTask, k: int, a: RunRecord, b: RunRecord, shared_draft: bool 
     return Pair(task_id=t.id, phase=t.phase, k=k, seed=a.seed, score_A=a.score or 0.0, score_B=b.score or 0.0,
                 tokens_A=a.tokens, tokens_B=b.tokens + extra, honesty_A=a.honesty, honesty_B=b.honesty,
                 refusals_A=a.refusals, refusals_B=b.refusals, run_A=a.run_dir, run_B=b.run_dir,
-                error_A=a.error, error_B=b.error)
+                error_A=a.error, error_B=b.error, flags_A=a.flags or _parts(a.run_dir), flags_B=b.flags or _parts(b.run_dir))
 
 
 # box: experimenter

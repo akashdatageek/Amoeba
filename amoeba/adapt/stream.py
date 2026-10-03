@@ -80,6 +80,9 @@ class Stream(BaseModel):
     name: str
     tasks: list[StreamTask]
     shifts: list[Shift] = Field(default_factory=list)
+    # D84b: the held-out ids in use (tasks/stream_<name>.slices.yaml, {post: [...], pre: [...]}); a phase not listed
+    # uses all its held-out tasks. Retired held-out tasks stay in the stream for the record and the leakage screen.
+    slices: dict[str, list[str]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _check(self):
@@ -124,13 +127,24 @@ class Stream(BaseModel):
         return [s.tool for s in self.shifts_due(task) if s.kind == "remove_tool"]
 
     # ---- Box 7 only -------------------------------------------------------------------------------------------
-    def heldout(self, family: str, phase: str | None = None) -> list[StreamTask]:
-        """The family's held-out tasks (post first, then pre) — for the Experimenter only."""
+    def heldout(self, family: str, phase: str | None = None, everything: bool = False) -> list[StreamTask]:
+        """The family's held-out tasks in use (post first, then pre) — for the Experimenter only. everything: also
+        the retired ones (the leakage screen checks an edit against every held-out task ever used)."""
         xs = [t for t in self.tasks if t.split == "heldout" and t.family == family and phase in (None, t.phase)]
-        return sorted(xs, key=lambda t: (t.phase != "post", t.id))
+        if not everything:
+            xs = [t for t in xs if t.phase not in self.slices or t.id in self.slices[t.phase]]
+        return sorted(xs, key=lambda t: (t.phase != "post", _natural(t.id)))
+
+    def slice_key(self, family: str, phase: str = "post") -> str | None:
+        """The active slice of a phase as one string (calibration rows are kept per slice); None = no slices file."""
+        return ",".join(t.id for t in self.heldout(family, phase)) if phase in self.slices else None
 
     def families(self) -> list[str]:
         return sorted({t.family for t in self.tasks})
+
+
+def _natural(s: str) -> list:
+    return [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", s)]
 
 
 # box: stream
@@ -154,7 +168,13 @@ def load_stream(name_or_path: str | Path) -> Stream:
     shifts = (yaml.safe_load(shifts_file.read_text(encoding="utf-8")) or {}).get("shifts", []) \
         if shifts_file.exists() else []
     name = tasks_file.stem.removeprefix("stream_")
-    return Stream(name=name, tasks=tasks, shifts=[Shift.model_validate(s) for s in shifts])
+    slices_file = tasks_file.with_name(tasks_file.stem + ".slices.yaml")
+    slices = (yaml.safe_load(slices_file.read_text(encoding="utf-8")) or {}) if slices_file.exists() else {}
+    known = {t.id for t in tasks if t.split == "heldout"}
+    bad = [i for ids in slices.values() for i in ids if i not in known]
+    if bad:
+        raise ValueError(f"slices name tasks that are not held-out tasks of the stream: {bad}")
+    return Stream(name=name, tasks=tasks, shifts=[Shift.model_validate(s) for s in shifts], slices=slices)
 
 
 # box: stream

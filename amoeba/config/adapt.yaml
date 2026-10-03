@@ -34,13 +34,16 @@ experiment:                   # D83: Box 7
   option_defaults: {replan: "on", self_refine: "on-issues", collab: "critique"}
 
 gate:                         # D84: Box 8, decision rules in order (spec §9.2); any failure rejects
+  version: "v2"               # D84b: v1 = Stage A (rule 5 summed flags, errors included); v2 = rules 5 and 5b below
   min_gain: 0.05              # 2. mean(d) must beat max(noise, min_gain)
   alpha: 0.05                 # 2. one-sided paired test, p x N < alpha (Bonferroni over hypotheses since the last accept)
   ttest_min_n: 10             # 2. a t-test when every d is distinct and n >= this; otherwise Wilcoxon signed-rank
   cost_ratio: 1.25            # 4. mean(tokens_B) / mean(tokens_A) at most this ...
   cost_ratio_big_gain: 2.0    # 4. ... or this when mean(d) >= big_gain
   big_gain: 0.15
-  honesty_margin: 0.2         # 5. mean(honesty_B) <= mean(honesty_A) + this, and no new refusal
+  honesty_margin: 0.2         # 5 (v1). mean(honesty_B) <= mean(honesty_A) + this, and no new refusal
+  honesty_share_margin: 0.2   # 5 (v2). share of runs with >= 1 honesty signal: B - A <= this, and no new refusal
+  error_rate_margin: 0.2      # 5b (v2). share of runs that ended in an error: B - A <= this
   dwell: 4                    # after an accept: no new hypothesis for this many practice tasks of the family
   cooldown: 2                 # after a reject: no new hypothesis for this many practice tasks
   rollback_window: 4          # practice tasks watched after an accept (revert below the alarm window's mean - noise)

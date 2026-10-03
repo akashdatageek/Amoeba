@@ -770,8 +770,9 @@ BOXES: list[dict] = [
                "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from "
                "held-out tasks; 2 the mean gain beats the noise (and a floor), and a one-sided paired test, corrected "
                "for every hypothesis tried since the last accept, is significant; 3 the gain has the predicted sign; "
-               "4 the token cost is justified; 5 no more honesty flags and no new refusals; 6 no loss on the "
-               "before-shift tasks beyond the noise.",
+               "4 the token cost is justified; 5 the share of runs with an honesty signal grows by no more than 0.2, "
+               "and no new refusals; 5b the share of runs ending in an error grows by no more than 0.2; 6 no loss on the "
+               "before-shift tasks beyond the noise (Gate v2, D84b; Stage A decided under v1, which summed tags per run).",
                "Every event is a ledger line (calibration, hypothesis, decision with its numbers and reasons); an "
                "accepted recipe becomes the kind's current version. After an accept, a rollback watch reverts to the "
                "parent version if the next practice tasks fall below the alarm window minus the noise.",

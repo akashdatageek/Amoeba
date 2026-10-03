@@ -36,10 +36,10 @@ def hyp(edit=RULE, predicted=0.2):
     return Hypothesis(hypothesis_id="h", family="calc", edit=edit, predicted_delta=predicted)
 
 
-def run(res, h=None, noise=0.06, N=1, heldout=()):
+def run(res, h=None, noise=0.06, N=1, heldout=(), version=None):
     h = h or hyp()
     a = seed_recipe("calc")
-    return decide(a, apply_edit(a, h.edit), h, res, noise, N, list(heldout), ENV)
+    return decide(a, apply_edit(a, h.edit), h, res, noise, N, list(heldout), ENV, version=version)
 
 
 def rules(dec):
@@ -84,9 +84,9 @@ def test_rule_4_cost():
     assert rules(run(result(tokens=(1000, 2100)))) == ["4"]
 
 
-def test_rule_5_honesty_and_refusals():
-    assert rules(run(result(honesty=(0.2, 0.6)))) == ["5"]
-    assert rules(run(result(refusals=(0, 1)))) == ["5"]
+def test_rule_5_honesty_and_refusals_v1():
+    assert rules(run(result(honesty=(0.2, 0.6)), version="v1")) == ["5"]
+    assert rules(run(result(refusals=(0, 1)), version="v1")) == ["5"]
 
 
 def test_rule_6_retention():
