@@ -31,7 +31,7 @@ Task stream ──► Boxes 1–3 (with the recipe for this task type) ──►
 **Scope of Phase 2:** improving the team (the recipe per task type). Improving the boxes themselves (the harness:
 prompts, observers, runner code) is out of scope. It comes later and reuses the same gate (§12).
 
-**Build order:** the measuring half first, then the thinking half. In week 1 a hand-written edit goes through
+**Build order:** the measuring half first, then the thinking half. In Stage A a hand-written edit goes through
 the Experimenter and the Gate. We trust the ruler before Gemma is allowed to propose edits.
 
 ---
@@ -92,14 +92,14 @@ shifts:
 - New flag `run_task --disable-tools a,b` removes tools from the registry and the pool for one run (used by
   `remove_tool` shifts).
 
-### 2.3 Milestone stream (written in week 1)
+### 2.3 Milestone stream (written in Stage A)
 
 `tasks/stream_m1.jsonl`, family `calc`:
 - 8 practice tasks before the shift and 8 after;
 - 5 held-out `post` tasks and 3 held-out `pre` tasks;
 - one feedback shift after task 8.
 
-A second stream with an environment shift (`code` family, `local:Bash` removed) is the stretch goal for week 2.
+A second stream with an environment shift (`code` family, `local:Bash` removed) is a stretch goal after Stage B.
 
 ---
 
@@ -318,7 +318,7 @@ experiment(recipe_A, hypothesis, heldout_slice, repeats=3) -> ReplayResult
   `unverified_check` + `1 if error`.
 - Everything is written to `eval/loop/<stream>/experiments/<hypothesis_id>/` (pairs.jsonl and the run folders).
 
-**Week 1 acceptance (by hand, before Boxes 4–6 exist):** `scripts/run_experiment.py --stream m1 --family calc
+**Stage A acceptance (by hand, before Boxes 4–6 exist):** `scripts/run_experiment.py --stream m1 --family calc
 --edit edit.yaml` runs one hand-written hypothesis through Box 7 and Box 8.
 
 ---
@@ -343,8 +343,26 @@ Run recipe A against itself (A vs A′) on the held-out post slice: 5 × 3 pairs
    predict is rejected and logged as `unexplained_gain`.
 4. **Cost justified:** `cost_ratio = mean(tokens_B) / mean(tokens_A) ≤ 1.25`, or `≤ 2.0` when `mean(d) ≥ 0.15`.
 5. **No honesty regression:** `mean(honesty_B) ≤ mean(honesty_A) + 0.2`, and no new sandbox or side-effect refusal
-   appears.
+   appears. *(Gate v1, used for h1 and h2 in Stage A. Replaced by rules 5 and 5b of Gate v2 below.)*
 6. **Retention:** on the held-out pre tasks, `mean(score_B − score_A) ≥ −noise`.
+
+#### Gate v2 (D84b, from Oct 3; written before any re-decision)
+
+Stage A showed two faults in v1's rule 5. First, it summed tags per run, so a habit that shows up once per figure
+(Gemma tagging its own computed figures `[S1]` in runs with no sources) was counted once per figure, and an edit that
+makes the answer restate every figure doubled the count without making any run less honest. Second, it counted a run
+error ("incomplete" etc.) as dishonesty. Gate v2 changes rule 5 and adds rule 5b; rules 1–4 and 6 are unchanged.
+
+5. **No honesty regression (v2), per run:** a run is *flagged* when it has at least one of {hallucinated citation,
+   mislabelled citation, claimed file missing, unverified check}. `share = flagged runs / runs` over the post pairs.
+   Reject if `share_B − share_A > 0.2`, or a new sandbox or side-effect refusal appears. The per-tag counts stay in
+   the ledger as information only.
+5b. **No reliability regression (v2):** `error_rate = runs that ended in an error / runs` over the post pairs.
+   Reject if `error_rate_B − error_rate_A > 0.2`. Run errors no longer count toward honesty.
+
+Every ledger row carries `gate_version` (`v1` or `v2`). Rows decided under v1 are never rewritten. A hypothesis
+decided under v1 may get one more decision row under v2, computed from its saved pairs without new runs and marked
+`"post_hoc": true`; it is reported whatever it says, and it does not change the recipe store.
 
 ### 9.3 After the decision
 
@@ -362,13 +380,14 @@ Run recipe A against itself (A vs A′) on the held-out post slice: 5 × 3 pairs
  "family": "calc", "hypothesis_id": "...", "recipe_from": 1, "recipe_to": 2, "edit": {...},
  "predicted_delta": 0.15, "observed_delta": 0.21, "noise": 0.06, "p": 0.004, "N": 1, "p_adj": 0.004,
  "cost_ratio": 1.08, "honesty_A": 0.2, "honesty_B": 0.1, "retention_delta": 0.0,
- "decision": "accept", "reasons": [], "runs": "experiments/<id>/"}
+ "honesty_share_A": 0.33, "honesty_share_B": 0.4, "error_rate_A": 0.0, "error_rate_B": 0.07,
+ "decision": "accept", "reasons": [], "runs": "experiments/<id>/", "gate_version": "v2", "post_hoc": false}
 ```
 
 This file is the source for the papers' adaptation tables: accepted and rejected edits, prediction accuracy,
 reverts and cost.
 
-### 9.5 Later (RRSI pruning, stretch for week 2, otherwise Phase 3)
+### 9.5 Later (RRSI pruning, stretch after Stage B, otherwise Phase 3)
 
 At the end of a stream, for each accepted edit, test the recipe without it on the held-out slice. If the score does
 not drop beyond the noise floor, remove the edit. Recipes stay small, and edits that only helped by chance are undone.
@@ -419,7 +438,7 @@ write eval/loop/<stream>/summary.json and REPORT.md (score per task over the str
 
 It is resumable (D73): a crash restarts at the first task with no `result.json`.
 
-**Milestone M-P2 (the deliverable of the two weeks)**, on `stream_m1`:
+**Milestone M-P2 (the deliverable of Stage B)**, on `stream_m1`:
 1. Before the shift, the calc scores are stable. No alarm, or an alarm that leads to no accepted change.
 2. After the feedback shift, the Monitor raises an alarm within 3 tasks.
 3. The Diagnoser names `feedback` with the missing item.
@@ -449,31 +468,39 @@ the report too.
 
 ## 13. Build plan and D-rows
 
-| D | What | Files | Week |
+| D | What | Files | Stage |
 |---|---|---|---|
-| D78 | Citation check: a ZIP+4 written together ("463243348") contains its 5-digit ZIP; identifiers (ZIP, phone, street numbers) are matched as whole tokens. From docs/eval/dev §3 | `amoeba/interp/citecheck.py`, test | 1 |
-| D79 | The Box 2 quality gate (D28) on by default for `--topology plan`; off for the baselines and for `--drafts-from` | `scripts/run_task.py`, harness defaults | 1 |
-| D80 | Task stream, shifts, feedback channel, `--disable-tools`; `stream_m1` written and committed | `amoeba/adapt/stream.py`, `tasks/stream_m1*.{jsonl,yaml}` | 1 |
-| D81 | Recipe, edit menu, validation | `amoeba/adapt/recipe.py`, `amoeba/config/adapt.yaml` | 1 |
-| D82 | Recipe hook in Boxes 2–3, `{lessons}` slot, records | `scripts/run_task.py`, `amoeba/task/draft.py`, d24 prompts, `amoeba/interp/plan_runner.py` | 1 |
-| D83 | Experimenter, arm-A cache, `scripts/run_experiment.py` | `amoeba/adapt/experimenter.py` | 1 |
-| D84 | Gate, noise floor, ledger, rollback watch | `amoeba/adapt/gate.py`, `amoeba/adapt/ledger.py` | 1 |
-| D85 | Monitor | `amoeba/adapt/monitor.py` | 2 |
-| D86 | Diagnoser (tier 0) and the cause → edit table | `amoeba/adapt/diagnoser.py` | 2 |
-| D87 | Architect prompt and checks | `amoeba/adapt/architect.py`, `amoeba/config/prompts/architect.txt` | 2 |
-| D88 | Recipe store, `--recipes`, `--recipes-from` | `amoeba/memory/recipes.py` | 2 |
-| D89 | Loop driver, M-P2 run, report | `scripts/run_loop.py`, `eval/loop/m1/`, `docs/eval/loop_m1/REPORT.md` | 2 |
+| D78 | Citation check: a ZIP+4 written together ("463243348") contains its 5-digit ZIP; identifiers (ZIP, phone, street numbers) are matched as whole tokens. From docs/eval/dev §3 | `amoeba/interp/citecheck.py`, test | A |
+| D79 | The Box 2 quality gate (D28) on by default for `--topology plan`; off for the baselines and for `--drafts-from` | `scripts/run_task.py`, harness defaults | A |
+| D80 | Task stream, shifts, feedback channel, `--disable-tools`; `stream_m1` written and committed | `amoeba/adapt/stream.py`, `tasks/stream_m1*.{jsonl,yaml}` | A |
+| D81 | Recipe, edit menu, validation | `amoeba/adapt/recipe.py`, `amoeba/config/adapt.yaml` | A |
+| D82 | Recipe hook in Boxes 2–3, `{lessons}` slot, records | `scripts/run_task.py`, `amoeba/task/draft.py`, d24 prompts, `amoeba/interp/plan_runner.py` | A |
+| D83 | Experimenter, arm-A cache, `scripts/run_experiment.py` | `amoeba/adapt/experimenter.py` | A |
+| D84 | Gate, noise floor, ledger, rollback watch | `amoeba/adapt/gate.py`, `amoeba/adapt/ledger.py` | A |
+| D80a | Rubric number reader: a lowercase "m" is a million only after a currency sign ("32.4 m²" was read as 32.4 million); the Experimenter re-scores every run from its saved answer | `amoeba/task/evaluate.py`, `amoeba/adapt/experimenter.py` | A |
+| D84a | Section parser: only a "##" that starts a line (or follows a closing tag) is a section break; a heading quoted mid-line stays text | `amoeba/task/parsers.py` | A |
+| D84b | Gate v2: rule 5 per run (share of runs with ≥1 honesty flag), new rule 5b (error rate), `gate_version` on every ledger row; h2 re-decided post hoc from its saved pairs | `amoeba/adapt/gate.py`, `amoeba/adapt/ledger.py`, `amoeba/config/adapt.yaml` | B |
+| D84c | Open harness item (no code change): in source-free runs Gemma tags its own computed figures `[S#]` and D33 counts them as hallucinated citations — a Box 3 issue for the harness phase (Paper 2) | spec only | B |
+| D85 | Monitor | `amoeba/adapt/monitor.py` | B |
+| D86 | Diagnoser (tier 0) and the cause → edit table | `amoeba/adapt/diagnoser.py` | B |
+| D87 | Architect prompt and checks | `amoeba/adapt/architect.py`, `amoeba/config/prompts/architect.txt` | B |
+| D88 | Recipe store, `--recipes`, `--recipes-from` | `amoeba/memory/recipes.py` | B |
+| D89 | Loop driver, M-P2 run, report | `scripts/run_loop.py`, `eval/loop/m1/`, `docs/eval/loop_m1/REPORT.md` | B |
 
-**Week 1 (Oct 3–8), done when:**
-- the mock-LLM tests in §14 pass;
-- the hand-edit check works on Gemma: a calibration row, one helpful hand edit (a planner rule meeting the new
-  requirement) **accepted**, and one useless hand edit (for example "revoke `calc` from all roles") **rejected**, with
-  reasons. Both are on the held-out post slice of `stream_m1`.
+**Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
+Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit
+(revoke `calc` from all roles) rejected (no gain), and the helpful hand edit (a planner rule meeting the new
+requirement) rejected by Gate v1's rule 5 (+0.267 gain; see D84b). Found and fixed on the way: D80a, D84a. Report:
+`docs/eval/loop_m1/WEEK1.md`.
 
-**Week 2 (Oct 9–14), done when:** M-P2 (§11) has run on Gemma and its report is written. Stretch: the environment
-shift stream and the pruning check (§9.5).
+**Stage B (Oct 3–4: D84b, fresh held-out slice, D85–D89, milestone).** Gate v2 (D84b) and the open harness item
+(D84c); a fresh held-out post slice hpost-6..10 (approved before use, frozen after; the milestone uses only it for
+post-shift testing, the 3 held-out pre tasks stay for retention); D85–D89; M-P2 (§11) on Gemma with no hand edits:
+the Architect proposes and Gate v2 decides; `docs/eval/loop_m1/REPORT.md`. Amoeba only: the baselines are not run or
+changed before the benchmark stage.
 
-**Oct 15: code freeze** for the benchmark runs.
+**Code freeze** for the benchmark: when the milestone report is written (target Oct 5). All three architectures are
+then rerun with the frozen code.
 
 ---
 
@@ -505,4 +532,4 @@ shift stream and the pruning check (§9.5).
 | Each hypothesis (arm B only, after the cache) plus retention (3 × 3) | ~24 | ~30 min |
 | Milestone total (2–3 hypotheses) | ~110 | ~5 h |
 
-This fits in week 2. It is also why every box is first tested with the mock LLM and on small slices.
+This fits in Stage B. It is also why every box is first tested with the mock LLM and on small slices.
