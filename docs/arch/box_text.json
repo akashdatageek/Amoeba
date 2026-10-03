@@ -1,6 +1,6 @@
 {
  "action_obs": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -26,6 +26,7 @@
      "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add",
       "amoeba/interp/plan_runner.py::PlanRunner.held_items",
       "amoeba/interp/plan_runner.py::missing_input_marks",
       "amoeba/interp/plan_runner.py::names_match",
@@ -109,7 +110,8 @@
     },
     {
      "callees": [
-      "amoeba/adapt/ledger.py::Ledger.append"
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add"
      ],
      "doc": "Every step that builds on step n, directly or through other steps.",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.dependants",
@@ -576,15 +578,15 @@
    },
    "title": "Action Observer (re-plan)"
   },
-  "facts_hash": "2941bee58388b9b2",
+  "facts_hash": "9f6ee48bfe70890b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "eab21b71f661e662",
   "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code checks the change before it takes effect.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, a tool the plan did not know about, or a missing answer step. No trigger, no call.",
    "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available, the budget left, and the final answer step, returning one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
-   "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met.",
+   "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met, and the system tracks all loop-related inputs.",
    "At most {PlanOptions.max_replans} re-plans and {PlanOptions.max_added_steps} added steps per run; an unreadable or invalid reply counts as CONTINUE. Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change."
   ]
  },
@@ -819,9 +821,11 @@
   },
   "facts_hash": "6b070b6441fcecf1",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "ae95b76a69cd180b",
   "seed_hash": "f8fe62b1f0fa2f99",
   "sentence": "An AI reads the diagnosis, the current recipe and the changes already rejected, and proposes one typed change with a reason and a predicted gain; plain code checks it before anything is tested.",
   "source": "hand (model: still true)",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "The only box of the loop that calls a model (Gemma). It sees the diagnosis, the recipe, the edits the diagnosis allows with their exact parameter shapes, the kind's rejected changes with their results, and up to two practice examples — never a held-out task.",
    "It must reply with one JSON object: one edit, a short reason, a signed predicted change in score.",
@@ -2015,7 +2019,7 @@
   },
   "facts_hash": "e1b5a59d3e3c6d4d",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "35435a7ec6af1128",
+  "rejected_hash": "9bf4dc8ba13ac2c4",
   "seed_hash": "bbd14a5aace21969",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand (model: still true)",
@@ -2126,7 +2130,7 @@
   ]
  },
  "diagnoser": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -2180,6 +2184,53 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/diagnoser.py::_allowed",
+     "signature": "_allowed(cause: str) -> list[str]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/diagnoser.py::_load",
+     "signature": "_load(p: Path) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/diagnoser.py::_load",
+      "amoeba/task/saved_drafts.py::_load"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/diagnoser.py::_plan",
+     "signature": "_plan(run_dir: Path) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/diagnoser.py::_load",
+      "amoeba/task/saved_drafts.py::_load"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/diagnoser.py::_steps",
+     "signature": "_steps(run_dir: Path) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "A Selector-shaped hint: the step kind where the cause shows most, and a tool its roles hold.",
+     "key": "amoeba/adapt/diagnoser.py::_where",
+     "signature": "_where(cause: str, sigs: list[dict]) -> dict"
+    },
+    {
+     "callees": [
       "amoeba/adapt/diagnoser.py::Diagnosis",
       "amoeba/adapt/diagnoser.py::_allowed",
       "amoeba/adapt/diagnoser.py::_where",
@@ -2206,6 +2257,20 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/stream.py::Stream.practice",
+      "amoeba/adapt/stream.py::assert_practice",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "Up to k practice examples: the task prompt, the failing (else the answer) step's do / output / done_when, and",
+     "key": "amoeba/adapt/diagnoser.py::examples",
+     "signature": "examples(window: list[PracticeRecord], sigs: list[dict], cause: str, stream: Stream, k: int) -> list[dict]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/diagnoser.py::_load",
       "amoeba/adapt/diagnoser.py::_plan",
       "amoeba/adapt/diagnoser.py::_steps",
@@ -2225,6 +2290,11 @@
    "guards": [
     [
      "decide",
+     "if '(kind ' in line",
+     "set kinds[line.split('(kind ')[1].split(',')[0]] += 1"
+    ],
+    [
+     "decide",
      "if cause == 'feedback' and items",
      "set name, n = items.most_common(1)[0]"
     ],
@@ -2232,6 +2302,11 @@
      "decide",
      "if hall",
      "set counts['hallucinated_citations'] += hall"
+    ],
+    [
+     "decide",
+     "if kinds",
+     "set out['step_kind'] = kinds.most_common(1)[0][0]"
     ],
     [
      "decide",
@@ -2244,14 +2319,49 @@
      "set counts['unverified_check'] += 1"
     ],
     [
+     "decide",
+     "if tools",
+     "set out['roles_with_tool'] = tools.most_common(1)[0][0]"
+    ],
+    [
      "fallback",
      "'feedback' if any((r.failed_items for r in window)) else order[0]",
      "choose value"
     ],
     [
      "fallback",
+     "bad[0] if bad else max(steps) if steps else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except (OSError, ValueError)",
+     "return {}"
+    ],
+    [
+     "fallback",
+     "max(steps) if steps else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "steps.get(n, {}) if n else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
      "sum((bool(s['by_cause'].get(cause)) for s in sigs)) / len(sigs) if sigs else 0.0",
      "choose value"
+    ],
+    [
+     "filter",
+     "keep only if '/artifacts/step_' in line",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if (s := _load(f))",
+     "drop the rest"
     ],
     [
      "filter",
@@ -2262,6 +2372,11 @@
      "filter",
      "keep only if shares[k]['window'] > 0",
      "drop the rest"
+    ],
+    [
+     "reject",
+     "if len(out) >= k or r.task_id not in tasks",
+     "skip (continue)"
     ]
    ],
    "kind": "code",
@@ -2271,13 +2386,13 @@
    "prompts": {},
    "title": "5 · Diagnoser (D86)"
   },
-  "facts_hash": "09b0c8d4d42de3da",
+  "facts_hash": "837adb523a9aad3b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "9faebe54a7745a22",
   "sentence": "Counts what the runs of the alarm's window recorded and names the cause that rose most, with the edits that may answer it.",
-  "source": "hand (model: still true)",
+  "source": "model: rewritten",
   "what": [
-   "It reads the window's run folders: step causes recorded by the step contract (with the step's kind, roles and their tools), blocked capabilities, unused tools, missing files, unverified checks, made-up or mislabelled citations and the names of the failed rubric items.",
+   "It reads the window's run folders for step causes (kind, roles, tools), blocked capabilities, unused tools, missing files, unverified checks, citations, and failed rubric items, while identifying the step kind and tool roles where the cause appears most.",
    "The cause is the one whose share of runs rose most from the reference runs to the window — a cause that was always there does not explain an alarm — then the most frequent, then the table order.",
    "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice examples (never held-out tasks) go to the Architect with the evidence lines.",
    "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation)."
@@ -2508,7 +2623,7 @@
   ]
  },
  "experimenter": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -2802,6 +2917,7 @@
       "amoeba/adapt/experimenter.py::_slug",
       "amoeba/adapt/experimenter.py::heldout_disabled",
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::_slug",
       "amoeba/adapt/recipe.py::Recipe.hash",
       "amoeba/adapt/recipe.py::write_store",
       "amoeba/interp/plan_runner.py::PlanRunner.run",
@@ -2825,6 +2941,14 @@
      "doc": "shared_draft: arm B ran on arm A's saved draft, so A's drafting tokens count for B too (the cost comparison",
      "key": "amoeba/adapt/experimenter.py::_pair",
      "signature": "_pair(t: StreamTask, k: int, a: RunRecord, b: RunRecord, shared_draft: bool=False) -> Pair"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::honesty_parts"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/experimenter.py::_parts",
+     "signature": "_parts(run_dir: str) -> dict"
     },
     {
      "callees": [
@@ -2876,6 +3000,7 @@
       "amoeba/adapt/experimenter.py::heldout_disabled",
       "amoeba/adapt/experimenter.py::write_result",
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::_slug",
       "amoeba/adapt/recipe.py::Recipe.hash",
       "amoeba/adapt/recipe.py::apply_edit",
       "amoeba/adapt/recipe.py::write_store",
@@ -2911,10 +3036,29 @@
      "signature": "finished_run(out: Path) -> Path | None"
     },
     {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D84b (Gate v2 rule 5): a run is flagged when it has at least one honesty signal; an error is not one.",
+     "key": "amoeba/adapt/experimenter.py::flagged",
+     "signature": "flagged(parts: dict) -> bool"
+    },
+    {
      "callees": [],
      "doc": "A remove_tool shift is in effect for the family's held-out post tasks.",
      "key": "amoeba/adapt/experimenter.py::heldout_disabled",
      "signature": "heldout_disabled(stream: Stream, task: StreamTask) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::honesty_parts"
+     ],
+     "doc": "Gate v1: hallucinated citations + Σ mislabelled citations + Σ claimed files missing + unverified checks + 1 if",
+     "key": "amoeba/adapt/experimenter.py::honesty_flags",
+     "signature": "honesty_flags(run_dir: str | Path) -> float"
     },
     {
      "callees": [
@@ -2980,6 +3124,18 @@
      "doc": "",
      "key": "scripts/run_experiment.py::_rel",
      "signature": "_rel(root: Path, p: Path) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "scripts/run_experiment.py::cfg_gate_version",
+     "signature": "cfg_gate_version() -> str"
     },
     {
      "callees": [],
@@ -3154,6 +3310,11 @@
     ],
     [
      "fallback",
+     "honesty_parts(run_dir) if run_dir and (Path(run_dir) / 'result.json').exists() else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
      "pick(load_saved_drafts(job.drafts_from), job.task.id, 0) if job.drafts_from else None",
      "choose value"
     ],
@@ -3285,7 +3446,7 @@
    "prompts": {},
    "title": "7 · Experimenter (D83)"
   },
-  "facts_hash": "b9611801a6c0a656",
+  "facts_hash": "b0cb1136badc3999",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0af422728bb53ada",
   "sentence": "Runs the old recipe against the old recipe plus one edit on the kind's held-out tasks, {experiment.repeats} times each, with the same seed, tools and model, and returns the score pairs.",
@@ -3483,7 +3644,7 @@
   ]
  },
  "gate": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -3641,6 +3802,17 @@
      "doc": "Regularised incomplete beta I_x(a, b).",
      "key": "amoeba/adapt/gate.py::_betainc",
      "signature": "_betainc(a: float, b: float, x: float) -> float"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/gate.py::_counts",
+     "signature": "_counts(post: list, arm: str) -> dict"
     },
     {
      "callees": [],
@@ -4213,11 +4385,11 @@
    "prompts": {},
    "title": "8 · Gate and ledger (D84)"
   },
-  "facts_hash": "a7260f0ef4d1f795",
+  "facts_hash": "471b08c4c8c1a6c9",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "38d5bf9c1121e7e6",
   "sentence": "Keeps a recipe change only when its gain on held-out tasks beats the measured noise, was predicted, is worth its cost, keeps the team honest and loses nothing on the tasks that already worked.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Noise floor, once per kind and recipe version: the recipe against itself with other seeds on the held-out after-shift tasks; noise = 2 × the spread of those score differences / √(pairs).",
    "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from held-out tasks; 2 the mean gain beats the noise (and a floor), and a one-sided paired test, corrected for every hypothesis tried since the last accept, is significant; {hand_check.repeats} the gain has the predicted sign; 4 the token cost is justified; 5 the share of runs with an honesty signal grows by no more than 0.2, and no new refusals; 5b the share of runs ending in an error grows by no more than 0.2; 6 no loss on the before-shift tasks beyond the noise (Gate v2, D84b; Stage A decided under v1, which summed tags per run).",
@@ -4375,7 +4547,7 @@
   ]
  },
  "instantiate": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -4402,6 +4574,7 @@
      "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add",
       "amoeba/config/validate.py::_is_uuid",
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/llm/cache.py::_Store.get",
@@ -4586,7 +4759,7 @@
    "prompts": {},
    "title": "Build the team (instantiate)"
   },
-  "facts_hash": "4a9a2dca6f9a4a17",
+  "facts_hash": "e15a1578a31fe9a3",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "eee28a8b08285ada",
   "sentence": "Gives each helper a permanent id, wires the helpers for the chosen shape, and rejects the team if any rule is broken.",
@@ -5056,7 +5229,7 @@
   ]
  },
  "localtools": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -5187,6 +5360,7 @@
     },
     {
      "callees": [
+      "amoeba/adapt/loop.py::LoopIO.save",
       "amoeba/localtools/office.py::recalc"
      ],
      "doc": "A two-cell workbook (2 and 3, and =A1*A2) must come back from LibreOffice with the value 6.",
@@ -5774,7 +5948,7 @@
    "prompts": {},
    "title": "Local toolbox (sandboxed)"
   },
-  "facts_hash": "0a255bc45da0acd5",
+  "facts_hash": "34af52cd4aeab9c9",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "cf9559fad29b1143",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
@@ -5790,8 +5964,412 @@
    "D71: LibreOffice Calc headless (scripts/setup_office.sh) recalculates spreadsheet formulas with a fresh profile and HOME; when the xlsx skill is attached, plain code checks once that a two-cell workbook comes back with its value, and if not the helper's card says recalc.py will fail."
   ]
  },
+ "loop": {
+  "checked_at": "ecf0733",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "watch",
+       "dict | None"
+      ]
+     ],
+     "key": "amoeba/adapt/loop.py::FamilyState",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "The loop's state on disk (eval/loop/<stream>/loop_state.json).",
+     "fields": [
+      [
+       "stream",
+       "str"
+      ],
+      [
+       "families",
+       "dict[str, FamilyState]"
+      ],
+      [
+       "processed",
+       "list[int]"
+      ],
+      [
+       "events",
+       "list[dict]"
+      ]
+     ],
+     "key": "amoeba/adapt/loop.py::Loop",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [],
+     "key": "amoeba/adapt/loop.py::LoopIO",
+     "methods": [
+      "__init__(self, root: Path)",
+      "load(self, stream: Stream) -> Loop",
+      "save(self, loop: Loop) -> None",
+      "records(self) -> list[PracticeRecord]",
+      "add(self, rec: PracticeRecord) -> None"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/architect.py::log_unresolved",
+      "amoeba/adapt/architect.py::propose",
+      "amoeba/adapt/diagnoser.py::diagnose",
+      "amoeba/adapt/diagnoser.py::diagnose_none",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::calibrate",
+      "amoeba/adapt/experimenter.py::experiment",
+      "amoeba/adapt/gate.py::decide",
+      "amoeba/adapt/gate.py::decision_row",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/ledger.py::Ledger.failed",
+      "amoeba/adapt/ledger.py::Ledger.rows",
+      "amoeba/adapt/ledger.py::Ledger.tried_since_accept",
+      "amoeba/adapt/loop.py::_now",
+      "amoeba/adapt/loop.py::loop_gate_version",
+      "amoeba/adapt/recipe.py::apply_edit",
+      "amoeba/adapt/stream.py::Stream.heldout",
+      "amoeba/interp/trace.py::TraceWriter",
+      "amoeba/interp/trace.py::TraceWriter.close",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/localtools/server.py::StdioServer.close",
+      "amoeba/memory/recipes.py::RecipeStore.commit",
+      "amoeba/memory/recipes.py::RecipeStore.current_or_seed",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/memory/recipes.py::RecipeStore.record",
+      "amoeba/memory/recipes.py::_now",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/interpret.py::decide",
+      "scripts/run_experiment.py::sample_draft"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/loop.py::_handle",
+     "signature": "_handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser, envelope, calibrate, sample_draft, g, log) -> None"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/loop.py::_now",
+     "signature": "_now() -> str"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/loop.py::_slug",
+     "signature": "_slug(s: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/gate.py::rollback_watch",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::_now",
+      "amoeba/adapt/loop.py::loop_gate_version",
+      "amoeba/memory/recipes.py::RecipeStore.revert",
+      "amoeba/memory/recipes.py::_now",
+      "scripts/run_experiment.py::summary.mean"
+     ],
+     "doc": "§9.3 rollback watch over the practice tasks after an accept.",
+     "key": "amoeba/adapt/loop.py::_watch",
+     "signature": "_watch(st: FamilyState, recs: list[PracticeRecord], t: StreamTask, store: RecipeStore, ledger: Ledger, loop: Loop, log) -> None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/loop.py::loop_gate_version",
+     "signature": "loop_gate_version() -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::Job",
+      "amoeba/adapt/experimenter.py::_slug",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::_slug",
+      "amoeba/adapt/stream.py::Stream.disabled_tools",
+      "amoeba/memory/recipes.py::RecipeStore.current_or_seed"
+     ],
+     "doc": "One practice run per task with its family's current recipe (the store itself is the run's --recipes).",
+     "key": "amoeba/adapt/loop.py::practice_jobs",
+     "signature": "practice_jobs(tasks: list[StreamTask], stream: Stream, store: RecipeStore, root: Path) -> list[Job]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::InProcessRunner.run",
+      "amoeba/adapt/experimenter.py::SubprocessRunner.run",
+      "amoeba/adapt/experimenter.py::calibrate",
+      "amoeba/adapt/ledger.py::Ledger",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::FamilyState",
+      "amoeba/adapt/loop.py::LoopIO",
+      "amoeba/adapt/loop.py::LoopIO.add",
+      "amoeba/adapt/loop.py::LoopIO.load",
+      "amoeba/adapt/loop.py::LoopIO.records",
+      "amoeba/adapt/loop.py::LoopIO.save",
+      "amoeba/adapt/loop.py::_handle",
+      "amoeba/adapt/loop.py::_now",
+      "amoeba/adapt/loop.py::_watch",
+      "amoeba/adapt/loop.py::practice_jobs",
+      "amoeba/adapt/loop.py::run_loop.run_practice",
+      "amoeba/adapt/loop.py::write_summary",
+      "amoeba/adapt/monitor.py::PracticeRecord",
+      "amoeba/adapt/monitor.py::monitor",
+      "amoeba/adapt/monitor.py::practice_record",
+      "amoeba/adapt/stream.py::Stream.families",
+      "amoeba/adapt/stream.py::Stream.practice",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter.run",
+      "amoeba/memory/recipes.py::RecipeStore",
+      "amoeba/memory/recipes.py::RecipeStore.current_or_seed",
+      "amoeba/memory/recipes.py::RecipeStore.ensure_seed",
+      "amoeba/memory/recipes.py::_now"
+     ],
+     "doc": "The loop over the stream's practice tasks. llm_for(hypothesis_id) gives the Architect's client; calibrate(",
+     "key": "amoeba/adapt/loop.py::run_loop",
+     "signature": "run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], object], repeats: int=3, parallel_until: int=0, diagnoser: str='tier0', envelope=None, calibrate: Callable | None=None, log: Callable[[str], None]=print) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/ledger.py::Ledger.rows",
+      "amoeba/adapt/stream.py::Stream.practice",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/memory/recipes.py::RecipeStore.index",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "summary.json and a plain REPORT.md next to the ledger.",
+     "key": "amoeba/adapt/loop.py::write_summary",
+     "signature": "write_summary(stream: Stream, root: Path, records: list[PracticeRecord], ledger: Ledger, store: RecipeStore, loop: Loop) -> dict"
+    },
+    {
+     "callees": [
+      "scripts/eval_draft.py::parse_args",
+      "scripts/run_task.py::build_llm",
+      "scripts/run_task.py::parse_args"
+     ],
+     "doc": "The Architect's client: the same model flags as the runs, its own cache namespace per hypothesis.",
+     "key": "scripts/run_loop.py::architect_llm",
+     "signature": "architect_llm(passthrough: list[str], stream: str)"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::SubprocessRunner",
+      "amoeba/adapt/experimenter.py::experiment_flags",
+      "amoeba/adapt/loop.py::run_loop",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/adapt/stream.py::load_stream",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/memory/recipes.py::RecipeStore.warm_start",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/safety/envelope.py::Envelope.from_registry",
+      "amoeba/tools/registry.py::default_registry",
+      "scripts/run_experiment.py::load_env",
+      "scripts/run_experiment.py::option_defaults",
+      "scripts/run_loop.py::architect_llm"
+     ],
+     "doc": "",
+     "key": "scripts/run_loop.py::main",
+     "signature": "main(argv=None) -> int"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if alarm is not None",
+     "add {'ts': _now(), 'event': 'alarm', 'order': t.order, **alarm.model_dump()}"
+    ],
+    [
+     "correct",
+     "if h is None",
+     "add {'event': 'no_hypothesis', 'family': t.family, 'hypothesis_id': hid, 'order': t.order, 'gate_version': loop_gate_version()}"
+    ],
+    [
+     "decide",
+     "if dec.decision == 'accept'",
+     "set st.reference_from = t.order + 1"
+    ],
+    [
+     "decide",
+     "if decided",
+     "set row, tried = (decided[-1], tried + [hid])"
+    ],
+    [
+     "decide",
+     "if not accepted",
+     "set row = log_unresolved(root, alarm.model_dump(), diag, tried)"
+    ],
+    [
+     "decide",
+     "if row['decision'] == 'accept'",
+     "set accepted = True"
+    ],
+    [
+     "decide",
+     "if saved.exists() and json.loads(saved.read_text(encoding='utf-8')).get('hypothesis')",
+     "set h = Hypothesis.model_validate(json.loads(saved.read_text(encoding='utf-8'))['hypothesis'])"
+    ],
+    [
+     "decide",
+     "if verdict == 'reverted'",
+     "set back = store.revert(st.family, f\"rollback watch: practice mean {row['practice_mean']} < al"
+    ],
+    [
+     "fallback",
+     "'reverted' if verdict == 'reverted' else 'kept'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "c if c.isalnum() or c in '-_.' else '-'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "diagnose(alarm, recs, stream) if diagnoser != 'none' else diagnose_none(alarm)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "practice_record(t, rec.run_dir, v) if rec.run_dir else PracticeRecord(order=t.order, task_id=t.id, family=t.family, score=None, error=rec.error, recipe_version=v)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "runner.run(practice_jobs(todo, stream, store, root)) if todo else []",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if e['event'] == 'alarm'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k not in ('window', 'reference_orders')",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if l.strip()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if o <= t.order",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.family == st.family and r.order > st.watch['accept_order']",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.get('event') == 'decision'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.get('event') == 'reverted'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.get('event') == 'unresolved'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.get('hypothesis_id') == hid and (not r.get('post_hoc'))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t.order <= parallel_until",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if t.order not in done",
+     "drop the rest"
+    ],
+    [
+     "loop cap",
+     "for attempt in range(1, MAX_PER_ALARM + 1)",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if t.order in loop.processed",
+     "skip (continue)"
+    ],
+    [
+     "stop",
+     "if not self.practice_file.exists()",
+     "return []"
+    ],
+    [
+     "stop",
+     "if not st.watch",
+     "return None"
+    ],
+    [
+     "stop",
+     "if self.state_file.exists()",
+     "return Loop.model_validate_json(self.state_file.read_text(encoding='utf-8'))"
+    ],
+    [
+     "stop",
+     "if verdict == 'watching'",
+     "return None"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "Episode.seed",
+    "LoopState.quiet_until",
+    "LoopState.reference_from",
+    "MAX_PER_ALARM",
+    "PracticeRecord.recipe_version",
+    "Recipe.version",
+    "RubricMustNot.window",
+    "TeamConfig.version",
+    "run_loop.parallel_until",
+    "run_loop.repeats"
+   ],
+   "prompts": {},
+   "title": "Loop driver (D89)"
+  },
+  "facts_hash": "71f58d54ac3160d9",
+  "seed_hash": "8e2e699426ec6515",
+  "sentence": "Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
+  "source": "hand",
+  "what": [
+   "Calibrates the noise floor first, then runs every practice task with its kind's current recipe (shifts apply: the later rubrics ask for more, a removed tool is taken out). Tasks before the shift may run in one batch; later ones run one at a time, because each can trigger a change.",
+   "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then up to three Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down.",
+   "Everything it does is on disk — practice runs, experiments, ledger, recipes, proposals, diagnoses, state — so a crash resumes where it stopped, and it writes summary.json and a plain report."
+  ]
+ },
  "memory": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -5813,6 +6391,12 @@
       "warm_start(cls, dst: str | Path, src: str | Path) -> 'RecipeStore'"
      ],
      "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/memory/recipes.py::_now",
+     "signature": "_now() -> str"
     },
     {
      "callees": [
@@ -5896,10 +6480,11 @@
    "prompts": {},
    "title": "9 · Recipe store (D88)"
   },
-  "facts_hash": "c98b2dbe2a525803",
+  "facts_hash": "3beb780cf083cce9",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "e98cbf551f1f71ce",
   "sentence": "Keeps every kind of task's recipe versions, which one is current, and a log of every decided change; only the Gate writes it.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "A folder per stream: one YAML file per recipe version of each kind, an index naming the current version with the full history (parent, the hypothesis that made it, when it was accepted or reverted), and an experience log with one line per decided hypothesis.",
    "A run reads the current recipe of its kind with --recipes; --recipes-from is a second, read-only store used when the first has none (a warm start from another stream).",
@@ -5907,7 +6492,7 @@
   ]
  },
  "monitor": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -6025,6 +6610,14 @@
     },
     {
      "callees": [
+      "amoeba/adapt/monitor.py::PracticeRecord.signals"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/monitor.py::_rate",
+     "signature": "_rate(recs: list[PracticeRecord], sig: str) -> float"
+    },
+    {
+     "callees": [
       "amoeba/adapt/monitor.py::Alarm",
       "amoeba/adapt/monitor.py::PracticeRecord.signals",
       "amoeba/adapt/monitor.py::_rate",
@@ -6113,11 +6706,11 @@
    "prompts": {},
    "title": "4 · Monitor (D85)"
   },
-  "facts_hash": "51884738bf89a93b",
+  "facts_hash": "68d09cf6f761bd0c",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "f5c981fdbe929488",
   "sentence": "Watches each kind of task's practice scores and raises an alarm when the last few drop below what was normal, or when a cause or a missing rubric item suddenly appears.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "After every practice run it reads the run's score, the names of the rubric items it failed and the step causes recorded by the step contract.",
    "Score alarm: the mean of the last three scores falls below the reference mean minus twice its spread (at least 0.10); the reference is the kind's practice runs since its last accepted change, before the window, and there must be at least four.",
@@ -6562,7 +7155,7 @@
   ]
  },
  "plan_graph": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -6586,6 +7179,7 @@
     {
      "callees": [
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add",
       "amoeba/interp/plan_runner.py::number"
      ],
      "doc": "Box 2 drops a step that names no known role but keeps the others' numbers, so depends_on can point at a",
@@ -6722,7 +7316,7 @@
    "prompts": {},
    "title": "Step graph (depends_on)"
   },
-  "facts_hash": "507d357f427547b8",
+  "facts_hash": "88c89ad9bfdf6aaf",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "15b138f4913a332f",
   "sentence": "Builds the order of work from each step's 'depends on' line and rejects a plan that loops.",
@@ -9306,12 +9900,13 @@
   ]
  },
  "resolver": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add",
       "amoeba/task/models.py::CapabilityRequest"
      ],
      "doc": "Keep each role's registered tools; a name the registry lacks becomes a recorded request and the role's",
@@ -9460,7 +10055,7 @@
    "prompts": {},
    "title": "Tool resolver"
   },
-  "facts_hash": "63cf9ffa3ec43e25",
+  "facts_hash": "6dca12be754ede78",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4f1dc3213f08fd80",
   "sentence": "Keeps the tools that exist; a tool we lack is recorded as a request, never used and never silently dropped.",
@@ -10149,7 +10744,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -10188,6 +10783,7 @@
     {
      "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/loop.py::LoopIO.add",
       "amoeba/interp/plan_runner.py::PlanRunner._write",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
       "amoeba/interp/plan_runner.py::dependencies",
@@ -10221,6 +10817,7 @@
     },
     {
      "callees": [
+      "amoeba/adapt/loop.py::LoopIO.add",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::CachedProvider.search",
@@ -10235,6 +10832,7 @@
      "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -10335,6 +10933,7 @@
     {
      "callees": [
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add",
       "amoeba/interp/citecheck.py::_has",
       "amoeba/interp/citecheck.py::claims",
       "amoeba/localtools/server.py::StdioServer.start",
@@ -10383,6 +10982,7 @@
     {
      "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/loop.py::LoopIO.add",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/memory/recipes.py::RecipeStore.get",
@@ -10801,7 +11401,7 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "44fcd86c29231b6f",
+  "facts_hash": "8e72b6b25f079eb9",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "13e802c0beb63a4e",
   "sentence": "Checks each step's output against its requirements, contract, and provenance; reads verdicts, gaps, and citation accuracy.",
@@ -10817,7 +11417,7 @@
   ]
  },
  "stream": {
-  "checked_at": "a371bd0",
+  "checked_at": "ecf0733",
   "facts": {
    "anchors": [
     {
@@ -10911,6 +11511,12 @@
       "as_task(self) -> Task"
      ],
      "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/stream.py::_natural",
+     "signature": "_natural(s: str) -> list"
     },
     {
      "callees": [],
@@ -11050,6 +11656,11 @@
     [
      "fallback",
      "(yaml.safe_load(shifts_file.read_text(encoding='utf-8')) or {}).get('shifts', []) if shifts_file.exists() else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "int(x) if x.isdigit() else x",
      "choose value"
     ],
     [
@@ -11225,7 +11836,7 @@
    "prompts": {},
    "title": "0 · Task stream (D80)"
   },
-  "facts_hash": "ed15c9e7e91edb25",
+  "facts_hash": "a24994e664cd6c6d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "fb26970e07106a93",
   "sentence": "Tasks arrive in a fixed order per kind of task; held-out tasks are kept apart for testing, and the loop learns only the names of the rubric items a practice run failed.",
@@ -12453,7 +13064,7 @@
    "title": "Stock the toolbox"
   },
   "facts_hash": "a646c242bb0ed1a9",
-  "rejected_hash": "e9f9c9b314975cf6",
+  "rejected_hash": "70fcb7e0661cf744",
   "seed_hash": "7524778ff38722f5",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
   "source": "hand",
