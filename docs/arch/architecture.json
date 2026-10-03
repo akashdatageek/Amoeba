@@ -1,11 +1,11 @@
 {
  "generated_by": "tools/arch_extract.py",
- "generated_at": "2026-10-02 21:51 UTC",
+ "generated_at": "2026-10-03 00:02 UTC",
  "repo": {
-  "commit": "a7163f1d64382cbe17c86e6daac329a8f66356d0",
-  "short": "a7163f1",
+  "commit": "5376dcb577e92a406ca92191ae673c4fdd7e52b8",
+  "short": "5376dcb",
   "branch": "claude/zen-fermi-mnaurm",
-  "commit_date": "2026-10-02T21:50:57+00:00",
+  "commit_date": "2026-10-03T00:00:32+00:00",
   "dirty": false,
   "dirty_scope": "amoeba/ scripts/ tests/ spec/"
  },
@@ -10997,24 +10997,28 @@
    "name": "hand_check",
    "path": "scripts/run_experiment.py",
    "line": 115,
-   "end_line": 136,
+   "end_line": 141,
    "signature": "hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | None=None, repeats: int=3) -> dict",
    "doc": "One hand-written hypothesis through Box 7 and Box 8: calibration if needed, the experiment, the decision.",
    "callers": [
     "scripts/run_experiment.py::main"
    ],
    "callees": [
+    "amoeba/adapt/experimenter.py::ArmACache.get",
     "amoeba/adapt/experimenter.py::experiment",
     "amoeba/adapt/gate.py::decide",
     "amoeba/adapt/gate.py::decision_row",
     "amoeba/adapt/ledger.py::Ledger",
     "amoeba/adapt/ledger.py::Ledger.append",
+    "amoeba/adapt/ledger.py::Ledger.rows",
     "amoeba/adapt/ledger.py::Ledger.tried_since_accept",
     "amoeba/adapt/recipe.py::apply_edit",
     "amoeba/adapt/recipe.py::load_recipe",
     "amoeba/adapt/recipe.py::seed_recipe",
     "amoeba/adapt/recipe.py::write_store",
     "amoeba/adapt/stream.py::Stream.heldout",
+    "amoeba/llm/cache.py::_Store.get",
+    "amoeba/pool/stock.py::SharedPicks.get",
     "amoeba/safety/envelope.py::Envelope.from_registry",
     "amoeba/task/interpret.py::decide",
     "amoeba/tools/registry.py::default_registry",
@@ -11042,8 +11046,8 @@
    "kind": "function",
    "name": "main",
    "path": "scripts/run_experiment.py",
-   "line": 155,
-   "end_line": 173,
+   "line": 160,
+   "end_line": 178,
    "signature": "main(argv=None) -> int",
    "doc": "",
    "callers": [],
@@ -11086,8 +11090,8 @@
    "kind": "function",
    "name": "parse",
    "path": "scripts/run_experiment.py",
-   "line": 140,
-   "end_line": 151,
+   "line": 145,
+   "end_line": 156,
    "signature": "parse(argv=None)",
    "doc": "",
    "callers": [
@@ -12274,7 +12278,7 @@
    "name": "DRAFT_AGENTS",
    "path": "amoeba/adapt/experimenter.py",
    "line": 136,
-   "value": "{'agent_observer', 'planner', 'plan_observer', 'interpreter'}"
+   "value": "{'plan_observer', 'interpreter', 'planner', 'agent_observer'}"
   },
   {
    "name": "CONFIG",
@@ -12917,13 +12921,13 @@
    "name": "PROFILE_KEYS",
    "path": "amoeba/llm/profiles.py",
    "line": 20,
-   "value": "{'merge_system', 'reasoning_effort', 'model', 'max_tokens', 'base_url', 'roles', 'api_key_env'}"
+   "value": "{'max_tokens', 'api_key_env', 'roles', 'model', 'merge_system', 'reasoning_effort', 'base_url'}"
   },
   {
    "name": "ROLE_KEYS",
    "path": "amoeba/llm/profiles.py",
    "line": 21,
-   "value": "{'model', 'max_tokens'}"
+   "value": "{'max_tokens', 'model'}"
   },
   {
    "name": "BOX2_GROUPS",
@@ -13609,7 +13613,7 @@
    "name": "LOCAL_FIELDS",
    "path": "scripts/run_task.py",
    "line": 48,
-   "value": "{'local_tool_calls', 'skills_attached', 'files_created', 'local_refusals'}"
+   "value": "{'files_created', 'local_tool_calls', 'local_refusals', 'skills_attached'}"
   },
   {
    "name": "PHASE2_FIELDS",
@@ -25110,9 +25114,41 @@
    "effect": "choose value"
   },
   {
+   "key": "scripts/run_experiment.py::hand_check",
+   "path": "scripts/run_experiment.py",
+   "line": 125,
+   "kind": "filter",
+   "code": "keep only if r.get('hypothesis_id') == h.hypothesis_id",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/run_experiment.py::hand_check",
+   "path": "scripts/run_experiment.py",
+   "line": 126,
+   "kind": "stop",
+   "code": "if done",
+   "effect": "return done[-1]"
+  },
+  {
+   "key": "scripts/run_experiment.py::hand_check",
+   "path": "scripts/run_experiment.py",
+   "line": 128,
+   "kind": "correct",
+   "code": "if not [r for r in ledger.rows(h.family, 'hypothesis') if r.get('hypothesis_id') == h.hypothesis_id]",
+   "effect": "add {'event': 'hypothesis', 'family': h.family, 'hypothesis_id': h.hypothesis_id, 'recipe_from': recipe_A.version, 'edit': h.edit.model_dump(), 'predicted_delta': h.predicted_delta, 'rationale': h.rationale, 'created_by': 'human'}"
+  },
+  {
+   "key": "scripts/run_experiment.py::hand_check",
+   "path": "scripts/run_experiment.py",
+   "line": 128,
+   "kind": "filter",
+   "code": "keep only if r.get('hypothesis_id') == h.hypothesis_id",
+   "effect": "drop the rest"
+  },
+  {
    "key": "scripts/run_experiment.py::main",
    "path": "scripts/run_experiment.py",
-   "line": 164,
+   "line": 169,
    "kind": "stop",
    "code": "if args.calibrate_only",
    "effect": "return 0"
@@ -25120,7 +25156,7 @@
   {
    "key": "scripts/run_experiment.py::main",
    "path": "scripts/run_experiment.py",
-   "line": 167,
+   "line": 172,
    "kind": "stop",
    "code": "if not args.edit",
    "effect": "return 2"
@@ -26025,7 +26061,7 @@
   }
  },
  "tests": {
-  "summary": "568 passed in 56.54s",
+  "summary": "568 passed in 109.13s (0:01:49)",
   "tests": {
    "tests/test_arch_text.py::test_tags_put_code_in_boxes": {
     "line": 34,
@@ -71384,7 +71420,7 @@
     "prompts": []
    },
    "tests/test_gate_d84.py::test_no_model_call_in_boxes_7_and_8": {
-    "line": 164,
+    "line": 167,
     "doc": "The Experimenter and the Gate are plain code: no import of the LLM clients, no chat call.",
     "outcome": "passed",
     "direct": [
@@ -167080,7 +167116,7 @@
  },
  "sample": {
   "free_text_task": {
-   "id": "2657bfc4-82d1-4f87-a4fe-56e280a034e2",
+   "id": "5227d9e5-d00c-48d3-b5c1-d5f211f23bcb",
    "prompt": "Reverse the string 'adaptive' then uppercase it",
    "family": "freeform",
    "ground_truth": null,
@@ -167135,8 +167171,8 @@
   },
   "runs": {
    "flat": {
-    "run_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
-    "dir": "runs/56f31777-f172-4c0c-85cc-415c0b4b401e",
+    "run_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
+    "dir": "runs/35dba904-5f64-4f00-b90d-ef4ae1e10634",
     "files": [
      "capability_requests.json",
      "plan.json",
@@ -167146,26 +167182,26 @@
     ],
     "result": {
      "interpretation": {},
-     "run_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+     "run_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
      "task_id": "toy-0-000",
      "draft_source": null,
-     "team_id": "bbfe74be-4f9c-40f6-ba06-051b6ce95016",
+     "team_id": "540d5e79-d61c-4ca7-b2c3-254730705779",
      "topology": "flat",
      "answer": "734",
      "error": null,
      "score": 1.0,
-     "total_tokens": 4882,
+     "total_tokens": 4886,
      "usage": {
       "calls": 6,
-      "input": 4310,
-      "output": 572,
+      "input": 4312,
+      "output": 574,
       "reasoning": 0,
-      "tokens": 4882,
+      "tokens": 4886,
       "cached_calls": 0,
       "model": "toy-mock",
       "cost_usd": null
      },
-     "latency_ms": 7,
+     "latency_ms": 8,
      "n_llm_calls": 6,
      "draft_rounds": 1,
      "consensus": true,
@@ -167262,11 +167298,11 @@
     "team_trimmed": {
      "topology": "flat",
      "entry": [
-      "f2eedf1f-24ed-4802-b773-50c01e69975f"
+      "ceac6423-3555-4711-b447-d9b02df0f21e"
      ],
-     "exit": "99683864-00ff-4606-8809-3559d1d54578",
+     "exit": "1517c84b-c728-491f-aef9-d69970691e4d",
      "agents": {
-      "f2eedf1f-24ed-4802-b773-50c01e69975f": {
+      "ceac6423-3555-4711-b447-d9b02df0f21e": {
        "name": "Solver",
        "role": "worker",
        "model": "toy-mock",
@@ -167276,7 +167312,7 @@
        "role_prompt": "You are a careful problem solver. Do exactly what the task asks and report only the result … [+1 chars]",
        "max_history": 5
       },
-      "99683864-00ff-4606-8809-3559d1d54578": {
+      "1517c84b-c728-491f-aef9-d69970691e4d": {
        "name": "Language Expert",
        "role": "worker",
        "model": "toy-mock",
@@ -167287,8 +167323,8 @@
      },
      "edges": [
       {
-       "src": "f2eedf1f-24ed-4802-b773-50c01e69975f",
-       "dst": "99683864-00ff-4606-8809-3559d1d54578",
+       "src": "ceac6423-3555-4711-b447-d9b02df0f21e",
+       "dst": "1517c84b-c728-491f-aef9-d69970691e4d",
        "type": "sequential",
        "schema_id": "text",
        "condition": null
@@ -167298,7 +167334,7 @@
       {
        "index": 0,
        "agent_ids": [
-        "f2eedf1f-24ed-4802-b773-50c01e69975f"
+        "ceac6423-3555-4711-b447-d9b02df0f21e"
        ],
        "text": "[Solver]: Solve the task and report the result.",
        "kind": "",
@@ -167311,7 +167347,7 @@
       {
        "index": 1,
        "agent_ids": [
-        "99683864-00ff-4606-8809-3559d1d54578"
+        "1517c84b-c728-491f-aef9-d69970691e4d"
        ],
        "text": "[Language Expert]: Restate the Solver's result as the final answer.",
        "kind": "",
@@ -167523,9 +167559,9 @@
      "raw_draft": "## Thought\nThe task is small: one role works it out, one language expert states the answer.\n\n## Question or Task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n## Selected Roles List:\n```\n```\n\n## Created Roles List:\n```\n{\n    \"name\": \"Solver\",\n    \"description\": \"Works out the answer to the task, using the calc tool for any arithmetic.\",\n    \"tools\": [\"calc\"],\n    \"suggestions\": \"Use calc for arithmetic. Reply with only the final value.\",\n    \"prompt\": \"You are a careful problem solver. Do exactly what the task asks and report only the result.\"\n},\n{\n    \"name\": \"Language Expert\",\n    \"desc … [+458 chars]"
     },
     "trace_lines": [
-     "{\"ts\": \"2026-10-02T21:51:56.810988+00:00\", \"episode_id\": \"56f31777-f172-4c0c-85cc-415c0b4b401e\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T21:51:56.811560+00:00\", \"episode_id\": \"56f31777-f172-4c0c-85cc-415c0b4b401e\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T21:51:56.811696+00:00\", \"episode_id\": \"56f31777-f172-4c0c-85cc-415c0b4b401e\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
+     "{\"ts\": \"2026-10-03T00:02:41.281424+00:00\", \"episode_id\": \"35dba904-5f64-4f00-b90d-ef4ae1e10634\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-03T00:02:41.281954+00:00\", \"episode_id\": \"35dba904-5f64-4f00-b90d-ef4ae1e10634\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-03T00:02:41.282063+00:00\", \"episode_id\": \"35dba904-5f64-4f00-b90d-ef4ae1e10634\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
     ],
     "n_trace_lines": 14,
     "timeline": [
@@ -167539,8 +167575,8 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.810944+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.281359+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "invoke_agent",
        "gen_ai.agent.name": "planner",
@@ -167558,8 +167594,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T21:51:56.810988+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.281424+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "planner",
@@ -167586,8 +167622,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T21:51:56.811560+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.281954+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "agent_observer",
@@ -167614,8 +167650,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T21:51:56.811696+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.282063+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "plan_observer",
@@ -167642,8 +167678,8 @@
       "latency_ms": 0,
       "result": "draft_quality: passed=2, failed=1, failed_checks=roles_fully_defined, box=checks",
       "raw": {
-       "ts": "2026-10-02T21:51:56.812081+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.282395+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "event",
        "name": "draft_quality",
        "amoeba.quality.passed": 2,
@@ -167662,12 +167698,12 @@
       "latency_ms": 1,
       "result": "answer '734'",
       "raw": {
-       "ts": "2026-10-02T21:51:56.815739+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.287258+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "invoke_workflow",
        "gen_ai.workflow.name": "team-flat-toy-0-00",
-       "gen_ai.conversation.id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "gen_ai.conversation.id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "amoeba.box": "interpreter",
        "latency_ms": 1
       }
@@ -167680,14 +167716,14 @@
       "helper": "",
       "tokens": 0,
       "latency_ms": 0,
-      "result": "run_clock: date=2026-10-02, weekday=Friday, tz=UTC, box=interpreter",
+      "result": "run_clock: date=2026-10-03, weekday=Saturday, tz=UTC, box=interpreter",
       "raw": {
-       "ts": "2026-10-02T21:51:56.815761+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.287283+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "event",
        "name": "run_clock",
-       "amoeba.date": "2026-10-02",
-       "amoeba.weekday": "Friday",
+       "amoeba.date": "2026-10-03",
+       "amoeba.weekday": "Saturday",
        "amoeba.tz": "UTC",
        "amoeba.box": "interpreter"
       }
@@ -167702,11 +167738,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.815838+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.287373+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "f2eedf1f-24ed-4802-b773-50c01e69975f",
+       "gen_ai.agent.id": "ceac6423-3555-4711-b447-d9b02df0f21e",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "helper",
        "latency_ms": 0
@@ -167718,21 +167754,21 @@
       "span": "chat",
       "box": "helper",
       "helper": "Solver",
-      "tokens": 615,
+      "tokens": 616,
       "latency_ms": 0,
       "result": "Action: calc · ActionInput: 26 * 28 + 6",
       "raw": {
-       "ts": "2026-10-02T21:51:56.815858+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.287394+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "f2eedf1f-24ed-4802-b773-50c01e69975f",
+       "gen_ai.agent.id": "ceac6423-3555-4711-b447-d9b02df0f21e",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
        "amoeba.box": "helper",
        "gen_ai.response.model": "toy-mock",
-       "gen_ai.usage.input_tokens": 527,
+       "gen_ai.usage.input_tokens": 528,
        "gen_ai.usage.output_tokens": 88,
        "gen_ai.response.finish_reasons": [
         "stop"
@@ -167750,12 +167786,12 @@
       "latency_ms": 0,
       "result": "ran tool calc (result is not written to the trace)",
       "raw": {
-       "ts": "2026-10-02T21:51:56.816330+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.287864+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "execute_tool",
        "gen_ai.tool.name": "calc",
-       "gen_ai.agent.id": "f2eedf1f-24ed-4802-b773-50c01e69975f",
+       "gen_ai.agent.id": "ceac6423-3555-4711-b447-d9b02df0f21e",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "tools",
        "latency_ms": 0
@@ -167771,11 +167807,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.816416+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.287978+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "f2eedf1f-24ed-4802-b773-50c01e69975f",
+       "gen_ai.agent.id": "ceac6423-3555-4711-b447-d9b02df0f21e",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "helper",
        "latency_ms": 0
@@ -167787,22 +167823,22 @@
       "span": "chat",
       "box": "helper",
       "helper": "Solver",
-      "tokens": 629,
+      "tokens": 631,
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-02T21:51:56.816431+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.287997+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "f2eedf1f-24ed-4802-b773-50c01e69975f",
+       "gen_ai.agent.id": "ceac6423-3555-4711-b447-d9b02df0f21e",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
        "amoeba.box": "helper",
        "gen_ai.response.model": "toy-mock",
-       "gen_ai.usage.input_tokens": 542,
-       "gen_ai.usage.output_tokens": 87,
+       "gen_ai.usage.input_tokens": 543,
+       "gen_ai.usage.output_tokens": 88,
        "gen_ai.response.finish_reasons": [
         "stop"
        ],
@@ -167819,11 +167855,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.816574+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.288207+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "99683864-00ff-4606-8809-3559d1d54578",
+       "gen_ai.agent.id": "1517c84b-c728-491f-aef9-d69970691e4d",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.box": "helper",
        "latency_ms": 0
@@ -167835,22 +167871,22 @@
       "span": "chat",
       "box": "helper",
       "helper": "Language Expert",
-      "tokens": 656,
+      "tokens": 657,
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-02T21:51:56.816587+00:00",
-       "episode_id": "56f31777-f172-4c0c-85cc-415c0b4b401e",
+       "ts": "2026-10-03T00:02:41.288227+00:00",
+       "episode_id": "35dba904-5f64-4f00-b90d-ef4ae1e10634",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "99683864-00ff-4606-8809-3559d1d54578",
+       "gen_ai.agent.id": "1517c84b-c728-491f-aef9-d69970691e4d",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.role_group": "summariser",
        "gen_ai.request.model": "toy-mock",
        "amoeba.box": "helper",
        "gen_ai.response.model": "toy-mock",
        "gen_ai.usage.input_tokens": 569,
-       "gen_ai.usage.output_tokens": 87,
+       "gen_ai.usage.output_tokens": 88,
        "gen_ai.response.finish_reasons": [
         "stop"
        ],
@@ -167881,7 +167917,7 @@
      },
      "helper": {
       "calls": 3,
-      "tokens": 1900,
+      "tokens": 1904,
       "ms": 0
      },
      "tools": {
@@ -167988,10 +168024,10 @@
        },
        {
         "role": "user",
-        "content": "\n-----\nYou are a careful problem solver. Do exactly what the task asks and report only the result. Based on prior agents' results and completed steps, complete the task as best you can.\n\n# Task [Solver]: Solve the task and report the result.\n\n# Suggestions\nUse calc for arithmetic. Reply with only the final value.\n\n# Execution Result of Previous Agents [Question/Task: Compute 26 * 28 + 6. Reply with just the number.\n\n(Today is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)]\n\n# Completed Steps and Responses \n\nYou have access to the following tools:\n# Tools ['calc', 'Print', 'Final Output']\n\n# Steps\n1. Review and understand previous agents' outputs.\n2. Analyze and decompose the task; use tools where appropriate.\n3. Decide the single current step to complete and output it in 'CurrentStep'.\n   - If no steps are completed yet, design a minimal step-by-step plan and accomplish the first step.\n   - If some steps are completed, pick the next logical step.\n4. Choose one Action from [['calc', 'Print', 'Final Output']] to execute the current step.\n   - If using 'Write File', 'ActionInput' MUST be:\n```\n>>>file name\nfile content\n>>>END\n```\n   - If all steps are complete, choose 'Final Output' and summarize all step outputs in 'ActionInput'. The final output must be helpful, relevant, accurate, and detailed.\n\n# Format example\nYour final output MUST follow this format:\n\n---\n## Thought \nyou should always think about what step you need to complete now and how to complet this step.\n\n## Task\nthe input task you must finish\n\n## CurrentStep\nthe current step to be completed\n\n## Action\nthe action to take, must be one of [{tool}]\n\n## ActionInput\nthe input to the action\n---\n\n\n# Attention\n1. The task you must finish is: [Solver]: Solve the task and report the result.\n2. Do not ask the user questions.\n3. The final output MUST be helpful, relevant, accurate, and detailed.\n-----\n"
+        "content": "\n-----\nYou are a careful problem solver. Do exactly what the task asks and report only the result. Based on prior agents' results and completed steps, complete the task as best you can.\n\n# Task [Solver]: Solve the task and report the result.\n\n# Suggestions\nUse calc for arithmetic. Reply with only the final value.\n\n# Execution Result of Previous Agents [Question/Task: Compute 26 * 28 + 6. Reply with just the number.\n\n(Today is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)]\n\n# Completed Steps and Responses \n\nYou have access to the following tools:\n# Tools ['calc', 'Print', 'Final Output']\n\n# Steps\n1. Review and understand previous agents' outputs.\n2. Analyze and decompose the task; use tools where appropriate.\n3. Decide the single current step to complete and output it in 'CurrentStep'.\n   - If no steps are completed yet, design a minimal step-by-step plan and accomplish the first step.\n   - If some steps are completed, pick the next logical step.\n4. Choose one Action from [['calc', 'Print', 'Final Output']] to execute the current step.\n   - If using 'Write File', 'ActionInput' MUST be:\n```\n>>>file name\nfile content\n>>>END\n```\n   - If all steps are complete, choose 'Final Output' and summarize all step outputs in 'ActionInput'. The final output must be helpful, relevant, accurate, and detailed.\n\n# Format example\nYour final output MUST follow this format:\n\n---\n## Thought \nyou should always think about what step you need to complete now and how to complet this step.\n\n## Task\nthe input task you must finish\n\n## CurrentStep\nthe current step to be completed\n\n## Action\nthe action to take, must be one of [{tool}]\n\n## ActionInput\nthe input to the action\n---\n\n\n# Attention\n1. The task you must finish is: [Solver]: Solve the task and report the result.\n2. Do not ask the user questions.\n3. The final output MUST be helpful, relevant, accurate, and detailed.\n-----\n"
        }
       ],
-      "response": "## Thought\nArithmetic — use the calculator.\n\n## Task\nCompute 26 * 28 + 6. Reply with just the number.\n\n(Today is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)\n\n## CurrentStep\nEvaluate the expression.\n\n## Action\ncalc\n\n## ActionInput\n26 * 28 + 6\n"
+      "response": "## Thought\nArithmetic — use the calculator.\n\n## Task\nCompute 26 * 28 + 6. Reply with just the number.\n\n(Today is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)\n\n## CurrentStep\nEvaluate the expression.\n\n## Action\ncalc\n\n## ActionInput\n26 * 28 + 6\n"
      }
     ],
     "examples": {
@@ -168009,21 +168045,21 @@
      "worker_sections": [
       {
        "Thought": "Arithmetic — use the calculator.",
-       "Task": "Compute 26 * 28 + 6. Reply with just the number.\n\n(Today is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)",
+       "Task": "Compute 26 * 28 + 6. Reply with just the number.\n\n(Today is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)",
        "CurrentStep": "Evaluate the expression.",
        "Action": "calc",
        "ActionInput": "26 * 28 + 6"
       },
       {
        "Thought": "The calculator answered; report it.",
-       "Task": "Compute 26 * 28 + 6. Reply with just the number.\n\n(Today is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)",
+       "Task": "Compute 26 * 28 + 6. Reply with just the number.\n\n(Today is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)",
        "CurrentStep": "Report the result.",
        "Action": "Final Output",
        "ActionInput": "734"
       },
       {
        "Thought": "Restate the established result.",
-       "Task": "Compute 26 * 28 + 6. Reply with just the number.\n\n(Today is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)",
+       "Task": "Compute 26 * 28 + 6. Reply with just the number.\n\n(Today is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)",
        "CurrentStep": "State the final answer.",
        "Action": "Final Output",
        "ActionInput": "734"
@@ -168064,8 +168100,8 @@
     }
    },
    "boss_reviewers": {
-    "run_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
-    "dir": "runs/e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+    "run_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
+    "dir": "runs/15b78b5e-d781-4be2-af8d-314030976ee4",
     "files": [
      "capability_requests.json",
      "plan.json",
@@ -168075,26 +168111,26 @@
     ],
     "result": {
      "interpretation": {},
-     "run_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+     "run_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
      "task_id": "toy-0-000",
      "draft_source": null,
-     "team_id": "0d9c0851-a915-4052-8734-8fde4ca53c7e",
+     "team_id": "f6807968-8947-4b2b-8eb7-11faf569accd",
      "topology": "boss_reviewers",
      "answer": "734",
      "error": null,
      "score": 1.0,
-     "total_tokens": 3424,
+     "total_tokens": 3425,
      "usage": {
       "calls": 5,
-      "input": 3106,
+      "input": 3107,
       "output": 318,
       "reasoning": 0,
-      "tokens": 3424,
+      "tokens": 3425,
       "cached_calls": 0,
       "model": "toy-mock",
       "cost_usd": null
      },
-     "latency_ms": 5,
+     "latency_ms": 8,
      "n_llm_calls": 5,
      "draft_rounds": 1,
      "consensus": true,
@@ -168191,11 +168227,11 @@
     "team_trimmed": {
      "topology": "boss_reviewers",
      "entry": [
-      "94e11a56-eeb2-472b-a44d-fb8a311cacf6"
+      "79383cbd-9cd5-48fe-a1d9-a7cd8b37b1e1"
      ],
-     "exit": "94e11a56-eeb2-472b-a44d-fb8a311cacf6",
+     "exit": "79383cbd-9cd5-48fe-a1d9-a7cd8b37b1e1",
      "agents": {
-      "fb04cdf4-cdde-4d7f-a14d-32329446e001": {
+      "9c40e830-4c7c-4ef6-a3f8-f71b4624eb3a": {
        "name": "Solver",
        "role": "critic",
        "model": "toy-mock",
@@ -168205,7 +168241,7 @@
        "role_prompt": "You are a careful problem solver. Do exactly what the task asks and report only the result … [+1 chars]",
        "max_history": 3
       },
-      "94e11a56-eeb2-472b-a44d-fb8a311cacf6": {
+      "79383cbd-9cd5-48fe-a1d9-a7cd8b37b1e1": {
        "name": "Language Expert",
        "role": "solver",
        "model": "toy-mock",
@@ -168216,15 +168252,15 @@
      },
      "edges": [
       {
-       "src": "94e11a56-eeb2-472b-a44d-fb8a311cacf6",
-       "dst": "fb04cdf4-cdde-4d7f-a14d-32329446e001",
+       "src": "79383cbd-9cd5-48fe-a1d9-a7cd8b37b1e1",
+       "dst": "9c40e830-4c7c-4ef6-a3f8-f71b4624eb3a",
        "type": "review",
        "schema_id": "text",
        "condition": null
       },
       {
-       "src": "fb04cdf4-cdde-4d7f-a14d-32329446e001",
-       "dst": "94e11a56-eeb2-472b-a44d-fb8a311cacf6",
+       "src": "9c40e830-4c7c-4ef6-a3f8-f71b4624eb3a",
+       "dst": "79383cbd-9cd5-48fe-a1d9-a7cd8b37b1e1",
        "type": "revise",
        "schema_id": "text",
        "condition": "critic_disagrees"
@@ -168432,9 +168468,9 @@
      "raw_draft": "## Thought\nThe task is small: one role works it out, one language expert states the answer.\n\n## Question or Task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n## Selected Roles List:\n```\n```\n\n## Created Roles List:\n```\n{\n    \"name\": \"Solver\",\n    \"description\": \"Works out the answer to the task, using the calc tool for any arithmetic.\",\n    \"tools\": [\"calc\"],\n    \"suggestions\": \"Use calc for arithmetic. Reply with only the final value.\",\n    \"prompt\": \"You are a careful problem solver. Do exactly what the task asks and report only the result.\"\n},\n{\n    \"name\": \"Language Expert\",\n    \"desc … [+458 chars]"
     },
     "trace_lines": [
-     "{\"ts\": \"2026-10-02T21:51:56.824694+00:00\", \"episode_id\": \"e080d67f-9a8e-4e1f-81e5-9a72248c28c9\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T21:51:56.824998+00:00\", \"episode_id\": \"e080d67f-9a8e-4e1f-81e5-9a72248c28c9\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T21:51:56.825063+00:00\", \"episode_id\": \"e080d67f-9a8e-4e1f-81e5-9a72248c28c9\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
+     "{\"ts\": \"2026-10-03T00:02:41.298830+00:00\", \"episode_id\": \"15b78b5e-d781-4be2-af8d-314030976ee4\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-03T00:02:41.299334+00:00\", \"episode_id\": \"15b78b5e-d781-4be2-af8d-314030976ee4\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-03T00:02:41.299433+00:00\", \"episode_id\": \"15b78b5e-d781-4be2-af8d-314030976ee4\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
     ],
     "n_trace_lines": 11,
     "timeline": [
@@ -168448,8 +168484,8 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.824649+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.298774+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "span",
        "name": "invoke_agent",
        "gen_ai.agent.name": "planner",
@@ -168467,8 +168503,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T21:51:56.824694+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.298830+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "planner",
@@ -168495,8 +168531,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T21:51:56.824998+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.299334+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "agent_observer",
@@ -168523,8 +168559,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T21:51:56.825063+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.299433+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "plan_observer",
@@ -168551,8 +168587,8 @@
       "latency_ms": 0,
       "result": "draft_quality: passed=2, failed=1, failed_checks=roles_fully_defined, box=checks",
       "raw": {
-       "ts": "2026-10-02T21:51:56.825290+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.299696+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "event",
        "name": "draft_quality",
        "amoeba.quality.passed": 2,
@@ -168568,17 +168604,17 @@
       "box": "interpreter",
       "helper": "",
       "tokens": 0,
-      "latency_ms": 0,
+      "latency_ms": 2,
       "result": "answer '734'",
       "raw": {
-       "ts": "2026-10-02T21:51:56.828243+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.303708+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "span",
        "name": "invoke_workflow",
        "gen_ai.workflow.name": "team-boss_reviewers-toy-0-00",
-       "gen_ai.conversation.id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "gen_ai.conversation.id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "amoeba.box": "interpreter",
-       "latency_ms": 0
+       "latency_ms": 2
       }
      },
      {
@@ -168589,14 +168625,14 @@
       "helper": "",
       "tokens": 0,
       "latency_ms": 0,
-      "result": "run_clock: date=2026-10-02, weekday=Friday, tz=UTC, box=interpreter",
+      "result": "run_clock: date=2026-10-03, weekday=Saturday, tz=UTC, box=interpreter",
       "raw": {
-       "ts": "2026-10-02T21:51:56.828263+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.303734+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "event",
        "name": "run_clock",
-       "amoeba.date": "2026-10-02",
-       "amoeba.weekday": "Friday",
+       "amoeba.date": "2026-10-03",
+       "amoeba.weekday": "Saturday",
        "amoeba.tz": "UTC",
        "amoeba.box": "interpreter"
       }
@@ -168611,11 +168647,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.828384+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.303875+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "94e11a56-eeb2-472b-a44d-fb8a311cacf6",
+       "gen_ai.agent.id": "79383cbd-9cd5-48fe-a1d9-a7cd8b37b1e1",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.box": "solver",
        "latency_ms": 0
@@ -168631,11 +168667,11 @@
       "latency_ms": 0,
       "result": "734",
       "raw": {
-       "ts": "2026-10-02T21:51:56.828396+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.303889+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "94e11a56-eeb2-472b-a44d-fb8a311cacf6",
+       "gen_ai.agent.id": "79383cbd-9cd5-48fe-a1d9-a7cd8b37b1e1",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.role_group": "summariser",
        "gen_ai.request.model": "toy-mock",
@@ -168659,11 +168695,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.828683+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.305716+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "fb04cdf4-cdde-4d7f-a14d-32329446e001",
+       "gen_ai.agent.id": "9c40e830-4c7c-4ef6-a3f8-f71b4624eb3a",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "critics",
        "latency_ms": 0
@@ -168675,21 +168711,21 @@
       "span": "chat",
       "box": "critics",
       "helper": "Solver",
-      "tokens": 342,
+      "tokens": 343,
       "latency_ms": 0,
       "result": "Action: Agree",
       "raw": {
-       "ts": "2026-10-02T21:51:56.828694+00:00",
-       "episode_id": "e080d67f-9a8e-4e1f-81e5-9a72248c28c9",
+       "ts": "2026-10-03T00:02:41.305736+00:00",
+       "episode_id": "15b78b5e-d781-4be2-af8d-314030976ee4",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "fb04cdf4-cdde-4d7f-a14d-32329446e001",
+       "gen_ai.agent.id": "9c40e830-4c7c-4ef6-a3f8-f71b4624eb3a",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "reviewers",
        "gen_ai.request.model": "toy-mock",
        "amoeba.box": "critics",
        "gen_ai.response.model": "toy-mock",
-       "gen_ai.usage.input_tokens": 334,
+       "gen_ai.usage.input_tokens": 335,
        "gen_ai.usage.output_tokens": 8,
        "gen_ai.response.finish_reasons": [
         "stop"
@@ -168717,7 +168753,7 @@
      "interpreter": {
       "calls": 0,
       "tokens": 0,
-      "ms": 0
+      "ms": 2
      },
      "solver": {
       "calls": 1,
@@ -168726,7 +168762,7 @@
      },
      "critics": {
       "calls": 1,
-      "tokens": 342,
+      "tokens": 343,
       "ms": 0
      }
     },
@@ -168824,7 +168860,7 @@
       "messages": [
        {
         "role": "system",
-        "content": "You are faced with the task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n(Today is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)\n\nBelow is the chat history among you and other teammates."
+        "content": "You are faced with the task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n(Today is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.)\n\nBelow is the chat history among you and other teammates."
        },
        {
         "role": "user",
@@ -168838,7 +168874,7 @@
       "messages": [
        {
         "role": "system",
-        "content": "Now you are Works out the answer to the task, using the calc tool for any arithmetic.\n\nYou are in a discussion group, aiming to Compute 26 * 28 + 6. Reply with just the number.\n\n(Today is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.).\n\nBelow is the chat history among you and other teammates."
+        "content": "Now you are Works out the answer to the task, using the calc tool for any arithmetic.\n\nYou are in a discussion group, aiming to Compute 26 * 28 + 6. Reply with just the number.\n\n(Today is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.).\n\nBelow is the chat history among you and other teammates."
        },
        {
         "role": "assistant",
@@ -168915,8 +168951,8 @@
     }
    },
    "plan": {
-    "run_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
-    "dir": "runs/fc24c8bc-be96-43ce-8804-a4510b313e93",
+    "run_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
+    "dir": "runs/4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
     "files": [
      "artifacts",
      "capability_requests.json",
@@ -168927,26 +168963,26 @@
     ],
     "result": {
      "interpretation": {},
-     "run_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+     "run_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
      "task_id": "toy-0-000",
      "draft_source": null,
-     "team_id": "3a8bf3e2-e3a3-476d-a877-c7e57624af81",
+     "team_id": "f6ebf0e5-01c1-4fa1-9731-16e3353def50",
      "topology": "plan",
      "answer": "734",
      "error": null,
      "score": 1.0,
-     "total_tokens": 5596,
+     "total_tokens": 5599,
      "usage": {
       "calls": 6,
       "input": 5033,
-      "output": 563,
+      "output": 566,
       "reasoning": 0,
-      "tokens": 5596,
+      "tokens": 5599,
       "cached_calls": 0,
       "model": "toy-mock",
       "cost_usd": null
      },
-     "latency_ms": 14,
+     "latency_ms": 18,
      "n_llm_calls": 6,
      "draft_rounds": 1,
      "consensus": true,
@@ -169116,12 +169152,12 @@
     "team_trimmed": {
      "topology": "plan",
      "entry": [
-      "71c3f157-17f2-4d5d-97eb-69464289cf26",
-      "3bcc6be4-cdab-4948-a1ba-b70022a8334f"
+      "a74088ac-86f0-4d1c-acc5-0f379275d559",
+      "3219e66c-7d3b-4e42-aae8-6c4c7883ecf6"
      ],
-     "exit": "3bcc6be4-cdab-4948-a1ba-b70022a8334f",
+     "exit": "3219e66c-7d3b-4e42-aae8-6c4c7883ecf6",
      "agents": {
-      "71c3f157-17f2-4d5d-97eb-69464289cf26": {
+      "a74088ac-86f0-4d1c-acc5-0f379275d559": {
        "name": "Solver",
        "role": "worker",
        "model": "toy-mock",
@@ -169131,7 +169167,7 @@
        "role_prompt": "You are a careful problem solver. Do exactly what the task asks and report only the result … [+1 chars]",
        "max_history": 5
       },
-      "3bcc6be4-cdab-4948-a1ba-b70022a8334f": {
+      "3219e66c-7d3b-4e42-aae8-6c4c7883ecf6": {
        "name": "Language Expert",
        "role": "worker",
        "model": "toy-mock",
@@ -169145,7 +169181,7 @@
       {
        "index": 0,
        "agent_ids": [
-        "71c3f157-17f2-4d5d-97eb-69464289cf26"
+        "a74088ac-86f0-4d1c-acc5-0f379275d559"
        ],
        "text": "[Solver]: Solve the task and report the result.",
        "kind": "",
@@ -169158,7 +169194,7 @@
       {
        "index": 1,
        "agent_ids": [
-        "3bcc6be4-cdab-4948-a1ba-b70022a8334f"
+        "3219e66c-7d3b-4e42-aae8-6c4c7883ecf6"
        ],
        "text": "[Language Expert]: Restate the Solver's result as the final answer.",
        "kind": "",
@@ -169370,9 +169406,9 @@
      "raw_draft": "## Thought\nThe task is small: one role works it out, one language expert states the answer.\n\n## Question or Task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n## Selected Roles List:\n```\n```\n\n## Created Roles List:\n```\n{\n    \"name\": \"Solver\",\n    \"description\": \"Works out the answer to the task, using the calc tool for any arithmetic.\",\n    \"tools\": [\"calc\"],\n    \"suggestions\": \"Use calc for arithmetic. Reply with only the final value.\",\n    \"prompt\": \"You are a careful problem solver. Do exactly what the task asks and report only the result.\"\n},\n{\n    \"name\": \"Language Expert\",\n    \"desc … [+458 chars]"
     },
     "trace_lines": [
-     "{\"ts\": \"2026-10-02T21:51:56.835416+00:00\", \"episode_id\": \"fc24c8bc-be96-43ce-8804-a4510b313e93\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T21:51:56.835723+00:00\", \"episode_id\": \"fc24c8bc-be96-43ce-8804-a4510b313e93\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-02T21:51:56.835788+00:00\", \"episode_id\": \"fc24c8bc-be96-43ce-8804-a4510b313e93\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
+     "{\"ts\": \"2026-10-03T00:02:41.314952+00:00\", \"episode_id\": \"4fd3ae2b-b05f-417c-9ff6-6a671059eeef\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-03T00:02:41.315418+00:00\", \"episode_id\": \"4fd3ae2b-b05f-417c-9ff6-6a671059eeef\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-03T00:02:41.315518+00:00\", \"episode_id\": \"4fd3ae2b-b05f-417c-9ff6-6a671059eeef\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
     ],
     "n_trace_lines": 23,
     "timeline": [
@@ -169386,8 +169422,8 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.835372+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.314887+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "invoke_agent",
        "gen_ai.agent.name": "planner",
@@ -169405,8 +169441,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T21:51:56.835416+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.314952+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "planner",
@@ -169433,8 +169469,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T21:51:56.835723+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.315418+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "agent_observer",
@@ -169461,8 +169497,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-02T21:51:56.835788+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.315518+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "plan_observer",
@@ -169489,8 +169525,8 @@
       "latency_ms": 0,
       "result": "draft_quality: passed=2, failed=1, failed_checks=roles_fully_defined, box=checks",
       "raw": {
-       "ts": "2026-10-02T21:51:56.836036+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.315781+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "draft_quality",
        "amoeba.quality.passed": 2,
@@ -169506,17 +169542,17 @@
       "box": "interpreter",
       "helper": "",
       "tokens": 0,
-      "latency_ms": 3,
+      "latency_ms": 4,
       "result": "answer '734'",
       "raw": {
-       "ts": "2026-10-02T21:51:56.844309+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.326841+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "invoke_workflow",
        "gen_ai.workflow.name": "team-plan-toy-0-00",
-       "gen_ai.conversation.id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "gen_ai.conversation.id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "amoeba.box": "interpreter",
-       "latency_ms": 3
+       "latency_ms": 4
       }
      },
      {
@@ -169527,14 +169563,14 @@
       "helper": "",
       "tokens": 0,
       "latency_ms": 0,
-      "result": "run_clock: date=2026-10-02, weekday=Friday, tz=UTC, box=interpreter",
+      "result": "run_clock: date=2026-10-03, weekday=Saturday, tz=UTC, box=interpreter",
       "raw": {
-       "ts": "2026-10-02T21:51:56.844335+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.326869+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "run_clock",
-       "amoeba.date": "2026-10-02",
-       "amoeba.weekday": "Friday",
+       "amoeba.date": "2026-10-03",
+       "amoeba.weekday": "Saturday",
        "amoeba.tz": "UTC",
        "amoeba.box": "interpreter"
       }
@@ -169549,8 +169585,8 @@
       "latency_ms": 0,
       "result": "plan_graph: waves=[[1], [2]], depends_on={'1': [], '2': [1]}, max_turns=5, max_tokens=8192, rerun_stale=False, check_ret … [+188 chars]",
       "raw": {
-       "ts": "2026-10-02T21:51:56.844618+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.327125+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "plan_graph",
        "amoeba.waves": [
@@ -169593,8 +169629,8 @@
       "latency_ms": 0,
       "result": "step_input: step=1, wave=1, depends_on=[], received=[], input_chars=43, verification=False, rework=False, box=plan_step",
       "raw": {
-       "ts": "2026-10-02T21:51:56.844675+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.327224+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "step_input",
        "amoeba.step": 1,
@@ -169617,11 +169653,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.844852+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.327442+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "71c3f157-17f2-4d5d-97eb-69464289cf26",
+       "gen_ai.agent.id": "a74088ac-86f0-4d1c-acc5-0f379275d559",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "plan_step",
        "amoeba.step": 1,
@@ -169634,15 +169670,15 @@
       "span": "chat",
       "box": "plan_step",
       "helper": "Solver",
-      "tokens": 966,
+      "tokens": 967,
       "latency_ms": 0,
       "result": "Action: calc · ActionInput: 26 * 28 + 6",
       "raw": {
-       "ts": "2026-10-02T21:51:56.844873+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.327470+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "71c3f157-17f2-4d5d-97eb-69464289cf26",
+       "gen_ai.agent.id": "a74088ac-86f0-4d1c-acc5-0f379275d559",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
@@ -169650,7 +169686,7 @@
        "amoeba.box": "plan_step",
        "gen_ai.response.model": "toy-mock",
        "gen_ai.usage.input_tokens": 879,
-       "gen_ai.usage.output_tokens": 87,
+       "gen_ai.usage.output_tokens": 88,
        "gen_ai.response.finish_reasons": [
         "stop"
        ],
@@ -169667,12 +169703,12 @@
       "latency_ms": 0,
       "result": "ran tool calc (result is not written to the trace)",
       "raw": {
-       "ts": "2026-10-02T21:51:56.845248+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.327858+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "execute_tool",
        "gen_ai.tool.name": "calc",
-       "gen_ai.agent.id": "71c3f157-17f2-4d5d-97eb-69464289cf26",
+       "gen_ai.agent.id": "a74088ac-86f0-4d1c-acc5-0f379275d559",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "tools",
        "latency_ms": 0
@@ -169688,11 +169724,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.845511+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.328207+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "71c3f157-17f2-4d5d-97eb-69464289cf26",
+       "gen_ai.agent.id": "a74088ac-86f0-4d1c-acc5-0f379275d559",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "plan_step",
        "amoeba.step": 1,
@@ -169705,15 +169741,15 @@
       "span": "chat",
       "box": "plan_step",
       "helper": "Solver",
-      "tokens": 968,
+      "tokens": 969,
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-02T21:51:56.845530+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.328232+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "71c3f157-17f2-4d5d-97eb-69464289cf26",
+       "gen_ai.agent.id": "a74088ac-86f0-4d1c-acc5-0f379275d559",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
@@ -169721,7 +169757,7 @@
        "amoeba.box": "plan_step",
        "gen_ai.response.model": "toy-mock",
        "gen_ai.usage.input_tokens": 886,
-       "gen_ai.usage.output_tokens": 82,
+       "gen_ai.usage.output_tokens": 83,
        "gen_ai.response.finish_reasons": [
         "stop"
        ],
@@ -169738,8 +169774,8 @@
       "latency_ms": 0,
       "result": "step_done: step=1, wave=1, status=done, status_reason=, turns=2, output_chars=3, rework=False, checks_failed=[], box=ste … [+7 chars]",
       "raw": {
-       "ts": "2026-10-02T21:51:56.846728+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.329795+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "step_done",
        "amoeba.step": 1,
@@ -169763,8 +169799,8 @@
       "latency_ms": 0,
       "result": "provenance: step=1, cited=0, unverified=0, given=0, derived=1, inherited=0, untagged=0, numbers=1, hallucinated_citation … [+43 chars]",
       "raw": {
-       "ts": "2026-10-02T21:51:56.846761+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.329836+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "provenance",
        "amoeba.step": 1,
@@ -169790,8 +169826,8 @@
       "latency_ms": 0,
       "result": "step_input: step=2, wave=2, depends_on=[1], received=[1], input_chars=80, verification=False, rework=False, box=plan_ste … [+1 chars]",
       "raw": {
-       "ts": "2026-10-02T21:51:56.847051+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.330243+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "step_input",
        "amoeba.step": 2,
@@ -169818,11 +169854,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-02T21:51:56.847197+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.330383+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "3bcc6be4-cdab-4948-a1ba-b70022a8334f",
+       "gen_ai.agent.id": "3219e66c-7d3b-4e42-aae8-6c4c7883ecf6",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.box": "plan_summary",
        "amoeba.step": 2,
@@ -169835,15 +169871,15 @@
       "span": "chat",
       "box": "plan_summary",
       "helper": "Language Expert",
-      "tokens": 680,
+      "tokens": 681,
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-02T21:51:56.847218+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.330406+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "3bcc6be4-cdab-4948-a1ba-b70022a8334f",
+       "gen_ai.agent.id": "3219e66c-7d3b-4e42-aae8-6c4c7883ecf6",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.role_group": "summariser",
        "gen_ai.request.model": "toy-mock",
@@ -169851,7 +169887,7 @@
        "amoeba.box": "plan_summary",
        "gen_ai.response.model": "toy-mock",
        "gen_ai.usage.input_tokens": 596,
-       "gen_ai.usage.output_tokens": 84,
+       "gen_ai.usage.output_tokens": 85,
        "gen_ai.response.finish_reasons": [
         "stop"
        ],
@@ -169868,8 +169904,8 @@
       "latency_ms": 0,
       "result": "summary_check: step=2, new_number_in_summary=0, new_numbers=[], limitations_section=False, box=plan_summary",
       "raw": {
-       "ts": "2026-10-02T21:51:56.847870+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.331244+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "summary_check",
        "amoeba.step": 2,
@@ -169889,8 +169925,8 @@
       "latency_ms": 0,
       "result": "step_done: step=2, wave=2, status=done, status_reason=, turns=1, output_chars=3, rework=False, checks_failed=[], box=ste … [+7 chars]",
       "raw": {
-       "ts": "2026-10-02T21:51:56.847894+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.331292+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "step_done",
        "amoeba.step": 2,
@@ -169914,8 +169950,8 @@
       "latency_ms": 0,
       "result": "provenance: step=2, cited=0, unverified=0, given=0, derived=0, inherited=1, untagged=0, numbers=1, hallucinated_citation … [+43 chars]",
       "raw": {
-       "ts": "2026-10-02T21:51:56.847963+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.331323+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "provenance",
        "amoeba.step": 2,
@@ -169941,8 +169977,8 @@
       "latency_ms": 0,
       "result": "figure_ledger: figures=1, first_derived=1, box=provenance",
       "raw": {
-       "ts": "2026-10-02T21:51:56.848257+00:00",
-       "episode_id": "fc24c8bc-be96-43ce-8804-a4510b313e93",
+       "ts": "2026-10-03T00:02:41.331614+00:00",
+       "episode_id": "4fd3ae2b-b05f-417c-9ff6-6a671059eeef",
        "kind": "event",
        "name": "figure_ledger",
        "amoeba.figures": 1,
@@ -169970,11 +170006,11 @@
      "interpreter": {
       "calls": 0,
       "tokens": 0,
-      "ms": 3
+      "ms": 4
      },
      "plan_step": {
       "calls": 2,
-      "tokens": 1934,
+      "tokens": 1936,
       "ms": 0
      },
      "tools": {
@@ -169984,7 +170020,7 @@
      },
      "plan_summary": {
       "calls": 1,
-      "tokens": 680,
+      "tokens": 681,
       "ms": 0
      }
     },
@@ -170244,10 +170280,10 @@
        },
        {
         "role": "user",
-        "content": "You are carrying out one step of a team plan.\n\n# Task\nCompute 26 * 28 + 6. Reply with just the number.\n\nToday is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.\n\n# Your role card\nName: Solver\nInstructions: You are a careful problem solver. Do exactly what the task asks and report only the result.\nSuggestions: Use calc for arithmetic. Reply with only the final value.\n\n# Your step (step 1)\n[Solver]: Solve the task and report the result.\n\n# Inputs: outputs of the steps this step depends on\nNone: this step starts from the task alone.\n\n# Work done so far in this step\nNothing yet.\n\n# Facts and sources\n- Tag every number, price, date, law or benchmark figure you write: [S#] when it comes from a tool result (use that result's id, including ids already in your inputs), or [unverified] when it comes from your own knowledge. Never write such a figure without a tag, and never cite an [S#] you have not seen.\n- A number you compute from tagged inputs needs no tag if you show the calculation (for example 50 x 200 GB = 10,000 GB) or use calc. A result calc or a local tool gave you in this step is derived: never tag it [unverified].\n- A number given in the task needs no tag; never tag it with a web source [S#].\n- Keep the [S#] tags of any input you reuse.\n- Prefer the source about the specific thing the task asks about (this branch, this product, this person) over general pages. Never infer a specific fact from a general page: an office list, a chain-wide schedule or a category page does not tell you what one location or one item does.\n- If sources disagree, say so and name them; prefer the most specific and the most recent one. If a source lists some days, items or cases and leaves one out, do not fill the gap from general knowledge: say what the source shows.\n\n# Tools\nYou can use: ['calc', 'Print', 'Final Output']\n\n- Use one tool per turn: name it under Action and give its input under ActionInput. Its result comes back to you next turn.\n- \"Print\" leaves a note for your teammates in this step (it uses a turn).\n- When this step's output is complete, choose \"Final Output\" and put the whole step output in ActionInput, in the form the step's \"output\" line asks for. Only that text is passed on to later steps, so it must stand on its own.\n- In your Final Output report results and short excerpts of what a tool returned (the lines that matter, such as a count, a total or a final figure), never whole lists or whole program outputs; a file you made holds the full data.\n- If part of the step needs a capability you do not have (a tool, a sandbox, data access), do everything else and put a line \"BLOCKED: <capability> — <what could not be done>\" in your Final Output for each part you could not do. Never make up the result of work you could not do.\n- You have 5 turn(s) left for this step.\n\n# Format\nYour reply MUST use exactly these sections:\n\n## Thought\nwhat you need to do now and how\n\n## CurrentStep\nthe part of the step you are doing in this turn\n\n## Action\none of ['calc', 'Print', 'Final Output']\n\n## ActionInput\nthe input to the action\n"
+        "content": "You are carrying out one step of a team plan.\n\n# Task\nCompute 26 * 28 + 6. Reply with just the number.\n\nToday is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.\n\n# Your role card\nName: Solver\nInstructions: You are a careful problem solver. Do exactly what the task asks and report only the result.\nSuggestions: Use calc for arithmetic. Reply with only the final value.\n\n# Your step (step 1)\n[Solver]: Solve the task and report the result.\n\n# Inputs: outputs of the steps this step depends on\nNone: this step starts from the task alone.\n\n# Work done so far in this step\nNothing yet.\n\n# Facts and sources\n- Tag every number, price, date, law or benchmark figure you write: [S#] when it comes from a tool result (use that result's id, including ids already in your inputs), or [unverified] when it comes from your own knowledge. Never write such a figure without a tag, and never cite an [S#] you have not seen.\n- A number you compute from tagged inputs needs no tag if you show the calculation (for example 50 x 200 GB = 10,000 GB) or use calc. A result calc or a local tool gave you in this step is derived: never tag it [unverified].\n- A number given in the task needs no tag; never tag it with a web source [S#].\n- Keep the [S#] tags of any input you reuse.\n- Prefer the source about the specific thing the task asks about (this branch, this product, this person) over general pages. Never infer a specific fact from a general page: an office list, a chain-wide schedule or a category page does not tell you what one location or one item does.\n- If sources disagree, say so and name them; prefer the most specific and the most recent one. If a source lists some days, items or cases and leaves one out, do not fill the gap from general knowledge: say what the source shows.\n\n# Tools\nYou can use: ['calc', 'Print', 'Final Output']\n\n- Use one tool per turn: name it under Action and give its input under ActionInput. Its result comes back to you next turn.\n- \"Print\" leaves a note for your teammates in this step (it uses a turn).\n- When this step's output is complete, choose \"Final Output\" and put the whole step output in ActionInput, in the form the step's \"output\" line asks for. Only that text is passed on to later steps, so it must stand on its own.\n- In your Final Output report results and short excerpts of what a tool returned (the lines that matter, such as a count, a total or a final figure), never whole lists or whole program outputs; a file you made holds the full data.\n- If part of the step needs a capability you do not have (a tool, a sandbox, data access), do everything else and put a line \"BLOCKED: <capability> — <what could not be done>\" in your Final Output for each part you could not do. Never make up the result of work you could not do.\n- You have 5 turn(s) left for this step.\n\n# Format\nYour reply MUST use exactly these sections:\n\n## Thought\nwhat you need to do now and how\n\n## CurrentStep\nthe part of the step you are doing in this turn\n\n## Action\none of ['calc', 'Print', 'Final Output']\n\n## ActionInput\nthe input to the action\n"
        }
       ],
-      "response": "## Thought\nArithmetic — use the calculator.\n\n## Task\nCompute 26 * 28 + 6. Reply with just the number.\n\nToday is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.\n\n## CurrentStep\nEvaluate the expression.\n\n## Action\ncalc\n\n## ActionInput\n26 * 28 + 6\n"
+      "response": "## Thought\nArithmetic — use the calculator.\n\n## Task\nCompute 26 * 28 + 6. Reply with just the number.\n\nToday is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.\n\n## CurrentStep\nEvaluate the expression.\n\n## Action\ncalc\n\n## ActionInput\n26 * 28 + 6\n"
      },
      {
       "kind": "plan_summariser",
@@ -170258,10 +170294,10 @@
        },
        {
         "role": "user",
-        "content": "You are assembling the team's final answer from the outputs of every step of the plan.\n\n# Task\nCompute 26 * 28 + 6. Reply with just the number.\n\nToday is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.\n\n# Your role card\nName: Language Expert\nInstructions: You are a language expert. Restate the final result exactly as given, in one line.\nSuggestions: Copy the final result exactly; add nothing.\n\n# Your step (step 2)\n[Language Expert]: Restate the Solver's result as the final answer.\n\n# Deliverables the plan committed to (requirement ids from the plan)\nNone listed by the plan; take the deliverables from the task.\n\n# Step outputs, with their status and where their figures come from\n## Step 1 (Solver), status: done; figures: 0 cited, 0 unverified, 0 untagged\n734\n\n# Work done so far in this step\nNothing yet.\n\n# Rules\n- Assemble and edit only. Use the step outputs above; add no new analysis, no new facts and no new numbers. Every figure you keep must be copied as written, with its [S#] or [unverified] tag.\n- Answer every deliverable above, in exactly the form the task asks for; if the task asks for only a value or a word, reply with only that. Where a step's output is missing, incomplete or blocked, say so plainly instead of filling the gap.\n- If any step is blocked, partial or incomplete, a capability was lacking, or you keep [unverified] figures, end with a section \"## Limitations\" that lists them (which step and why, which capability, which main figures). If there is nothing to list, write no Limitations section.\n- When the answer is complete, choose \"Final Output\" and put the whole final answer in ActionInput.\n- You have 5 turn(s) left for this step.\n\n# Format\nYour reply MUST use exactly these sections:\n\n## Thought\nwhat you need to do now and how\n\n## CurrentStep\nthe part of the step you are doing in this turn\n\n## Action\none of ['Print', 'Final Output']\n\n## ActionInput\nthe input to the action\n"
+        "content": "You are assembling the team's final answer from the outputs of every step of the plan.\n\n# Task\nCompute 26 * 28 + 6. Reply with just the number.\n\nToday is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.\n\n# Your role card\nName: Language Expert\nInstructions: You are a language expert. Restate the final result exactly as given, in one line.\nSuggestions: Copy the final result exactly; add nothing.\n\n# Your step (step 2)\n[Language Expert]: Restate the Solver's result as the final answer.\n\n# Deliverables the plan committed to (requirement ids from the plan)\nNone listed by the plan; take the deliverables from the task.\n\n# Step outputs, with their status and where their figures come from\n## Step 1 (Solver), status: done; figures: 0 cited, 0 unverified, 0 untagged\n734\n\n# Work done so far in this step\nNothing yet.\n\n# Rules\n- Assemble and edit only. Use the step outputs above; add no new analysis, no new facts and no new numbers. Every figure you keep must be copied as written, with its [S#] or [unverified] tag.\n- Answer every deliverable above, in exactly the form the task asks for; if the task asks for only a value or a word, reply with only that. Where a step's output is missing, incomplete or blocked, say so plainly instead of filling the gap.\n- If any step is blocked, partial or incomplete, a capability was lacking, or you keep [unverified] figures, end with a section \"## Limitations\" that lists them (which step and why, which capability, which main figures). If there is nothing to list, write no Limitations section.\n- When the answer is complete, choose \"Final Output\" and put the whole final answer in ActionInput.\n- You have 5 turn(s) left for this step.\n\n# Format\nYour reply MUST use exactly these sections:\n\n## Thought\nwhat you need to do now and how\n\n## CurrentStep\nthe part of the step you are doing in this turn\n\n## Action\none of ['Print', 'Final Output']\n\n## ActionInput\nthe input to the action\n"
        }
       ],
-      "response": "## Thought\nAssemble the result.\n\n## Task\nCompute 26 * 28 + 6. Reply with just the number.\n\nToday is Friday, 2 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.\n\n## CurrentStep\nState the final answer.\n\n## Action\nFinal Output\n\n## ActionInput\n734\n"
+      "response": "## Thought\nAssemble the result.\n\n## Task\nCompute 26 * 28 + 6. Reply with just the number.\n\nToday is Saturday, 3 October 2026 (time zone of this run: UTC). Use this date for anything the task says about today, now, current or latest; do not guess the date.\n\n## CurrentStep\nState the final answer.\n\n## Action\nFinal Output\n\n## ActionInput\n734\n"
      }
     ],
     "examples": {
@@ -173892,8 +173928,8 @@
    ],
    "events": [
     {
-     "ts": "2026-10-02T21:51:56.799639+00:00",
-     "episode_id": "43a14ef9-dcc5-47bb-99fa-857d266a8f08",
+     "ts": "2026-10-03T00:02:41.265977+00:00",
+     "episode_id": "33b70021-92c1-4edb-a24c-ea93912f5e60",
      "kind": "event",
      "name": "capability_request",
      "capability.name": "web_search",
@@ -173903,8 +173939,8 @@
      "amoeba.box": "capreq"
     },
     {
-     "ts": "2026-10-02T21:51:56.799661+00:00",
-     "episode_id": "43a14ef9-dcc5-47bb-99fa-857d266a8f08",
+     "ts": "2026-10-03T00:02:41.266009+00:00",
+     "episode_id": "33b70021-92c1-4edb-a24c-ea93912f5e60",
      "kind": "event",
      "name": "capability_request",
      "capability.name": "unit_conversion",
@@ -173914,8 +173950,8 @@
      "amoeba.box": "capreq"
     },
     {
-     "ts": "2026-10-02T21:51:56.799735+00:00",
-     "episode_id": "43a14ef9-dcc5-47bb-99fa-857d266a8f08",
+     "ts": "2026-10-03T00:02:41.266124+00:00",
+     "episode_id": "33b70021-92c1-4edb-a24c-ea93912f5e60",
      "kind": "event",
      "name": "draft_quality",
      "amoeba.quality.passed": 2,
@@ -173924,21 +173960,21 @@
      "amoeba.box": "checks"
     },
     {
-     "ts": "2026-10-02T21:51:56.805682+00:00",
-     "episode_id": "43a14ef9-dcc5-47bb-99fa-857d266a8f08",
+     "ts": "2026-10-03T00:02:41.274111+00:00",
+     "episode_id": "33b70021-92c1-4edb-a24c-ea93912f5e60",
      "kind": "event",
      "name": "run_clock",
-     "amoeba.date": "2026-10-02",
-     "amoeba.weekday": "Friday",
+     "amoeba.date": "2026-10-03",
+     "amoeba.weekday": "Saturday",
      "amoeba.tz": "UTC",
      "amoeba.box": "interpreter"
     },
     {
-     "ts": "2026-10-02T21:51:56.806221+00:00",
-     "episode_id": "43a14ef9-dcc5-47bb-99fa-857d266a8f08",
+     "ts": "2026-10-03T00:02:41.274701+00:00",
+     "episode_id": "33b70021-92c1-4edb-a24c-ea93912f5e60",
      "kind": "event",
      "name": "unknown_tool",
-     "gen_ai.agent.id": "1431b025-7949-45db-b27a-0ea59e67e194",
+     "gen_ai.agent.id": "5ca5bb17-de68-445b-8125-28f04a479abe",
      "gen_ai.agent.name": "Researcher",
      "gen_ai.tool.name": "web_search",
      "amoeba.tool.registered": false,
@@ -249557,7 +249593,7 @@
     },
     {
      "test": "tests/test_gate_d84.py::test_no_model_call_in_boxes_7_and_8",
-     "line": 164,
+     "line": 167,
      "outcome": "passed",
      "how": "direct"
     },
@@ -274829,8 +274865,8 @@
      "kind": "function",
      "name": "main",
      "path": "scripts/run_experiment.py",
-     "line": 155,
-     "end_line": 173,
+     "line": 160,
+     "end_line": 178,
      "signature": "main(argv=None) -> int",
      "doc": "",
      "callers": [],
@@ -274849,8 +274885,8 @@
       "scripts/run_experiment.py::parse"
      ],
      "range": [
-      155,
-      173
+      160,
+      178
      ]
     },
     {
@@ -274881,8 +274917,8 @@
      "kind": "function",
      "name": "parse",
      "path": "scripts/run_experiment.py",
-     "line": 140,
-     "end_line": 151,
+     "line": 145,
+     "end_line": 156,
      "signature": "parse(argv=None)",
      "doc": "",
      "callers": [
@@ -274891,8 +274927,8 @@
      ],
      "callees": [],
      "range": [
-      140,
-      151
+      145,
+      156
      ]
     },
     {
@@ -275278,7 +275314,7 @@
     {
      "key": "scripts/run_experiment.py::main",
      "path": "scripts/run_experiment.py",
-     "line": 164,
+     "line": 169,
      "kind": "stop",
      "code": "if args.calibrate_only",
      "effect": "return 0"
@@ -275286,7 +275322,7 @@
     {
      "key": "scripts/run_experiment.py::main",
      "path": "scripts/run_experiment.py",
-     "line": 167,
+     "line": 172,
      "kind": "stop",
      "code": "if not args.edit",
      "effect": "return 2"
@@ -275646,7 +275682,7 @@
     },
     {
      "test": "tests/test_gate_d84.py::test_no_model_call_in_boxes_7_and_8",
-     "line": 164,
+     "line": 167,
      "outcome": "passed",
      "how": "direct"
     },
@@ -277751,7 +277787,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "fabd705fc927c56d",
+   "fingerprint": "28dfccc94b340242",
    "sentence_tpl": "Runs the old recipe against the old recipe plus one edit on the kind's held-out tasks, {experiment.repeats} times each, with the same seed, tools and model, and returns the score pairs.",
    "what_tpl": [
     "For each held-out task (after-shift tasks first, then before-shift ones for the retention check) and each repeat, arm A drafts afresh with the old recipe and runs it.",
@@ -278320,24 +278356,28 @@
      "name": "hand_check",
      "path": "scripts/run_experiment.py",
      "line": 115,
-     "end_line": 136,
+     "end_line": 141,
      "signature": "hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | None=None, repeats: int=3) -> dict",
      "doc": "One hand-written hypothesis through Box 7 and Box 8: calibration if needed, the experiment, the decision.",
      "callers": [
       "scripts/run_experiment.py::main"
      ],
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::experiment",
       "amoeba/adapt/gate.py::decide",
       "amoeba/adapt/gate.py::decision_row",
       "amoeba/adapt/ledger.py::Ledger",
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/ledger.py::Ledger.rows",
       "amoeba/adapt/ledger.py::Ledger.tried_since_accept",
       "amoeba/adapt/recipe.py::apply_edit",
       "amoeba/adapt/recipe.py::load_recipe",
       "amoeba/adapt/recipe.py::seed_recipe",
       "amoeba/adapt/recipe.py::write_store",
       "amoeba/adapt/stream.py::Stream.heldout",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/safety/envelope.py::Envelope.from_registry",
       "amoeba/task/interpret.py::decide",
       "amoeba/tools/registry.py::default_registry",
@@ -278347,7 +278387,7 @@
      ],
      "range": [
       115,
-      136
+      141
      ]
     }
    ],
@@ -278807,6 +278847,38 @@
      "kind": "fallback",
      "code": "round(sum((p.tokens_A for p in post)) / len(post)) if post else None",
      "effect": "choose value"
+    },
+    {
+     "key": "scripts/run_experiment.py::hand_check",
+     "path": "scripts/run_experiment.py",
+     "line": 125,
+     "kind": "filter",
+     "code": "keep only if r.get('hypothesis_id') == h.hypothesis_id",
+     "effect": "drop the rest"
+    },
+    {
+     "key": "scripts/run_experiment.py::hand_check",
+     "path": "scripts/run_experiment.py",
+     "line": 126,
+     "kind": "stop",
+     "code": "if done",
+     "effect": "return done[-1]"
+    },
+    {
+     "key": "scripts/run_experiment.py::hand_check",
+     "path": "scripts/run_experiment.py",
+     "line": 128,
+     "kind": "correct",
+     "code": "if not [r for r in ledger.rows(h.family, 'hypothesis') if r.get('hypothesis_id') == h.hypothesis_id]",
+     "effect": "add {'event': 'hypothesis', 'family': h.family, 'hypothesis_id': h.hypothesis_id, 'recipe_from': recipe_A.version, 'edit': h.edit.model_dump(), 'predicted_delta': h.predicted_delta, 'rationale': h.rationale, 'created_by': 'human'}"
+    },
+    {
+     "key": "scripts/run_experiment.py::hand_check",
+     "path": "scripts/run_experiment.py",
+     "line": 128,
+     "kind": "filter",
+     "code": "keep only if r.get('hypothesis_id') == h.hypothesis_id",
+     "effect": "drop the rest"
     }
    ],
    "deviations": [],
@@ -281292,7 +281364,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "d3d635f2d47ddeeb",
+   "fingerprint": "34c74f8b284560d8",
    "sentence_tpl": "Keeps a recipe change only when its gain on held-out tasks beats the measured noise, was predicted, is worth its cost, keeps the team honest and loses nothing on the tasks that already worked.",
    "what_tpl": [
     "Noise floor, once per kind and recipe version: the recipe against itself with other seeds on the held-out after-shift tasks; noise = 2 × the spread of those score differences / √(pairs).",
@@ -281315,9 +281387,9 @@
     "RubricMustNot.window": 160,
     "hand_check.repeats": 3
    },
-   "text_source": "hand (model: still true)",
+   "text_source": "model: kept",
    "text_stale": null,
-   "text_hash": "9b737e276f8079df"
+   "text_hash": "568953557575ba3e"
   }
  ],
  "plan_boxes_not_mapped": [],
@@ -284059,24 +284131,22 @@
   ]
  ],
  "text_log": {
-  "ts": "2026-10-02T21:51:57+00:00",
-  "commit": "a7163f1",
+  "ts": "2026-10-03T00:02:41+00:00",
+  "commit": "5376dcb",
   "boxes": 47,
   "unchanged": 42,
   "hand": 0,
   "checked": 1,
-  "kept": 0,
-  "rewritten": 1,
+  "kept": 1,
+  "rewritten": 0,
   "stale": 4,
   "rejected": 0,
   "llm_calls": 1,
-  "input_tokens": 3462,
-  "output_tokens": 327,
+  "input_tokens": 3249,
+  "output_tokens": 7,
   "reasoning_tokens": 0,
   "model": "gemini-3.1-flash-lite",
-  "rewritten_boxes": [
-   "experimenter"
-  ],
+  "rewritten_boxes": [],
   "stale_boxes": [
    "scoring",
    "toolbox",

@@ -3120,7 +3120,7 @@
   ]
  },
  "gate": {
-  "checked_at": "3590ca1",
+  "checked_at": "5376dcb",
   "facts": {
    "anchors": [
     {
@@ -3375,17 +3375,21 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::experiment",
       "amoeba/adapt/gate.py::decide",
       "amoeba/adapt/gate.py::decision_row",
       "amoeba/adapt/ledger.py::Ledger",
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/ledger.py::Ledger.rows",
       "amoeba/adapt/ledger.py::Ledger.tried_since_accept",
       "amoeba/adapt/recipe.py::apply_edit",
       "amoeba/adapt/recipe.py::load_recipe",
       "amoeba/adapt/recipe.py::seed_recipe",
       "amoeba/adapt/recipe.py::write_store",
       "amoeba/adapt/stream.py::Stream.heldout",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/safety/envelope.py::Envelope.from_registry",
       "amoeba/task/interpret.py::decide",
       "amoeba/tools/registry.py::default_registry",
@@ -3414,6 +3418,11 @@
      "correct",
      "if leak",
      "add '1 leakage: ' + '; '.join(leak)"
+    ],
+    [
+     "correct",
+     "if not [r for r in ledger.rows(h.family, 'hypothesis') if r.get('hypothesis_id') == h.hypothesis_id]",
+     "add {'event': 'hypothesis', 'family': h.family, 'hypothesis_id': h.hypothesis_id, 'recipe_from': recipe_A.version, 'edit': h.edit.model_dump(), 'predicted_delta': h.predicted_delta, 'rationale': h.rationale, 'created_by': 'human'}"
     ],
     [
      "correct",
@@ -3577,6 +3586,11 @@
     ],
     [
      "filter",
+     "keep only if r.get('hypothesis_id') == h.hypothesis_id",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if r.get('recipe_hash') == recipe_hash",
      "drop the rest"
     ],
@@ -3614,6 +3628,11 @@
      "stop",
      "if abs(de - 1) < 1e-12",
      "stop (break)"
+    ],
+    [
+     "stop",
+     "if done",
+     "return done[-1]"
     ],
     [
      "stop",
@@ -3690,11 +3709,11 @@
    "prompts": {},
    "title": "8 · Gate and ledger (D84)"
   },
-  "facts_hash": "9b737e276f8079df",
+  "facts_hash": "568953557575ba3e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "91a479c51027935a",
   "sentence": "Keeps a recipe change only when its gain on held-out tasks beats the measured noise, was predicted, is worth its cost, keeps the team honest and loses nothing on the tasks that already worked.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Noise floor, once per kind and recipe version: the recipe against itself with other seeds on the held-out after-shift tasks; noise = 2 × the spread of those score differences / √(pairs).",
    "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from held-out tasks; 2 the mean gain beats the noise (and a floor), and a one-sided paired test, corrected for every hypothesis tried since the last accept, is significant; {hand_check.repeats} the gain has the predicted sign; 4 the token cost is justified; 5 no more honesty flags and no new refusals; 6 no loss on the before-shift tasks beyond the noise.",
