@@ -49,7 +49,7 @@ class Diagnosis(BaseModel):
     family: str
     symptom: str
     cause: Literal["capability", "checks", "max_turns", "unused_tool", "claimed_file_missing", "feedback", "honesty",
-                   "alarm_only"]
+                   "alarm_only", "retention"]
     where: dict = Field(default_factory=dict)          # a Selector-shaped hint
     evidence: list[str] = Field(default_factory=list)  # short quotes: step file + field + value, at most 8
     counts: dict[str, int] = Field(default_factory=dict)
@@ -143,6 +143,13 @@ def _allowed(cause: str) -> list[str]:
 def diagnose(alarm: Alarm, records: list[PracticeRecord], stream: Stream) -> Diagnosis:
     """Box 5: count the window's run records, name the cause that rose most, and say which edits may answer it."""
     c = adapt_config()["diagnoser"]
+    if alarm.kind == "retention":                     # D100: scores only — held-out tasks never reach a prompt
+        i = alarm.inputs
+        symptom = (f"retention: the family's pre-shift gate tasks fell from {alarm.before:.2f} (seed recipe) to "
+                   f"{alarm.after:.2f} under recipe v{i.get('recipe_version')} (noise {i.get('noise')}); a recipe line "
+                   f"helps the new tasks but hurts the old ones")
+        return Diagnosis(family=alarm.family, symptom=symptom, cause="retention", evidence=[symptom],
+                         allowed_edits=_allowed("retention"), alarm=alarm.model_dump())
     by_order = {r.order: r for r in records}
     window = [by_order[o] for o in alarm.window_orders if o in by_order]
     ref = [by_order[o] for o in alarm.reference_orders if o in by_order]

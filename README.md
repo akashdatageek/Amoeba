@@ -467,6 +467,18 @@ real model today.
 
 No agent can write any of these files.
 
+## Recipe expiry: replay and pruning (D100)
+
+Every 12 practice tasks of a family (`--retention-every N`, 0 = off), the loop replays the family's pre-shift gate
+tasks with the current recipe and with the starting recipe. If the current recipe scores lower by more than the
+noise, a `retention` alarm is raised straight away and handled like any other alarm. The Diagnoser sees scores
+only, never the held-out tasks.
+
+At the end of a stream (`--prune end`, the default; `off` disables it) and on demand
+(`python -m scripts.prune_recipe --stream m2 --family calc`), each recipe line is removed in turn and tested on the
+gate set. A line is dropped when removing it loses no score beyond the noise and saves cost. Each prune is a Gate
+decision in the ledger (`prune: true`) and does not use up the hypothesis quota.
+
 ## Cost controls (D45–D48)
 
 ```bash

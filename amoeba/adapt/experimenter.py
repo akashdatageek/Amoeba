@@ -32,6 +32,14 @@ from amoeba.adapt.recipe import Edit, Recipe, adapt_config, apply_edit, write_st
 from amoeba.adapt.stream import Stream, StreamTask, dump_task_line
 
 RULE_OPS = ("add_planner_rule", "remove_planner_rule")
+DRAFT_ROLES = ("interpreter", "planner", "agent_observer", "plan_observer")   # D98: a model preference for these
+                                                                              # changes the draft itself
+
+
+# box: experimenter
+def changes_draft(op: str, params: dict | None = None) -> bool:
+    """Arm B needs its own draft: the edit changes what Box 1/2 read or which model drafts."""
+    return op in RULE_OPS or (op == "prefer_model" and (params or {}).get("role") in DRAFT_ROLES)
 CALIBRATION_SEED_OFFSET = 1000          # arm A′ of the noise-floor calibration uses seed k + this
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -398,13 +406,22 @@ def experiment(recipe_A: Recipe, edit: Edit, hypothesis_id: str, stream: Stream,
                repeats: int = 3, created_by: str = "human", slices: tuple[str, ...] = ("post", "pre")) -> ReplayResult:
     """Box 7: recipe A against recipe A + edit on the family's held-out tasks. Writes
     <root>/experiments/<hypothesis_id>/{experiment.json, pairs.jsonl, recipes_B/, runs/B/…}."""
-    root = Path(root)
     recipe_B = apply_edit(recipe_A, edit, created_by=created_by, hypothesis_id=hypothesis_id)
+    return replay(recipe_A, recipe_B, hypothesis_id, stream, runner, root, repeats,
+                  not changes_draft(edit.op, edit.params), edit.model_dump(), slices)
+
+
+# box: experimenter
+def replay(recipe_A: Recipe, recipe_B: Recipe, hypothesis_id: str, stream: Stream, runner, root: str | Path,
+           repeats: int, same_draft: bool, edit: dict | None = None,
+           slices: tuple[str, ...] = ("post", "pre")) -> ReplayResult:
+    """Recipe A against any recipe B on the family's held-out tasks (an edit, or D100's prune: A minus one line).
+    same_draft: arm B reuses arm A's saved draft (B changes nothing the Planner reads)."""
+    root = Path(root)
     tasks = [t for ph in slices for t in stream.heldout(recipe_A.family, ph)]
     exp = root / "experiments" / hypothesis_id
     store_B = write_store(exp / "recipes_B", [recipe_B])
     a, hits = _arm_a(stream, recipe_A, root, tasks, repeats, runner)
-    same_draft = edit.op not in RULE_OPS
     jobs = []
     for t in tasks:
         for k in range(repeats):
@@ -416,7 +433,7 @@ def experiment(recipe_A: Recipe, edit: Edit, hypothesis_id: str, stream: Stream,
     b = {(r.task_id, r.k): r for r in runner.run(jobs)}
     res = ReplayResult(hypothesis_id=hypothesis_id, family=recipe_A.family, recipe_from=recipe_A.version,
                        recipe_to=recipe_B.version, recipe_A_hash=recipe_A.hash(), recipe_B_hash=recipe_B.hash(),
-                       edit=edit.model_dump(), mode="same_draft" if same_draft else "own_draft",
+                       edit=edit, mode="same_draft" if same_draft else "own_draft",
                        pairs=[_pair(t, k, a[(t.id, k)], b[(t.id, k)], same_draft) for t in tasks for k in range(repeats)],
                        arm_a_cache_hits=hits, runs=len(jobs) + (len(tasks) * repeats - hits))
     write_result(exp, res)

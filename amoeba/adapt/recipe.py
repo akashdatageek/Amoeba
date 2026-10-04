@@ -85,7 +85,7 @@ class Recipe(BaseModel):
     # D99: where each line came from — key "L1" / "T1" / "run_options.<name>" / "model_prefs.<role>" ->
     # {hypothesis_id, created_by, date, gate_row}; gate_row is filled by the store when the Gate's accept commits it
     provenance: dict[str, dict] = Field(default_factory=dict)
-    created_by: Literal["seed", "human", "architect"] = "seed"
+    created_by: Literal["seed", "human", "architect", "prune"] = "seed"
     hypothesis_id: str | None = None
 
     def is_empty(self) -> bool:

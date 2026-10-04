@@ -446,3 +446,26 @@ def rollback_watch(after_accept: list[float], alarm_window_mean: float, noise: f
     if len(after_accept) < window:
         return "watching"
     return "reverted" if mean(after_accept[:window]) < alarm_window_mean - noise else "kept"
+
+
+# box: gate
+def decide_prune(res, noise: float) -> dict:
+    """D100: the Gate on a prune (arm A = the recipe, arm B = it without one line, on the gate set). Accept when
+    removing the line does not lower the score beyond noise AND lowers cost (USD when both arms have prices, else
+    tokens). Plain code; the same noise floor as the family's hypotheses."""
+    pairs = res.pairs
+    if not pairs:
+        return {"decision": "reject", "reasons": ["no pairs"], "observed_delta": None}
+    ma, mb = mean(p.score_A for p in pairs), mean(p.score_B for p in pairs)
+    ua, ub = mean(p.usd_A or 0.0 for p in pairs), mean(p.usd_B or 0.0 for p in pairs)
+    ta, tb = mean(p.tokens_A for p in pairs), mean(p.tokens_B for p in pairs)
+    basis = "usd" if ua > 0 and ub > 0 else "tokens"
+    ca, cb = (ua, ub) if basis == "usd" else (ta, tb)
+    reasons = []
+    if ma - mb > noise:
+        reasons.append(f"score falls without the line: {ma:.3f} -> {mb:.3f} (noise {noise:.3f})")
+    if not cb < ca:
+        reasons.append(f"no cost saved: {basis} {ca:.4g} -> {cb:.4g}")
+    return {"decision": "reject" if reasons else "accept", "reasons": reasons or ["no loss beyond noise, cheaper"],
+            "observed_delta": round(mb - ma, 4), "score_A": round(ma, 4), "score_B": round(mb, 4),
+            "cost_basis": basis, "cost_A": round(ca, 6), "cost_B": round(cb, 6), "n_pairs": len(pairs)}

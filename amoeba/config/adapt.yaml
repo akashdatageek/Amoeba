@@ -75,6 +75,7 @@ diagnoser:                    # D86: Box 5, tier 0 (spec §6); the cause -> edit
     checks: [add_verify_step, tighten_done_when, add_role_rule, "set_run_option:check_retry_turns", prefer_model]
     max_turns: [add_planner_rule, "set_run_option:max_turns", prefer_model]
     unused_tool: [revoke_tool, add_role_rule]
+    retention: [remove_planner_rule, add_planner_rule, tighten_done_when, add_role_rule]   # D100 (a retention alarm)
     claimed_file_missing: [add_role_rule, add_verify_step]
     feedback: [add_planner_rule, tighten_done_when, add_role_rule]
     honesty: [add_verify_step, add_role_rule, tighten_done_when]
@@ -88,3 +89,7 @@ evidence:                     # D95: the evidence log's off-container copy
   batch_seconds: 600          # at most one evidence commit per 10 minutes (forced at the end of a loop run)
   retries: 3                  # push attempts per batch; what failed stays unshipped in loop_state.json
   gcs: {enabled: false}       # the bucket uploader is kept but disabled
+
+retention:                    # D100: recipe expiry (amoeba/adapt/retention.py)
+  every: 12                   # replay the pre-shift gate tasks every N practice tasks of a family (0: off; --retention-every)
+  prune: end                  # end: prune each recipe line at the end of a stream (off: never; --prune; scripts/prune_recipe.py)

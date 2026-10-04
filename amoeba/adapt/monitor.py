@@ -77,7 +77,7 @@ class LoopState(BaseModel):
 # box: monitor
 class Alarm(BaseModel):
     family: str
-    kind: Literal["score", "cause"]
+    kind: Literal["score", "cause", "retention"]     # D100: retention = the pre-shift replay fell
     window: list[str]                # run ids (folder names) of the window
     before: float                    # mean score (or rate) of the reference runs
     after: float                     # mean score (or rate) in the window

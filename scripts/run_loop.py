@@ -54,6 +54,11 @@ def main(argv=None) -> int:
                    help="none: the Architect gets the alarm only, every edit allowed (the ablation)")
     p.add_argument("--recipes-from", default=None, help="D88: start the stream's recipe store from another one")
     p.add_argument("--env-file", action="append", default=[])
+    p.add_argument("--retention-every", type=int, default=None,
+                   help="D100: replay the pre-shift gate tasks every N practice tasks of a family (0: off; default "
+                        "adapt.yaml retention.every)")
+    p.add_argument("--prune", choices=["end", "off"], default=None,
+                   help="D100: prune each recipe line at the end of the stream (default adapt.yaml retention.prune)")
     p.add_argument("--allow-model-edits", action="store_true",
                    help="D98: let the Architect propose prefer_model edits (off: one real model)")
     p.add_argument("--no-ship", action="store_true", help="D95: do not ship evidence to the evidence branch")
@@ -77,7 +82,8 @@ def main(argv=None) -> int:
                        repeats=args.repeats or cfg.get("repeats", 3), parallel_until=args.parallel_until,
                        diagnoser=args.diagnoser, envelope=Envelope.from_registry(default_registry()),
                        log=lambda m: print(m, flush=True), secrets=secret_values(env),
-                       shipper="none" if args.no_ship else "config")
+                       shipper="none" if args.no_ship else "config", retention_every=args.retention_every,
+                       prune=args.prune)
     print(json.dumps({k: summary[k] for k in ("alarms", "unresolved", "reverts")}, indent=2)[:3000])
     print(json.dumps({"decisions": [(d["hypothesis_id"], d["decision"], d["reasons"]) for d in summary["decisions"]],
                       "recipes": summary["recipes"]}, indent=2))

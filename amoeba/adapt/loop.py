@@ -34,6 +34,7 @@ from amoeba.adapt.experimenter import Job, experiment
 from amoeba.adapt.gate import alpha_for, cfg as gate_cfg, decide, decision_row, rollback_watch
 from amoeba.adapt.ledger import Ledger
 from amoeba.adapt.monitor import LoopState, PracticeRecord, monitor, practice_record
+from amoeba.adapt.retention import prune_family, retention_alarm, retention_cfg, retention_check, retention_due
 from amoeba.memory.context import propose_standards
 from amoeba.adapt.recipe import apply_edit
 from amoeba.adapt.stream import Stream, StreamTask
@@ -113,7 +114,7 @@ def practice_jobs(tasks: list[StreamTask], stream: Stream, store: RecipeStore, r
 def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], object], repeats: int = 3,
              parallel_until: int = 0, diagnoser: str = "tier0", envelope=None, calibrate: Callable | None = None,
              log: Callable[[str], None] = print, secrets: list[str] = (), upload: Callable | None = None,
-             shipper=None) -> dict:
+             shipper=None, retention_every: int | None = None, prune: str | None = None) -> dict:
     """The loop over the stream's practice tasks. llm_for(hypothesis_id) gives the Architect's client; calibrate(
     stream, family, runner, root, store, repeats) -> calibration row (scripts/run_experiment.ensure_calibration).
     D95: every event goes to <root>/events.jsonl (hash-chained); each finished run is key-scanned against `secrets`
@@ -121,6 +122,9 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
     ships nothing, or `upload(local_path, object_name)`); what is not shipped stays in loop_state.json."""
     from scripts.run_experiment import ensure_calibration, sample_draft
     calibrate = calibrate or ensure_calibration
+    rc = retention_cfg()                        # D100: --retention-every / --prune, else adapt.yaml `retention`
+    retention_every = int(rc["every"] if retention_every is None else retention_every)
+    prune = prune or rc["prune"]
     root = Path(root)
     io = LoopIO(root)
     store = RecipeStore(root / "recipes")
@@ -185,11 +189,48 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
             _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser,
                     envelope, calibrate, sample_draft, g, log, ev)
             ship()
+        count = retention_due(recs, t.family, retention_every)
+        if count:                               # D100: replay the pre-shift gate tasks with the current recipe
+            _retention(t, st, count, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser,
+                       envelope, calibrate, sample_draft, g, log, ev)
+            ship()
         loop.processed.append(t.order)
         io.save(loop)
+    if prune == "end":                          # D100: each recipe line, removed one at a time, on the gate set
+        for fam in stream.families():
+            cal = calibrate(stream, fam, runner, root, store.root, repeats)
+            for row in prune_family(stream, fam, store, ledger, runner, root, repeats, cal["noise"], ev, log,
+                                    loop_gate_version()):
+                if not any(e.get("hypothesis_id") == row["hypothesis_id"] for e in loop.events):
+                    loop.events.append({"ts": _now(), "event": "prune", "family": fam, "line": row.get("line"),
+                                        "hypothesis_id": row["hypothesis_id"], "decision": row["decision"]})
+            io.save(loop)
     summary = write_summary(stream, root, io.records(), ledger, store, loop)
     ship(force=True)                            # the last batch goes out now
     return summary
+
+
+# box: loop
+def _retention(t, st, count, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser, envelope,
+               calibrate, sample_draft, g, log, ev) -> None:
+    """D100: one retention replay (once per family and count; resumable through the evidence key); a drop beyond
+    noise is an alarm of cause `retention`, handled at once like any alarm."""
+    key = f"retention:{t.family}:{count}"
+    if ev.has(key):
+        return
+    cal = calibrate(stream, t.family, runner, root, store.root, repeats)
+    row = retention_check(stream, t.family, store, runner, root, repeats, cal["noise"], count)
+    with open(root / "retention.jsonl", "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"ts": _now(), "order": t.order, **row}, ensure_ascii=False) + "\n")
+    ev.append("retention", {"order": t.order, **row}, key=key)
+    loop.events.append({"ts": _now(), "event": "retention", "order": t.order, **row})
+    log(f"[retention] {t.family} after {count} practice tasks: {row.get('reference_mean')} -> {row.get('mean')} "
+        f"{'ALARM' if row['alarm'] else row.get('skipped', 'ok')}")
+    if row["alarm"]:
+        alarm = retention_alarm(row, t.order)
+        ev.append("alarm", {"order": t.order, **alarm.model_dump()}, key=f"alarm:{t.order}:{t.family}:retention")
+        _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser,
+                envelope, calibrate, sample_draft, g, log, ev)
 
 
 # box: loop
@@ -227,17 +268,19 @@ def loop_gate_version() -> str:
 def _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser, envelope,
             calibrate, sample_draft, g, log, ev=None) -> None:
     ev = ev or EvidenceLog(root)
+    tag = "r" if alarm.kind == "retention" else ""   # D100: a retention alarm's hypotheses get their own ids
     diag = diagnose(alarm, recs, stream) if diagnoser != "none" else diagnose_none(alarm)
-    ev.append("diagnosis", diag.model_dump(), key=f"diagnosis:{t.family}:{t.order}")
+    ev.append("diagnosis", diag.model_dump(), key=f"diagnosis:{t.family}:{t.order}{tag}")
     (root / "diagnoses").mkdir(parents=True, exist_ok=True)
-    (root / "diagnoses" / f"o{t.order:02d}-{t.family}.json").write_text(diag.model_dump_json(indent=2), encoding="utf-8")
+    (root / "diagnoses" / f"o{t.order:02d}{tag}-{t.family}.json").write_text(diag.model_dump_json(indent=2),
+                                                                            encoding="utf-8")
     loop.events.append({"ts": _now(), "event": "diagnosis", "order": t.order, "family": t.family,
                         "cause": diag.cause, "symptom": diag.symptom, "allowed_edits": diag.allowed_edits})
     log(f"[diagnosis] {diag.cause}: {diag.symptom} -> {diag.allowed_edits}")
     heldout = stream.heldout(t.family, everything=True)
     tried, accepted = [], False
     for attempt in range(1, MAX_PER_ALARM + 1):
-        hid = f"{stream.name}-{t.family}-o{t.order:02d}-h{attempt}"
+        hid = f"{stream.name}-{t.family}-o{t.order:02d}{tag}-h{attempt}"
         decided = [r for r in ledger.rows(t.family, "decision") if r.get("hypothesis_id") == hid and not r.get("post_hoc")]
         recipe = store.current_or_seed(t.family)
         if decided:                                    # resumed: this hypothesis was already decided
@@ -300,13 +343,14 @@ def _handle(alarm, t, st, recs, stream, runner, root, store, ledger, loop, llm_f
             store.commit(recipe_B, row)
             st.reference_from = t.order + 1
             st.quiet_until = t.order + int(g["dwell"])
-            st.watch = {"accept_order": t.order, "alarm_mean": alarm.after, "noise": cal["noise"],
-                        "version": recipe_B.version}
+            if alarm.kind != "retention":             # the rollback watch compares practice scores with the alarm's
+                st.watch = {"accept_order": t.order, "alarm_mean": alarm.after, "noise": cal["noise"],
+                            "version": recipe_B.version}
             accepted = True
             break
     if not accepted:
         row = log_unresolved(root, alarm.model_dump(), diag, tried)
-        ev.append("human_queue", row, key=f"human_queue:{t.family}:{t.order}")
+        ev.append("human_queue", row, key=f"human_queue:{t.family}:{t.order}{tag}")
         ledger.append({"event": "unresolved", "family": t.family, "order": t.order, "hypotheses_tried": tried,
                        "gate_version": loop_gate_version()})
         loop.events.append({"ts": _now(), "event": "unresolved", "order": t.order, "hypotheses_tried": tried})
@@ -325,7 +369,9 @@ def write_summary(stream: Stream, root: Path, records: list[PracticeRecord], led
                                                                          "failed_items", "recipe_version", "error"})
                                                    for r in recs],
                "alarms": [e for e in loop.events if e["event"] == "alarm"],
-               "decisions": [r for r in rows if r.get("event") == "decision"],
+               "decisions": [r for r in rows if r.get("event") == "decision" and not r.get("prune")],
+               "prunes": [r for r in rows if r.get("event") == "decision" and r.get("prune")],     # D100
+               "retention": [e for e in loop.events if e["event"] == "retention"],
                "unresolved": [r for r in rows if r.get("event") == "unresolved"],
                "reverts": [r for r in rows if r.get("event") == "reverted"],
                "recipes": store.index(),
