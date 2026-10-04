@@ -1793,7 +1793,7 @@
   ]
  },
  "client": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "06dbc12",
   "facts": {
    "anchors": [
     {
@@ -1879,7 +1879,9 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
      "doc": "D49: for models without a system role — the system text goes at the top of the first user message",
@@ -1920,10 +1922,15 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/limits.py::billed",
       "amoeba/llm/limits.py::load_prices",
-      "amoeba/pool/stock.py::SharedPicks.get"
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
      ],
      "doc": "Billed tokens and, when every model used has prices, the estimated cost in USD (else cost_usd is None).",
      "key": "amoeba/llm/limits.py::estimate",
@@ -1944,11 +1951,15 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/profiles.py::RoleRouter",
       "amoeba/llm/profiles.py::build_router.client",
+      "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks.get",
-      "scripts/run_task.py::build_llm.make"
+      "scripts/run_loop.py::architect_llm.make",
+      "scripts/run_task.py::build_llm.make",
+      "scripts/run_task.py::build_router_llm.make"
      ],
      "doc": "make(model) builds one client (with the profile's endpoint and options); one client per distinct model.",
      "key": "amoeba/llm/profiles.py::build_router",
@@ -1956,18 +1967,47 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/llm/cache.py::CachedLLM",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::OpenAICompatibleClient",
       "amoeba/llm/profiles.py::build_router",
       "amoeba/llm/profiles.py::get_profile",
       "amoeba/llm/toy_mock.py::toy_mock_client",
+      "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks.get",
-      "scripts/run_task.py::endpoint"
+      "scripts/run_task.py::build_router_llm",
+      "scripts/run_task.py::endpoint",
+      "scripts/run_task.py::routing_mode"
      ],
      "doc": "",
      "key": "scripts/run_task.py::build_llm",
      "signature": "build_llm(args: argparse.Namespace) -> LLMClient"
+    },
+    {
+     "callees": [],
+     "doc": "Wraps a web SearchProvider (D32). The real provider is built only when a live call is needed, so replay",
+     "fields": [],
+     "key": "amoeba/llm/cache.py::CachedProvider",
+     "methods": [
+      "__init__(self, make_inner: Callable[[], object], folder: str | Path, mode: str='record', namespace: str='', name: str='tavily')",
+      "inner(self)",
+      "search(self, query: str, max_results: int) -> list[dict]",
+      "fetch(self, url: str) -> dict"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/web.py::now_iso"
+     ],
+     "doc": "D73: the time of the live call travels with a web result (a page, or each search hit), so a replayed result",
+     "key": "amoeba/llm/cache.py::stamped",
+     "signature": "stamped(result)"
     }
    ],
    "checks": [],
@@ -1999,6 +2039,11 @@
     ],
     [
      "decide",
+     "if mode == 'fixed'",
+     "set profile = replace(profile, roles={g: {k: v for k, v in r.items() if k != 'model'} for g, r"
+    ],
+    [
+     "decide",
      "if opts and any(opts.values())",
      "set parts['options'] = opts"
     ],
@@ -2006,6 +2051,11 @@
      "decide",
      "if pin is None or pout is None",
      "set cost = None"
+    ],
+    [
+     "decide",
+     "if self._inner is None",
+     "set self._inner = self._make()"
     ],
     [
      "decide",
@@ -2088,6 +2138,16 @@
      "choose value"
     ],
     [
+     "fallback",
+     "{**r, 'fetched_at': r.get('fetched_at') or at} if isinstance(r, dict) else r",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if k != 'model'",
+     "drop the rest"
+    ],
+    [
      "filter",
      "keep only if m.get('role') != 'system'",
      "drop the rest"
@@ -2139,8 +2199,33 @@
     ],
     [
      "stop",
+     "if hit is not None",
+     "return hit['result']"
+    ],
+    [
+     "stop",
+     "if isinstance(result, dict)",
+     "return {**result, 'fetched_at': result.get('fetched_at') or at}"
+    ],
+    [
+     "stop",
+     "if isinstance(result, list)",
+     "return [{**r, 'fetched_at': r.get('fetched_at') or at} if isinstance(r, dict) else r for r in result]"
+    ],
+    [
+     "stop",
+     "if mode == 'routed'",
+     "return build_router_llm(args, mode)"
+    ],
+    [
+     "stop",
      "if not system",
      "return rest"
+    ],
+    [
+     "stop",
+     "if self.store.mode == 'off'",
+     "return live()"
     ],
     [
      "stop",
@@ -2160,25 +2245,24 @@
     "ChatResponse.reasoning_tokens",
     "ChatResponse.throttle_wait_s",
     "Episode.latency_ms",
-    "Episode.seed"
+    "Episode.seed",
+    "WebLimits.max_results"
    ],
    "prompts": {},
    "title": "AI connection"
   },
-  "facts_hash": "e1b5a59d3e3c6d4d",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "bb66eb429b49dacd",
-  "seed_hash": "bbd14a5aace21969",
+  "facts_hash": "bb66eb429b49dacd",
+  "seed_hash": "140d4aa779790880",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
-  "source": "hand (model: still true)",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
-   "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message and set the reasoning effort.",
+   "Waits out rate limits (HTTP 429/503: up to {WebLimits.max_results} retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message and set the reasoning effort.",
    "With --llm-cache every reply is stored and can be replayed without a call; --max-tokens-per-run / --max-calls-per-run stop a run cleanly; every run prints its tokens and estimated cost.",
    "A named profile (amoeba/config/models.yaml, default gemma-api) sets the service, the model and how to call it; each role group (planner, checkers, helpers, reviewers, summariser) may get its own model and reply length. Every log line names the profile, and each AI line the exact model the service returned.",
    "Temperature is set once for the connection, not per helper.",
-   "Every call from every box goes through here, wrapped so it is logged."
+   "Every call from every box goes through here, wrapped so it is logged.",
+   "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path."
   ]
  },
  "critics": {
@@ -2279,7 +2363,7 @@
   ]
  },
  "diagnoser": {
-  "checked_at": "450ac2b",
+  "checked_at": "6f200d8",
   "facts": {
    "anchors": [
     {
@@ -2623,15 +2707,16 @@
    "title": "5 · Diagnoser (D86)"
   },
   "facts_hash": "729ba02033b21df0",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "9faebe54a7745a22",
+  "seed_hash": "1e9d39d47d0a5eb3",
   "sentence": "Counts what the runs of the alarm's window recorded and names the cause that rose most, with the edits that may answer it.",
-  "source": "model: rewritten",
+  "source": "hand",
   "what": [
-   "It reads the window's run folders for step causes, blocked capabilities, unused tools, missing files, unverified checks, citations, failed rubric items, retention issues, and provenance, while identifying the step kind and tool roles where the cause appears most.",
+   "It reads the window's run folders: step causes recorded by the step contract (with the step's kind, roles and their tools), blocked capabilities, unused tools, missing files, unverified checks, made-up or mislabelled citations and the names of the failed rubric items.",
    "The cause is the one whose share of runs rose most from the reference runs to the window — a cause that was always there does not explain an alarm — then the most frequent, then the table order.",
-   "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice examples (never held-out tasks) go to the Architect with the evidence lines, excluding model-based edits unless enabled.",
-   "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation)."
+   "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice examples (never held-out tasks) go to the Architect with the evidence lines.",
+   "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation).",
+   "D93: only causes observed in the run files (tool calls, files, checks) can be named; causes that only the model's own words support are reported apart as declared (supporting evidence and declared shares), never as the cause.",
+   "D100: a retention alarm is diagnosed from scores alone (held-out tasks never reach a prompt), with the edits remove_planner_rule, add_planner_rule, tighten_done_when and add_role_rule."
   ]
  },
  "disagree": {
@@ -2863,7 +2948,7 @@
   ]
  },
  "evidence": {
-  "checked_at": "8baa733",
+  "checked_at": "6f200d8",
   "facts": {
    "anchors": [
     {
@@ -2877,6 +2962,21 @@
       "rows(self) -> list[dict]",
       "has(self, key: str) -> bool",
       "append(self, event: str, data: dict, refers_to: list | tuple=(), key: str | None=None) -> dict | None"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "Ships to the `evidence` branch through a worktree of it (`worktree`, created from origin/<branch> if missing).",
+     "fields": [],
+     "key": "amoeba/adapt/evidence.py::GitShipper",
+     "methods": [
+      "__init__(self, root: Path, stream: str, worktree: Path, repo: Path, branch: str='evidence', secrets: list[str]=(), batch_seconds: float=600, retries: int=3, pending: list[dict] | None=None, state: dict | None=None, run=None, clock=None, push: bool=True)",
+      "git(self, *args, in_repo: bool=False) -> tuple[int, str]",
+      "ensure_worktree(self) -> None",
+      "queue_run(self, run_dir: Path) -> None",
+      "queue_events(self) -> None",
+      "flush(self, force: bool=False) -> list[dict]"
      ],
      "signature": null
     },
@@ -2901,6 +3001,14 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::sha256_text"
+     ],
+     "doc": "(rows, SHA-256 of the last row) of an events.jsonl; (0, GENESIS) when it is empty or missing.",
+     "key": "amoeba/adapt/evidence.py::chain_head",
+     "signature": "chain_head(events_file: Path) -> tuple[int, str]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/ledger.py::Ledger.append",
@@ -2915,6 +3023,19 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/router.py::ModelRouter.bucket",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The bucket copy (kept, disabled: adapt.yaml evidence.gcs.enabled is false; the evidence goes to the git branch).",
+     "key": "amoeba/adapt/evidence.py::gcs_uploader",
+     "signature": "gcs_uploader(bucket: str, credentials_file: str | None=None) -> Callable[[Path, str], None]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/llm/cache.py::CachedProvider.search",
@@ -2925,6 +3046,21 @@
      "doc": "Files under target that hold a key shape (AIza…, tvly-…, sk-…, ghp_…, a private key) or a secret's value.",
      "key": "amoeba/adapt/evidence.py::key_scan",
      "signature": "key_scan(target: Path, secrets: list[str]=()) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::GitShipper",
+      "amoeba/adapt/evidence.py::Shipper",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The configured shipper (adapt.yaml evidence): GitShipper to the evidence branch, or a queue that ships nothing.",
+     "key": "amoeba/adapt/evidence.py::make_shipper",
+     "signature": "make_shipper(root: Path, stream: str, secrets: list[str]=(), pending: list[dict] | None=None, state: dict | None=None, repo: Path | None=None)"
     },
     {
      "callees": [
@@ -2954,10 +3090,43 @@
      "signature": "refuse_cloud_vars(name: str, pairs: dict) -> None"
     },
     {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D97: the router's decisions of a run (its `route` trace events), as plain dicts.",
+     "key": "amoeba/adapt/evidence.py::route_decisions",
+     "signature": "route_decisions(run_dir: Path) -> list[dict]"
+    },
+    {
      "callees": [],
      "doc": "A run's environment without any cloud credential or bucket variable (agents never see them).",
      "key": "amoeba/adapt/evidence.py::run_env",
      "signature": "run_env(env: dict) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/evidence.py::GitShipper.queue_run",
+      "amoeba/adapt/evidence.py::Shipper.queue_run",
+      "amoeba/adapt/evidence.py::route_decisions",
+      "amoeba/adapt/evidence.py::tool_decisions",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D95/D96: when a run finishes: its local-tool decisions (gate.py and the sandbox) go into events.jsonl, and the",
+     "key": "amoeba/adapt/evidence.py::run_finished",
+     "signature": "run_finished(ev: EvidenceLog, root: Path, run_dir: Path, shipper=None) -> None"
     },
     {
      "callees": [
@@ -2977,6 +3146,20 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D96: every allow / deny decision of a run's local tools — gate.py's (local_call allowed, local_refused,",
+     "key": "amoeba/adapt/evidence.py::tool_decisions",
+     "signature": "tool_decisions(run_dir: Path) -> list[dict]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::manifest",
       "amoeba/adapt/evidence.py::sha256_text",
       "amoeba/adapt/experimenter.py::ArmACache.get",
@@ -2990,7 +3173,43 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::sha256_text",
       "amoeba/adapt/evidence.py::verify",
+      "amoeba/adapt/experimenter.py::InProcessRunner.run",
+      "amoeba/adapt/experimenter.py::SubprocessRunner.run",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter.run"
+     ],
+     "doc": "D95: check the evidence branch against GitHub's history. For every commit (oldest first): each `Chain-Head:",
+     "key": "amoeba/adapt/evidence.py::verify_branch",
+     "signature": "verify_branch(repo: Path, branch: str='evidence', stream: str | None=None, fetch: bool=True) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "scripts/run_experiment.py::load_ship_state",
+     "signature": "load_ship_state(root: Path) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::GitShipper.flush",
+      "amoeba/adapt/evidence.py::GitShipper.queue_events",
+      "amoeba/adapt/evidence.py::Shipper.flush",
+      "amoeba/adapt/evidence.py::Shipper.queue_events",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_experiment.py::load_ship_state"
+     ],
+     "doc": "D95: queue the event rows, ship if the batch is due (or forced), and keep what is unshipped in loop_state.json",
+     "key": "scripts/run_experiment.py::ship",
+     "signature": "ship(root: Path, shipper, force: bool=False) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::verify",
+      "amoeba/adapt/evidence.py::verify_branch",
       "scripts/eval_draft.py::parse_args",
       "scripts/run_task.py::parse_args"
      ],
@@ -3018,13 +3237,53 @@
     ],
     [
      "correct",
+     "if found",
+     "add 'tool_decisions'"
+    ],
+    [
+     "correct",
+     "if hits",
+     "add {'kind': 'path', 'path': rel, 'key_scan_hits': [Path(h).name for h in hits][:10]}"
+    ],
+    [
+     "correct",
      "if hits",
      "add {'kind': 'run', 'path': rel, 'key_scan_hits': [Path(h).name for h in hits][:10]}"
     ],
     [
      "correct",
+     "if not any((p['kind'] == 'events' for p in self.pending))",
+     "add {'kind': 'events', 'path': 'events.jsonl'}"
+    ],
+    [
+     "correct",
+     "if not any((p['path'] == rel for p in self.pending))",
+     "add {'kind': 'run', 'path': rel}"
+    ],
+    [
+     "correct",
      "if p.is_file() and (not p.is_symlink()) and (p.name != MANIFEST_NAME)",
      "add [p.relative_to(target).as_posix(), _file_sha(p), p.stat().st_size]"
+    ],
+    [
+     "correct",
+     "if r.get('name') == 'route'",
+     "add {k.removeprefix('amoeba.route.'): v for k, v in r.items() if k.startswith('amoeba.route.')}"
+    ],
+    [
+     "correct",
+     "if r.get('name') in keep",
+     "add {k: v for k, v in r.items() if k not in ('episode_id', 'kind')}"
+    ],
+    [
+     "correct",
+     "if routes",
+     "add 'routing'"
+    ],
+    [
+     "decide",
+     "if args.branch",
+     "set res = verify_branch(ROOT, args.branch, args.stream, fetch=not args.no_fetch)"
     ],
     [
      "decide",
@@ -3035,6 +3294,21 @@
      "decide",
      "if p.get(k)",
      "set d = Path(p[k]) if Path(p[k]).is_absolute() else root / p[k]"
+    ],
+    [
+     "decide",
+     "if rc != 0",
+     "set s = Path(self.stream_rel).name"
+    ],
+    [
+     "decide",
+     "if rc == 0",
+     "set err = None"
+    ],
+    [
+     "fallback",
+     "0 if res['ok'] else 1",
+     "choose value"
     ],
     [
      "fallback",
@@ -3053,12 +3327,22 @@
     ],
     [
      "fallback",
+     "[stream] if stream else sorted((p.parent.name for p in (Path(tmp) / 'tree' / 'eval' / 'loop').glob('*/events.jsonl')))",
+     "choose value"
+    ],
+    [
+     "fallback",
      "[target] if target.is_file() else [f for f in sorted(target.rglob('*')) if f.is_file()]",
      "choose value"
     ],
     [
      "fallback",
      "[target] if target.is_file() else [p for p in sorted(target.rglob('*')) if p.is_file()]",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "events_file.read_text(encoding='utf-8').splitlines() if events_file.exists() else []",
      "choose value"
     ],
     [
@@ -3073,13 +3357,48 @@
     ],
     [
      "fallback",
+     "except RuntimeError",
+     "return [{**p, 'error': str(e)[:300]} for p in self.pending]"
+    ],
+    [
+     "fallback",
      "except ValueError",
      "return brk('parse', str(e)[:200])"
     ],
     [
      "fallback",
      "except ValueError",
+     "set rel = str(run_dir)"
+    ],
+    [
+     "fallback",
+     "except ValueError",
      "set rel = str(target)"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "set rel_r = str(run_dir)"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "set self.stream_rel = f'eval/loop/{stream}'"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "skip (continue)"
+    ],
+    [
+     "fallback",
+     "f'origin/{branch}' if g('rev-parse', '--verify', f'origin/{branch}').returncode == 0 else branch",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "json.loads(p.read_text(encoding='utf-8')) if p.exists() else {}",
+     "choose value"
     ],
     [
      "fallback",
@@ -3098,12 +3417,32 @@
     ],
     [
      "fallback",
+     "self.repo if in_repo else self.worktree",
+     "choose value"
+    ],
+    [
+     "fallback",
      "sha256_text(lines[-1]) if lines else GENESIS",
      "choose value"
     ],
     [
      "fallback",
+     "shipper.flush(force) if hasattr(shipper, 'ensure_worktree') else shipper.flush()",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "shipper.stream if hasattr(shipper, 'stream') else root.name",
+     "choose value"
+    ],
+    [
+     "fallback",
      "sorted((f.parent for f in (ROOT / 'eval' / 'loop').glob('*/events.jsonl'))) if args.all else [Path(args.root) if args.root else ROOT / 'eval' / 'loop' / args.stream]",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "storage.Client.from_service_account_json(credentials_file) if credentials_file else storage.Client()",
      "choose value"
     ],
     [
@@ -3123,7 +3462,37 @@
     ],
     [
      "filter",
+     "keep only if b not in (st.get('ship_blocked') or [])",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if d.get('cause') == 'no_model'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if d.get('verifier_same_family')",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if f.is_file()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k != 'error'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k not in ('episode_id', 'kind')",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k.startswith('amoeba.route.')",
      "drop the rest"
     ],
     [
@@ -3143,6 +3512,11 @@
     ],
     [
      "filter",
+     "keep only if p['kind'] == 'run'",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if s",
      "drop the rest"
     ],
@@ -3157,14 +3531,84 @@
      "raise ValueError"
     ],
     [
+     "reject",
+     "if not (adapt_config().get('evidence', {}).get('gcs', {}) or {}).get('enabled')",
+     "raise RuntimeError"
+    ],
+    [
+     "reject",
+     "if rc != 0",
+     "raise RuntimeError"
+    ],
+    [
+     "reject",
+     "if stream and s != stream",
+     "skip (continue)"
+    ],
+    [
+     "stop",
+     "if (self.worktree / '.git').exists()",
+     "return None"
+    ],
+    [
+     "stop",
+     "if (sha256_text(lines[-1]) if lines else GENESIS) != head",
+     "return brk('head', \"the message's chain head is not the SHA-256 of the commit's last event row\")"
+    ],
+    [
+     "stop",
+     "if c.get('target') == 'github'",
+     "return GitShipper(root, stream, (repo / c.get('worktree', '../amoeba-evidence')).resolve(), repo, branch=c.get('branch', 'evidence'), secrets=secrets, batch_seconds=float(c.get('batch_seconds', 600)), retries=int(c.get('retries', 3)), pending=clean, state=state)"
+    ],
+    [
+     "stop",
+     "if err",
+     "return [{**p, 'error': err} for p in self.pending]"
+    ],
+    [
      "stop",
      "if err",
      "stop (break)"
     ],
     [
      "stop",
+     "if hits",
+     "return [{**p, 'error': 'events.jsonl failed the key scan'} for p in self.pending]"
+    ],
+    [
+     "stop",
+     "if hits",
+     "return hits"
+    ],
+    [
+     "stop",
      "if key is not None and self.has(key)",
      "return None"
+    ],
+    [
+     "stop",
+     "if not commits",
+     "return {'ok': False, 'commits': 0, 'first_break': {'kind': 'branch', 'detail': f'{ref} not found'}}"
+    ],
+    [
+     "stop",
+     "if not force and self._clock() - float(self.state.get('last_ship') or 0) < self.batch",
+     "return [{**p, 'error': 'waiting for the next batch'} for p in self.pending]"
+    ],
+    [
+     "stop",
+     "if not res['ok']",
+     "return {'ok': False, 'commits': len(commits), 'heads': heads, 'first_break': {'stream': s, 'where': f'{ref} head copy', **res['first_break']}}"
+    ],
+    [
+     "stop",
+     "if not self.pending",
+     "return []"
+    ],
+    [
+     "stop",
+     "if not src.exists()",
+     "return []"
     ],
     [
      "stop",
@@ -3178,6 +3622,16 @@
     ],
     [
      "stop",
+     "if p.returncode != 0",
+     "return brk('missing', 'events.jsonl is not in the commit')"
+    ],
+    [
+     "stop",
+     "if rc != 0",
+     "return [{**p, 'error': f'commit failed: {out[-200:]}'} for p in self.pending]"
+    ],
+    [
+     "stop",
      "if row.get('prev_sha') != prev",
      "return brk('chain', f\"prev_sha {str(row.get('prev_sha'))[:16]}… does not match the previous row {prev[:16]}… (a row was changed, removed or inserted before this one)\")"
     ],
@@ -3185,6 +3639,16 @@
      "stop",
      "if row.get('seq') != i",
      "return brk('seq', f\"seq {row.get('seq')} at position {i}\")"
+    ],
+    [
+     "stop",
+     "if s in last and (not text.startswith(last[s]))",
+     "return brk('rewritten', 'events.jsonl changed rows an earlier evidence commit already held')"
+    ],
+    [
+     "stop",
+     "if s in rows and int(rows[s]) != len(lines)",
+     "return brk('rows', f'message says {rows[s]} rows, the file has {len(lines)}')"
     ],
     [
      "stop",
@@ -3202,16 +3666,16 @@
    "prompts": {},
    "title": "Evidence log (D95)"
   },
-  "facts_hash": "e23241252984a6f4",
-  "rejected_hash": "8d8a74cad0b88ff4",
-  "seed_hash": "76b2670f897da3ae",
+  "facts_hash": "8d8a74cad0b88ff4",
+  "seed_hash": "a0e73a3a85e71ba4",
   "sentence": "Writes every loop event to one append-only, hash-chained log outside the agents' reach, with a fingerprint of every run folder it refers to, and queues finished runs for an off-container copy.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "One events.jsonl per stream, written only by the harness: alarms with their inputs, diagnoses, every Architect prompt and full reply, experiments, Gate decisions, reverts, human-queue entries and finished practice runs.",
    "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
-   "A finished run is key-scanned and queued for the bucket copy; unshipped items are listed in loop_state.json. Cloud credentials are removed from every run's environment."
+   "A finished run is key-scanned and queued for the bucket copy; unshipped items are listed in loop_state.json. Cloud credentials are removed from every run's environment.",
+   "D95a: finished runs that pass the key scan and the new events.jsonl rows are shipped as normal fast-forward commits to the repository's orphan `evidence` branch, at most one commit per 10 minutes plus a final one; each commit message carries the hash-chain head (Chain-Head) so scripts/verify_evidence.py --branch evidence can check the chain against GitHub's history. Shipping runs in the harness only; agents never get git credentials. The bucket uploader is kept but disabled.",
+   "D97–D100: routing decisions, local-tool decisions, memory proposals and approvals, retention replays and prunes are events in the same log."
   ]
  },
  "experimenter": {
@@ -4326,7 +4790,7 @@
   ]
  },
  "gate": {
-  "checked_at": "ecf0733",
+  "checked_at": "3d361d1",
   "facts": {
    "anchors": [
     {
@@ -4428,6 +4892,42 @@
       [
        "honesty_counts_B",
        "dict"
+      ],
+      [
+       "n_tasks",
+       "int | None"
+      ],
+      [
+       "repeats",
+       "int | None"
+      ],
+      [
+       "task_d",
+       "dict"
+      ],
+      [
+       "hypothesis_index",
+       "int | None"
+      ],
+      [
+       "alpha",
+       "float | None"
+      ],
+      [
+       "prediction",
+       "dict"
+      ],
+      [
+       "cost_basis",
+       "str"
+      ],
+      [
+       "usd_A",
+       "float | None"
+      ],
+      [
+       "usd_B",
+       "float | None"
       ]
      ],
      "key": "amoeba/adapt/gate.py::Decision",
@@ -4497,16 +4997,70 @@
      "signature": "_counts(post: list, arm: str) -> dict"
     },
     {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::ReplayResult.post",
+      "amoeba/adapt/experimenter.py::ReplayResult.pre",
+      "amoeba/adapt/gate.py::Decision",
+      "amoeba/adapt/gate.py::_rules_1_4_5",
+      "amoeba/adapt/gate.py::_sign",
+      "amoeba/adapt/gate.py::alpha_for",
+      "amoeba/adapt/gate.py::cfg",
+      "amoeba/adapt/gate.py::permutation_greater",
+      "amoeba/adapt/gate.py::task_means",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append",
+      "scripts/run_experiment.py::summary.mean"
+     ],
+     "doc": "D91: Gate v3 (spec §9.2, Gate v3).",
+     "key": "amoeba/adapt/gate.py::_decide_v3",
+     "signature": "_decide_v3(recipe_B: Recipe, h: Hypothesis, res: ReplayResult, noise: float, heldout: list, envelope, sample_draft, hypothesis_index: int | None, alpha: float | None) -> Decision"
+    },
+    {
      "callees": [],
      "doc": "Average ranks (1-based) of xs, ties sharing the mean rank.",
      "key": "amoeba/adapt/gate.py::_ranks",
      "signature": "_ranks(xs: list[float]) -> list[float]"
     },
     {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ReplayResult.post",
+      "amoeba/adapt/gate.py::_counts",
+      "amoeba/adapt/gate.py::cfg",
+      "amoeba/adapt/gate.py::honesty_shares",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/recipe.py::Edit.texts",
+      "amoeba/adapt/recipe.py::validate_recipe",
+      "amoeba/adapt/stream.py::leaks",
+      "scripts/run_audit.py::AuditLog.append",
+      "scripts/run_experiment.py::summary.mean"
+     ],
+     "doc": "Rules 1, 4, 5 (v2, per run) and 5b, shared by v3.",
+     "key": "amoeba/adapt/gate.py::_rules_1_4_5",
+     "signature": "_rules_1_4_5(recipe_B: Recipe, h: Hypothesis, res: ReplayResult, md: float, heldout: list, envelope, sample_draft, reasons: list[str]) -> dict"
+    },
+    {
      "callees": [],
      "doc": "",
      "key": "amoeba/adapt/gate.py::_sign",
      "signature": "_sign(x: float) -> int"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/gate.py::cfg",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D91: the pre-set alpha of the family's i-th hypothesis in a stream (1-based); None once the quota is spent.",
+     "key": "amoeba/adapt/gate.py::alpha_for",
+     "signature": "alpha_for(i: int) -> float | None"
     },
     {
      "callees": [
@@ -4518,11 +5072,13 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::ReplayResult.post",
       "amoeba/adapt/experimenter.py::ReplayResult.pre",
       "amoeba/adapt/gate.py::Decision",
       "amoeba/adapt/gate.py::_counts",
+      "amoeba/adapt/gate.py::_decide_v3",
       "amoeba/adapt/gate.py::_sign",
       "amoeba/adapt/gate.py::cfg",
       "amoeba/adapt/gate.py::honesty_shares",
@@ -4534,11 +5090,12 @@
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append",
       "scripts/run_experiment.py::summary.mean"
      ],
      "doc": "§9.2 rules 1–6 on the experiment's pairs; every failing rule adds its reason. version: \"v1\" (Stage A rule 5:",
      "key": "amoeba/adapt/gate.py::decide",
-     "signature": "decide(recipe_A: Recipe, recipe_B: Recipe, h: Hypothesis, res: ReplayResult, noise: float, N: int, heldout: list, envelope=None, sample_draft=None, version: str | None=None) -> Decision"
+     "signature": "decide(recipe_A: Recipe, recipe_B: Recipe, h: Hypothesis, res: ReplayResult, noise: float, N: int, heldout: list, envelope=None, sample_draft=None, version: str | None=None, hypothesis_index: int | None=None, alpha: float | None=None) -> Decision"
     },
     {
      "callees": [],
@@ -4566,6 +5123,15 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ReplayResult.post",
+      "amoeba/adapt/gate.py::task_means"
+     ],
+     "doc": "D91: 2 × std(per-task mean d_AA) / √n_tasks over the calibration's post (gate-set) pairs.",
+     "key": "amoeba/adapt/gate.py::noise_floor_tasks",
+     "signature": "noise_floor_tasks(cal: ReplayResult) -> float"
+    },
+    {
+     "callees": [
       "amoeba/adapt/gate.py::cfg",
       "amoeba/adapt/gate.py::ttest_greater",
       "amoeba/adapt/gate.py::wilcoxon_greater"
@@ -4576,12 +5142,46 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/gate.py::cfg",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D91: one-sided paired permutation (sign-flip) test of H1: mean(d) > 0. p = share of the 2^n sign assignments",
+     "key": "amoeba/adapt/gate.py::permutation_greater",
+     "signature": "permutation_greater(d: list[float], exact_max: int | None=None, n_random: int | None=None, seed: int | None=None) -> float"
+    },
+    {
+     "callees": [
       "amoeba/adapt/gate.py::cfg",
       "scripts/run_experiment.py::summary.mean"
      ],
      "doc": "§9.3: over the first `window` practice scores after an accept — \"reverted\" if their mean is below the mean of",
      "key": "amoeba/adapt/gate.py::rollback_watch",
      "signature": "rollback_watch(after_accept: list[float], alarm_window_mean: float, noise: float, window: int | None=None) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "scripts/run_audit.py::AuditLog.append",
+      "scripts/run_experiment.py::summary.mean"
+     ],
+     "doc": "D91: d_t = mean over the repeats of score_B − mean over the repeats of score_A, per task (task order kept).",
+     "key": "amoeba/adapt/gate.py::task_means",
+     "signature": "task_means(pairs: list) -> dict[str, float]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ReplayResult.post",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D91: each gate task's scores across seeds in the calibration (A and A′) and their standard deviation.",
+     "key": "amoeba/adapt/gate.py::task_spread",
+     "signature": "task_spread(cal: ReplayResult) -> dict[str, dict]"
     },
     {
      "callees": [
@@ -4615,15 +5215,108 @@
       "append(self, row: dict) -> dict",
       "tried_since_accept(self, family: str) -> int",
       "failed(self, family: str) -> list[dict]",
-      "calibration(self, family: str, recipe_hash: str, slice_key: str | None=None) -> dict | None"
+      "hypotheses_used(self, family: str) -> int",
+      "calibration(self, family: str, recipe_hash: str, slice_key: str | None=None, v3_only: bool=False) -> dict | None"
      ],
      "signature": null
     },
     {
+     "callees": [],
+     "doc": "eval/audit/<stream>/audit_log.jsonl: append-only; one claim id is used once.",
+     "fields": [],
+     "key": "scripts/run_audit.py::AuditLog",
+     "methods": [
+      "__init__(self, path: Path)",
+      "rows(self) -> list[dict]",
+      "used(self, claim: str) -> bool",
+      "append(self, row: dict) -> dict"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "split",
+       "Literal['audit']"
+      ],
+      [
+       "phase",
+       "Literal['pre', 'post']"
+      ]
+     ],
+     "key": "scripts/run_audit.py::AuditTask",
+     "methods": [
+      "as_task(self) -> Task"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "scripts/run_audit.py::audit_path",
+     "signature": "audit_path(stream: str) -> Path"
+    },
+    {
      "callees": [
+      "scripts/run_audit.py::audit_path"
+     ],
+     "doc": "",
+     "key": "scripts/run_audit.py::load_audit",
+     "signature": "load_audit(stream: str, family: str | None=None, path: Path | None=None) -> list[AuditTask]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::SubprocessRunner",
+      "amoeba/adapt/experimenter.py::experiment_flags",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::run_audit",
+      "scripts/run_experiment.py::load_env",
+      "scripts/run_experiment.py::option_defaults"
+     ],
+     "doc": "",
+     "key": "scripts/run_audit.py::main",
+     "signature": "main(argv=None) -> int"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::InProcessRunner.run",
+      "amoeba/adapt/experimenter.py::Job",
+      "amoeba/adapt/experimenter.py::SubprocessRunner.run",
+      "amoeba/adapt/gate.py::permutation_greater",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/recipe.py::Recipe.hash",
+      "amoeba/adapt/recipe.py::load_recipe",
+      "amoeba/adapt/recipe.py::seed_recipe",
+      "amoeba/adapt/recipe.py::write_store",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter.run",
+      "scripts/run_audit.py::AuditLog",
+      "scripts/run_audit.py::AuditLog.append",
+      "scripts/run_audit.py::AuditLog.used",
+      "scripts/run_audit.py::load_audit",
+      "scripts/run_experiment.py::summary.mean"
+     ],
+     "doc": "Arm A (store_a, or the seed recipe) against arm B (store_b) on the audit tasks, `repeats` seeds each.",
+     "key": "scripts/run_audit.py::run_audit",
+     "signature": "run_audit(stream: str, family: str, claim: str, statement: str, runner, out: Path, store_b: Path, store_a: Path | None=None, repeats: int=3, tasks: list[AuditTask] | None=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog",
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/evidence.py::experiment_refs",
       "amoeba/adapt/experimenter.py::ReplayResult.post",
       "amoeba/adapt/experimenter.py::calibrate",
       "amoeba/adapt/gate.py::noise_floor",
+      "amoeba/adapt/gate.py::noise_floor_tasks",
+      "amoeba/adapt/gate.py::task_spread",
       "amoeba/adapt/ledger.py::Ledger",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/adapt/ledger.py::Ledger.calibration",
@@ -4631,6 +5324,7 @@
       "amoeba/adapt/recipe.py::load_recipe",
       "amoeba/adapt/recipe.py::seed_recipe",
       "amoeba/adapt/stream.py::Stream.slice_key",
+      "scripts/run_audit.py::AuditLog.append",
       "scripts/run_experiment.py::cfg_gate_version"
      ],
      "doc": "§9.1: the calibration row of the family's current recipe, run (A vs A′) when the ledger has none.",
@@ -4639,19 +5333,26 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog",
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/evidence.py::EvidenceLog.rows",
+      "amoeba/adapt/evidence.py::experiment_refs",
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::experiment",
       "amoeba/adapt/gate.py::decide",
       "amoeba/adapt/gate.py::decision_row",
       "amoeba/adapt/ledger.py::Ledger",
       "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/ledger.py::Ledger.hypotheses_used",
       "amoeba/adapt/ledger.py::Ledger.rows",
       "amoeba/adapt/ledger.py::Ledger.tried_since_accept",
+      "amoeba/adapt/recipe.py::adapt_config",
       "amoeba/adapt/recipe.py::apply_edit",
       "amoeba/adapt/recipe.py::load_recipe",
       "amoeba/adapt/recipe.py::seed_recipe",
       "amoeba/adapt/stream.py::Stream.heldout",
       "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/router.py::ModelRouter.summary",
       "amoeba/memory/recipes.py::RecipeStore",
       "amoeba/memory/recipes.py::RecipeStore.commit",
       "amoeba/memory/recipes.py::RecipeStore.get",
@@ -4660,16 +5361,21 @@
       "amoeba/safety/envelope.py::Envelope.from_registry",
       "amoeba/task/interpret.py::decide",
       "amoeba/tools/registry.py::default_registry",
+      "scripts/run_audit.py::AuditLog.append",
+      "scripts/run_audit.py::AuditLog.rows",
+      "scripts/run_experiment.py::cfg_gate_version",
       "scripts/run_experiment.py::ensure_calibration",
       "scripts/run_experiment.py::sample_draft",
       "scripts/run_experiment.py::summary"
      ],
      "doc": "One hand-written hypothesis through Box 7 and Box 8: calibration if needed, the experiment, the decision.",
      "key": "scripts/run_experiment.py::hand_check",
-     "signature": "hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | None=None, repeats: int=3) -> dict"
+     "signature": "hand_check(stream: Stream, h: Hypothesis, runner, root: Path, store: Path | None=None, repeats: int=3, check: bool=False) -> dict"
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/evidence.py::EvidenceLog.rows",
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::honesty_parts",
       "amoeba/adapt/gate.py::decide",
@@ -4688,6 +5394,8 @@
       "amoeba/safety/envelope.py::Envelope.from_registry",
       "amoeba/task/interpret.py::decide",
       "amoeba/tools/registry.py::default_registry",
+      "scripts/run_audit.py::AuditLog.append",
+      "scripts/run_audit.py::AuditLog.rows",
       "scripts/run_experiment.py::sample_draft"
      ],
      "doc": "D84b: decide a hypothesis again under `version` from its saved pairs — no new runs. The original rows are not",
@@ -4697,6 +5405,11 @@
    ],
    "checks": [],
    "guards": [
+    [
+     "correct",
+     "if a is None",
+     "add f\"2 quota spent: hypothesis {hypothesis_index} of {len(g.get('v3', {}).get('alphas', []))}\""
+    ],
     [
      "correct",
      "if bad",
@@ -4719,11 +5432,6 @@
     ],
     [
      "correct",
-     "if not [r for r in ledger.rows(h.family, 'hypothesis') if r.get('hypothesis_id') == h.hypothesis_id]",
-     "add {'event': 'hypothesis', 'family': h.family, 'hypothesis_id': h.hypothesis_id, 'recipe_from': recipe_A.version, 'edit': h.edit.model_dump(), 'predicted_delta': h.predicted_delta, 'rationale': h.rationale, 'created_by': 'human'}"
-    ],
-    [
-     "correct",
      "if not d",
      "add '2 no post pairs'"
     ],
@@ -4734,8 +5442,23 @@
     ],
     [
      "correct",
+     "if not md > max(noise, g['min_gain'])",
+     "add f\"2 no real gain: mean task d {md:+.3f} <= max(noise {noise:.3f}, {g['min_gain']})\""
+    ],
+    [
+     "correct",
+     "if not p <= a",
+     "add f'2 not significant: permutation p {p:.4f} > alpha {a:.4f} ({len(d)} tasks)'"
+    ],
+    [
+     "correct",
      "if not p_adj < g['alpha']",
      "add f\"2 not significant: p {p:.4f} x N {N} = {p_adj:.4f} >= {g['alpha']} ({test})\""
+    ],
+    [
+     "correct",
+     "if ratio is not None and ratio > cap",
+     "add f\"4 cost not justified: {('USD' if basis == 'usd' else 'token')} ratio {ratio:.2f} > {cap}\""
     ],
     [
      "correct",
@@ -4764,12 +5487,27 @@
     ],
     [
      "decide",
+     "if n <= exact_max",
+     "set sums = [0.0]"
+    ],
+    [
+     "decide",
+     "if not [r for r in ledger.rows(h.family, 'hypothesis') if r.get('hypothesis_id') == h.hypothesis_id]",
+     "set hrow = ledger.append({'event': 'hypothesis', 'family': h.family, 'hypothesis_id': h.hypoth"
+    ],
+    [
+     "decide",
      "if not getattr(p, f'flags_{arm}') and (run / 'result.json').exists()",
      "set upd[f'flags_{arm}'] = honesty_parts(run)"
     ],
     [
      "fallback",
      "'3 unexplained_gain' if unexplained else '3 prediction failed'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'USD' if basis == 'usd' else 'token'",
      "choose value"
     ],
     [
@@ -4784,7 +5522,17 @@
     ],
     [
      "fallback",
+     "'usd' if ua > 0 and ub > 0 else 'tokens'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "(mean([x.tokens_A for x in post]), mean([x.tokens_B for x in post])) if post else (0, 0)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "(mean([x.usd_A for x in post]), mean([x.usd_B for x in post])) if post else (0, 0)",
      "choose value"
     ],
     [
@@ -4809,7 +5557,27 @@
     ],
     [
      "fallback",
+     "None if check or not v3 else ledger.hypotheses_used(h.family) + 1",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "Path(args.recipes_a) if args.recipes_a else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "[p.d for p in cal.post()] if isinstance(cal, ReplayResult) else list(cal)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "alpha if alpha is not None else alpha_for(hypothesis_index) if hypothesis_index else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "alpha_for(hypothesis_index) if hypothesis_index else None",
      "choose value"
     ],
     [
@@ -4824,6 +5592,21 @@
     ],
     [
      "fallback",
+     "exact_max if exact_max is not None else int(v3.get('exact_max_tasks', 20))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "float(alphas[i - 1]) if 1 <= i <= len(alphas) else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "float(g['v3']['check_alpha']) if check else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "g['cost_ratio_big_gain'] if md >= g['big_gain'] else g['cost_ratio']",
      "choose value"
     ],
@@ -4834,12 +5617,52 @@
     ],
     [
      "fallback",
+     "load_recipe(store_a, family) if store_a else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "n_random if n_random is not None else int(v3.get('random_assignments', 100000))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "noise_floor_tasks(cal) if v3 else noise_floor(cal)",
+     "choose value"
+    ],
+    [
+     "fallback",
      "paired_p(d) if d else (1.0, 'none')",
      "choose value"
     ],
     [
      "fallback",
+     "permutation_greater(d) if d else 1.0",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "permutation_greater(d) if d else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "recipe_A if recipe_A is not None and recipe_A.version == orig['recipe_from'] else seed_recipe(h.family)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(len(post) / len(td)) if td else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(mean((s for r in rows for s in r['scores_A'])), 4) if rows else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(mean((s for r in rows for s in r['scores_B'])), 4) if rows else None",
      "choose value"
     ],
     [
@@ -4850,6 +5673,26 @@
     [
      "fallback",
      "round(mean(d), 4) if d else 0.0",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(mean(d), 4) if d else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(mean(ret_d), 4) if ret_d else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(stdev(allv), 4) if len(allv) > 1 else 0.0",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(sum((e['spread'] for e in spread.values())) / len(spread), 4) if spread else None",
      "choose value"
     ],
     [
@@ -4884,6 +5727,11 @@
     ],
     [
      "fallback",
+     "round(ub / ua if basis == 'usd' else tb / ta, 3) if (ua if basis == 'usd' else ta) else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "round(v * n) if v is not None else None",
      "choose value"
     ],
@@ -4899,7 +5747,52 @@
     ],
     [
      "fallback",
+     "seed if seed is not None else int(v3.get('seed', 0))",
+     "choose value"
+    ],
+    [
+     "fallback",
      "tail if t > 0 else 1 - tail",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "task_spread(cal) if v3 else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "tasks if tasks is not None else load_audit(stream, family)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "ua if basis == 'usd' else ta",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "ub / ua if basis == 'usd' else tb / ta",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "x if rng.random() < 0.5 else -x",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'check': True} if check else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'n_tasks': len(spread), 'task_spread': spread, 'mean_task_spread': round(sum((e['spread'] for e in spread.values())) / len(spread), 4) if spread else None, 'pairs_equal': sum((abs(p.d) < 1e-09 for p in post))} if v3 else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'sign_ok': _sign(md) == _sign(h.predicted_delta), 'abs_error': round(abs(h.predicted_delta - md), 4)} if d else {}",
      "choose value"
     ],
     [
@@ -4919,12 +5812,27 @@
     ],
     [
      "filter",
+     "keep only if family in (None, t.family)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k != 'scores'",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if l.strip()",
      "drop the rest"
     ],
     [
      "filter",
-     "keep only if r.get('decision') == 'reject'",
+     "keep only if r.get('decision') == 'reject' and (not r.get('check')) and (not r.get('prune'))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.get('gate_version') == 'v3' and (not r.get('post_hoc')) and (not r.get('check')) and (not r.get('prune'))",
      "drop the rest"
     ],
     [
@@ -4944,7 +5852,7 @@
     ],
     [
      "filter",
-     "keep only if r.get('recipe_hash') == recipe_hash and r.get('slice') == slice_key",
+     "keep only if r.get('recipe_hash') == recipe_hash and r.get('slice') == slice_key and (not v3_only or r.get('gate_version') == 'v3')",
      "drop the rest"
     ],
     [
@@ -4956,6 +5864,11 @@
      "filter",
      "keep only if v > 0",
      "drop the rest"
+    ],
+    [
+     "loop cap",
+     "for _ in range(n_random - 1)",
+     "loop ends"
     ],
     [
      "loop cap",
@@ -4978,9 +5891,29 @@
      "loop ends"
     ],
     [
+     "reject",
+     "if check and (not v3)",
+     "raise SystemExit"
+    ],
+    [
+     "reject",
+     "if log.used(claim)",
+     "raise SystemExit"
+    ],
+    [
+     "reject",
+     "if r.get('prune')",
+     "skip (continue)"
+    ],
+    [
      "stop",
      "if abs(de - 1) < 1e-12",
      "stop (break)"
+    ],
+    [
+     "stop",
+     "if check",
+     "return row"
     ],
     [
      "stop",
@@ -5034,6 +5967,11 @@
     ],
     [
      "stop",
+     "if version == 'v3'",
+     "return _decide_v3(recipe_B, h, res, noise, heldout, envelope, sample_draft, hypothesis_index, alpha)"
+    ],
+    [
+     "stop",
      "if x < (a + 1) / (a + b + 2)",
      "return math.exp(lb) * _betacf(a, b, x) / a"
     ],
@@ -5056,29 +5994,33 @@
     "Decision.noise",
     "Decision.refusals_A",
     "Decision.refusals_B",
+    "Episode.seed",
     "Pair.refusals_A",
     "Pair.refusals_B",
+    "Pair.usd_A",
+    "Pair.usd_B",
     "Recipe.version",
     "ReplayResult.runs",
     "RubricMustNot.window",
     "TeamConfig.version",
-    "hand_check.repeats"
+    "hand_check.repeats",
+    "run_audit.repeats"
    ],
    "prompts": {},
-   "title": "8 · Gate and ledger (D84)"
+   "title": "8 · Gate v3 and ledger (D84, D91)"
   },
-  "facts_hash": "471b08c4c8c1a6c9",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "b16c64ab18bcfa6a",
-  "seed_hash": "38d5bf9c1121e7e6",
-  "sentence": "Keeps a recipe change only when its gain on held-out tasks beats the measured noise, was predicted, is worth its cost, keeps the team honest and loses nothing on the tasks that already worked.",
-  "source": "model: kept",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "facts_hash": "6d2c3565d50681f0",
+  "seed_hash": "e737872a86606914",
+  "sentence": "Keeps a recipe change only when its gain on the gate tasks beats the noise (permutation test, fixed quota), is worth its cost and keeps the team honest.",
+  "source": "hand",
   "what": [
    "Noise floor, once per kind and recipe version: the recipe against itself with other seeds on the held-out after-shift tasks; noise = 2 × the spread of those score differences / √(pairs).",
-   "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from held-out tasks; 2 the mean gain beats the noise (and a floor), and a one-sided paired test, corrected for every hypothesis tried since the last accept, is significant; {hand_check.repeats} the gain has the predicted sign; 4 the token cost is justified; 5 the share of runs with an honesty signal grows by no more than 0.2, and no new refusals; 5b the share of runs ending in an error grows by no more than 0.2; 6 no loss on the before-shift tasks beyond the noise (Gate v2, D84b; Stage A decided under v1, which summed tags per run).",
+   "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from held-out tasks; 2 the mean gain beats the noise (and a floor), and a one-sided paired test, corrected for every hypothesis tried since the last accept, is significant; 3 the gain has the predicted sign; 4 the token cost is justified; 5 the share of runs with an honesty signal grows by no more than 0.2, and no new refusals; 5b the share of runs ending in an error grows by no more than 0.2; 6 no loss on the before-shift tasks beyond the noise (Gate v2, D84b; Stage A decided under v1, which summed tags per run).",
    "Every event is a ledger line (calibration, hypothesis, decision with its numbers and reasons); an accepted recipe becomes the kind's current version. After an accept, a rollback watch reverts to the parent version if the next practice tasks fall below the alarm window minus the noise.",
-   "Thresholds are in amoeba/config/adapt.yaml; nothing here calls an AI."
+   "Thresholds are in amoeba/config/adapt.yaml; nothing here calls an AI.",
+   "D91 Gate v3: per-task means, a one-sided permutation test at alpha 0.05/6 within a fixed quota of 6 hypotheses per kind (accepts included, no reset), noise from per-task spread; prediction accuracy is reported, never a Gate rule; one pre-registered check (--check) is decided at its own alpha and kept out of the quota and the recipe store.",
+   "D97: rule 4 compares US dollars from the model registry's prices when both arms have them, tokens otherwise (cost_basis in the ledger row).",
+   "D100: the Gate also decides prunes — a recipe line goes when removing it loses nothing beyond noise and saves cost; each prune is a ledger row with prune: true that counts toward no quota."
   ]
  },
  "handoff": {
@@ -5463,7 +6405,7 @@
   ]
  },
  "interpret": {
-  "checked_at": "789895c",
+  "checked_at": "06dbc12",
   "facts": {
    "anchors": [
     {
@@ -5972,16 +6914,16 @@
    "prompts": {
     "interpret": "5cffe2050d83"
    },
-   "title": "Task interpretation (D77)"
+   "title": "Task interpretation and family (D77, D101)"
   },
-  "facts_hash": "36712bd901bafe81",
+  "facts_hash": "f2462ca7c6d7f9c1",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4d5f47795f6babb8",
   "sentence": "Before the Planner drafts, an AI classifies the task family and interprets ambiguous terms; plain code decides the winner or asks the user.",
   "source": "model: rewritten",
   "what": [
-   "One call reads the task, user context, and environment settings to classify the task family and list key entities or terms that could be read more than one way, each with a reason and confidence.",
-   "Plain code: a reading whose confidence beats the next by {DOMINANCE_GAP} or more (DOMINANCE_GAP) (or the only one) is the working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question (the readings + other); without it the top reading is an assumption.",
+   "First, plain rules attempt to classify the task family; if they fail, one call reads the task, user context, and environment settings to classify the family and list key entities or terms that could be read more than one way, each with a reason and confidence.",
+   "Plain code: a reading whose confidence beats the next by {DOMINANCE_GAP} or more (or the only one) is the working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question (the readings + other); without it the top reading is an assumption.",
    "The working interpretation is added to the task text, so the Planner, both checkers and every helper in all three runners read it; an open question the Planner writes about one of these names is answered from it, not by its guess.",
    "After the run, when the reading was assumed, plain code makes the answer open with \"I read X as Y; if you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing."
   ]
@@ -6094,7 +7036,7 @@
   ]
  },
  "localtools": {
-  "checked_at": "8baa733",
+  "checked_at": "6f200d8",
   "facts": {
    "anchors": [
     {
@@ -6143,11 +7085,17 @@
       [
        "env",
        "Any"
+      ],
+      [
+       "mode",
+       "str | None"
       ]
      ],
      "key": "amoeba/localtools/toolbox.py::LocalSetup",
      "methods": [
       "limits(self) -> dict",
+      "isolation(self) -> str",
+      "with_limits(self, sandbox: dict | None) -> 'LocalSetup'",
       "without(self, names) -> 'LocalSetup'"
      ],
      "signature": null
@@ -6255,6 +7203,35 @@
     },
     {
      "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D96: a Bash command that names Claude Code's settings, MCP configs or hooks, or writes into a skill folder.",
+     "key": "amoeba/localtools/gate.py::protected_command",
+     "signature": "protected_command(command: str) -> tuple[str, str] | None"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::resolve"
+     ],
+     "doc": "D96: a write to an MCP config, a hook or settings file, CLAUDE.md, a skill folder or .git is refused.",
+     "key": "amoeba/localtools/gate.py::protected_path",
+     "signature": "protected_path(p: Path, workspace: Path) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D96: a path under a read-only root the sandbox exposes (the baked-in skills, /opt/skills).",
+     "key": "amoeba/localtools/gate.py::readonly_root",
+     "signature": "readonly_root(path: str, cfg: dict) -> bool"
+    },
+    {
+     "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/gate.py::SandboxRequired",
@@ -6264,6 +7241,51 @@
      "doc": "--local-tools on runs only where AMOEBA_SANDBOX=1 is set.",
      "key": "amoeba/localtools/gate.py::require_sandbox",
      "signature": "require_sandbox(env=None) -> None"
+    },
+    {
+     "callees": [],
+     "doc": "One OpenShell sandbox for one run: created with the fixed policy, used for the harness's own file copies, and",
+     "fields": [],
+     "key": "amoeba/localtools/sandbox.py::OpenShellBox",
+     "methods": [
+      "__init__(self, cfg: dict, run_name: str, record=None)",
+      "spec(self)",
+      "create(self) -> None",
+      "exec(self, command: list[str], stdin: bytes | None=None, timeout_s: int=60)",
+      "expired(self) -> bool",
+      "pull(self, dest: Path) -> list[str]",
+      "logs(self) -> list[dict]",
+      "delete(self) -> None"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::ArmACache.put",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/cache.py::_Store.put",
+      "amoeba/localtools/sandbox.py::bridge.requests",
+      "amoeba/localtools/server.py::StdioServer.start",
+      "amoeba/localtools/toolbox.py::LocalToolbox.start",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/pool/stock.py::SharedPicks.put"
+     ],
+     "doc": "Relay this process's stdin/stdout to `command` run inside the sandbox (OpenShell interactive exec).",
+     "key": "amoeba/localtools/sandbox.py::bridge",
+     "signature": "bridge(sandbox: str, command: list[str], workdir: str=SANDBOX_WORKSPACE, endpoint: str='127.0.0.1:17680') -> int"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The `sandbox` section of localtools.yaml with its defaults.",
+     "key": "amoeba/localtools/sandbox.py::sandbox_config",
+     "signature": "sandbox_config(config: dict) -> dict"
     },
     {
      "callees": [],
@@ -6319,6 +7341,11 @@
    "guards": [
     [
      "correct",
+     "if any((w in text for w in ('deny', 'denied', 'block', 'policy', 'landlock', 'violation', 'refus')))",
+     "add {'level': line.level, 'source': line.source, 'target': line.target, 'message': line.message[:300], 'fields': dict(line.fields)}"
+    ],
+    [
+     "correct",
      "if e['id'] not in seen",
      "add (100, e)"
     ],
@@ -6349,6 +7376,16 @@
     ],
     [
      "decide",
+     "if boxed",
+     "set rel = Path(entry['path']).resolve().relative_to(Path(entry['root']).resolve()) if Path(ent"
+    ],
+    [
+     "decide",
+     "if boxed and raw.startswith(SANDBOX_WORKSPACE)",
+     "set raw = ws + raw[len(SANDBOX_WORKSPACE):]"
+    ],
+    [
+     "decide",
      "if clones.is_dir()",
      "set roots += [(d.name, d) for d in sorted(clones.iterdir()) if d.is_dir() and (not d.name.star"
     ],
@@ -6360,7 +7397,12 @@
     [
      "decide",
      "if key in args or key == 'file_path'",
-     "set p = inside(str(args.get(key, '')), self.workspace)"
+     "set raw = str(args.get(key, ''))"
+    ],
+    [
+     "decide",
+     "if kind == 'exit'",
+     "set code = int(event.exit.exit_code)"
     ],
     [
      "decide",
@@ -6385,7 +7427,17 @@
     [
      "decide",
      "if rec is None",
-     "set rec = {'id': entry['id'], 'name': entry['name'], 'root': entry['root'], 'path': str(dest.r"
+     "set rec = {'id': entry['id'], 'name': entry['name'], 'root': entry['root'], 'path': f'sandbox:"
+    ],
+    [
+     "decide",
+     "if sandbox.get('timeout_s') is not None",
+     "set cfg['limits']['timeout_s'] = sandbox['timeout_s']"
+    ],
+    [
+     "decide",
+     "if sandbox.get(k) is not None",
+     "set cfg['sandbox'][k] = sandbox[k]"
     ],
     [
      "decide",
@@ -6404,13 +7456,18 @@
     ],
     [
      "decide",
+     "if self.setup.isolation == 'openshell'",
+     "set scfg = sandbox_config(self.setup.config)"
+    ],
+    [
+     "decide",
      "if target.startswith('skill:')",
      "set out += [e for e in self.entries() if e['kind'] == 'skill' and e['name'] == target[6:]]"
     ],
     [
      "decide",
      "if tool == 'Bash'",
-     "set why = screen_command(str(args.get('command', '')), self.workspace)"
+     "set command = str(args.get('command', ''))"
     ],
     [
      "decide",
@@ -6434,6 +7491,11 @@
     ],
     [
      "fallback",
+     "('protected_config', m.group(0).strip()[:80]) if m else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "(m.group(1), m.group(2)) if m else ('', text)",
      "choose value"
     ],
@@ -6449,7 +7511,32 @@
     ],
     [
      "fallback",
+     "Path(SANDBOX_WORKSPACE) if boxed else self.workspace",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "Path(entry['path']).resolve().relative_to(Path(entry['root']).resolve()) if Path(entry['path']).resolve().is_relative_to(Path(entry['root']).resolve()) else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "SANDBOX_WORKSPACE + raw[len(ws):] if boxed and raw.startswith(ws) else raw",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "SANDBOX_WORKSPACE if boxed else ws",
+     "choose value"
+    ],
+    [
+     "fallback",
      "b.text if getattr(b, 'type', '') == 'text' else f\"[{getattr(b, 'type', 'other')} content omitted]\"",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "command.replace(SANDBOX_WORKSPACE, ws) if boxed else command",
      "choose value"
     ],
     [
@@ -6465,7 +7552,27 @@
     [
      "fallback",
      "except Exception",
+     "if 'already exists' not in str(e):\n    raise"
+    ],
+    [
+     "fallback",
+     "except Exception",
      "pass"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "return [{'level': 'ERROR', 'message': f'logs unavailable: {type(e).__name__}'}]"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "self.record('sandbox_delete_failed', {'amoeba.sandbox': self.name, 'amoeba.error"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "self.trace.event('sandbox_pull_failed', {'amoeba.box': 'localtools', 'amoeba.err"
     ],
     [
      "fallback",
@@ -6500,6 +7607,11 @@
     [
      "fallback",
      "except ValueError",
+     "return True"
+    ],
+    [
+     "fallback",
+     "except ValueError",
      "set args, bad = ({}, str(e))"
     ],
     [
@@ -6519,12 +7631,27 @@
     ],
     [
      "fallback",
+     "f'Full skill files are in {dest}/ (read-only); read them with local:Read if needed.' if boxed else f\"Full skill files are in skills/{entry['name']}/; read them with local:Read if needed.\"",
+     "choose value"
+    ],
+    [
+     "fallback",
      "f'\\n[shortened from {len(out)} characters: head, result lines and tail kept]' if len(out) > cap else ''",
      "choose value"
     ],
     [
      "fallback",
      "f'\\n[… first {max_chars} of {len(body.strip())} characters]' if len(body.strip()) > max_chars else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f'sandbox:{dest}' if boxed else str(dest.relative_to(self.run_dir))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "in_workspace(command, run_in) if boxed else in_workspace(command, self.workspace)",
      "choose value"
     ],
     [
@@ -6589,6 +7716,16 @@
     ],
     [
      "filter",
+     "keep only if m.isfile()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if m.isfile() or m.isdir()",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if n in names",
      "drop the rest"
     ],
@@ -6626,6 +7763,16 @@
      "loop cap",
      "for _ in range(20)",
      "loop ends"
+    ],
+    [
+     "loop cap",
+     "while True",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if 'already exists' not in str(e)",
+     "raise "
     ],
     [
      "reject",
@@ -6689,6 +7836,16 @@
     ],
     [
      "stop",
+     "if boxed and self.box.expired()",
+     "return self.refuse(tool, 'run_time_cap', f\"{self.box.cfg['run_timeout_s']} s per run\", what)"
+    ],
+    [
+     "stop",
+     "if data is None",
+     "return None"
+    ],
+    [
+     "stop",
      "if entry['kind'] == 'tool'",
      "return None if entry['name'].removeprefix('local:') in self.exposed else 'not_exposed'"
     ],
@@ -6729,6 +7886,11 @@
     ],
     [
      "stop",
+     "if not data",
+     "return None"
+    ],
+    [
+     "stop",
      "if not isinstance(args, dict)",
      "return str(args or '')[:300]"
     ],
@@ -6749,6 +7911,11 @@
     ],
     [
      "stop",
+     "if not sandbox",
+     "return self"
+    ],
+    [
+     "stop",
      "if p is None",
      "return self.refuse(tool, 'outside_workspace', '', what)"
     ],
@@ -6764,6 +7931,16 @@
     ],
     [
      "stop",
+     "if r.exit_code != 0",
+     "return []"
+    ],
+    [
+     "stop",
+     "if rel is None or 'anthropics_skills' not in str(entry['root'])",
+     "return False"
+    ],
+    [
+     "stop",
      "if self.calls >= int(self.lim['max_calls_per_run'])",
      "return self.refuse(tool, 'run_cap', f\"{self.lim['max_calls_per_run']} calls per run\", what)"
     ],
@@ -6771,6 +7948,16 @@
      "stop",
      "if self.loop is None",
      "return None"
+    ],
+    [
+     "stop",
+     "if self.mode == 'inprocess'",
+     "return 'process'"
+    ],
+    [
+     "stop",
+     "if self.mode == 'sandbox'",
+     "return 'openshell'"
     ],
     [
      "stop",
@@ -6799,6 +7986,11 @@
     ],
     [
      "stop",
+     "if tool not in READ_TOOLS and protected_path(p, self.workspace)",
+     "return self.refuse(tool, 'protected_config', 'MCP configs, skills and hooks are read-only', what)"
+    ],
+    [
+     "stop",
      "if tool not in self.exposed",
      "return self.refuse(tool, 'not_allowed', '', what)"
     ],
@@ -6811,33 +8003,29 @@
    "kind": "code",
    "numbers": [
     "PoolLimits.timeout_s",
+    "Recipe.version",
     "RunRecord.refusals",
+    "TeamConfig.version",
     "WebLimits.timeout_s",
     "recalc.timeout_s"
    ],
    "prompts": {},
-   "title": "Local toolbox (sandboxed)"
+   "title": "Local toolbox (OpenShell sandbox, D96)"
   },
-  "facts_hash": "6f7f8d97fb5b33cf",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "41e965214e132cf6",
-  "seed_hash": "cf9559fad29b1143",
-  "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
-  "source": "model: kept",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "facts_hash": "d570a7534e2f2905",
+  "seed_hash": "4823d9c41c338f35",
+  "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills; by default they run in a fresh NVIDIA OpenShell sandbox per run, with no network and only the workspace writable.",
+  "source": "hand",
   "what": [
-   "Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused and logged once. They become local:<Name> tools of the run.",
-   "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); a Bash command runs from there, network commands are refused (network_command) and destructive or escaping ones too (unsafe_command).",
-   "Limits (localtools.yaml): 60 s per call, 8,000 characters of output, 20 calls per step and 60 per run; a trace line for every call and every refusal.",
-   "Skills are listed only from the kept anthropics/skills clone (D60: not the user's ~/.claude/skills); an attached skill's folder is copied to workspace/skills/<name>/ and its SKILL.md (frontmatter and first 5,000 characters) goes on the helper's card.",
-   "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first; any other local item goes first only if it matches at least as well as the best internet one (D61).",
-   "A successful call's result gets a source id [S#] in the run's one source list (D61); a command written inside a code fence runs without the fence.",
-   "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the workspace is copied to artifacts/files/.",
-   "D71: LibreOffice Calc headless (scripts/setup_office.sh) recalculates spreadsheet formulas with a fresh profile and HOME; when the xlsx skill is attached, plain code checks once that a two-cell workbook comes back with its value, and if not the helper's card says recalc.py will fail."
+   "D96: `claude mcp serve` and every command run inside a fresh OpenShell sandbox per run (image amoeba-sandbox:local, gateway on 127.0.0.1:17680): no network, Landlock lets only /sandbox, /tmp and /dev/null be written, skills are read-only under /opt/skills, no secrets, runs as user sandbox; the sandbox is deleted at the end.",
+   "The harness gate refuses first what it can see: network commands, paths outside the workspace, writes to MCP configs, hooks, settings, CLAUDE.md or skills (protected_config); what a command hides is stopped by the sandbox. Files are copied back to runs/<id>/workspace/ after each call.",
+   "Limits: 300 s per command (D96a), 1 CPU, 1 GiB, one hour per run, 8,000 characters of output, 20 calls per step and 60 per run; a niche profile can set its own sandbox limits (D102).",
+   "--local-tools-mode sandbox is the default; inprocess (the earlier host process) runs only when asked for and needs AMOEBA_SANDBOX=1. Every allow and deny decision goes to the trace and from there to events.jsonl (tool_decisions); a live test shows the agent cannot reach the OpenShell gateway API.",
+   "Skills are listed only from the kept anthropics/skills clone; an attached skill's SKILL.md goes on the helper's card. Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first (D61)."
   ]
  },
  "loop": {
-  "checked_at": "450ac2b",
+  "checked_at": "6f200d8",
   "facts": {
    "anchors": [
     {
@@ -6954,28 +8142,6 @@
      "doc": "",
      "key": "amoeba/adapt/loop.py::_now",
      "signature": "_now() -> str"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/evidence.py::EvidenceLog.has",
-      "amoeba/adapt/experimenter.py::ArmACache.get",
-      "amoeba/adapt/experimenter.py::calibrate",
-      "amoeba/adapt/ledger.py::Ledger.append",
-      "amoeba/adapt/loop.py::_handle",
-      "amoeba/adapt/loop.py::_now",
-      "amoeba/adapt/retention.py::retention_alarm",
-      "amoeba/adapt/retention.py::retention_check",
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/memory/context.py::_now",
-      "amoeba/memory/recipes.py::RecipeStore.get",
-      "amoeba/memory/recipes.py::_now",
-      "amoeba/pool/stock.py::SharedPicks.get",
-      "scripts/run_audit.py::AuditLog.append"
-     ],
-     "doc": "D100: one retention replay (once per family and count; resumable through the evidence key); a drop beyond",
-     "key": "amoeba/adapt/loop.py::_retention",
-     "signature": "_retention(t, st, count, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser, envelope, calibrate, sample_draft, g, log, ev) -> None"
     },
     {
      "callees": [],
@@ -7121,56 +8287,6 @@
     },
     {
      "callees": [
-      "scripts/run_experiment.py::summary.mean"
-     ],
-     "doc": "",
-     "key": "amoeba/adapt/retention.py::_mean_score",
-     "signature": "_mean_score(got: dict) -> float"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/monitor.py::Alarm"
-     ],
-     "doc": "",
-     "key": "amoeba/adapt/retention.py::retention_alarm",
-     "signature": "retention_alarm(row: dict, order: int) -> Alarm"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/experimenter.py::ArmACache.get",
-      "amoeba/adapt/recipe.py::adapt_config",
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/memory/recipes.py::RecipeStore.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
-     ],
-     "doc": "",
-     "key": "amoeba/adapt/retention.py::retention_cfg",
-     "signature": "retention_cfg() -> dict"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/experimenter.py::ArmACache.get",
-      "amoeba/adapt/experimenter.py::_arm_a",
-      "amoeba/adapt/recipe.py::Recipe.hash",
-      "amoeba/adapt/retention.py::_mean_score",
-      "amoeba/adapt/stream.py::Stream.heldout",
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/memory/recipes.py::RecipeStore.current_or_seed",
-      "amoeba/memory/recipes.py::RecipeStore.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
-     ],
-     "doc": "One retention replay: the current recipe against the seed (v1) on the pre-shift gate tasks.",
-     "key": "amoeba/adapt/retention.py::retention_check",
-     "signature": "retention_check(stream, family: str, store, runner, root: str | Path, repeats: int, noise: float, count: int) -> dict"
-    },
-    {
-     "callees": [],
-     "doc": "The family's practice count when a retention replay is due now (every N-th practice task), else None.",
-     "key": "amoeba/adapt/retention.py::retention_due",
-     "signature": "retention_due(records, family: str, every: int) -> int | None"
-    },
-    {
-     "callees": [
       "scripts/eval_draft.py::parse_args",
       "scripts/run_task.py::build_llm",
       "scripts/run_task.py::parse_args"
@@ -7262,11 +8378,6 @@
     ],
     [
      "decide",
-     "if row['alarm']",
-     "set alarm = retention_alarm(row, t.order)"
-    ],
-    [
-     "decide",
      "if row['decision'] == 'accept'",
      "set accepted = True"
     ],
@@ -7284,11 +8395,6 @@
      "decide",
      "if verdict == 'reverted'",
      "set back = store.revert(st.family, f\"rollback watch: practice mean {row['practice_mean']} < al"
-    ],
-    [
-     "fallback",
-     "'ALARM' if row['alarm'] else row.get('skipped', 'ok')",
-     "choose value"
     ],
     [
      "fallback",
@@ -7337,11 +8443,6 @@
     ],
     [
      "fallback",
-     "n if n and n % every == 0 else None",
-     "choose value"
-    ],
-    [
-     "fallback",
      "pa['mean_abs_error'] if pa['mean_abs_error'] is not None else '—'",
      "choose value"
     ],
@@ -7358,11 +8459,6 @@
     [
      "fallback",
      "rc['every'] if retention_every is None else retention_every",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "round(mean((r.score or 0.0 for r in got.values())), 4) if got else 0.0",
      "choose value"
     ],
     [
@@ -7402,11 +8498,6 @@
     ],
     [
      "filter",
-     "keep only if k != 'alarm'",
-     "drop the rest"
-    ],
-    [
-     "filter",
      "keep only if k not in ('window', 'reference_orders')",
      "drop the rest"
     ],
@@ -7418,11 +8509,6 @@
     [
      "filter",
      "keep only if o <= t.order",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if r.family == family",
      "drop the rest"
     ],
     [
@@ -7482,21 +8568,6 @@
     ],
     [
      "stop",
-     "if cur.version == 1 or cur.hash() == store.get(family, 1).hash()",
-     "return {**row, 'skipped': 'the seed recipe is current', 'alarm': False}"
-    ],
-    [
-     "stop",
-     "if ev.has(key)",
-     "return None"
-    ],
-    [
-     "stop",
-     "if not every",
-     "return None"
-    ],
-    [
-     "stop",
      "if not self.practice_file.exists()",
      "return []"
     ],
@@ -7504,11 +8575,6 @@
      "stop",
      "if not st.watch",
      "return None"
-    ],
-    [
-     "stop",
-     "if not tasks",
-     "return {**row, 'skipped': 'no pre-shift gate tasks', 'alarm': False}"
     ],
     [
      "stop",
@@ -7523,7 +8589,6 @@
    ],
    "kind": "code",
    "numbers": [
-    "Decision.noise",
     "Episode.seed",
     "LoopState.quiet_until",
     "LoopState.reference_from",
@@ -7538,66 +8603,21 @@
    "prompts": {},
    "title": "Loop driver (D89)"
   },
-  "facts_hash": "0e56109cc18d1993",
+  "facts_hash": "b2c56a1386a3489b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8e2e699426ec6515",
   "sentence": "Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
   "source": "model: rewritten",
   "what": [
    "Calibrates the noise floor first, then runs every practice task with its kind's current recipe (shifts apply: the later rubrics ask for more, a removed tool is taken out). Tasks before the shift may run in one batch; later ones run one at a time, because each can trigger a change.",
-   "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser or retention replay, then up to {MAX_PER_ALARM} Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down, and results are queued for shipping.",
+   "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then up to {MAX_PER_ALARM} Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down, and results are queued for shipping.",
    "Everything it does is on disk — practice runs, experiments, ledger, recipes, proposals, diagnoses, state — so a crash resumes where it stopped, and it writes summary.json and a plain report."
   ]
  },
  "memory": {
-  "checked_at": "cca1861",
+  "checked_at": "6f200d8",
   "facts": {
    "anchors": [
-    {
-     "callees": [],
-     "doc": "",
-     "key": "amoeba/memory/context.py::_now",
-     "signature": "_now() -> str"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/experimenter.py::ArmACache.get",
-      "amoeba/adapt/ledger.py::Ledger.append",
-      "amoeba/adapt/loop.py::_now",
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/memory/context.py::_now",
-      "amoeba/memory/recipes.py::RecipeStore.get",
-      "amoeba/memory/recipes.py::_now",
-      "amoeba/pool/stock.py::SharedPicks.get",
-      "scripts/run_audit.py::AuditLog.append"
-     ],
-     "doc": "D99: the user's approval (scripts/approve_memory.py): the proposal's line (or the user's rewording) is added",
-     "key": "amoeba/memory/context.py::approve_standard",
-     "signature": "approve_standard(context_file: str | Path, proposal: dict, text: str | None=None, ev=None) -> dict"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/diagnoser.py::run_signals.add",
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/ledger.py::Ledger.append",
-      "amoeba/adapt/loop.py::LoopIO.add",
-      "amoeba/adapt/loop.py::_now",
-      "amoeba/memory/context.py::_now",
-      "amoeba/memory/context.py::read_proposals",
-      "amoeba/memory/recipes.py::_now",
-      "scripts/run_audit.py::AuditLog.append"
-     ],
-     "doc": "D99: the loop's only way toward user memory. A feedback item failed in ≥`runs` practice runs across",
-     "key": "amoeba/memory/context.py::propose_standards",
-     "signature": "propose_standards(records, root: str | Path, ev=None, runs: int=PROPOSE_RUNS, families: int=PROPOSE_FAMILIES) -> list[dict]"
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "key": "amoeba/memory/context.py::read_proposals",
-     "signature": "read_proposals(root: str | Path) -> list[dict]"
-    },
     {
      "callees": [],
      "doc": "",
@@ -7644,32 +8664,10 @@
      "doc": "D99: the accepting Gate row on the lines this hypothesis added; a line from before D99 is marked so.",
      "key": "amoeba/memory/recipes.py::stamp_provenance",
      "signature": "stamp_provenance(recipe: Recipe, decision: dict) -> Recipe"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog",
-      "amoeba/memory/context.py::approve_standard",
-      "amoeba/memory/context.py::read_proposals",
-      "scripts/eval_draft.py::parse_args",
-      "scripts/run_task.py::parse_args"
-     ],
-     "doc": "",
-     "key": "scripts/approve_memory.py::main",
-     "signature": "main(argv=None) -> int"
     }
    ],
    "checks": [],
    "guards": [
-    [
-     "correct",
-     "if ev is not None",
-     "add 'memory_approval'"
-    ],
-    [
-     "correct",
-     "if ev is not None",
-     "add 'memory_proposal'"
-    ],
     [
      "decide",
      "if family not in index",
@@ -7687,16 +8685,6 @@
     ],
     [
      "fallback",
-     "Path(args.root) if args.root else ROOT / 'eval' / 'loop' / args.stream",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "[json.loads(l) for l in f.read_text(encoding='utf-8').splitlines() if l.strip()] if f.exists() else []",
-     "choose value"
-    ],
-    [
-     "fallback",
      "[json.loads(l) for l in p.read_text(encoding='utf-8').splitlines() if l.strip()] if p.exists() else []",
      "choose value"
     ],
@@ -7708,11 +8696,6 @@
     [
      "fallback",
      "self.get(family, cur) if cur is not None else None",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "yaml.safe_load(path.read_text(encoding='utf-8')) if path.exists() else None",
      "choose value"
     ],
     [
@@ -7731,16 +8714,6 @@
      "drop the rest"
     ],
     [
-     "filter",
-     "keep only if r['id'] == args.id",
-     "drop the rest"
-    ],
-    [
-     "reject",
-     "if any((isinstance(e, dict) and e.get('proposal') == proposal['id'] for e in stds))",
-     "raise ValueError"
-    ],
-    [
      "reject",
      "if decision.get('event') != 'decision' or decision.get('decision') != 'accept' or decision.get('post_hoc')",
      "raise PermissionError"
@@ -7752,23 +8725,8 @@
     ],
     [
      "reject",
-     "if item in have or len(s['runs']) < runs or len(s['families']) < families",
-     "skip (continue)"
-    ],
-    [
-     "reject",
-     "if not isinstance(data, dict)",
-     "raise ValueError"
-    ],
-    [
-     "reject",
      "if recipe.parent_version != index[recipe.family]['current']",
      "raise ValueError"
-    ],
-    [
-     "stop",
-     "if args.list or not args.id",
-     "return 0"
     ],
     [
      "stop",
@@ -7780,25 +8738,24 @@
    "numbers": [
     "Episode.seed",
     "Recipe.version",
-    "ReplayResult.runs",
     "TeamConfig.version"
    ],
    "prompts": {},
    "title": "9 · Recipe store (D88)"
   },
-  "facts_hash": "0ca24b345e747a6a",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "e98cbf551f1f71ce",
+  "facts_hash": "668172c3714dbd55",
+  "seed_hash": "e27536f8d165851a",
   "sentence": "Keeps every kind of task's recipe versions, which one is current, and a log of every decided change; only the Gate writes it.",
-  "source": "model: kept",
+  "source": "hand",
   "what": [
    "A folder per stream: one YAML file per recipe version of each kind, an index naming the current version with the full history (parent, the hypothesis that made it, when it was accepted or reverted), and an experience log with one line per decided hypothesis.",
    "A run reads the current recipe of its kind with --recipes; --recipes-from is a second, read-only store used when the first has none (a warm start from another stream).",
-   "Only a Gate accept writes a version (a post-hoc decision never does); the rollback watch can send a kind back to its parent version."
+   "Only a Gate accept writes a version (a post-hoc decision never does); the rollback watch can send a kind back to its parent version.",
+   "D99: every line of a recipe carries its provenance (hypothesis id, date, the Gate row and gate version that accepted it), stamped by the store when the accept commits it; lines from before D99 are marked so. The size caps (8 rules, 8 transforms) are unchanged."
   ]
  },
  "monitor": {
-  "checked_at": "8baa733",
+  "checked_at": "6f200d8",
   "facts": {
    "anchors": [
     {
@@ -7811,7 +8768,7 @@
       ],
       [
        "kind",
-       "Literal['score', 'cause']"
+       "Literal['score', 'cause', 'retention']"
       ],
       [
        "window",
@@ -8027,18 +8984,16 @@
    "prompts": {},
    "title": "4 · Monitor (D85)"
   },
-  "facts_hash": "0fa3ff11a7531304",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "434c094800f3c795",
-  "seed_hash": "f5c981fdbe929488",
+  "facts_hash": "434c094800f3c795",
+  "seed_hash": "bbff275df017890b",
   "sentence": "Watches each kind of task's practice scores and raises an alarm when the last few drop below what was normal, or when a cause or a missing rubric item suddenly appears.",
-  "source": "model: kept",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand",
   "what": [
    "After every practice run it reads the run's score, the names of the rubric items it failed and the step causes recorded by the step contract.",
    "Score alarm: the mean of the last three scores falls below the reference mean minus twice its spread (at least 0.10); the reference is the kind's practice runs since its last accepted change, before the window, and there must be at least four.",
    "Cause alarm: a cause or a failed item is in at least half of the last three runs after at most a fifth of the reference runs.",
-   "No alarm while the kind is in its dwell period after an accept or cooling down after a reject."
+   "No alarm while the kind is in its dwell period after an accept or cooling down after a reject.",
+   "D100: every 12 practice tasks of a kind (--retention-every), the old pre-shift gate tasks are replayed with the current recipe against the starting one; a drop beyond noise raises a retention alarm at once (see Retention replay and pruning)."
   ]
  },
  "niche": {
@@ -8395,7 +9350,7 @@
   ]
  },
  "ov_adapt": {
-  "checked_at": "c784985",
+  "checked_at": "6f200d8",
   "facts": {
    "anchors": [],
    "checks": [],
@@ -8406,13 +9361,13 @@
    "title": "4–9 · Adaptation loop (Phase 2)"
   },
   "facts_hash": "9e0ef16013eae32b",
-  "seed_hash": "f78341b7f9396cfb",
+  "seed_hash": "a084e0b68f340899",
   "sentence": "A stream of tasks per kind; one typed change to that kind's team recipe is tested old against new on held-out tasks, and plain code keeps it only if the gain is real.",
   "source": "hand",
   "what": [
-   "Phase 2 (spec/BUILD_SPEC_PHASE2.md). Week 1 builds the measuring half: the task stream, the team recipe and its hook into Boxes 2–3, the Experimenter and the Gate.",
-   "A hand-written change goes through the Experimenter and the Gate before any AI may propose one.",
-   "Only Amoeba's plan runner gets recipes; the two baselines never do. Nothing in Boxes 7–8 calls an AI."
+   "Phase 2 (spec/BUILD_SPEC_PHASE2.md), the whole loop as of v1.0: the task stream with its three task sets, the team recipe and its hook into Boxes 2–3, the Monitor, the Diagnoser, the Architect, the Experimenter, Gate v3 with its ledger, the recipe store and the loop driver.",
+   "Around it: the evidence log shipped to the evidence branch (D95), the per-call model router (D97–D98), user memory with proposals and approval (D99), retention replay and pruning (D100) and niche profiles (D102).",
+   "Only Amoeba's plan runner gets recipes; the two baselines never do. Inside the loop only the Architect calls an AI; everything else is plain code."
   ]
  },
  "ov_leave": {
@@ -11259,7 +12214,7 @@
   ]
  },
  "recipe": {
-  "checked_at": "8baa733",
+  "checked_at": "6f200d8",
   "facts": {
    "anchors": [
     {
@@ -11281,7 +12236,7 @@
      "fields": [
       [
        "op",
-       "Literal['add_planner_rule', 'remove_planner_rule', 'add_verify_step', 'tighten_done_when', 'grant_tool', 'revoke_tool', 'add_role_rule', 'set_run_option']"
+       "Literal['add_planner_rule', 'remove_planner_rule', 'add_verify_step', 'tighten_done_when', 'grant_tool', 'revoke_tool', 'add_role_rule', 'set_run_option', 'prefer_model']"
       ],
       [
        "params",
@@ -11293,6 +12248,23 @@
       "key(self) -> str",
       "texts(self) -> list[str]"
      ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "role",
+       "str"
+      ],
+      [
+       "model",
+       "str"
+      ]
+     ],
+     "key": "amoeba/adapt/recipe.py::PreferModel",
+     "methods": [],
      "signature": null
     },
     {
@@ -11324,8 +12296,16 @@
        "dict[str, Any]"
       ],
       [
+       "model_prefs",
+       "dict[str, str]"
+      ],
+      [
+       "provenance",
+       "dict[str, dict]"
+      ],
+      [
        "created_by",
-       "Literal['seed', 'human', 'architect']"
+       "Literal['seed', 'human', 'architect', 'prune']"
       ],
       [
        "hypothesis_id",
@@ -11336,6 +12316,7 @@
      "methods": [
       "is_empty(self) -> bool",
       "content(self) -> dict",
+      "line_keys(self) -> list[str]",
       "hash(self) -> str"
      ],
      "signature": null
@@ -11507,7 +12488,7 @@
      "fields": [
       [
        "rule",
-       "Literal['V1', 'V2', 'V3', 'V4', 'V5']"
+       "Literal['V1', 'V2', 'V3', 'V4', 'V5', 'V6']"
       ],
       [
        "detail",
@@ -11525,6 +12506,12 @@
      "key": "amoeba/adapt/recipe.py::_P",
      "methods": [],
      "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/recipe.py::_adapt_config",
+     "signature": "_adapt_config(model_edits: bool) -> dict"
     },
     {
      "callees": [
@@ -11621,7 +12608,13 @@
      "signature": "_tools_of(d: Draft) -> dict[str, list[str]]"
     },
     {
-     "callees": [],
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::_adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
      "doc": "",
      "key": "amoeba/adapt/recipe.py::adapt_config",
      "signature": "adapt_config() -> dict"
@@ -11773,11 +12766,6 @@
     ],
     [
      "correct",
-     "if edit.op == 'add_planner_rule'",
-     "add Rule(id=_next_id('L', [x.id for x in r.planner_rules]), text=p['text'])"
-    ],
-    [
-     "correct",
      "if envelope is not None and tool not in allowed",
      "add Violation(rule='V1', detail=f'{t.id}: tool {tool!r} is not in the registry or allowlist')"
     ],
@@ -11823,6 +12811,16 @@
     ],
     [
      "correct",
+     "if model not in reg",
+     "add Violation(rule='V6', detail=f'prefer_model: {model!r} is not in the model registry')"
+    ],
+    [
+     "correct",
+     "if not cfg.get('allow_model_edits')",
+     "add Violation(rule='V6', detail='model edits are off (--allow-model-edits)')"
+    ],
+    [
+     "correct",
      "if not ready",
      "add f'cycle among steps {sorted(set(deps) - done)}'"
     ],
@@ -11840,6 +12838,11 @@
      "correct",
      "if r.version not in [h['version'] for h in entry['history']]",
      "add {'version': r.version, 'parent': r.parent_version, 'hypothesis_id': r.hypothesis_id}"
+    ],
+    [
+     "correct",
+     "if role not in roles",
+     "add Violation(rule='V6', detail=f'prefer_model: unknown role {role!r}')"
     ],
     [
      "correct",
@@ -11863,6 +12866,16 @@
     ],
     [
      "decide",
+     "if edit.op == 'add_planner_rule'",
+     "set key = _next_id('L', [x.id for x in r.planner_rules])"
+    ],
+    [
+     "decide",
+     "if edit.op == 'prefer_model'",
+     "set r.model_prefs[p['role']] = p['model']"
+    ],
+    [
+     "decide",
      "if edit.op == 'remove_planner_rule'",
      "set r.planner_rules = [x for x in r.planner_rules if x.id != p['id']]"
     ],
@@ -11878,8 +12891,18 @@
     ],
     [
      "decide",
+     "if key",
+     "set r.provenance[key] = {'hypothesis_id': hypothesis_id, 'created_by': created_by, 'date': dat"
+    ],
+    [
+     "decide",
      "if len(d.created_roles) < 5 and name not in [r.name for r in d.created_roles]",
      "set role = DraftedRole(name=name, description='Re-checks the figures and claims of the step it"
+    ],
+    [
+     "decide",
+     "if model_edits",
+     "set cfg['recipe']['allow_model_edits'] = True"
     ],
     [
      "decide",
@@ -11893,8 +12916,18 @@
     ],
     [
      "decide",
+     "if recipe.model_prefs",
+     "set models = yaml.safe_load((CONFIG.parent / 'models.yaml').read_text(encoding='utf-8')) or {}"
+    ],
+    [
+     "decide",
      "if sel.last_work_step",
      "set work = [n for n in out if (d.plan[n - 1].kind or 'work') == 'work']"
+    ],
+    [
+     "decide",
+     "if self.model_prefs",
+     "set out['model_prefs'] = dict(sorted(self.model_prefs.items()))"
     ],
     [
      "decide",
@@ -12132,18 +13165,17 @@
    "prompts": {},
    "title": "Team recipe, edit menu and hook (D81–D82)"
   },
-  "facts_hash": "a2ec9ed5e1acf2ee",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "8e1fea85c90c2ed0",
-  "seed_hash": "f9eb9803cd472f96",
+  "facts_hash": "8e1fea85c90c2ed0",
+  "seed_hash": "1196266e9308fa7c",
   "sentence": "Per kind of task, a small piece of data says what to tell the Planner, how code reshapes the drafted plan and which run settings to use; one typed edit makes the next version.",
-  "source": "model: kept",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand",
   "what": [
    "A recipe holds planner rules (lessons shown in Box 2), transforms (applied by code to the final draft) and run options (whitelisted plan-runner settings). Every kind starts from an empty recipe, and an empty recipe changes nothing.",
    "The edit menu: add or remove a planner rule, add a check step after selected steps, add a clause to selected steps' done-when, grant or revoke a tool on selected roles, add a rule to selected roles' cards, set one run option. Each edit is a pure function that makes version N+1 with parent N.",
    "Validation by plain code (V1–V5): tools are in the registry and not outside actions; run options are whitelisted and in range; the number of rules and transforms and the length of each text are capped (amoeba/config/adapt.yaml); no wording that tells the team to skip checks, citations or the sandbox; and the step graph still passes the plan checks after the transforms.",
-   "The hook (D82): run_task --recipes DIR loads the family's current recipe (plan runner only; the baselines never get one). Its rules fill the lessons slot of the Planner's and both checkers' prompts, with one more check item for the plan checker; code applies its transforms to the final draft (draft.json keeps Box 2's own draft) and records what each changed; its run options overlay the run settings unless the command line set them. With a reused draft only transforms and run options apply."
+   "The hook (D82): run_task --recipes DIR loads the family's current recipe (plan runner only; the baselines never get one). Its rules fill the lessons slot of the Planner's and both checkers' prompts, with one more check item for the plan checker; code applies its transforms to the final draft (draft.json keeps Box 2's own draft) and records what each changed; its run options overlay the run settings unless the command line set them. With a reused draft only transforms and run options apply.",
+   "D98: one more edit, prefer_model {role, model}, sets the router's preference for one role in one kind of task; it is built but off (--allow-model-edits), offered only for the causes max_turns, checks and capability, checked by V6 (role and registry model known, model edits on), and can never bypass the allowlist or the router's hard filters.",
+   "D99: every recipe line (rule, transform, run option, model preference) carries its provenance — the hypothesis that added it, the date and the Gate row that accepted it — kept outside the recipe's hash."
   ]
  },
  "resolver": {
@@ -12322,8 +13354,313 @@
    "Nothing is built here. From D56 Box 3 starts by trying to fill each request from the tool/skill pool (see Stock the toolbox); a request it cannot fill keeps the behaviour above."
   ]
  },
+ "retention": {
+  "checked_at": "6f200d8",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "scripts/run_audit.py::AuditLog.append",
+      "scripts/run_experiment.py::summary.mean"
+     ],
+     "doc": "D100: the Gate on a prune (arm A = the recipe, arm B = it without one line, on the gate set). Accept when",
+     "key": "amoeba/adapt/gate.py::decide_prune",
+     "signature": "decide_prune(res, noise: float) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/evidence.py::EvidenceLog.has",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::calibrate",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::_handle",
+      "amoeba/adapt/loop.py::_now",
+      "amoeba/adapt/retention.py::retention_alarm",
+      "amoeba/adapt/retention.py::retention_check",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/context.py::_now",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/memory/recipes.py::_now",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D100: one retention replay (once per family and count; resumable through the evidence key); a drop beyond",
+     "key": "amoeba/adapt/loop.py::_retention",
+     "signature": "_retention(t, st, count, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser, envelope, calibrate, sample_draft, g, log, ev) -> None"
+    },
+    {
+     "callees": [
+      "scripts/run_experiment.py::summary.mean"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/retention.py::_mean_score",
+     "signature": "_mean_score(got: dict) -> float"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/evidence.py::EvidenceLog.rows",
+      "amoeba/adapt/evidence.py::experiment_refs",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::replay",
+      "amoeba/adapt/gate.py::decide_prune",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/ledger.py::Ledger.rows",
+      "amoeba/adapt/recipe.py::Recipe.hash",
+      "amoeba/adapt/recipe.py::Recipe.line_keys",
+      "amoeba/adapt/retention.py::remove_line",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.commit",
+      "amoeba/memory/recipes.py::RecipeStore.current",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append",
+      "scripts/run_audit.py::AuditLog.rows"
+     ],
+     "doc": "Each line of the family's current recipe, removed one at a time; a prune the Gate accepts is committed",
+     "key": "amoeba/adapt/retention.py::prune_family",
+     "signature": "prune_family(stream, family: str, store, ledger, runner, root: str | Path, repeats: int, noise: float, ev=None, log=print, gate_version: str='v3') -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/recipe.py::Recipe.line_keys"
+     ],
+     "doc": "Pure: the recipe without one line (by its provenance key), version + 1.",
+     "key": "amoeba/adapt/retention.py::remove_line",
+     "signature": "remove_line(recipe: Recipe, key: str, hypothesis_id: str | None=None) -> Recipe"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/monitor.py::Alarm"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/retention.py::retention_alarm",
+     "signature": "retention_alarm(row: dict, order: int) -> Alarm"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/retention.py::retention_cfg",
+     "signature": "retention_cfg() -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::_arm_a",
+      "amoeba/adapt/recipe.py::Recipe.hash",
+      "amoeba/adapt/retention.py::_mean_score",
+      "amoeba/adapt/stream.py::Stream.heldout",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.current_or_seed",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "One retention replay: the current recipe against the seed (v1) on the pre-shift gate tasks.",
+     "key": "amoeba/adapt/retention.py::retention_check",
+     "signature": "retention_check(stream, family: str, store, runner, root: str | Path, repeats: int, noise: float, count: int) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "The family's practice count when a retention replay is due now (every N-th practice task), else None.",
+     "key": "amoeba/adapt/retention.py::retention_due",
+     "signature": "retention_due(records, family: str, every: int) -> int | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog",
+      "amoeba/adapt/evidence.py::make_shipper",
+      "amoeba/adapt/evidence.py::secret_values",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::SubprocessRunner",
+      "amoeba/adapt/experimenter.py::experiment_flags",
+      "amoeba/adapt/ledger.py::Ledger",
+      "amoeba/adapt/loop.py::run_loop.ship",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/adapt/retention.py::prune_family",
+      "amoeba/adapt/stream.py::Stream.families",
+      "amoeba/adapt/stream.py::load_stream",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_experiment.py::cfg_gate_version",
+      "scripts/run_experiment.py::ensure_calibration",
+      "scripts/run_experiment.py::load_env",
+      "scripts/run_experiment.py::load_ship_state",
+      "scripts/run_experiment.py::option_defaults",
+      "scripts/run_experiment.py::ship"
+     ],
+     "doc": "",
+     "key": "scripts/prune_recipe.py::main",
+     "signature": "main(argv=None) -> int"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if done",
+     "add done[-1]"
+    ],
+    [
+     "correct",
+     "if ev is not None",
+     "add 'prune'"
+    ],
+    [
+     "correct",
+     "if ma - mb > noise",
+     "add f'score falls without the line: {ma:.3f} -> {mb:.3f} (noise {noise:.3f})'"
+    ],
+    [
+     "correct",
+     "if not cb < ca",
+     "add f'no cost saved: {basis} {ca:.4g} -> {cb:.4g}'"
+    ],
+    [
+     "decide",
+     "if key.startswith('L')",
+     "set r.planner_rules = [x for x in r.planner_rules if x.id != key]"
+    ],
+    [
+     "decide",
+     "if key.startswith('T')",
+     "set r.transforms = [x for x in r.transforms if x.id != key]"
+    ],
+    [
+     "decide",
+     "if not args.no_ship",
+     "set st = load_ship_state(root)"
+    ],
+    [
+     "decide",
+     "if row['alarm']",
+     "set alarm = retention_alarm(row, t.order)"
+    ],
+    [
+     "fallback",
+     "'ALARM' if row['alarm'] else row.get('skipped', 'ok')",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'reject' if reasons else 'accept'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'usd' if ua > 0 and ub > 0 else 'tokens'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "(ua, ub) if basis == 'usd' else (ta, tb)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "n if n and n % every == 0 else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(mean((r.score or 0.0 for r in got.values())), 4) if got else 0.0",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if k != 'alarm'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.family == family",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.get('hypothesis_id') == hid",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if x.id != key",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if key not in cur.line_keys()",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if key not in recipe.line_keys()",
+     "raise ValueError"
+    ],
+    [
+     "stop",
+     "if cur is None",
+     "return rows"
+    ],
+    [
+     "stop",
+     "if cur.version == 1 or cur.hash() == store.get(family, 1).hash()",
+     "return {**row, 'skipped': 'the seed recipe is current', 'alarm': False}"
+    ],
+    [
+     "stop",
+     "if ev.has(key)",
+     "return None"
+    ],
+    [
+     "stop",
+     "if not every",
+     "return None"
+    ],
+    [
+     "stop",
+     "if not pairs",
+     "return {'decision': 'reject', 'reasons': ['no pairs'], 'observed_delta': None}"
+    ],
+    [
+     "stop",
+     "if not tasks",
+     "return {**row, 'skipped': 'no pre-shift gate tasks', 'alarm': False}"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "Decision.noise",
+    "Pair.usd_A",
+    "Pair.usd_B",
+    "Recipe.version",
+    "RubricMustNot.window",
+    "TeamConfig.version"
+   ],
+   "prompts": {},
+   "title": "Retention replay and pruning (D100)"
+  },
+  "facts_hash": "0e548277925c4bb4",
+  "seed_hash": "75d049ad7e289820",
+  "sentence": "Recipes expire: every 12 practice tasks the old gate tasks are replayed with the current recipe, and at the end of a stream each recipe line is removed in turn and dropped if it costs without helping.",
+  "source": "hand",
+  "what": [
+   "Retention replay: every N practice tasks of a kind (--retention-every, default 12, 0 = off) the kind's pre-shift gate tasks are replayed with the current recipe and with the starting one, same seeds, through the arm-A cache; a drop beyond the calibration noise raises a retention alarm at once, handled like any alarm (scores only reach the Diagnoser). Each replay is a retention row and event.",
+   "Pruning: at the end of a stream (--prune end, the default) and on demand (scripts/prune_recipe.py), each line — rule, transform, run option, model preference — is removed one at a time and replayed against the recipe with it on the gate set.",
+   "The Gate removes a line when removing it does not lower the score beyond noise and lowers cost (US dollars when priced, else tokens); each prune is a ledger decision with prune: true, counted toward no hypothesis quota and never shown to the Architect as a failed hypothesis."
+  ]
+ },
  "router": {
-  "checked_at": "1398f7a",
+  "checked_at": "06dbc12",
   "facts": {
    "anchors": [
     {
@@ -12642,6 +13979,11 @@
     ],
     [
      "decide",
+     "if niche.models.get('verifier_independence')",
+     "set policy = {**policy, 'verifier_independence': niche.models['verifier_independence']}"
+    ],
+    [
+     "decide",
      "if not left",
      "set dec['chosen'] = None"
     ],
@@ -12712,6 +14054,11 @@
     ],
     [
      "decide",
+     "if usd_cap is None",
+     "set usd_cap = niche.safety.max_usd_per_run"
+    ],
+    [
+     "decide",
      "if usd_cap is not None",
      "set self.usd_cap = usd_cap"
     ],
@@ -12774,6 +14121,11 @@
      "fallback",
      "except ValueError",
      "set st = {}"
+    ],
+    [
+     "fallback",
+     "niche.allowed_models if niche is not None else getattr(args, 'profile_models', None)",
+     "choose value"
     ],
     [
      "fallback",
@@ -12908,19 +14260,19 @@
     "RunRecord.usd"
    ],
    "prompts": {},
-   "title": "Model router (D97)"
+   "title": "Model router (D97–D98)"
   },
-  "facts_hash": "fbbc256766574bfe",
+  "facts_hash": "4e6b5e8c77701186",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "1c57e3850c3853c2",
-  "seed_hash": "6ea4fccafecd294c",
+  "seed_hash": "57a62004d24b55df",
   "sentence": "Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters that are never relaxed, then the recipe's or the role's preference or the cheapest of the right size.",
   "source": "hand (model: still true)",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Every call states its role, step, size, needed features and data class; the router keeps the models that are allowed (niche profile, --allowed-models) and available (key present, not cooling down, not failing), drops those whose context, features, privacy, budget or verifier-independence rule fails, then chooses.",
    "One token bucket per model, shared by every process, keeps calls inside the model's per-minute limits; a 429 cools a model down and the next one of the same size is used (with one model: wait).",
-   "Every decision — candidates, what was filtered and why, the choice, fallbacks and waits — is logged; result.json gets calls, tokens and US dollars per model. A new model is a registry entry only."
+   "Every decision — candidates, what was filtered and why, the choice, fallbacks and waits — is logged; result.json gets calls, tokens and US dollars per model. A new model is a registry entry only.",
+   "D98: a recipe's prefer_model edit (built, off) fills the router's per-role preference; it is used only when that model is still a candidate after every filter, and a verifier preference for the checked work's family is logged as verifier_same_family: recipe preference.",
+   "D102: the niche profile's model allowlist and verifier-independence setting feed the router; a model outside the profile is filtered out with reason profile."
   ]
  },
  "runresult": {
@@ -13205,7 +14557,7 @@
   ]
  },
  "scoring": {
-  "checked_at": "fcbc00e",
+  "checked_at": "06dbc12",
   "facts": {
    "anchors": [
     {
@@ -13227,12 +14579,14 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/localtools/server.py::StdioServer.start",
       "amoeba/localtools/toolbox.py::LocalToolbox.start",
       "amoeba/task/evaluate.py::_any",
       "amoeba/task/evaluate.py::number_found",
+      "amoeba/task/evaluate.py::section_entity",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search",
       "scripts/run_audit.py::AuditLog.append"
@@ -13277,6 +14631,18 @@
      "key": "amoeba/task/models.py::Rubric",
      "methods": [],
      "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/localtools/server.py::StdioServer.start",
+      "amoeba/localtools/toolbox.py::LocalToolbox.start",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D94: (the heading found, the first entity its body names) over every section any pattern finds. The body runs",
+     "key": "amoeba/task/evaluate.py::section_entity",
+     "signature": "section_entity(text: str, patterns: list[str], entities: list[str]) -> tuple[str | None, str | None]"
     }
    ],
    "checks": [
@@ -13293,6 +14659,16 @@
     ],
     [
      "decide",
+     "if d.entities",
+     "set head, ent = section_entity(text, d.any_of, d.entities)"
+    ],
+    [
+     "decide",
+     "if text[line_start:m.end()].lstrip().startswith('#')",
+     "set nl = text.find('\\n', m.end())"
+    ],
+    [
+     "decide",
      "if u in _BYTES",
      "set target, kinds = (value * _BYTES[u], {'bytes'})"
     ],
@@ -13303,7 +14679,22 @@
     ],
     [
      "fallback",
+     "f'{head.strip()} … {ent}' if ent else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "judge(answer, rubric) if judge else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "len(text) if nl < 0 else nl + 1",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "nxt.start() if nxt else len(text)",
      "choose value"
     ],
     [
@@ -13312,9 +14703,19 @@
      "choose value"
     ],
     [
+     "fallback",
+     "{'detail': 'heading without a task-specific entity'} if head and (not ent) else {}",
+     "choose value"
+    ],
+    [
      "stop",
      "if ground_truth is None or answer is None",
      "return None"
+    ],
+    [
+     "stop",
+     "if hit",
+     "return (m.group(0), hit.group(0))"
     ],
     [
      "stop",
@@ -13331,23 +14732,21 @@
    "prompts": {},
    "title": "Scoring (after Box 3)"
   },
-  "facts_hash": "d67d7e413f544b8d",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "cfab992b96ad96c2",
-  "seed_hash": "462d766e9d3c79f0",
+  "facts_hash": "cfab992b96ad96c2",
+  "seed_hash": "11f3ffc2604961a0",
   "sentence": "Compares the team's answer with the known answer; a job with no single right answer is scored against its rubric instead.",
-  "source": "model: kept",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand",
   "what": [
    "After the run, the team's answer is compared with the known answer.",
    "Both are lower-cased, runs of spaces are squeezed to one, and trailing full stops are dropped.",
    "An exact match scores 1, anything else 0.",
    "A job with a rubric and no known answer gets the fraction of rubric items it passes: each deliverable and constraint found by pattern, each number found with its unit within a tolerance (10 TB and 9.1 TiB are the same amount), and nothing it must not do (such as a price with no source nearby).",
-   "No AI judges the answer in Phase 1; a hook can store a judge's view beside the score, never in it."
+   "No AI judges the answer in Phase 1; a hook can store a judge's view beside the score, never in it.",
+   "D94: a rubric item can also check content, not just a heading: it passes only when the section its pattern finds has a body that names one of the item's entities (section_entity; \"**Assumptions:** no resale value\" counts, an empty Assumptions heading does not)."
   ]
  },
  "solver": {
-  "checked_at": "1d5eeb0",
+  "checked_at": "06dbc12",
   "facts": {
    "anchors": [
     {
@@ -13355,6 +14754,7 @@
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
       "amoeba/interp/runtime.py::_Msg",
       "amoeba/interp/runtime.py::with_card",
+      "amoeba/llm/router.py::ModelRouter.call",
       "amoeba/localtools/server.py::StdioServer.call",
       "amoeba/localtools/toolbox.py::LocalToolbox.call",
       "amoeba/pool/mcp.py::Connector.call",
@@ -13470,18 +14870,17 @@
    },
    "title": "Solver"
   },
-  "facts_hash": "3559a5bcfdca0dc7",
-  "rejected_hash": "1d513d491073841d",
-  "seed_hash": "4b267170a8d8ee95",
+  "facts_hash": "1d513d491073841d",
+  "seed_hash": "9ec3a3051875794c",
   "sentence": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply gets one retry.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
    "It writes a full new answer each time it is asked.",
    "It is asked at most four times: once, then once per review round with an objection.",
    "With --equal-tools on (D62) the writer holds every tool the team was given and may call them first (Action / ActionInput lines, at most 5 calls); reviewers may call their own tools the same way.",
-   "D70: a reply that is only a tool request is no answer: the writer is asked once more for its answer, and a run whose last answer is still a tool request ends with error 'no_answer'."
+   "D70: a reply that is only a tool request is no answer: the writer is asked once more for its answer, and a run whose last answer is still a tool request ends with error 'no_answer'.",
+   "D102: a tool the run's niche profile does not allow is refused before it runs (refused: <tool>) and logged as niche_refused; general allows every tool."
   ]
  },
  "split": {
@@ -13628,7 +15027,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "8baa733",
+  "checked_at": "6f200d8",
   "facts": {
    "anchors": [
     {
@@ -14383,22 +15782,23 @@
    "title": "Check the step"
   },
   "facts_hash": "40633575d18b4ee2",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "13e802c0beb63a4e",
-  "sentence": "Checks each step's output against requirements, contract, and provenance; reads verdicts, gaps, and citation accuracy, while comparing its own results against checked steps.",
-  "source": "model: kept",
+  "seed_hash": "3532b8b24d8faaa1",
+  "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
+  "source": "hand",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
    "A step the planner marked kind: verify must answer PASS or FAIL; a FAIL sends each step it checked back once, then it checks again. Steps that already used the old output are marked stale (--rerun-stale redoes them once).",
    "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them.",
    "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, earns one refine turn and then makes the step partial (not declared / attached unused).",
-   "A verify step also sees each checked step's sources, tool calls, figure counts, files, and citation labels (D61, D74). A producer whose only problem is a missing capability is not sent back (rework_skipped).",
-   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial. Evidence is capped at {EVIDENCE_CAP} characters, excerpts are limited to {excerpt.keep_head} characters, and the verifier's own result is generated in a fresh loop."
+   "A verify step also sees each checked step's sources, tool calls, figure counts and files (D61). A producer whose only problem is a missing capability is not sent back (rework_skipped).",
+   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial.",
+   "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
+   "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn."
   ]
  },
  "stream": {
-  "checked_at": "8baa733",
+  "checked_at": "6f200d8",
   "facts": {
    "anchors": [
     {
@@ -14840,16 +16240,16 @@
    "title": "0 · Task stream (D80)"
   },
   "facts_hash": "d2c71a52cda023a8",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "fb26970e07106a93",
-  "sentence": "Tasks arrive in a fixed order; held-out or audit tasks are kept apart, and the loop learns only the names of the rubric items a practice run failed.",
-  "source": "model: kept",
+  "seed_hash": "776e5ddc13b1776d",
+  "sentence": "Tasks arrive in a fixed order, in three sets kept apart by code: practice tasks the loop learns from, gate tasks only the Experimenter replays, and audit tasks only scripts/run_audit.py reads; the loop learns only the names of the rubric items a practice run failed.",
+  "source": "hand",
   "what": [
-   "tasks/stream_<name>.jsonl: each task has its kind, its rubric, whether it is practice, held-out, or audit, its phase, and (practice only) its place in the order.",
+   "tasks/stream_<name>.jsonl: each task has its kind (family), its D30 rubric, whether it is practice or held-out, whether it comes before or after its kind's shift, and (practice only) its place in the order.",
    "tasks/stream_<name>.shifts.yaml: a feedback shift (the later rubrics ask for something new that the prompts never mention) or a tool shift (code takes a tool out of that kind's runs, --disable-tools).",
-   "Plain code checks the file when it is loaded: the new item is in every post rubric and no pre one, no prompt mentions it, order and phase agree, and slices restrict which tasks are active.",
-   "The loop only ever gets practice tasks; held-out and audit tasks are for the Experimenter. The feedback it keeps is the failed item names, never patterns or expected numbers.",
-   "The leakage screen refuses an edit text holding an {leaks.ngram}-word run of a held-out prompt, a held-out expected number or a held-out task id."
+   "Plain code checks the file when it is loaded: the new item is in every post rubric and no pre one, no prompt mentions it, order and phase agree.",
+   "The loop only ever gets practice tasks; held-out ones are for the Experimenter. The feedback it keeps is the failed item names, never patterns or expected numbers.",
+   "The leakage screen refuses an edit text holding an {leaks.ngram}-word run of a held-out prompt, a held-out expected number or a held-out task id.",
+   "D92: the three task sets — practice (in order, the only ones the loop sees), gate (held-out, replayed by Box 7 for calibration, experiments, retention replays and prunes) and audit (tasks/audit/, read once per thesis by scripts/run_audit.py; a stream file holding an audit task is refused)."
   ]
  },
  "task_record": {
@@ -16731,6 +18131,144 @@
    "From the command line each AI line also holds the exact prompt sent and the reply received (turn off with --no-log-content).",
    "Token counts are only recorded; no code reads them to stop a run.",
    "Every line names the model profile; each AI line holds the model asked for and the exact model name the service returned."
+  ]
+ },
+ "user_memory": {
+  "checked_at": "6f200d8",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/memory/context.py::_now",
+     "signature": "_now() -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::_now",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/context.py::_now",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/memory/recipes.py::_now",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D99: the user's approval (scripts/approve_memory.py): the proposal's line (or the user's rewording) is added",
+     "key": "amoeba/memory/context.py::approve_standard",
+     "signature": "approve_standard(context_file: str | Path, proposal: dict, text: str | None=None, ev=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/diagnoser.py::run_signals.add",
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add",
+      "amoeba/adapt/loop.py::_now",
+      "amoeba/memory/context.py::_now",
+      "amoeba/memory/context.py::read_proposals",
+      "amoeba/memory/recipes.py::_now",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D99: the loop's only way toward user memory. A feedback item failed in ≥`runs` practice runs across",
+     "key": "amoeba/memory/context.py::propose_standards",
+     "signature": "propose_standards(records, root: str | Path, ev=None, runs: int=PROPOSE_RUNS, families: int=PROPOSE_FAMILIES) -> list[dict]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/memory/context.py::read_proposals",
+     "signature": "read_proposals(root: str | Path) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog",
+      "amoeba/memory/context.py::approve_standard",
+      "amoeba/memory/context.py::read_proposals",
+      "scripts/eval_draft.py::parse_args",
+      "scripts/run_task.py::parse_args"
+     ],
+     "doc": "",
+     "key": "scripts/approve_memory.py::main",
+     "signature": "main(argv=None) -> int"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if ev is not None",
+     "add 'memory_approval'"
+    ],
+    [
+     "correct",
+     "if ev is not None",
+     "add 'memory_proposal'"
+    ],
+    [
+     "fallback",
+     "Path(args.root) if args.root else ROOT / 'eval' / 'loop' / args.stream",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[json.loads(l) for l in f.read_text(encoding='utf-8').splitlines() if l.strip()] if f.exists() else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "yaml.safe_load(path.read_text(encoding='utf-8')) if path.exists() else None",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if l.strip()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r['id'] == args.id",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if any((isinstance(e, dict) and e.get('proposal') == proposal['id'] for e in stds))",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if item in have or len(s['runs']) < runs or len(s['families']) < families",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if not isinstance(data, dict)",
+     "raise ValueError"
+    ],
+    [
+     "stop",
+     "if args.list or not args.id",
+     "return 0"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "ReplayResult.runs"
+   ],
+   "prompts": {},
+   "title": "Memory proposals and approval (D99)"
+  },
+  "facts_hash": "22e57d9248892fa0",
+  "seed_hash": "f457f5ff8412e1f1",
+  "sentence": "The loop may only propose a lasting user standard; it enters the user's context file only when the user approves it, and Box 1 and Box 2 read approved standards only.",
+  "source": "hand",
+  "what": [
+   "Three kinds of memory, one writer each: recipe memory (the Gate), user memory (the user) and event memory (the harness's evidence log, never fed raw into prompts).",
+   "When the same failed rubric item appears in at least 3 practice runs across at least 2 kinds of task, plain code writes one proposal to eval/loop/<stream>/memory_proposals.jsonl and a memory_proposal event.",
+   "scripts/approve_memory.py --id P<n> --context user.yaml is the only writer of an approved line: it adds it under standards: with approved: and the proposal id, and logs memory_approval in events.jsonl.",
+   "A standard counts only when the user wrote it or approved it; approved standards reach Box 1's context and the Planner's and Plan Observer's prompts (no standards: prompts unchanged). No agent can write any memory file: they all sit outside the run workspace and the sandbox mounts none of them."
   ]
  }
 }
