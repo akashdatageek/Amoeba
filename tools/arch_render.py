@@ -32,7 +32,7 @@ VIEWS = {
     "run": {"h": 1320, "label": "3 · Team runs the task", "heading": "INSIDE BOX 3 · TEAM RUNS THE TASK",
             "note": "Three runners, chosen when the run starts: flat and boss + reviewers are the AutoAgents / AgentVerse "
                     "baselines; plan runs the step graph (ours, D31–D36). All write the same log and result record."},
-    "adapt": {"h": 940, "label": "4–9 · Adaptation loop", "heading": "PHASE 2 · THE ADAPTATION LOOP AND THE v1.0 PARTS AROUND IT",
+    "adapt": {"h": 960, "label": "4–9 · Adaptation loop", "heading": "PHASE 2 · THE ADAPTATION LOOP AND THE v1.0 PARTS AROUND IT",
               "note": "Only Amoeba's plan runner gets recipes. Inside the loop only the Architect calls an AI; plain code "
                       "decides what is kept. Below the loop: the evidence log, the model router, niche profiles, user "
                       "memory and recipe expiry."},

@@ -757,7 +757,7 @@ BOXES: list[dict] = [
          disposes="Plain code builds both arms, runs them and writes the pairs.",
          anchors=[]),
     dict(id="gate", view="adapt", title="8 · Gate v3 and ledger (D84, D91)", kind="code", plan=None,
-         sentence="Keeps a recipe change only when its gain on the gate tasks beats the measured noise by a permutation test within the kind's fixed hypothesis quota, is worth its cost in US dollars (tokens while prices are 0), keeps the team honest and loses nothing on the tasks that already worked.",
+         sentence="Keeps a recipe change only when its gain on the gate tasks beats the noise (permutation test, fixed quota), is worth its cost and keeps the team honest.",
          what=["Noise floor, once per kind and recipe version: the recipe against itself with other seeds on the "
                "held-out after-shift tasks; noise = 2 × the spread of those score differences / √(pairs).",
                "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from "
