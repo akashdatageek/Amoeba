@@ -416,8 +416,10 @@ the fingerprint (SHA-256) of the line before it and of every run folder it refer
 
     python -m scripts.verify_evidence --stream m2      # prints the first break, exit 1; or "ok"
 
-Finished runs are key-scanned and queued for an off-container copy in a cloud bucket; what has not been shipped yet
-is listed in `loop_state.json`. Agents never see the cloud credentials, and their local tools cannot reach the log.
+Finished runs are key-scanned and shipped, at most every 10 minutes, to this repository's `evidence` branch (no code,
+same layout as `eval/loop/<stream>/`); each commit message carries the chain head, so GitHub's history witnesses the
+chain (`python -m scripts.verify_evidence --branch evidence`). What has not been shipped yet is listed in
+`loop_state.json`. Agents never get git or cloud credentials, and their local tools cannot reach the log.
 
 ## Cost controls (D45–D48)
 

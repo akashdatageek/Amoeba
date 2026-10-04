@@ -256,6 +256,7 @@ class SubprocessRunner:
         self.flags, self.env, self.parallel = list(flags), env, parallel
         self.scratch = Path(scratch or ROOT / "runs" / "adapt_jobs")
         self.log = log
+        self.on_done: Callable[[RunRecord], None] | None = None   # D95: the harness ships each finished run
 
     def command(self, job: Job) -> list[str]:
         self.scratch.mkdir(parents=True, exist_ok=True)
@@ -285,7 +286,12 @@ class SubprocessRunner:
             self.log(f"[{job.arm}] {job.task.id} k{job.k} score={rec.score} tokens={rec.tokens} "
                      f"error={rec.error} {int(time.time() - t0)}s" + (" (re-run after a crash)" if attempt == 2 else ""))
             if not rec.crashed():
-                return rec
+                break
+        if self.on_done is not None:
+            try:
+                self.on_done(rec)
+            except Exception as e:                    # shipping never stops a run
+                self.log(f"[ship] {job.task.id} k{job.k}: {type(e).__name__}: {e}")
         return rec
 
     def run(self, jobs: list[Job]) -> list[RunRecord]:

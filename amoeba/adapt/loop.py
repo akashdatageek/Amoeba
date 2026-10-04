@@ -38,7 +38,7 @@ from amoeba.adapt.recipe import apply_edit
 from amoeba.adapt.stream import Stream, StreamTask
 from amoeba.interp.trace import TraceWriter
 from amoeba.memory.recipes import RecipeStore
-from amoeba.adapt.evidence import EvidenceLog, Shipper, experiment_refs
+from amoeba.adapt.evidence import EvidenceLog, GitShipper, Shipper, experiment_refs, make_shipper
 
 
 # box: loop
@@ -61,6 +61,7 @@ class Loop(BaseModel):
     events: list[dict] = Field(default_factory=list)          # alarms, hypotheses, decisions, reverts, unresolved
     unshipped: list[dict] = Field(default_factory=list)       # D95: runs and event rows not yet in the bucket
     ship_blocked: list[dict] = Field(default_factory=list)    # D95: runs the key scan stopped (never shipped)
+    ship_state: dict = Field(default_factory=dict)            # D95: last evidence commit time, rows shipped, head
 
 
 # box: loop
@@ -110,11 +111,13 @@ def practice_jobs(tasks: list[StreamTask], stream: Stream, store: RecipeStore, r
 # box: loop
 def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], object], repeats: int = 3,
              parallel_until: int = 0, diagnoser: str = "tier0", envelope=None, calibrate: Callable | None = None,
-             log: Callable[[str], None] = print, secrets: list[str] = (), upload: Callable | None = None) -> dict:
+             log: Callable[[str], None] = print, secrets: list[str] = (), upload: Callable | None = None,
+             shipper=None) -> dict:
     """The loop over the stream's practice tasks. llm_for(hypothesis_id) gives the Architect's client; calibrate(
     stream, family, runner, root, store, repeats) -> calibration row (scripts/run_experiment.ensure_calibration).
     D95: every event goes to <root>/events.jsonl (hash-chained); each finished run is key-scanned against `secrets`
-    and queued for `upload(local_path, object_name)` (None: no bucket yet; the queue stays in loop_state.json)."""
+    and queued for the shipper (scripts/run_loop.py: the evidence branch, evidence.make_shipper; default: a queue that
+    ships nothing, or `upload(local_path, object_name)`); what is not shipped stays in loop_state.json."""
     from scripts.run_experiment import ensure_calibration, sample_draft
     calibrate = calibrate or ensure_calibration
     root = Path(root)
@@ -124,7 +127,12 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
     g = gate_cfg()
     loop = io.load(stream)
     ev = EvidenceLog(root)
-    shipper = Shipper(root, upload, secrets, prefix=f"{stream.name}/", pending=loop.unshipped)
+    if shipper == "config":                     # scripts/run_loop.py: the configured shipper (the evidence branch)
+        shipper = make_shipper(root, stream.name, secrets, loop.unshipped, loop.ship_state)
+    shipper = None if shipper == "none" else shipper
+    shipper = shipper or Shipper(root, upload, secrets, prefix=f"{stream.name}/", pending=loop.unshipped)
+    if hasattr(runner, "on_done"):              # each finished run is key-scanned and queued as it finishes
+        runner.on_done = lambda rec: rec.run_dir and shipper.queue_run(Path(rec.run_dir))
     for fam in stream.families():
         store.ensure_seed(fam)
         loop.families.setdefault(fam, FamilyState(family=fam))
@@ -149,9 +157,10 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
         if todo:
             ship()
 
-    def ship() -> None:
+    def ship(force: bool = False) -> None:
         shipper.queue_events()
-        loop.unshipped = shipper.flush()
+        loop.unshipped = shipper.flush(force) if isinstance(shipper, GitShipper) else shipper.flush()
+        loop.ship_state = dict(getattr(shipper, "state", {}) or {})
         loop.ship_blocked += [b for b in shipper.blocked if b not in loop.ship_blocked]
         shipper.blocked = []
         io.save(loop)
@@ -176,6 +185,7 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
         loop.processed.append(t.order)
         io.save(loop)
     summary = write_summary(stream, root, io.records(), ledger, store, loop)
+    ship(force=True)                            # the last batch goes out now
     return summary
 
 

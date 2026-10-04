@@ -21,11 +21,13 @@ import argparse
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 import yaml
 
-from amoeba.adapt.evidence import EvidenceLog, experiment_refs, refuse_cloud_vars, run_env
+from amoeba.adapt.evidence import (EvidenceLog, experiment_refs, make_shipper, refuse_cloud_vars, run_env,
+                                   secret_values)
 from amoeba.adapt.experimenter import SubprocessRunner, calibrate, experiment, experiment_flags
 from amoeba.adapt.gate import Hypothesis, decide, decision_row, noise_floor, noise_floor_tasks, task_spread
 from amoeba.adapt.ledger import Ledger
@@ -234,6 +236,7 @@ def parse(argv=None):
     p.add_argument("--redecide", default=None, metavar="HYPOTHESIS_ID",
                    help="D84b: decide a hypothesis again from its saved pairs (no runs); the row is marked post_hoc")
     p.add_argument("--gate-version", default="v2", choices=["v1", "v2", "v3"], help="with --redecide")
+    p.add_argument("--no-ship", action="store_true", help="D95: do not ship evidence to the evidence branch")
     p.add_argument("--check", action="store_true",
                    help="D91: the single pre-registered check (Gate v3 at gate.v3.check_alpha, rows marked check, "
                         "outside the loop's quota, recipe store unchanged)")
@@ -247,23 +250,58 @@ def main(argv=None) -> int:
     cfg = adapt_config().get("experiment", {})
     root = Path(args.root or ROOT / "eval" / "loop" / args.stream)
     stream = load_stream(args.stream)
-    runner = SubprocessRunner([*experiment_flags(), *option_defaults(), *passthrough], env=load_env(args.env_file),
+    env = load_env(args.env_file)
+    runner = SubprocessRunner([*experiment_flags(), *option_defaults(), *passthrough], env=env,
                               parallel=args.parallel or cfg.get("parallel", 8), scratch=root / "jobs")
     repeats = args.repeats or cfg.get("repeats", 3)
     store = Path(args.recipes or root / "recipes")
     if args.redecide:
         print(json.dumps(redecide(stream, args.redecide, root, store, args.gate_version), indent=2))
         return 0
-    if args.calibrate_only:
-        print(json.dumps(ensure_calibration(stream, args.family, runner, root, store, repeats)))
-        return 0
-    if not args.edit:
+    if not args.calibrate_only and not args.edit:
         print("give --edit or --calibrate-only")
         return 2
-    h = Hypothesis.model_validate({"family": args.family, **yaml.safe_load(Path(args.edit).read_text(encoding="utf-8"))})
-    row = hand_check(stream, h, runner, root, store, repeats, check=args.check)
-    print(json.dumps(row, indent=2))
+    shipper = None
+    if not args.no_ship:                     # D95: each finished run is key-scanned and shipped (batched) as it ends
+        st = load_ship_state(root)
+        shipper = make_shipper(root, stream.name, secret_values(env), st.get("unshipped"), st.get("ship_state"))
+        runner.on_done = lambda rec: rec.run_dir and (shipper.queue_run(Path(rec.run_dir)), ship(root, shipper))
+    if args.calibrate_only:
+        print(json.dumps(ensure_calibration(stream, args.family, runner, root, store, repeats)))
+    else:
+        h = Hypothesis.model_validate({"family": args.family,
+                                       **yaml.safe_load(Path(args.edit).read_text(encoding="utf-8"))})
+        print(json.dumps(hand_check(stream, h, runner, root, store, repeats, check=args.check), indent=2))
+    if shipper is not None:
+        left = ship(root, shipper, force=True)
+        print(f"[ship] {'all shipped' if not left else f'{len(left)} item(s) unshipped: ' + left[0].get('error', '')}")
     return 0
+
+
+# box: evidence
+def load_ship_state(root: Path) -> dict:
+    p = Path(root) / "loop_state.json"
+    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+
+
+# box: evidence
+def ship(root: Path, shipper, force: bool = False) -> list[dict]:
+    """D95: queue the event rows, ship if the batch is due (or forced), and keep what is unshipped in loop_state.json
+    (the loop reads the same keys)."""
+    with _SHIP_LOCK:
+        shipper.queue_events()
+        left = shipper.flush(force) if hasattr(shipper, "ensure_worktree") else shipper.flush()
+        st = load_ship_state(root) or {"stream": shipper.stream if hasattr(shipper, "stream") else root.name}
+        st.update(unshipped=left, ship_state=dict(getattr(shipper, "state", {}) or {}))
+        st["ship_blocked"] = list(st.get("ship_blocked") or []) + [b for b in shipper.blocked
+                                                                   if b not in (st.get("ship_blocked") or [])]
+        shipper.blocked = []
+        Path(root).mkdir(parents=True, exist_ok=True)
+        (Path(root) / "loop_state.json").write_text(json.dumps(st, indent=2), encoding="utf-8")
+        return left
+
+
+_SHIP_LOCK = threading.Lock()
 
 
 if __name__ == "__main__":
