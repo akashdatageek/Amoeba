@@ -862,6 +862,18 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI takes part in the decision.",
          disposes="Plain code picks the model; no call is made when no model passes the filters (no_model).",
          anchors=[]),
+    dict(id="niche", view="adapt", title="Niche profiles (D102)", kind="code", plan=None,
+         sentence="One file per environment says which tools and models are allowed, the limits, what counts as done, "
+                  "the domain's rules and words, and which domain checks run; plain code enforces it.",
+         what=["--niche <name> loads profiles/<name>.yaml; the default, general, changes nothing.",
+               "The prompts stay generic: one Environment section in Box 1's and Box 2's prompts is filled from the "
+               "profile, asking the team to assess the environment first and plan only with what is allowed.",
+               "Box 3 refuses any tool outside the profile even when a plan or a replan asks for it, and logs the "
+               "refusal; the router refuses any model outside it; domain checks (amoeba/checks/) run after each step "
+               "and a failed one earns a retry turn."],
+         proposes="Nothing: a person writes the profile.",
+         disposes="Plain code applies the profile's allowlists, limits, done clauses and checks.",
+         anchors=[]),
     dict(id="loop", view="adapt", title="Loop driver (D89)", kind="code", plan=None,
          sentence="Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes "
                   "it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",

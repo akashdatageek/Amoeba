@@ -91,6 +91,19 @@ class LocalSetup:
             return "openshell"
         return sandbox_config(self.config)["isolation"]
 
+    def with_limits(self, sandbox: dict | None) -> "LocalSetup":
+        """D102: a copy with a niche profile's sandbox limits (timeout_s per command; cpu, memory, run_timeout_s per
+        sandbox) over localtools.yaml's."""
+        if not sandbox:
+            return self
+        cfg = {**self.config, "limits": dict(self.config["limits"]), "sandbox": dict(self.config.get("sandbox") or {})}
+        if sandbox.get("timeout_s") is not None:
+            cfg["limits"]["timeout_s"] = sandbox["timeout_s"]
+        for k in ("cpu", "memory", "run_timeout_s"):
+            if sandbox.get(k) is not None:
+                cfg["sandbox"][k] = sandbox[k]
+        return LocalSetup(config=cfg, command=self.command, pool_dir=self.pool_dir, env=self.env, mode=self.mode)
+
     def without(self, names) -> "LocalSetup":
         """D80 --disable-tools: a copy whose allowed tools leave out `local:<Name>` for each name given."""
         drop = {n.removeprefix("local:") for n in names or () if n.startswith("local:")}

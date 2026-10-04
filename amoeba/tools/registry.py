@@ -38,7 +38,7 @@ class ToolRegistry:
         new._tools = dict(self._tools)
         if hasattr(self, "web"):
             new.web = self.web
-        for extra in ("pool", "local"):          # D56 pool tools, D59 local tools
+        for extra in ("pool", "local", "niche"):  # D56 pool tools, D59 local tools, D102 the niche profile
             if hasattr(self, extra):
                 setattr(new, extra, getattr(self, extra))
         return new

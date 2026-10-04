@@ -80,9 +80,10 @@ def decide(entities: list[dict], gap: float = DOMINANCE_GAP) -> dict:
 
 # box: interpret
 def read_task(task_text: str, llm: TracedLLM, context: Mapping[str, str] | None = None, seed: int = 0,
-              gap: float = DOMINANCE_GAP) -> dict:
-    """The interpretation step: one call, then plain code decides."""
-    user = render(PROMPT.interpret, task=task_text, context=context_text(context or {}))
+              gap: float = DOMINANCE_GAP, environment: str = "") -> dict:
+    """The interpretation step: one call, then plain code decides. environment: D102's Environment section of the
+    niche profile ("" for general: the prompt is unchanged)."""
+    user = render(PROMPT.interpret, task=task_text, context=context_text(context or {})) + environment
     raw = llm.chat_messages([{"role": "user", "content": user}], seed=seed, max_tokens=MAX_TOKENS,
                             agent_name="interpreter", role="planner").content
     out = decide(parse_entities(raw), gap)

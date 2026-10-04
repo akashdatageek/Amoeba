@@ -70,6 +70,7 @@ class PlanOptions:
     verify_first: str = "off"
     max_replans: int = 2             # D63: observer calls per run
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
+    domain_checks: tuple = ()        # D102: the niche profile's checks (amoeba/checks/<name>.py) after each step
 
 
 class PlanGraphError(ValueError):
@@ -966,6 +967,7 @@ class PlanRunner:
         text, removed = strip_unverified(self._text(agents, w), exact)
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
         checks += conclusion_check(text, w)                                       # D76
+        checks += self.domain_checks(n, text, inputs, w, answer_step)             # D102
         own, visible = self._sources(n, deps)
         prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,   # D33
                                 self.computed_results(w), self.web_ids())
@@ -979,6 +981,7 @@ class PlanRunner:
             removed += again
             checks = step_checks(step, text, deps, self.artifacts, verifier)
             checks += conclusion_check(text, w)
+            checks += self.domain_checks(n, text, inputs, w, answer_step)
             own, visible = self._sources(n, deps)
             prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,
                                     self.computed_results(w), self.web_ids())
@@ -1098,6 +1101,8 @@ class PlanRunner:
             if produced is not None:
                 meta["summary_check"].update({"files_listed_by_code": [f["path"] for f in produced["files"]],
                                               "cited_figures_left_out": [g["figure"] for g in produced["figures"]]})
+        if self.opt.domain_checks:                    # D102: the run's calc results, for later domain checks
+            meta["computed"] = self.computed_results(w)
         self._save(n, wave, text, meta, prov)
         if verifier and meta["verdict"] == "FAIL" and not reverify:
             reworked = self.rework_producers(n, deps, meta["issues"])
@@ -1107,6 +1112,18 @@ class PlanRunner:
                                                           "first_issues": meta["issues"], "reworked": reworked})
                 self.mark_stale(reworked, verifier_step=n)                           # D39
         return self.artifacts[n]
+
+    # box: niche
+    def domain_checks(self, n: int, text: str, inputs: str, w: "_Work", answer_step: bool) -> list[dict]:
+        """D102: the niche profile's domain checks over this step's output and evidence (the task, the step's inputs,
+        every calc and local-tool result of the run so far)."""
+        if not self.opt.domain_checks:
+            return []
+        from amoeba.checks import run_checks
+        done = [r for m in self.ep.steps for r in m.get("computed", [])]
+        ev = {"task": self.task.prompt, "inputs": inputs, "computed": done + self.computed_results(w),
+              "answer_step": answer_step, "step": n}
+        return run_checks(self.opt.domain_checks, text, ev)
 
     @staticmethod
     def computed_results(w: "_Work") -> list[str]:

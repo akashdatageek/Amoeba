@@ -487,6 +487,18 @@ routed model call pick from the family list or "new", and code checks the answer
 are recorded in result.json (`family`). This is on by default for Amoeba's plan runner and off for the baselines
 (`--family-classify auto|on|off`). A "new" family starts with an empty recipe.
 
+## Niche profiles (D102)
+
+An environment is described in one file, `profiles/<niche>.yaml`. It sets the allowed tools and the local-sandbox
+limits, the allowed models and the verifier-independence setting, the domain's rules and vocabulary, what "done"
+means, which domain checks run after each step (`amoeba/checks/<name>.py`), and safety limits. Choose one with
+`--niche <name>`. The default, `general`, changes nothing.
+
+With any other profile, the prompts get one "Environment" section: assess the environment first and plan only with
+what is allowed. Code enforces the rest: Box 3 refuses any tool outside the profile and logs the refusal, the router
+refuses any model outside it, and the domain checks earn a retry turn when they fail. Two profiles ship today:
+`general`, and `calc` (every final figure must be reproducible by calc from the task's numbers).
+
 ## Cost controls (D45–D48)
 
 ```bash

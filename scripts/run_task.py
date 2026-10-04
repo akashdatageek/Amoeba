@@ -26,6 +26,7 @@ from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
 from amoeba.task.interpret import ask_one, classify_family, enforce_opening, opening_line, read_task, with_note
+from amoeba.config.niche import add_done_clauses, environment_text, load_profile
 from amoeba.memory.context import load_context, standards_slots
 from amoeba.interp.trace import TracedLLM
 from amoeba.task.evaluate import rubric_score, score
@@ -60,7 +61,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             context=None, disabled_tools=(), recipe: Recipe | None = None,
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
             default_max_turns: int | None = None, family_classify: bool = False,
-            recipe_source: tuple | None = None) -> RunResult:
+            recipe_source: tuple | None = None, niche=None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -77,9 +78,15 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     given on the command line). With a saved draft only the transforms and run options apply.
     family_classify: D101 — a free-text task (family "freeform") gets a family from Box 1 (keyword rules, else one
     routed family_classifier call); a known family then starts from its current recipe in recipe_source
-    ((--recipes, --recipes-from)); "new" starts empty."""
+    ((--recipes, --recipes-from)); "new" starts empty.
+    niche: D102 --niche — a NicheProfile (amoeba.config.niche); a neutral one (general) changes nothing. Otherwise
+    (plan runner only): its Environment section in Box 1 and Box 2, its tool allowlist enforced in Box 3 (refusals
+    logged), its done clauses on the answer step and its domain checks after each step."""
     if recipe is not None and topology != "plan":
         raise ValueError("recipes are for Amoeba's plan runner only; the baselines never get one (D82)")
+    prof = niche if niche is not None and not niche.is_neutral() else None          # D102: general = None
+    if prof is not None and topology != "plan":
+        raise ValueError("niche profiles are for Amoeba's plan runner only; the baselines stay as they are (D102)")
     run_id = str(uuid4())
     run_dir = Path(runs_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -110,6 +117,21 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         for who, text in standards_slots(context).items():
             lessons[who] = lessons.get(who, "") + text
         trace.event("user_standards", {"amoeba.box": "memory", "amoeba.standards": list(context["standards"])})
+    env_text = ""
+    if prof is not None:                          # D102: one Environment section; Box 3 enforces the tool allowlist
+        env_text = environment_text(prof, tools.names())
+        tools.niche = prof
+        if saved_draft is None:
+            lessons = dict(lessons)
+            for who in ("planner", "agent_observer", "plan_observer"):
+                lessons[who] = lessons.get(who, "") + env_text
+        if prof.checks:
+            from dataclasses import replace
+            from amoeba.interp.plan_runner import PlanOptions
+            plan_options = replace(plan_options or PlanOptions(), domain_checks=tuple(prof.checks))
+        trace.event("niche", {"amoeba.box": "niche", "amoeba.niche": prof.name, "amoeba.tools": prof.allowed_tools,
+                              "amoeba.models": prof.allowed_models, "amoeba.checks": prof.checks,
+                              "amoeba.done_when": prof.done_when})
     plan_options, recipe_turns, opts_applied, opts_cli = overlay_run_options(plan_options, recipe, cli_explicit)
     # --max-turns given on the command line wins over the recipe; a harness default (--option-defaults) yields to it
     max_turns = max_turns or recipe_turns or default_max_turns
@@ -147,7 +169,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None,
                                    disabled=disabled_tools)
             if interpret:             # D77: what the task is about is settled before the Planner drafts
-                interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed)
+                interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed, environment=env_text)
                 if interp["ambiguous"] and ask is not None:
                     interp = ask_one(interp, ask)
                     trace.event("interpretation_question", {"amoeba.question": interp["question"]})
@@ -174,6 +196,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             recipe_rec["transforms_applied"] = applied
             trace.event("recipe_applied", {"amoeba.box": "recipe", "amoeba.recipe.version": recipe.version,
                                            "amoeba.recipe.transforms_applied": applied})
+        if prof is not None and prof.done_when:           # D102: what "done" means here, on the answer step(s)
+            draft, done_steps = add_done_clauses(draft, prof)
+            trace.event("niche_done_when", {"amoeba.box": "niche", "amoeba.steps": done_steps})
         cfg = instantiate(draft, topology, task, envelope)
         if max_turns is not None:                         # --max-turns, else a recipe's max_turns run option (D82)
             for a in cfg.agents.values():
@@ -472,8 +497,16 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
     fixed = None
     if args.model:                                    # --model names a registry entry or an API model id
         fixed = next((n for n, e in registry.items() if args.model in (n, e.model)), None)
-    router = ModelRouter(registry, policy, make, mode=mode, allowed=allowed, usd_cap=getattr(args, "max_usd_per_run", None),
-                         fixed_model=fixed, profile_allowed=getattr(args, "profile_models", None))
+    niche = getattr(args, "niche_profile", None)       # D102: the niche profile's models and verifier setting
+    usd_cap = getattr(args, "max_usd_per_run", None)
+    if niche is not None:
+        if niche.models.get("verifier_independence"):
+            policy = {**policy, "verifier_independence": niche.models["verifier_independence"]}
+        if usd_cap is None:
+            usd_cap = niche.safety.max_usd_per_run
+    router = ModelRouter(registry, policy, make, mode=mode, allowed=allowed, usd_cap=usd_cap, fixed_model=fixed,
+                         profile_allowed=niche.allowed_models if niche is not None else getattr(args, "profile_models",
+                                                                                                None))
     router.profile = f"router:{mode}"
     return router
 
@@ -622,6 +655,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--timezone", default=None, metavar="IANA",
                    help="D75: the run's time zone for today's date and weekday in every step prompt, e.g. "
                         "America/Chicago (default: the machine's local zone)")
+    p.add_argument("--niche", default="general",
+                   help="D102: the environment's profile, profiles/<name>.yaml (allowed tools and models, sandbox limits, "
+                        "domain rules, done clauses, domain checks, safety limits); general = today's behaviour. Plan "
+                        "runner only")
     p.add_argument("--family-classify", choices=["auto", "on", "off"], default="auto",
                    help="D101: give a free-text task (family freeform) a task family in Box 1 (keyword rules, else one "
                         "routed call) so it starts from that family's recipe; auto = on for the plan runner, off for "
@@ -669,12 +706,32 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             p.error(f"--option-defaults: {k!r} is not one of {sorted(OPTION_FLAGS)}")
         if OPTION_FLAGS[k] not in args.explicit:
             setattr(args, k, int(v) if k in ("check_retry_turns", "max_turns") else v.strip())
+    try:                                                                  # D102
+        args.niche_profile = load_profile(args.niche)
+    except ValueError as e:
+        p.error(str(e))
+    if not args.niche_profile.is_neutral() and args.topology != "plan":
+        p.error("--niche is for --topology plan only; the baselines stay as they are (D102)")
     if args.local_tools == "on" and LocalSetup(mode=args.local_tools_mode).isolation != "openshell":   # D96a
         try:
             require_sandbox()
         except SandboxRequired as e:
             p.error(str(e))
     return args
+
+
+# box: niche
+def niche_tools(niche, tools: ToolRegistry, local: LocalSetup | None):
+    """D102: the registry without the tools the profile does not allow (with the profile attached, so Box 3 refuses
+    anything else a plan names), and the local tools cut to the profile's list, with its sandbox limits."""
+    from amoeba.config.niche import tool_allowed
+    descs = tools.descriptions()
+    out = tools.without([n for n in tools.names() if not tool_allowed(n, niche, descs.get(n, ""))[0]])
+    out.niche = niche
+    if local is not None:
+        local = local.without([f"local:{t}" for t in local.config["allowed_tools"]
+                               if not tool_allowed(f"local:{t}", niche)[0]]).with_limits(niche.sandbox)
+    return out, local
 
 
 # box: interpret
@@ -699,6 +756,10 @@ def main(argv: list[str] | None = None) -> int:
     local = LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir,
                        mode=args.local_tools_mode) if args.local_tools == "on" else None   # D59, D96a
     _, pool, local = disable_tools(disabled, tools, pool, local)        # D80
+    niche = args.niche_profile                                           # D102
+    if not niche.is_neutral():
+        tools, local = niche_tools(niche, tools, local)
+        envelope = Envelope.from_registry(tools, model=llm.model)        # Box 2 is shown the allowed tools only
     results = []
     for task in tasks:
         chosen = None
@@ -710,12 +771,15 @@ def main(argv: list[str] | None = None) -> int:
         box3_tools = build_box3_tools(args, tools)   # a fresh source list per run (D32)
         if disabled:                                 # D80
             box3_tools = box3_tools.without(disabled)
+        if not niche.is_neutral():                   # D102: Box 3's own copy, the refusal guard rides on it
+            box3_tools, _ = niche_tools(niche, box3_tools, None)
         r = run_one(task, args.topology, llm, envelope, box3_tools, args.runs_dir, args.seed,
                     log_content=not args.no_log_content, draft_prompts=args.draft_prompts,
                     max_tokens=cli_token_limits(args),
                     quality_gate=quality_gate_on(args.quality_gate, args.topology, args.drafts_from),
                     plan_options=cli_plan_options(args), saved_draft=chosen,
-                    limits=RunLimits(args.max_tokens_per_run, args.max_calls_per_run),
+                    limits=RunLimits(args.max_tokens_per_run or niche.safety.max_tokens_per_run,
+                                     args.max_calls_per_run or niche.safety.max_calls_per_run),
                     ask=input if args.interactive else None, pool=pool, local=local,
                     equal_tools=args.equal_tools == "on", picks_file=args.picks_file, picks_only=args.picks_only,
                     timezone=args.timezone, interpret=args.interpret == "on", context=load_context(args.context),
@@ -724,7 +788,7 @@ def main(argv: list[str] | None = None) -> int:
                     default_max_turns=None if "--max-turns" in args.explicit else args.max_turns,
                     recipe=load_family_recipe(task.family, args.recipes, args.recipes_from),   # D82, D88
                     family_classify=family_classify_on(args.family_classify, args.topology),     # D101
-                    recipe_source=(args.recipes, args.recipes_from))
+                    recipe_source=(args.recipes, args.recipes_from), niche=niche)
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

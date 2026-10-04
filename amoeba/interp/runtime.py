@@ -6,6 +6,7 @@ import re
 import time
 from dataclasses import dataclass
 
+from amoeba.config.niche import tool_allowed
 from amoeba.config.prompts import PROMPT, render, resolve
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.clock import run_clock
@@ -348,6 +349,14 @@ class Interpreter:
 
     # box: read_action
     def _tool(self, agent: AgentSpec, name: str, action_input: str) -> str:
+        prof = getattr(self.tools, "niche", None)            # D102: the niche profile's tools, enforced by code
+        if prof is not None:
+            ok, why = tool_allowed(name, prof, self.tools.descriptions().get(name, ""))
+            if not ok:
+                self.trace.event("niche_refused", {"amoeba.box": "niche", "gen_ai.agent.name": agent.name,
+                                                   "gen_ai.tool.name": name, "amoeba.niche": prof.name,
+                                                   "amoeba.reason": why})
+                return f"refused: {name} — {why}; nothing was run. Use only the tools this environment allows."
         with self.trace.span("execute_tool", {"gen_ai.tool.name": name, "gen_ai.agent.id": agent.agent_id,
                                               "gen_ai.agent.name": agent.name}) as rec:
             try:
