@@ -3160,9 +3160,11 @@
    "title": "Evidence log (D95)"
   },
   "facts_hash": "e23241252984a6f4",
+  "rejected_hash": "fe03fbe69c4cef08",
   "seed_hash": "76b2670f897da3ae",
   "sentence": "Writes every loop event to one append-only, hash-chained log outside the agents' reach, with a fingerprint of every run folder it refers to, and queues finished runs for an off-container copy.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "One events.jsonl per stream, written only by the harness: alarms with their inputs, diagnoses, every Architect prompt and full reply, experiments, Gate decisions, reverts, human-queue entries and finished practice runs.",
    "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
@@ -3170,7 +3172,7 @@
   ]
  },
  "experimenter": {
-  "checked_at": "8baa733",
+  "checked_at": "3b83636",
   "facts": {
    "anchors": [
     {
@@ -3699,9 +3701,12 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::make_shipper",
+      "amoeba/adapt/evidence.py::secret_values",
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::SubprocessRunner",
       "amoeba/adapt/experimenter.py::experiment_flags",
+      "amoeba/adapt/loop.py::run_loop.ship",
       "amoeba/adapt/recipe.py::adapt_config",
       "amoeba/adapt/stream.py::load_stream",
       "amoeba/llm/cache.py::_Store.get",
@@ -3710,9 +3715,11 @@
       "scripts/run_experiment.py::ensure_calibration",
       "scripts/run_experiment.py::hand_check",
       "scripts/run_experiment.py::load_env",
+      "scripts/run_experiment.py::load_ship_state",
       "scripts/run_experiment.py::option_defaults",
       "scripts/run_experiment.py::parse",
-      "scripts/run_experiment.py::redecide"
+      "scripts/run_experiment.py::redecide",
+      "scripts/run_experiment.py::ship"
      ],
      "doc": "",
      "key": "scripts/run_experiment.py::main",
@@ -3789,12 +3796,27 @@
     ],
     [
      "decide",
+     "if not args.no_ship",
+     "set st = load_ship_state(root)"
+    ],
+    [
+     "decide",
      "if r.get('name') == 'chat' and r.get('gen_ai.agent.name') in DRAFT_AGENTS",
      "set n += int(r.get('gen_ai.usage.input_tokens') or 0) + int(r.get('gen_ai.usage.output_tokens'"
     ],
     [
+     "decide",
+     "if shipper is not None",
+     "set left = ship(root, shipper, force=True)"
+    ],
+    [
      "fallback",
      "' (re-run after a crash)' if attempt == 2 else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'all shipped' if not left else f'{len(left)} item(s) unshipped: ' + left[0].get('error', '')",
      "choose value"
     ],
     [
@@ -3841,6 +3863,11 @@
      "fallback",
      "draft_tokens(a.run_dir) if shared_draft and a.run_dir else 0",
      "choose value"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "self.log(f'[ship] {job.task.id} k{job.k}: {type(e).__name__}: {e}')"
     ],
     [
      "fallback",
@@ -3934,11 +3961,6 @@
     ],
     [
      "stop",
-     "if args.calibrate_only",
-     "return 0"
-    ],
-    [
-     "stop",
      "if args.redecide",
      "return 0"
     ],
@@ -3949,7 +3971,7 @@
     ],
     [
      "stop",
-     "if not args.edit",
+     "if not args.calibrate_only and (not args.edit)",
      "return 2"
     ],
     [
@@ -3960,7 +3982,7 @@
     [
      "stop",
      "if not rec.crashed()",
-     "return rec"
+     "stop (break)"
     ],
     [
      "stop",
@@ -4000,16 +4022,16 @@
    "prompts": {},
    "title": "7 · Experimenter (D83)"
   },
-  "facts_hash": "4859b71f27bdc19c",
+  "facts_hash": "cd85e586d1d39c5a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0af422728bb53ada",
-  "sentence": "Runs the old recipe against the old recipe plus one edit on the kind's held-out tasks, {experiment.repeats} times each, with the same seed, tools and model, and returns the score pairs.",
-  "source": "model: kept",
+  "sentence": "Runs the old recipe against the old recipe plus one edit on the kind's held-out tasks, {experiment.repeats} times each, with the same seed, tools and model, and returns the score pairs, optionally shipping results to a remote store.",
+  "source": "model: rewritten",
   "what": [
    "For each held-out task (after-shift tasks first, then before-shift ones for the retention check) and each repeat, arm A drafts afresh with the old recipe and runs it.",
    "For a transform or run-option edit, arm B reuses arm A's saved draft, so the only difference between the arms is the edit; for a planner-rule edit, arm B drafts with its own rules and draft variance is part of the noise.",
    "Arm A runs are cached per recipe version (by the recipe's hash), so a later hypothesis against the same version runs arm B only; the noise-floor calibration (A against A' with {CALIBRATION_SEED_OFFSET} added to the seed) fills that cache.",
-   "Each pair records both scores, tokens, honesty signals (by kind and error status), and refusals. Runs go out as run_task processes, eight at once; a finished run is never redone, and a model-service crash is re-run once."
+   "Each pair records both scores, tokens, honesty signals (by kind and error status), and refusals. Runs go out as run_task processes, eight at once; a finished run is never redone, a model-service crash is re-run once, and results may be shipped to a remote location."
   ]
  },
  "free_text": {
@@ -6545,7 +6567,7 @@
   ]
  },
  "loop": {
-  "checked_at": "8baa733",
+  "checked_at": "3b83636",
   "facts": {
    "anchors": [
     {
@@ -6588,6 +6610,10 @@
       [
        "ship_blocked",
        "list[dict]"
+      ],
+      [
+       "ship_state",
+       "dict"
       ]
      ],
      "key": "amoeba/adapt/loop.py::Loop",
@@ -6725,10 +6751,14 @@
       "amoeba/adapt/diagnoser.py::run_signals.add",
       "amoeba/adapt/evidence.py::EvidenceLog",
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/evidence.py::GitShipper.flush",
+      "amoeba/adapt/evidence.py::GitShipper.queue_events",
+      "amoeba/adapt/evidence.py::GitShipper.queue_run",
       "amoeba/adapt/evidence.py::Shipper",
       "amoeba/adapt/evidence.py::Shipper.flush",
       "amoeba/adapt/evidence.py::Shipper.queue_events",
       "amoeba/adapt/evidence.py::Shipper.queue_run",
+      "amoeba/adapt/evidence.py::make_shipper",
       "amoeba/adapt/experimenter.py::InProcessRunner.run",
       "amoeba/adapt/experimenter.py::SubprocessRunner.run",
       "amoeba/adapt/experimenter.py::calibrate",
@@ -6762,7 +6792,7 @@
      ],
      "doc": "The loop over the stream's practice tasks. llm_for(hypothesis_id) gives the Architect's client; calibrate(",
      "key": "amoeba/adapt/loop.py::run_loop",
-     "signature": "run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], object], repeats: int=3, parallel_until: int=0, diagnoser: str='tier0', envelope=None, calibrate: Callable | None=None, log: Callable[[str], None]=print, secrets: list[str]=(), upload: Callable | None=None) -> dict"
+     "signature": "run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], object], repeats: int=3, parallel_until: int=0, diagnoser: str='tier0', envelope=None, calibrate: Callable | None=None, log: Callable[[str], None]=print, secrets: list[str]=(), upload: Callable | None=None, shipper=None) -> dict"
     },
     {
      "callees": [
@@ -6847,6 +6877,11 @@
     ],
     [
      "decide",
+     "if hasattr(runner, 'on_done')",
+     "set runner.on_done = lambda rec: rec.run_dir and shipper.queue_run(Path(rec.run_dir))"
+    ],
+    [
+     "decide",
      "if not accepted",
      "set row = log_unresolved(root, alarm.model_dump(), diag, tried)"
     ],
@@ -6867,8 +6902,18 @@
     ],
     [
      "decide",
+     "if shipper == 'config'",
+     "set shipper = make_shipper(root, stream.name, secrets, loop.unshipped, loop.ship_state)"
+    ],
+    [
+     "decide",
      "if verdict == 'reverted'",
      "set back = store.revert(st.family, f\"rollback watch: practice mean {row['practice_mean']} < al"
+    ],
+    [
+     "fallback",
+     "'none' if args.no_ship else 'config'",
+     "choose value"
     ],
     [
      "fallback",
@@ -6878,6 +6923,11 @@
     [
      "fallback",
      "'right' if r['sign_ok'] else 'wrong'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "None if shipper == 'none' else shipper",
      "choose value"
     ],
     [
@@ -6928,6 +6978,11 @@
     [
      "fallback",
      "runner.run(practice_jobs(todo, stream, store, root)) if todo else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "shipper.flush(force) if isinstance(shipper, GitShipper) else shipper.flush()",
      "choose value"
     ],
     [
@@ -7042,14 +7097,14 @@
    "prompts": {},
    "title": "Loop driver (D89)"
   },
-  "facts_hash": "ce6e05d8875bb2ee",
+  "facts_hash": "b4e5605ee568ba3d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8e2e699426ec6515",
   "sentence": "Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "Calibrates the noise floor first, then runs every practice task with its kind's current recipe (shifts apply: the later rubrics ask for more, a removed tool is taken out). Tasks before the shift may run in one batch; later ones run one at a time, because each can trigger a change.",
-   "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then up to three Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down.",
+   "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then up to {MAX_PER_ALARM} Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down, and results are queued for shipping.",
    "Everything it does is on disk — practice runs, experiments, ledger, recipes, proposals, diagnoses, state — so a crash resumes where it stopped, and it writes summary.json and a plain report."
   ]
  },
