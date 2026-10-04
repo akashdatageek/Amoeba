@@ -3160,7 +3160,7 @@
    "title": "Evidence log (D95)"
   },
   "facts_hash": "e23241252984a6f4",
-  "rejected_hash": "fe03fbe69c4cef08",
+  "rejected_hash": "702e6abc6ba9949b",
   "seed_hash": "76b2670f897da3ae",
   "sentence": "Writes every loop event to one append-only, hash-chained log outside the agents' reach, with a fingerprint of every run folder it refers to, and queues finished runs for an off-container copy.",
   "source": "hand",
@@ -6552,9 +6552,11 @@
   },
   "facts_hash": "6f7f8d97fb5b33cf",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "08068f35b758c402",
   "seed_hash": "cf9559fad29b1143",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
   "source": "model: kept",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused and logged once. They become local:<Name> tools of the run.",
    "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); a Bash command runs from there, network commands are refused (network_command) and destructive or escaping ones too (unsafe_command).",
@@ -6567,7 +6569,7 @@
   ]
  },
  "loop": {
-  "checked_at": "3b83636",
+  "checked_at": "f2ac57d",
   "facts": {
    "anchors": [
     {
@@ -6753,12 +6755,11 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/evidence.py::GitShipper.flush",
       "amoeba/adapt/evidence.py::GitShipper.queue_events",
-      "amoeba/adapt/evidence.py::GitShipper.queue_run",
       "amoeba/adapt/evidence.py::Shipper",
       "amoeba/adapt/evidence.py::Shipper.flush",
       "amoeba/adapt/evidence.py::Shipper.queue_events",
-      "amoeba/adapt/evidence.py::Shipper.queue_run",
       "amoeba/adapt/evidence.py::make_shipper",
+      "amoeba/adapt/evidence.py::run_finished",
       "amoeba/adapt/experimenter.py::InProcessRunner.run",
       "amoeba/adapt/experimenter.py::SubprocessRunner.run",
       "amoeba/adapt/experimenter.py::calibrate",
@@ -6878,7 +6879,7 @@
     [
      "decide",
      "if hasattr(runner, 'on_done')",
-     "set runner.on_done = lambda rec: rec.run_dir and shipper.queue_run(Path(rec.run_dir))"
+     "set runner.on_done = lambda rec: rec.run_dir and run_finished(ev, root, Path(rec.run_dir), shi"
     ],
     [
      "decide",
@@ -7097,11 +7098,11 @@
    "prompts": {},
    "title": "Loop driver (D89)"
   },
-  "facts_hash": "b4e5605ee568ba3d",
+  "facts_hash": "fb5880a33ba327e9",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8e2e699426ec6515",
   "sentence": "Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Calibrates the noise floor first, then runs every practice task with its kind's current recipe (shifts apply: the later rubrics ask for more, a removed tool is taken out). Tasks before the shift may run in one batch; later ones run one at a time, because each can trigger a change.",
    "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then up to {MAX_PER_ALARM} Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down, and results are queued for shipping.",
