@@ -1008,7 +1008,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "cca1861",
+  "checked_at": "fc22335",
   "facts": {
    "anchors": [
     {
@@ -1123,6 +1123,7 @@
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
       "amoeba/memory/context.py::standards_slots",
       "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/memory/recipes.py::load_family_recipe",
       "amoeba/pool/stock.py::SharedPicks",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/pool/stock.py::stock_toolbox",
@@ -1132,6 +1133,7 @@
       "amoeba/task/evaluate.py::score",
       "amoeba/task/instantiate.py::instantiate",
       "amoeba/task/interpret.py::ask_one",
+      "amoeba/task/interpret.py::classify_family",
       "amoeba/task/interpret.py::enforce_opening",
       "amoeba/task/interpret.py::opening_line",
       "amoeba/task/interpret.py::read_task",
@@ -1148,7 +1150,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, recipe_source: tuple | None=None) -> RunResult"
     }
    ],
    "checks": [],
@@ -1174,7 +1176,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "96645f14d189f927",
+  "facts_hash": "0ec9702a9bdb18ee",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -4110,7 +4112,7 @@
   ]
  },
  "free_text": {
-  "checked_at": "1398f7a",
+  "checked_at": "fc22335",
   "facts": {
    "anchors": [
     {
@@ -4145,6 +4147,7 @@
       "scripts/run_task.py::cli_plan_options",
       "scripts/run_task.py::cli_token_limits",
       "scripts/run_task.py::disable_tools",
+      "scripts/run_task.py::family_classify_on",
       "scripts/run_task.py::parse_args",
       "scripts/run_task.py::quality_gate_on",
       "scripts/run_task.py::run_one"
@@ -4286,7 +4289,7 @@
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "f24937ce055c4e0e",
+  "facts_hash": "28c71c6be0413755",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
@@ -5435,7 +5438,7 @@
   ]
  },
  "interpret": {
-  "checked_at": "cca1861",
+  "checked_at": "fc22335",
   "facts": {
    "anchors": [
     {
@@ -5562,6 +5565,56 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/cache.py::CachedLLM.chat_messages",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/client.py::LLMClient.chat_messages",
+      "amoeba/llm/client.py::MockLLMClient.chat_messages",
+      "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
+      "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/llm/router.py::ModelRouter.chat_messages",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/interpret.py::family_by_rule",
+      "amoeba/task/interpret.py::load_families",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search",
+      "scripts/eval_draft.py::Recording.chat_messages"
+     ],
+     "doc": "Box 1 (D101): {family, how, ...} for a free-text task. Rules first; only if none decides, one routed call",
+     "key": "amoeba/task/interpret.py::classify_family",
+     "signature": "classify_family(task_text: str, llm: TracedLLM | None, families: dict[str, dict] | None=None, seed: int=0) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "The family whose keywords match the task most often (whole words, case-insensitive); a tie or no match is",
+     "key": "amoeba/task/interpret.py::family_by_rule",
+     "signature": "family_by_rule(text: str, families: dict[str, dict]) -> tuple[str | None, list[str]]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/task/interpret.py::load_families",
+     "signature": "load_families(path: str | Path=FAMILIES) -> dict[str, dict]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/task/interpret.py::assumed",
@@ -5611,6 +5664,12 @@
      "doc": "",
      "key": "amoeba/task/interpret.py::with_note",
      "signature": "with_note(prompt: str, interp: dict | None) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "D101: on for Amoeba's plan runner by default; the baselines keep their behaviour unless asked.",
+     "key": "scripts/run_task.py::family_classify_on",
+     "signature": "family_classify_on(flag: str, topology: str) -> bool"
     }
    ],
    "checks": [],
@@ -5649,6 +5708,11 @@
      "decide",
      "if chosen",
      "set interp['ambiguous'] = [a for a in interp['ambiguous'] if a != w['entity']]"
+    ],
+    [
+     "decide",
+     "if found",
+     "set hits[name] = found"
     ],
     [
      "decide",
@@ -5702,6 +5766,11 @@
     ],
     [
      "fallback",
+     "(top[0], hits[top[0]]) if len(top) == 1 else (None, sorted((k for n in top for k in hits[n])))",
+     "choose value"
+    ],
+    [
+     "fallback",
      "answer[m.end():].lower() if m else ''",
      "choose value"
     ],
@@ -5709,6 +5778,11 @@
      "fallback",
      "except (TypeError, ValueError)",
      "set conf = 0.0"
+    ],
+    [
+     "fallback",
+     "except (json.JSONDecodeError, AttributeError)",
+     "set answer = ''"
     ],
     [
      "fallback",
@@ -5742,7 +5816,17 @@
     ],
     [
      "fallback",
+     "load_families() if families is None else families",
+     "choose value"
+    ],
+    [
+     "fallback",
      "rest[0]['confidence'] if rest else 0.0",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "str(json.loads(m.group(0)).get('family', '')).strip() if m else ''",
      "choose value"
     ],
     [
@@ -5763,6 +5847,16 @@
     [
      "filter",
      "keep only if l.strip()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if len(v) == best",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if re.search(f'(?<![\\\\w-]){k}(?![\\\\w-])', text, re.I)",
      "drop the rest"
     ],
     [
@@ -5792,8 +5886,28 @@
     ],
     [
      "stop",
+     "if answer in families or answer == 'new'",
+     "return {'family': answer, 'how': 'llm', 'keywords': kws}"
+    ],
+    [
+     "stop",
+     "if fam",
+     "return {'family': fam, 'how': 'rule', 'keywords': kws}"
+    ],
+    [
+     "stop",
+     "if llm is None",
+     "return {'family': 'new', 'how': 'no_rule_no_call', 'keywords': kws}"
+    ],
+    [
+     "stop",
      "if not answer or not line",
      "return (answer, {})"
+    ],
+    [
+     "stop",
+     "if not hits",
+     "return (None, [])"
     ],
     [
      "stop",
@@ -5827,6 +5941,7 @@
     "DOMINANCE_GAP",
     "Episode.seed",
     "MAX_TOKENS",
+    "classify_family.seed",
     "read_task.seed"
    ],
    "prompts": {
@@ -5834,13 +5949,13 @@
    },
    "title": "Task interpretation (D77)"
   },
-  "facts_hash": "b1a50474e5d04d2b",
+  "facts_hash": "de4b8f7b22a4b09e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4d5f47795f6babb8",
-  "sentence": "Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a clear winner, asks the user one question, or makes the answer state its assumption.",
+  "sentence": "Before the Planner drafts, an AI classifies the task family and interprets ambiguous terms; plain code decides the winner or asks the user.",
   "source": "model: rewritten",
   "what": [
-   "One call reads the task and the user context (including any approved standards) and lists the key entities and terms that could be read more than one way — names, abbreviations, acronyms, likely voice-input errors — each reading with a one-line reason and a confidence.",
+   "One call reads the task and user context (including approved standards) to classify the task family and list key entities or terms that could be read more than one way, each with a reason and confidence.",
    "Plain code: a reading whose confidence beats the next by {DOMINANCE_GAP} or more (DOMINANCE_GAP) (or the only one) is the working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question (the readings + other); without it the top reading is an assumption.",
    "The working interpretation is added to the task text, so the Planner, both checkers and every helper in all three runners read it; an open question the Planner writes about one of these names is answered from it, not by its guess.",
    "After the run, when the reading was assumed, plain code makes the answer open with \"I read X as Y; if you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing."
@@ -7923,7 +8038,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "cca1861",
+  "checked_at": "fc22335",
   "facts": {
    "anchors": [
     {
@@ -7956,6 +8071,7 @@
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
       "amoeba/memory/context.py::standards_slots",
       "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/memory/recipes.py::load_family_recipe",
       "amoeba/pool/stock.py::SharedPicks",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/pool/stock.py::stock_toolbox",
@@ -7965,6 +8081,7 @@
       "amoeba/task/evaluate.py::score",
       "amoeba/task/instantiate.py::instantiate",
       "amoeba/task/interpret.py::ask_one",
+      "amoeba/task/interpret.py::classify_family",
       "amoeba/task/interpret.py::enforce_opening",
       "amoeba/task/interpret.py::opening_line",
       "amoeba/task/interpret.py::read_task",
@@ -7981,7 +8098,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, recipe_source: tuple | None=None) -> RunResult"
     }
    ],
    "checks": [
@@ -8012,14 +8129,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "f12fb0fa647c7c71",
+  "facts_hash": "4f2b289cd12e5251",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves twenty files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, the experiment summary, and the cache state.",
+  "sentence": "Every run saves twenty-two files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, and the recipe source.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, the experiment summary, and the cache state.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, the experiment summary, the cache state, the family classification, and the recipe source.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -12399,7 +12516,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "cca1861",
+  "checked_at": "fc22335",
   "facts": {
    "anchors": [
     {
@@ -12563,6 +12680,10 @@
        "dict | None"
       ],
       [
+       "family",
+       "dict | None"
+      ],
+      [
        "routing",
        "dict | None"
       ]
@@ -12601,6 +12722,7 @@
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
       "amoeba/memory/context.py::standards_slots",
       "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/memory/recipes.py::load_family_recipe",
       "amoeba/pool/stock.py::SharedPicks",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/pool/stock.py::stock_toolbox",
@@ -12610,6 +12732,7 @@
       "amoeba/task/evaluate.py::score",
       "amoeba/task/instantiate.py::instantiate",
       "amoeba/task/interpret.py::ask_one",
+      "amoeba/task/interpret.py::classify_family",
       "amoeba/task/interpret.py::enforce_opening",
       "amoeba/task/interpret.py::opening_line",
       "amoeba/task/interpret.py::read_task",
@@ -12626,7 +12749,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, recipe_source: tuple | None=None) -> RunResult"
     }
    ],
    "checks": [
@@ -12657,15 +12780,15 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "ec34bcf633b3545f",
+  "facts_hash": "449477417d15c2f4",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bef6a71b78aeb520",
-  "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, interpretation, and any pool, selection, clarification, recipe, or routing details.",
-  "source": "model: kept",
+  "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, interpretation, and any pool, selection, clarification, recipe, family, or routing details.",
+  "source": "model: rewritten",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
-   "It also lists the steps that answered BLOCKED, every capability request, local tool usage, files created, skills attached, replan details, refinement data, interpretation, disabled tools, recipe information, routing, and provenance, while tracking pool usage and clarifications."
+   "It also lists the steps that answered BLOCKED, every capability request, local tool usage, files created, skills attached, replan details, refinement data, interpretation, disabled tools, recipe information, family classification, routing, and provenance, while tracking pool usage and clarifications."
   ]
  },
  "scoring": {
@@ -15913,7 +16036,7 @@
   ]
  },
  "toy_source": {
-  "checked_at": "7126cfe",
+  "checked_at": "fc22335",
   "facts": {
    "anchors": [
     {
@@ -15940,11 +16063,11 @@
    "checks": [
     [
      "differs",
-     "The plan lists 'arithmetic chains · string transforms · JSON extraction'; the code has ['arith', 'reverse', 'vowels']: sums, reversing a word, counting vowels. There is no JSON-extraction job."
+     "Number of job kinds: the plan says #; the code has #"
     ],
     [
-     "ok",
-     "Number of job kinds: #"
+     "differs",
+     "The plan lists 'arithmetic chains · string transforms · JSON extraction'; the code has ['P', 'a', 't', 'h', '(', '_', '_', 'f', 'i', 'l', 'e', '_', '_', ')', '.', 'r', 'e', 's', 'o', 'l', 'v', 'e', '(', ')', '.', 'p', 'a', 'r', 'e', 'n', 't', 's', '[', '#', ']', ' ', '/', ' ', \"'\", 'c', 'o', 'n', 'f', 'i', 'g', \"'\", ' ', '/', ' ', \"'\", 'f', 'a', 'm', 'i', 'l', 'i', 'e', 's', '.', 'y', 'a', 'm', 'l', \"'\"]: sums, reversing a word, counting vowels. There is no JSON-extraction job."
     ]
    ],
    "guards": [
@@ -15966,12 +16089,13 @@
    "prompts": {},
    "title": "Toy task source"
   },
-  "facts_hash": "6add364136c4ecab",
+  "facts_hash": "5a93774538bf1347",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "1d60587f1519b694",
   "sentence": "Makes practice jobs with known answers (sums, reversed words, vowel counts), the same for the same seed.",
-  "source": "hand",
+  "source": "model: rewritten",
   "what": [
-   "Generates practice jobs from a seed number, cycling through three kinds of job.",
+   "Generates practice jobs from a seed number, cycling through three kinds of job, though the current implementation differs from the original design plan.",
    "Each job's right answer is computed by code at the same time.",
    "The same seed always gives exactly the same jobs, so runs can be compared fairly."
   ]
