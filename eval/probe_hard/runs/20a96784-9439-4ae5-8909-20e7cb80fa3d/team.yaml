@@ -1,0 +1,380 @@
+team_id: 25ecc11a-ea0a-444f-b06e-8be6dd082051
+version: 1
+parent_version: null
+name: team-plan-probe-h1
+topology: plan
+agents:
+  e6096c0b-1958-4207-a1e7-7d988adec454:
+    agent_id: e6096c0b-1958-4207-a1e7-7d988adec454
+    name: Optimization Engineer
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in operations research and combinatorial optimization. Responsible
+      for finding the mathematically proven minimum cost assignment.
+    role_prompt: "You are a Senior Optimization Engineer. Your task is to find the\
+      \ minimum cost to move 10 loads using 4 trucks. \n\nMethod:\n1. Implement a\
+      \ Python script to evaluate the cost of all valid assignments. Given the small\
+      \ state space (4^10), an exhaustive search with pruning is feasible.\n2. For\
+      \ each assignment, check: \n   - Sum of weights per truck <= Truck capacity\n\
+      \   - Sum of miles per truck <= Truck mileage limit\n3. Calculate cost: For\
+      \ each truck used, Cost = Fixed Cost + (Per-mile Rate * Total Miles).\n4. Identify\
+      \ the assignment with the minimum total cost.\n5. Provide the exact assignment,\
+      \ the total cost, and the total weight/miles per truck.\n6. Explain that the\
+      \ optimality is guaranteed because the entire valid search space was explored."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Find the absolute minimum cost assignment and provide the proof of optimality.
+    skills:
+    - combinatorial optimization
+    - Python
+    - linear programming
+    outputs:
+    - artifact: optimal_assignment_data
+      format: 'memo: including total cost, truck assignments, and optimality proof'
+    success_criteria:
+    - The solution is the lowest possible cost
+    - All constraints are strictly met
+    constraints:
+    - Must use a method that proves optimality, not just a heuristic
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  fd62925b-7d0c-4d6d-9fbe-763f5f690a69:
+    agent_id: fd62925b-7d0c-4d6d-9fbe-763f5f690a69
+    name: QA Engineer
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Detail-oriented validator responsible for checking the math and constraint
+      adherence.
+    role_prompt: "You are a QA Engineer. You will receive a proposed load assignment.\
+      \ \n\nYour task:\n1. For each truck, sum the weights of assigned loads and compare\
+      \ against the truck's capacity. \n2. For each truck, sum the miles of assigned\
+      \ loads and compare against the truck's mileage limit.\n3. Calculate the cost\
+      \ for each truck: Fixed Cost + (Rate * Total Miles). Sum these for the total\
+      \ cost.\n4. Ensure all 10 loads are assigned exactly once.\n5. Output a clear\
+      \ 'PASS' or 'FAIL' with a detailed breakdown of your calculations."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify that the proposed solution is valid and the calculations are correct.
+    skills:
+    - mathematical verification
+    - attention to detail
+    outputs:
+    - artifact: verification_report
+      format: 'memo: confirmation of validity or list of errors'
+    success_criteria:
+    - Zero errors in weight/mileage totals
+    - Cost calculation matches the Optimization Engineer's result
+    constraints:
+    - Must independently calculate totals without relying on the solver's output
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  53ff20bd-a3e5-47b5-a0d4-32c7bf2ff44c:
+    agent_id: 53ff20bd-a3e5-47b5-a0d4-32c7bf2ff44c
+    name: Document Specialist
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Technical specialist responsible for generating the formula-driven
+      Excel deliverable.
+    role_prompt: "You are a Document Specialist. You will receive the optimal assignment\
+      \ and a verification report. \n\nYour task:\n1. Use Python (openpyxl) to create\
+      \ an .xlsx file named `assignment_plan.xlsx`.\n2. The .xlsx must have:\n   -\
+      \ A table of loads and their properties.\n   - A table of trucks and their properties.\n\
+      \   - The final assignment (which load is on which truck).\n   - A cost calculation\
+      \ section where the total cost is derived using Excel formulas (e.g., =B2 +\
+      \ (C2 * D2)) referencing the truck's fixed cost and total miles.\n3. Ensure\
+      \ the formulas are correctly mapped to the cells containing the truck's fixed\
+      \ cost and the calculated total miles for that truck."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Deliver a professional .xlsx file where costs are calculated via formulas.
+    skills:
+    - xlsx
+    - Python
+    outputs:
+    - artifact: assignment_plan.xlsx
+      format: xlsx
+    success_criteria:
+    - Excel file contains working formulas
+    - All data from the optimal assignment is present
+    constraints:
+    - Must use formulas in Excel, not just static values
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  f426ba8a-f0d0-499c-b8ed-db9b9a0cbc2e:
+    agent_id: f426ba8a-f0d0-499c-b8ed-db9b9a0cbc2e
+    name: Summariser
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Final editor responsible for assembling all findings into the final
+      response.
+    role_prompt: "You are the Summariser. You will receive the optimal assignment,\
+      \ a verification report, and the generated .xlsx file. \n\nYour task:\n1. Create\
+      \ a final summary including the total cost, the load assignment per truck, and\
+      \ the proof of optimality.\n2. Provide the total weight and total miles for\
+      \ each truck.\n3. Mention that the .xlsx file is attached and contains the formula-driven\
+      \ calculations.\n4. Ensure the final output is professional and directly answers\
+      \ all parts of the user's request."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final report and the link to the .xlsx file.
+    skills:
+    - technical writing
+    - project delivery
+    outputs:
+    - artifact: final_report
+      format: markdown
+    success_criteria:
+    - All requirements R1-R7 are addressed
+    - The response is professional and concise
+    constraints:
+    - No tools allowed
+    - Must only assemble and edit existing outputs
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: e6096c0b-1958-4207-a1e7-7d988adec454
+  dst: fd62925b-7d0c-4d6d-9fbe-763f5f690a69
+  type: sequential
+  schema_id: text
+  condition: null
+- src: e6096c0b-1958-4207-a1e7-7d988adec454
+  dst: 53ff20bd-a3e5-47b5-a0d4-32c7bf2ff44c
+  type: sequential
+  schema_id: text
+  condition: null
+- src: fd62925b-7d0c-4d6d-9fbe-763f5f690a69
+  dst: 53ff20bd-a3e5-47b5-a0d4-32c7bf2ff44c
+  type: sequential
+  schema_id: text
+  condition: null
+- src: e6096c0b-1958-4207-a1e7-7d988adec454
+  dst: f426ba8a-f0d0-499c-b8ed-db9b9a0cbc2e
+  type: sequential
+  schema_id: text
+  condition: null
+- src: fd62925b-7d0c-4d6d-9fbe-763f5f690a69
+  dst: f426ba8a-f0d0-499c-b8ed-db9b9a0cbc2e
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 53ff20bd-a3e5-47b5-a0d4-32c7bf2ff44c
+  dst: f426ba8a-f0d0-499c-b8ed-db9b9a0cbc2e
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- e6096c0b-1958-4207-a1e7-7d988adec454
+exit: f426ba8a-f0d0-499c-b8ed-db9b9a0cbc2e
+plan:
+- index: 0
+  agent_ids:
+  - e6096c0b-1958-4207-a1e7-7d988adec454
+  text: '[Optimization Engineer]: Solve for Minimum Cost'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  depends_on: []
+  do: '
+
+    - Write and run a Python script to exhaustively search all valid load-to-truck
+    assignments.
+
+    - Calculate the total cost for every valid combination.
+
+    - Identify the assignment with the minimum cost.'
+  output: 'memo: optimal_assignment_data'
+  done_when: The script completes and identifies the global minimum.
+- index: 1
+  agent_ids:
+  - fd62925b-7d0c-4d6d-9fbe-763f5f690a69
+  text: '[QA Engineer]: Verify Assignment and Math'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  depends_on:
+  - 1
+  do: '
+
+    - Independently sum weights and miles for each truck in the proposed solution.
+
+    - Verify these sums are within truck limits.
+
+    - Manually calculate the total cost using the provided rates and fixed costs.
+
+    - Confirm all 10 loads are present.'
+  output: 'memo: verification_report'
+  done_when: All calculations are verified as correct.
+- index: 2
+  agent_ids:
+  - 53ff20bd-a3e5-47b5-a0d4-32c7bf2ff44c
+  text: '[Document Specialist]: Generate Formula-Driven Excel'
+  kind: work
+  covers:
+  - R6
+  - R7
+  depends_on:
+  - 1
+  - 2
+  do: '
+
+    - Use Python to generate `assignment_plan.xlsx`.
+
+    - Implement Excel formulas for the cost calculations (Fixed + Rate * Miles).'
+  output: 'xlsx: assignment_plan.xlsx'
+  done_when: The .xlsx is generated and formulas are verified to be present.
+- index: 3
+  agent_ids:
+  - f426ba8a-f0d0-499c-b8ed-db9b9a0cbc2e
+  text: '[Summariser]: Final Assembly'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  - R6
+  - R7
+  depends_on:
+  - 1
+  - 2
+  - 3
+  do: '
+
+    - Compile the final response in markdown.
+
+    - Include the total cost, assignment, truck stats, and optimality proof.
+
+    - Reference the `.xlsx` file.'
+  output: 'memo: final_report'
+  done_when: The final report is complete and all requirements are met.
+requirements:
+  R1: Find the minimum-cost assignment of 10 loads to up to 4 trucks.
+  R2: Provide the total cost of the optimal assignment.
+  R3: Provide the specific load assignment for each truck.
+  R4: Provide the total weight and total miles for each truck.
+  R5: Show how the solution is known to be optimal.
+  R6: Deliver an .xlsx file containing the plan.
+  R7: Ensure the .xlsx file uses formulas for the cost calculations.
+max_inner_turns: 3
+meta:
+  task_id: probe-h1-freight
+  draft_rounds: 2
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: xlsx
+    for_role: Document Specialist
+    canonical: xlsx
+    status: filled
+    reason: ''
+  - name: python_interpreter
+    for_role: Optimization Engineer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: python_interpreter
+    for_role: Document Specialist
+    canonical: code_execution
+    status: filled
+    reason: ''

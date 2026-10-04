@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "diff": null,
+  "roles": [
+    {
+      "name": "Optimization Engineer",
+      "tools": [
+        "local:Bash"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "QA Engineer",
+      "tools": [
+        "calc"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Document Specialist",
+      "tools": [
+        "local:Bash"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Summariser",
+      "tools": [],
+      "missing_tools": []
+    }
+  ],
+  "steps": [
+    {
+      "number": 1,
+      "roles": [
+        "Optimization Engineer"
+      ],
+      "text": "[Optimization Engineer]: Solve for Minimum Cost",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5"
+      ],
+      "depends_on": [],
+      "do": "\n- Write and run a Python script to exhaustively search all valid load-to-truck assignments.\n- Calculate the total cost for every valid combination.\n- Identify the assignment with the minimum cost.",
+      "output": "memo: optimal_assignment_data",
+      "done_when": "The script completes and identifies the global minimum.",
+      "status": "not run"
+    },
+    {
+      "number": 2,
+      "roles": [
+        "QA Engineer"
+      ],
+      "text": "[QA Engineer]: Verify Assignment and Math",
+      "kind": "verify",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "depends_on": [
+        1
+      ],
+      "do": "\n- Independently sum weights and miles for each truck in the proposed solution.\n- Verify these sums are within truck limits.\n- Manually calculate the total cost using the provided rates and fixed costs.\n- Confirm all 10 loads are present.",
+      "output": "memo: verification_report",
+      "done_when": "All calculations are verified as correct.",
+      "status": "not run"
+    },
+    {
+      "number": 3,
+      "roles": [
+        "Document Specialist"
+      ],
+      "text": "[Document Specialist]: Generate Formula-Driven Excel",
+      "kind": "work",
+      "covers": [
+        "R6",
+        "R7"
+      ],
+      "depends_on": [
+        1,
+        2
+      ],
+      "do": "\n- Use Python to generate `assignment_plan.xlsx`.\n- Implement Excel formulas for the cost calculations (Fixed + Rate * Miles).",
+      "output": "xlsx: assignment_plan.xlsx",
+      "done_when": "The .xlsx is generated and formulas are verified to be present.",
+      "status": "not run"
+    },
+    {
+      "number": 4,
+      "roles": [
+        "Summariser"
+      ],
+      "text": "[Summariser]: Final Assembly",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "depends_on": [
+        1,
+        2,
+        3
+      ],
+      "do": "\n- Compile the final response in markdown.\n- Include the total cost, assignment, truck stats, and optimality proof.\n- Reference the `.xlsx` file.",
+      "output": "memo: final_report",
+      "done_when": "The final report is complete and all requirements are met.",
+      "status": "not run"
+    }
+  ]
+}
