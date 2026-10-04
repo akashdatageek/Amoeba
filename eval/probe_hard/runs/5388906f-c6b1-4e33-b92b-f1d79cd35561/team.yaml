@@ -1,0 +1,400 @@
+team_id: 49cf3b10-69bd-4269-a6eb-5a194f649609
+version: 1
+parent_version: null
+name: team-plan-probe-h3
+topology: plan
+agents:
+  492bbd83-1782-4abd-90eb-b5c88d7053d6:
+    agent_id: 492bbd83-1782-4abd-90eb-b5c88d7053d6
+    name: Fleet Cost Analyst
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An expert in heavy-duty vehicle TCO modeling and energy economics.
+      They specialize in gathering market data for Class 8 vehicles and calculating
+      operational costs.
+    role_prompt: "You are a Senior Fleet Cost Analyst. Your goal is to build a rigorous\
+      \ 7-year TCO model for 20 Class 8 tractors in Indiana for a 2026 purchase. \n\
+      \nStep-by-step:\n1. Use web_search to find current and projected 2026 purchase\
+      \ prices for Class 8 Diesel vs BEV tractors.\n2. Search for Federal (e.g., IRA\
+      \ 45W) and Indiana state incentives for electric trucks available in 2026.\n\
+      3. Find the current average commercial electricity rate in Indiana (per kWh)\
+      \ and the current diesel price (per gallon).\n4. Estimate the cost of charging\
+      \ infrastructure (chargers + installation) for 20 trucks, then divide by 20\
+      \ to get the per-truck cost.\n5. Research maintenance cost per mile for Diesel\
+      \ vs BEV Class 8 trucks.\n6. Calculate the 7-year TCO per truck: (Purchase Price\
+      \ - Incentives) + (Fuel/Energy per mile * 420,000) + (Maintenance per mile *\
+      \ 420,000) + (Infrastructure cost per truck).\n7. Draft a professional memo\
+      \ including an Executive Summary, the TCO table, Key Drivers, Assumptions, and\
+      \ a clear Recommendation.\n\nOutput a markdown package containing: 1) The TCO\
+      \ Table (Component | Diesel | BEV | Source/Date), 2) The Assumptions List, 3)\
+      \ The Citations List, and 4) The Draft Memo Text."
+    max_history: 5
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Produce a detailed, cited TCO comparison and a draft of the memo content.
+    skills:
+    - TCO modelling
+    - Energy market analysis
+    - Freight industry pricing
+    outputs:
+    - artifact: TCO Analysis Package
+      format: 'markdown: Includes TCO table, Assumptions list, Citations list, and
+        Draft Memo Text'
+    success_criteria:
+    - Every figure in the TCO table has a corresponding citation with a date.
+    - TCO includes all required components (Price, Incentives, Energy, Infra, Maintenance).
+    - Calculations are mathematically sound over the 7-year period.
+    constraints:
+    - Must use Indiana-specific rates
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  030408ef-8cbf-4f1d-8f47-1f924ed848cf:
+    agent_id: 030408ef-8cbf-4f1d-8f47-1f924ed848cf
+    name: Technical Reviewer
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A principal engineer who ensures the technical and mathematical validity
+      of the analysis.
+    role_prompt: "You are a Principal Engineer reviewing a TCO model. Your job is\
+      \ to be the 'skeptic'. \n\n1. Re-calculate every line item in the TCO table\
+      \ using the provided assumptions.\n2. Check the sources: are they from 2023-2025?\
+      \ Are they specific to Indiana or general US averages? If general, note the\
+      \ risk.\n3. Evaluate the BEV maintenance and energy assumptions. Are they realistic\
+      \ for Class 8 regional haul?\n\nOutput a verification report listing each component\
+      \ and whether the calculation and source are acceptable. If any errors are found,\
+      \ provide the corrected value."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify the accuracy of the TCO calculations and the validity of the sources.
+    skills:
+    - Financial auditing
+    - Technical verification
+    - Critical thinking
+    outputs:
+    - artifact: Verification Report
+      format: 'list: Item | Status (Pass/Fail) | Correction Needed'
+    success_criteria:
+    - All calculations are verified as correct.
+    - All citations are checked for relevance.
+    constraints: []
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  66836261-34fa-48f9-95f1-bce99db48b85:
+    agent_id: 66836261-34fa-48f9-95f1-bce99db48b85
+    name: Document Specialist
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A specialist in document formatting and production.
+    role_prompt: "You are a Document Specialist. Your goal is to take the verified\
+      \ TCO analysis and draft memo text and turn it into a professional Word (.docx)\
+      \ memo. \n\n1. Use the python-docx library to create the document.\n2. Use a\
+      \ professional memo header (To, From, Date, Subject).\n3. Ensure the TCO table\
+      \ is clearly formatted.\n4. Keep the total length to 2 pages or less.\n5. Ensure\
+      \ all citations and assumptions from the analyst are included.\n\nOutput the\
+      \ final .docx file."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Convert the verified memo text into a professional 2-page Word document.
+    skills:
+    - docx generation
+    - Document design
+    outputs:
+    - artifact: TCO Recommendation Memo
+      format: 'docx: 2-page memo'
+    success_criteria:
+    - The document is delivered in .docx format.
+    - The document is under 2 pages.
+    - Formatting is professional and clean.
+    constraints:
+    - Max 2 pages
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  03f63b86-8c21-4c10-94b1-0cf0764f9d2b:
+    agent_id: 03f63b86-8c21-4c10-94b1-0cf0764f9d2b
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A delivery lead experienced in executive communication and final
+      project sign-off.
+    role_prompt: "You are the Delivery Lead. Your role is to deliver the final result.\
+      \ \n\n1. Review the .docx file created by the Document Specialist.\n2. Present\
+      \ the final recommendation clearly to the user.\n3. Provide the link to the\
+      \ .docx memo as the primary deliverable."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final verified TCO memo to the client.
+    skills:
+    - Executive communication
+    - Project delivery
+    outputs:
+    - artifact: Final Delivery
+      format: 'memo: Final response containing the .docx file and the core recommendation'
+    success_criteria:
+    - The final deliverable is a .docx file.
+    - The recommendation is clearly stated in the final response.
+    constraints: []
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 492bbd83-1782-4abd-90eb-b5c88d7053d6
+  dst: 030408ef-8cbf-4f1d-8f47-1f924ed848cf
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 030408ef-8cbf-4f1d-8f47-1f924ed848cf
+  dst: 66836261-34fa-48f9-95f1-bce99db48b85
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 66836261-34fa-48f9-95f1-bce99db48b85
+  dst: 03f63b86-8c21-4c10-94b1-0cf0764f9d2b
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 492bbd83-1782-4abd-90eb-b5c88d7053d6
+exit: 03f63b86-8c21-4c10-94b1-0cf0764f9d2b
+plan:
+- index: 0
+  agent_ids:
+  - 492bbd83-1782-4abd-90eb-b5c88d7053d6
+  text: '[Fleet Cost Analyst]: Research and TCO Modeling'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  - R6
+  - R7
+  - R8
+  - R9
+  - R10
+  depends_on: []
+  do: '
+
+    - Research 2026 Class 8 Diesel vs BEV purchase prices.
+
+    - Identify Federal (IRA) and Indiana incentives for 2026.
+
+    - Find Indiana commercial electricity and diesel rates.
+
+    - Estimate charging infrastructure costs for 20 trucks.
+
+    - Research maintenance costs per mile for both types.
+
+    - Calculate 7-year TCO per truck.
+
+    - Draft the memo text.'
+  output: 'markdown: TCO Analysis Package'
+  done_when: TCO table is complete with citations and draft memo text is written.
+- index: 1
+  agent_ids:
+  - 030408ef-8cbf-4f1d-8f47-1f924ed848cf
+  text: '[Technical Reviewer]: TCO Audit and Verification'
+  kind: verify
+  covers:
+  - R1
+  - R4
+  - R9
+  depends_on:
+  - 1
+  do: '
+
+    - Re-calculate all TCO totals.
+
+    - Verify the validity and dates of the citations.
+
+    - Validate the energy and maintenance assumptions against industry benchmarks.'
+  output: 'list: Verification Report'
+  done_when: All calculations are confirmed or corrected.
+- index: 2
+  agent_ids:
+  - 66836261-34fa-48f9-95f1-bce99db48b85
+  text: '[Document Specialist]: Memo Generation'
+  kind: work
+  covers:
+  - R11
+  depends_on:
+  - 2
+  do: '
+
+    - Use the verified TCO data and draft text to create a professional .docx memo.
+
+    - Ensure the document is under 2 pages.'
+  output: 'docx: TCO Recommendation Memo'
+  done_when: The .docx file is generated.
+- index: 3
+  agent_ids:
+  - 03f63b86-8c21-4c10-94b1-0cf0764f9d2b
+  text: '[Delivery Lead]: Final Delivery'
+  kind: work
+  covers:
+  - R10
+  - R11
+  depends_on:
+  - 3
+  do: '
+
+    - Perform a final review of the .docx.
+
+    - Deliver the file and the final recommendation to the user.'
+  output: 'memo: Final Delivery'
+  done_when: The .docx file and recommendation are presented to the user.
+requirements:
+  R1: Compute a 7-year total cost of ownership per truck for diesel vs battery-electric.
+  R2: Include purchase price in the TCO.
+  R3: Include any federal and Indiana incentives that actually apply to a purchase
+    in 2026.
+  R4: Compute fuel/energy cost per mile using Indiana diesel price vs Indiana commercial
+    electricity rate.
+  R5: Include charging infrastructure costs in the TCO.
+  R6: Include maintenance costs in the TCO.
+  R7: Show the TCO comparison table.
+  R8: State every assumption.
+  R9: Cite every figure with its date.
+  R10: Give a recommendation.
+  R11: Deliver a Word (.docx) memo of at most 2 pages.
+max_inner_turns: 3
+meta:
+  task_id: probe-h3-ev-trucks
+  draft_rounds: 3
+  consensus: false
+  dependency_relinked: []
+  capability_requests:
+  - name: docx
+    for_role: Document Specialist
+    canonical: docx
+    status: filled
+    reason: ''
+  - name: web_search
+    for_role: Fleet Cost Analyst
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Fleet Cost Analyst
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: python_interpreter
+    for_role: Fleet Cost Analyst
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: python_interpreter
+    for_role: Technical Reviewer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: python_interpreter
+    for_role: Document Specialist
+    canonical: code_execution
+    status: filled
+    reason: ''
