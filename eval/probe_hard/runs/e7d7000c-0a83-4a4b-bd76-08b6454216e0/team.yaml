@@ -1,0 +1,400 @@
+team_id: 098c3d87-0bc5-4fb8-af01-4776edbda234
+version: 1
+parent_version: null
+name: team-plan-probe-h3
+topology: plan
+agents:
+  6efba6a6-f542-4a6c-b3d1-ad29e2b82010:
+    agent_id: 6efba6a6-f542-4a6c-b3d1-ad29e2b82010
+    name: Logistics Cost Analyst
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in heavy-duty vehicle procurement and energy markets. Responsible
+      for gathering the raw financial data for Class 8 trucks, energy costs, and government
+      incentives.
+    role_prompt: 'You are a Senior Logistics Cost Analyst. Your goal is to provide
+      the raw numbers and operational feasibility for a TCO comparison. 1. Search
+      for the current and projected 2026 purchase price of a Class 8 Diesel tractor
+      vs a Battery Electric tractor. 2. Find the Federal tax credits (like the Commercial
+      Clean Vehicle Credit 45W) and any Indiana state-level grants or incentives available
+      for 2026. 3. Find the current average price of diesel in Indiana and the average
+      commercial electricity rate (per kWh) in Indiana. 4. Find industry-standard
+      maintenance costs per mile for both. 5. Estimate the cost of DC fast charging
+      infrastructure for 20 trucks (including hardware and installation). 6. Evaluate
+      if a < 250 mile/day route is feasible for BEVs, considering battery range and
+      charging time. Output a markdown table with columns: Item, Diesel Value, BEV
+      Value, Source, and Date. Provide a separate brief analysis on route suitability.'
+    max_history: 5
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Provide a verified dataset of costs, incentives, and energy rates for Indiana
+      in 2026.
+    skills:
+    - market research
+    - energy pricing analysis
+    - regulatory incentive tracking
+    outputs:
+    - artifact: Cost Data Sheet
+      format: 'markdown table: item | diesel_value | bev_value | source | date'
+    - artifact: Route Suitability Analysis
+      format: 'memo: suitability of BEV for < 250 miles/day'
+    success_criteria:
+    - Every figure has a date and a source
+    - Incentives are specifically checked for 2026 eligibility
+    - Route analysis considers charging downtime
+    constraints:
+    - Must use Indiana-specific rates
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  c1448c0a-41bb-4472-815b-1bbf8b0510a9:
+    agent_id: c1448c0a-41bb-4472-815b-1bbf8b0510a9
+    name: TCO Modeler
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Financial engineer specializing in lifecycle cost analysis. Responsible
+      for turning raw data into a 7-year TCO model and recommendation.
+    role_prompt: 'You are a Senior TCO Modeler. Using the Cost Data Sheet and Route
+      Suitability Analysis provided, calculate the 7-year TCO per truck. 1. Calculate
+      Purchase Price minus Incentives. 2. Calculate Fuel/Energy: (Miles per year *
+      7 years) * (Cost per mile). For BEV, use (kWh/mile * electricity rate). 3. Calculate
+      Maintenance: (Miles per year * 7 years) * (Maint cost per mile). 4. Calculate
+      Infrastructure: (Total fleet install cost / 20 trucks). 5. Sum these for the
+      Total 7-Year TCO. 6. Based on the TCO and the route suitability, provide a clear
+      recommendation (Yes/No) on replacing the fleet. Provide a markdown table showing
+      the breakdown per truck and a separate recommendation memo. Explicitly list
+      all assumptions made during the calculation (e.g., efficiency rates in kWh/mile).'
+    max_history: 5
+    missing_tools:
+    - python_interpreter
+    is_summariser: false
+    goal: Calculate the 7-year TCO per truck and produce the comparison table and
+      recommendation.
+    skills:
+    - TCO modelling
+    - financial arithmetic
+    - cost amortization
+    outputs:
+    - artifact: TCO Comparison Table
+      format: 'markdown table: cost_category | diesel_per_truck | bev_per_truck |
+        notes'
+    - artifact: Recommendation
+      format: 'memo: recommendation with justification'
+    success_criteria:
+    - Arithmetic is double-checked
+    - Infrastructure is correctly split per truck
+    - 7-year window is strictly applied
+    constraints:
+    - Must use the 60,000 miles/year figure
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  49686ac3-7fd2-445a-bb33-99493bdb8fa6:
+    agent_id: 49686ac3-7fd2-445a-bb33-99493bdb8fa6
+    name: Document Engineer
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Technical specialist responsible for the production of the final
+      Word document.
+    role_prompt: 'You are a Document Engineer. You will receive a TCO Comparison Table,
+      a Recommendation, and a Cost Data Sheet. Your task is to create a professional
+      Word (.docx) memo. 1. Use the python-docx library. 2. Structure: Header (To,
+      From, Date, Subject), Executive Recommendation, TCO Comparison Table, Key Assumptions,
+      and Citations. 3. Ensure the formatting is clean and the total length does not
+      exceed 2 pages. 4. Output the final .docx file.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Generate a professional 2-page .docx memo containing all required data.
+    skills:
+    - python-docx
+    - document design
+    - technical formatting
+    outputs:
+    - artifact: TCO Memo
+      format: docx
+    success_criteria:
+    - Document is exactly in .docx format
+    - Layout is professional
+    - Length is <= 2 pages
+    constraints:
+    - Max 2 pages
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  92af31e8-43af-49ce-8c14-58638cfcf4be:
+    agent_id: 92af31e8-43af-49ce-8c14-58638cfcf4be
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Experienced lead responsible for the final synthesis and delivery
+      of the project.
+    role_prompt: You are the Principal Delivery Lead. Your only task is to review
+      the .docx file produced by the Document Engineer to ensure it meets all the
+      original requirements (TCO table, 7-year window, Indiana rates, 2026 incentives,
+      citations, and recommendation). Once verified, deliver the file to the user
+      with a brief professional summary.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final .docx memo to the user.
+    skills:
+    - quality assurance
+    - executive delivery
+    outputs:
+    - artifact: Final Delivery
+      format: 'memo: final response containing the .docx file'
+    success_criteria:
+    - All requirements R1-R12 are met in the final file
+    constraints:
+    - No new analysis
+    - No tools
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 6efba6a6-f542-4a6c-b3d1-ad29e2b82010
+  dst: c1448c0a-41bb-4472-815b-1bbf8b0510a9
+  type: sequential
+  schema_id: text
+  condition: null
+- src: c1448c0a-41bb-4472-815b-1bbf8b0510a9
+  dst: 6efba6a6-f542-4a6c-b3d1-ad29e2b82010
+  type: sequential
+  schema_id: text
+  condition: null
+- src: c1448c0a-41bb-4472-815b-1bbf8b0510a9
+  dst: 49686ac3-7fd2-445a-bb33-99493bdb8fa6
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 6efba6a6-f542-4a6c-b3d1-ad29e2b82010
+  dst: 49686ac3-7fd2-445a-bb33-99493bdb8fa6
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 49686ac3-7fd2-445a-bb33-99493bdb8fa6
+  dst: 92af31e8-43af-49ce-8c14-58638cfcf4be
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 6efba6a6-f542-4a6c-b3d1-ad29e2b82010
+exit: 92af31e8-43af-49ce-8c14-58638cfcf4be
+plan:
+- index: 0
+  agent_ids:
+  - 6efba6a6-f542-4a6c-b3d1-ad29e2b82010
+  text: '[Logistics Cost Analyst]: Data Gathering and Route Analysis'
+  kind: work
+  covers:
+  - R3
+  - R4
+  - R5
+  - R6
+  - R9
+  - R12
+  depends_on: []
+  do: Research 2026 purchase prices, Indiana energy rates, federal/state incentives,
+    maintenance costs, and charging infrastructure costs. Analyze route suitability
+    for BEVs.
+  output: 'table: Cost Data Sheet (item | diesel_value | bev_value | source | date),
+    memo: Route Suitability Analysis'
+  done_when: All required cost components and the route analysis are completed with
+    citations.
+- index: 1
+  agent_ids:
+  - c1448c0a-41bb-4472-815b-1bbf8b0510a9
+  text: '[TCO Modeler]: Financial Modeling and Recommendation'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R7
+  - R8
+  - R10
+  depends_on:
+  - 1
+  do: Calculate the 7-year TCO per truck, including the amortization of infrastructure
+    across 20 units and the application of incentives. Formulate the recommendation.
+  output: 'table: TCO Comparison Table (cost_category | diesel_per_truck | bev_per_truck
+    | notes), memo: Recommendation'
+  done_when: A complete 7-year TCO per truck is calculated and a recommendation is
+    provided.
+- index: 2
+  agent_ids:
+  - 6efba6a6-f542-4a6c-b3d1-ad29e2b82010
+  text: '[Logistics Cost Analyst]: Model Verification'
+  kind: verify
+  covers:
+  - R1
+  - R4
+  - R5
+  depends_on:
+  - 2
+  do: Verify that the TCO Modeler used the correct energy rates and that the infrastructure
+    cost was divided by 20. Check that the mileage (420k total) was applied correctly.
+  output: 'list: Verification report (Pass/Fail with corrections)'
+  done_when: The analyst confirms the numbers align with the research data.
+- index: 3
+  agent_ids:
+  - 49686ac3-7fd2-445a-bb33-99493bdb8fa6
+  text: '[Document Engineer]: Memo Generation'
+  kind: work
+  covers:
+  - R11
+  depends_on:
+  - 2
+  - 3
+  do: Synthesize the findings into a professional .docx memo using the python-docx
+    library.
+  output: 'memo: TCO Memo (.docx)'
+  done_when: The .docx file is generated and contains all required sections within
+    2 pages.
+- index: 4
+  agent_ids:
+  - 92af31e8-43af-49ce-8c14-58638cfcf4be
+  text: '[Delivery Lead]: Final Delivery'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  - R6
+  - R7
+  - R8
+  - R9
+  - R10
+  - R11
+  - R12
+  depends_on:
+  - 4
+  do: Review the final document for completeness and deliver it to the user.
+  output: 'memo: Final Delivery'
+  done_when: The .docx file is delivered to the user.
+requirements:
+  R1: Compute 7-year TCO per truck for diesel vs battery-electric.
+  R2: Include purchase price in TCO.
+  R3: Include federal and Indiana incentives applicable to a 2026 purchase.
+  R4: Compute fuel/energy cost per mile using Indiana diesel prices and Indiana commercial
+    electricity rates.
+  R5: Include charging infrastructure costs in the TCO.
+  R6: Include maintenance costs in the TCO.
+  R7: Show the TCO table.
+  R8: State every assumption used in the calculation.
+  R9: Cite every figure used with its date.
+  R10: Give a recommendation.
+  R11: Deliver a Word (.docx) memo of at most 2 pages.
+  R12: Analyze the suitability of BEVs for the specific regional route profile (<
+    250 miles/day).
+max_inner_turns: 3
+meta:
+  task_id: probe-h3-ev-trucks
+  draft_rounds: 3
+  consensus: false
+  dependency_relinked: []
+  capability_requests:
+  - name: docx
+    for_role: Document Engineer
+    canonical: docx
+    status: filled
+    reason: ''
+  - name: web_search
+    for_role: Logistics Cost Analyst
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Logistics Cost Analyst
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: python_interpreter
+    for_role: TCO Modeler
+    canonical: code_execution
+    status: unfilled
+    reason: connect_failed
+  - name: python_interpreter
+    for_role: Document Engineer
+    canonical: code_execution
+    status: filled
+    reason: ''
