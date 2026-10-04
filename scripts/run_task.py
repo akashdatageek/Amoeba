@@ -532,7 +532,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="the pool cache (default: cache_dir in amoeba/config/pool.yaml, data/pool)")
     p.add_argument("--local-tools", choices=["on", "off"], default="off",
                    help="Box 3 may also borrow Claude Code's tools (Bash, Read, Write, Edit, Glob, Grep) and skills "
-                        "through `claude mcp serve`, sandboxed in runs/<id>/workspace/ (D59). Needs AMOEBA_SANDBOX=1")
+                        "through `claude mcp serve`, in a fresh OpenShell sandbox per run (D96; isolation process: the D59 server "
+                        "on this host, which needs AMOEBA_SANDBOX=1)")
     p.add_argument("--picks-file", default=None, metavar="FILE",
                    help="D70: one pool pick per task and request, shared by every run that names the same file (the "
                         "three architectures of a benchmark); a recorded pick is reused when it passed vetting again")
@@ -588,7 +589,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             p.error(f"--option-defaults: {k!r} is not one of {sorted(OPTION_FLAGS)}")
         if OPTION_FLAGS[k] not in args.explicit:
             setattr(args, k, int(v) if k in ("check_retry_turns", "max_turns") else v.strip())
-    if args.local_tools == "on":
+    if args.local_tools == "on" and LocalSetup().isolation != "openshell":   # D96: the OpenShell sandbox is the boundary
         try:
             require_sandbox()
         except SandboxRequired as e:
