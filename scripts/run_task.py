@@ -534,6 +534,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="Box 3 may also borrow Claude Code's tools (Bash, Read, Write, Edit, Glob, Grep) and skills "
                         "through `claude mcp serve`, in a fresh OpenShell sandbox per run (D96; isolation process: the D59 server "
                         "on this host, which needs AMOEBA_SANDBOX=1)")
+    p.add_argument("--local-tools-mode", choices=["sandbox", "inprocess"], default="sandbox",
+                   help="D96a: sandbox (default) = a fresh OpenShell sandbox per run; inprocess = the D59 server on "
+                        "this host, only when asked for and only with AMOEBA_SANDBOX=1")
     p.add_argument("--picks-file", default=None, metavar="FILE",
                    help="D70: one pool pick per task and request, shared by every run that names the same file (the "
                         "three architectures of a benchmark); a recorded pick is reused when it passed vetting again")
@@ -589,7 +592,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             p.error(f"--option-defaults: {k!r} is not one of {sorted(OPTION_FLAGS)}")
         if OPTION_FLAGS[k] not in args.explicit:
             setattr(args, k, int(v) if k in ("check_retry_turns", "max_turns") else v.strip())
-    if args.local_tools == "on" and LocalSetup().isolation != "openshell":   # D96: the OpenShell sandbox is the boundary
+    if args.local_tools == "on" and LocalSetup(mode=args.local_tools_mode).isolation != "openshell":   # D96a
         try:
             require_sandbox()
         except SandboxRequired as e:
@@ -610,8 +613,8 @@ def main(argv: list[str] | None = None) -> int:
         tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
     saved = load_saved_drafts(args.drafts_from) if args.drafts_from else None
     pool = PoolSetup(cache_dir=args.pool_dir) if args.pool else None   # D56
-    local = LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir) \
-        if args.local_tools == "on" else None                            # D59
+    local = LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir,
+                       mode=args.local_tools_mode) if args.local_tools == "on" else None   # D59, D96a
     _, pool, local = disable_tools(disabled, tools, pool, local)        # D80
     results = []
     for task in tasks:

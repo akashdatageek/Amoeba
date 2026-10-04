@@ -425,7 +425,9 @@ chain (`python -m scripts.verify_evidence --branch evidence`). What has not been
 
 With local tools on, each run gets a fresh NVIDIA OpenShell sandbox: the tool server and every command an agent runs
 execute there, with no network, nothing writable but the sandbox's own workspace, skills and hooks read-only and no
-secrets; it is deleted at the end of the run. Set up once per machine:
+secrets; it is deleted at the end of the run. It is the default with `--local-tools on`; the older in-process server
+runs only with `--local-tools-mode inprocess` (and AMOEBA_SANDBOX=1). One command may take up to 300 s. Set up once
+per machine:
 
     dockerd &                                                       # if Docker is not running
     CA_BUNDLE=<proxy CA, if any> amoeba/config/sandbox/build.sh     # the sandbox image

@@ -75,6 +75,7 @@ class LocalSetup:
     command: list[str] | None = None                  # default: config["command"] (claude mcp serve)
     pool_dir: str | Path = "data/pool"
     env: Any = field(default_factory=lambda: os.environ)
+    mode: str | None = None                           # D96a: "sandbox" | "inprocess" (--local-tools-mode); None: config
 
     @property
     def limits(self) -> dict:
@@ -84,13 +85,17 @@ class LocalSetup:
     def isolation(self) -> str:
         """D96: "openshell" = the server and its commands run in a fresh OpenShell sandbox per run; "process" = the
         D59 server process on this host (AMOEBA_SANDBOX=1 required)."""
+        if self.mode == "inprocess":                  # D96a: only when asked for explicitly
+            return "process"
+        if self.mode == "sandbox":
+            return "openshell"
         return sandbox_config(self.config)["isolation"]
 
     def without(self, names) -> "LocalSetup":
         """D80 --disable-tools: a copy whose allowed tools leave out `local:<Name>` for each name given."""
         drop = {n.removeprefix("local:") for n in names or () if n.startswith("local:")}
         cfg = {**self.config, "allowed_tools": [t for t in self.config["allowed_tools"] if t not in drop]}
-        return LocalSetup(config=cfg, command=self.command, pool_dir=self.pool_dir, env=self.env)
+        return LocalSetup(config=cfg, command=self.command, pool_dir=self.pool_dir, env=self.env, mode=self.mode)
 
 
 # box: localtools

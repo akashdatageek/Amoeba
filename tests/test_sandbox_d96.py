@@ -124,6 +124,18 @@ def test_d_skills_and_mcp_configs_cannot_be_edited(run):
 
 
 @live
+def test_d96a_the_agent_cannot_reach_the_gateway_api(run):
+    """The gateway accepts unauthenticated local calls: the workload must not reach it (network=none)."""
+    box = run["box"]
+    for host in ("127.0.0.1", "host.openshell.internal", "172.17.0.1"):   # loopback, the alias, the bridge
+        cmd = (f"python3 -c \"s=__import__('socket').socket(); s.settimeout(3); "
+               f"s.connect(('{host}', 17680)); print('REACHED')\"")
+        out = box.call("Bash", cmd)
+        assert not out.startswith("refused") and "REACHED" not in out, (host, out)   # ran, and failed in the sandbox
+        assert "error" in out.split("\n")[0] and ("Errno" in out or "denied" in out.lower() or "timed out" in out)
+
+
+@live
 def test_e_a_primes_task_still_works_and_everything_reaches_events(run):
     box, root, run_dir = run["box"], run["root"], run["run_dir"]
     code = ("cat > primes.py <<'EOF'\nn = 10000\nsieve = [True] * (n + 1)\nsieve[0] = sieve[1] = False\n"
@@ -143,3 +155,25 @@ def test_e_a_primes_task_still_works_and_everything_reaches_events(run):
     run_finished(ev, root, run_dir)
     row = [r for r in ev.rows() if r["event"] == "tool_decisions"][-1]
     assert row["data"]["refused"] >= 6 and verify(root)["ok"]
+
+
+def test_d96a_the_sandbox_is_the_default_and_inprocess_must_be_asked_for(monkeypatch):
+    from scripts.run_task import parse_args
+    cfg = load_local_config()
+    cfg["sandbox"]["isolation"] = "process"                     # even a config saying process: the flag decides
+    assert LocalSetup(config=cfg, mode="sandbox").isolation == "openshell"
+    assert LocalSetup(config=cfg, mode="inprocess").isolation == "process"
+    assert LocalSetup(mode="sandbox").without(["local:Bash"]).mode == "sandbox"
+    monkeypatch.delenv("AMOEBA_SANDBOX", raising=False)
+    assert parse_args(["t", "--local-tools", "on"]).local_tools_mode == "sandbox"
+    with pytest.raises(SystemExit):
+        parse_args(["t", "--local-tools", "on", "--local-tools-mode", "inprocess"])
+    with pytest.raises(Exception):
+        LocalToolbox(LocalSetup(config=cfg, mode="inprocess", env={}), Path("/tmp/x-d96a"), TraceWriter(None))
+
+
+def test_d96a_limits():
+    cfg = load_local_config()
+    assert cfg["limits"]["timeout_s"] == 300
+    s = cfg["sandbox"]
+    assert (s["cpu"], s["memory"], s["run_timeout_s"]) == ("1", "1Gi", 3600)

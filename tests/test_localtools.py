@@ -181,12 +181,13 @@ def test_without_amoeba_sandbox_it_refuses(skills, tmp_path, monkeypatch):
     monkeypatch.delenv("AMOEBA_SANDBOX", raising=False)
     # D96: with isolation openshell (the config's default) the OpenShell sandbox is the boundary, no env needed
     assert parse_args(["a task", "--local-tools", "on"]).local_tools == "on"
-    import scripts.run_task as rt
-    monkeypatch.setattr(rt, "LocalSetup", lambda: lsetup(skills, env={}))       # isolation process (the D59 server)
+    # D96a: the in-process server runs only when asked for, and only with AMOEBA_SANDBOX=1
     with pytest.raises(SystemExit):
-        parse_args(["a task", "--local-tools", "on"])
+        parse_args(["a task", "--local-tools", "on", "--local-tools-mode", "inprocess"])
     monkeypatch.setenv("AMOEBA_SANDBOX", "1")
-    assert parse_args(["a task", "--local-tools", "on"]).local_tools == "on"
+    assert parse_args(["a task", "--local-tools", "on", "--local-tools-mode", "inprocess"]).local_tools_mode == \
+        "inprocess"
+    assert parse_args(["a task", "--local-tools", "on"]).local_tools_mode == "sandbox"
     assert parse_args(["a task"]).local_tools == "off"                # off by default
 
 
