@@ -80,6 +80,29 @@ def manifest(target: Path, root: Path, write: bool = True) -> dict:
     return {"path": rel, "files": len(entries), "sha256": digest}
 
 
+import threading as _threading
+
+_APPEND_LOCK = _threading.RLock()              # the runner's worker threads append too (one harness process)
+
+
+# box: evidence
+def tool_decisions(run_dir: Path) -> list[dict]:
+    """D96: every allow / deny decision of a run's local tools — gate.py's (local_call allowed, local_refused,
+    local_tool_refused, skill_refused) and the sandbox's (created, its own log lines, deleted) — from its trace."""
+    keep = {"local_call", "local_refused", "local_tool_refused", "skill_refused", "sandbox_created", "sandbox_log",
+            "sandbox_deleted", "sandbox_delete_failed", "local_unavailable"}
+    out = []
+    for f in sorted(Path(run_dir).glob("trace*.jsonl")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if r.get("name") in keep:
+                out.append({k: v for k, v in r.items() if k not in ("episode_id", "kind")})
+    return out
+
+
 # box: evidence
 class EvidenceLog:
     """<root>/events.jsonl: append-only, hash-chained. A row with a `key` already in the log is not written twice
@@ -99,6 +122,10 @@ class EvidenceLog:
         return any(r.get("key") == key for r in self.rows())
 
     def append(self, event: str, data: dict, refers_to: list | tuple = (), key: str | None = None) -> dict | None:
+        with _APPEND_LOCK:
+            return self._append(event, data, refers_to, key)
+
+    def _append(self, event: str, data: dict, refers_to, key) -> dict | None:
         if key is not None and self.has(key):
             return None
         lines = self.lines()
@@ -475,3 +502,21 @@ def verify_branch(repo: Path, branch: str = "evidence", stream: str | None = Non
                 return {"ok": False, "commits": len(commits), "heads": heads,
                         "first_break": {"stream": s, "where": f"{ref} head copy", **res["first_break"]}}
     return {"ok": True, "commits": len(commits), "heads": heads, "streams": streams, "first_break": None}
+
+
+# box: evidence
+def run_finished(ev: EvidenceLog, root: Path, run_dir: Path, shipper=None) -> None:
+    """D95/D96: when a run finishes: its local-tool decisions (gate.py and the sandbox) go into events.jsonl, and the
+    run is key-scanned and queued for the evidence branch."""
+    run_dir = Path(run_dir)
+    found = [d for f in sorted(run_dir.glob("*/")) for d in tool_decisions(f)] + tool_decisions(run_dir)
+    if found:
+        try:
+            rel = run_dir.resolve().relative_to(Path(root).resolve()).as_posix()
+        except ValueError:
+            rel = str(run_dir)
+        ev.append("tool_decisions", {"run": rel, "decisions": found,
+                                     "refused": sum(d.get("name") == "local_refused" for d in found)},
+                  key=f"tool_decisions:{rel}")
+    if shipper is not None:
+        shipper.queue_run(run_dir)

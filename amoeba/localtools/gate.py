@@ -87,3 +87,35 @@ def screen_command(command: str, workspace: Path) -> tuple[str, str] | None:
 def in_workspace(command: str, workspace: Path) -> str:
     """The command as it is sent: always started from the workspace (the server's shell keeps its last cwd)."""
     return f"cd {shlex.quote(str(workspace.resolve()))} && {command}"
+
+
+# ---- D96: protected configs and read-only roots ------------------------------------------------------------------------
+PROTECTED_PARTS = {".claude", ".mcp.json", "CLAUDE.md", "skills", "managed-settings.json", ".git"}
+PROTECTED_COMMAND = re.compile(r"\.claude\b|\.mcp\.json|managed-settings|claude-code/|CLAUDE\.md"
+                               r"|>>?\s*[^\s|;&]*\bskills/"
+                               r"|\b(cp|mv|rm|tee|sed\s+-i|chmod|chown|ln|touch|truncate|install)\b[^|;&]*\bskills/", re.I)
+
+
+# box: localtools
+def protected_path(p: Path, workspace: Path) -> bool:
+    """D96: a write to an MCP config, a hook or settings file, CLAUDE.md, a skill folder or .git is refused."""
+    try:
+        rel = p.resolve().relative_to(workspace.resolve())
+    except ValueError:
+        return True
+    return any(part in PROTECTED_PARTS for part in rel.parts)
+
+
+# box: localtools
+def protected_command(command: str) -> tuple[str, str] | None:
+    """D96: a Bash command that names Claude Code's settings, MCP configs or hooks, or writes into a skill folder."""
+    m = PROTECTED_COMMAND.search(command or "")
+    return ("protected_config", m.group(0).strip()[:80]) if m else None
+
+
+# box: localtools
+def readonly_root(path: str, cfg: dict) -> bool:
+    """D96: a path under a read-only root the sandbox exposes (the baked-in skills, /opt/skills)."""
+    p = Path(path)
+    return p.is_absolute() and ".." not in p.parts and any(
+        str(p) == r or str(p).startswith(r.rstrip("/") + "/") for r in cfg.get("readable_roots", ["/opt/skills"]))

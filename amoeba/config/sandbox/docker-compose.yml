@@ -1,0 +1,18 @@
+# D96: the OpenShell gateway for agents' local tools (docker compose -f amoeba/config/sandbox/docker-compose.yml up -d)
+services:
+  gateway:
+    image: ghcr.io/nvidia/openshell/gateway:latest
+    restart: unless-stopped
+    user: "0"
+    ports:
+      - "127.0.0.1:17680:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/openshell:/var/lib/openshell
+      - ./gateway.toml:/etc/openshell/gateway.toml:ro
+    environment:
+      OPENSHELL_GATEWAY_CONFIG: /etc/openshell/gateway.toml
+      OPENSHELL_DB_URL: "sqlite:/var/lib/openshell/gateway.db?mode=rwc"
+      OPENSHELL_LOCAL_TLS_DIR: /var/lib/openshell/tls
+      XDG_DATA_HOME: /var/lib/openshell
+      HOME: /var/lib/openshell

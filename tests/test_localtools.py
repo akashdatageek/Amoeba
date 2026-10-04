@@ -45,6 +45,7 @@ def skills(tmp_path):
 def lsetup(root: Path, env=SANDBOX, command=FAKE, **limits) -> LocalSetup:
     cfg = copy.deepcopy(load_local_config())                          # D60: skill_roots [] — the clone only
     cfg["limits"].update(limits)
+    cfg["sandbox"]["isolation"] = "process"            # D96: the fake server runs on the host in these tests
     return LocalSetup(config=cfg, command=command, pool_dir=root / "pool", env=env)
 
 

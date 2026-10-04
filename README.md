@@ -421,6 +421,18 @@ same layout as `eval/loop/<stream>/`); each commit message carries the chain hea
 chain (`python -m scripts.verify_evidence --branch evidence`). What has not been shipped yet is listed in
 `loop_state.json`. Agents never get git or cloud credentials, and their local tools cannot reach the log.
 
+## Agent tools in a sandbox (D96)
+
+With local tools on, each run gets a fresh NVIDIA OpenShell sandbox: the tool server and every command an agent runs
+execute there, with no network, nothing writable but the sandbox's own workspace, skills and hooks read-only and no
+secrets; it is deleted at the end of the run. Set up once per machine:
+
+    dockerd &                                                       # if Docker is not running
+    CA_BUNDLE=<proxy CA, if any> amoeba/config/sandbox/build.sh     # the sandbox image
+    docker compose -p amoeba-sandbox -f amoeba/config/sandbox/docker-compose.yml up -d   # the gateway
+    # the gateway's signing keys, once: docker run --rm --user 0 -v /var/lib/openshell:/var/lib/openshell \
+    #   ghcr.io/nvidia/openshell/gateway:latest generate-certs --output-dir /var/lib/openshell/tls
+
 ## Cost controls (D45–D48)
 
 ```bash

@@ -527,6 +527,7 @@ the report too.
 | D94 | Rubric content checks: a required section passes only with a task-specific entity in its body; new tasks get 5–6 rubric items | `amoeba/task/models.py`, `amoeba/task/evaluate.py` | B |
 | D95 | Evidence log: append-only hash-chained `events.jsonl` written by the harness with run-folder manifests, `scripts/verify_evidence.py`, key-scanned ship queue to a versioned, retention-locked bucket (uploader after the bucket set-up), no cloud credentials for agents | `amoeba/adapt/evidence.py`, `scripts/verify_evidence.py`, `amoeba/adapt/loop.py` | B |
 | D95a | Evidence shipped to the repository's orphan `evidence` branch: key-scanned runs and new event rows, batched commits (≤ 1 per 10 min) carrying the chain head, fast-forward pushes with retry, `verify_evidence --branch`; GCS uploader kept, disabled | `amoeba/adapt/evidence.py`, `scripts/verify_evidence.py`, `scripts/run_loop.py`, `scripts/run_experiment.py` | B |
+| D96 | Out-of-process sandbox for agent tools: a fresh NVIDIA OpenShell sandbox per run (no network, only the sandbox workspace writable, skills and hooks read-only, no secrets, limits), every decision logged into events.jsonl | `amoeba/localtools/sandbox.py`, `amoeba/localtools/toolbox.py`, `amoeba/localtools/gate.py`, `amoeba/config/sandbox/` | B |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit

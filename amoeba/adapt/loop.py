@@ -38,7 +38,7 @@ from amoeba.adapt.recipe import apply_edit
 from amoeba.adapt.stream import Stream, StreamTask
 from amoeba.interp.trace import TraceWriter
 from amoeba.memory.recipes import RecipeStore
-from amoeba.adapt.evidence import EvidenceLog, GitShipper, Shipper, experiment_refs, make_shipper
+from amoeba.adapt.evidence import EvidenceLog, GitShipper, Shipper, experiment_refs, make_shipper, run_finished
 
 
 # box: loop
@@ -132,7 +132,7 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
     shipper = None if shipper == "none" else shipper
     shipper = shipper or Shipper(root, upload, secrets, prefix=f"{stream.name}/", pending=loop.unshipped)
     if hasattr(runner, "on_done"):              # each finished run is key-scanned and queued as it finishes
-        runner.on_done = lambda rec: rec.run_dir and shipper.queue_run(Path(rec.run_dir))
+        runner.on_done = lambda rec: rec.run_dir and run_finished(ev, root, Path(rec.run_dir), shipper)
     for fam in stream.families():
         store.ensure_seed(fam)
         loop.families.setdefault(fam, FamilyState(family=fam))
@@ -152,7 +152,7 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
             done[t.order] = pr
             ev.append("practice_run", pr.model_dump(), [rec.run_dir] if rec.run_dir else [], key=f"practice:{t.order}")
             if rec.run_dir:
-                shipper.queue_run(Path(rec.run_dir))
+                run_finished(ev, root, Path(rec.run_dir), shipper)
             log(f"[practice] #{t.order} {t.id} v{v} score={pr.score} failed={pr.failed_items} error={pr.error}")
         if todo:
             ship()

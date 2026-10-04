@@ -28,7 +28,9 @@ import yaml
 from amoeba.config.schema import AgentSpec
 from amoeba.interp.shorten import shorten
 from amoeba.tools.web import note_seen
-from amoeba.localtools.gate import in_workspace, inside, require_sandbox, screen_command
+from amoeba.localtools.gate import (in_workspace, inside, protected_command, protected_path, readonly_root,
+                                    require_sandbox, screen_command)
+from amoeba.localtools.sandbox import SANDBOX_WORKSPACE, OpenShellBox, sandbox_config
 from amoeba.localtools.office import office_check
 from amoeba.localtools.server import StdioServer
 from amoeba.localtools.skills import card_text, copy_skill, list_skills
@@ -55,6 +57,7 @@ TOOL_TEXT = {
     "Grep": ("search the contents of files in the workspace", "ActionInput: {\"pattern\": \"...\", \"path\": \".\"}."),
 }
 PATH_ARG = {"Read": "file_path", "Write": "file_path", "Edit": "file_path", "Glob": "path", "Grep": "path"}
+READ_TOOLS = {"Read", "Glob", "Grep"}
 PLAIN_ARG = {"Bash": "command", "Read": "file_path", "Glob": "pattern", "Grep": "pattern"}
 
 
@@ -76,6 +79,12 @@ class LocalSetup:
     @property
     def limits(self) -> dict:
         return self.config["limits"]
+
+    @property
+    def isolation(self) -> str:
+        """D96: "openshell" = the server and its commands run in a fresh OpenShell sandbox per run; "process" = the
+        D59 server process on this host (AMOEBA_SANDBOX=1 required)."""
+        return sandbox_config(self.config)["isolation"]
 
     def without(self, names) -> "LocalSetup":
         """D80 --disable-tools: a copy whose allowed tools leave out `local:<Name>` for each name given."""
@@ -103,8 +112,10 @@ class LocalToolbox:
     workspace into the run folder, closes the server and returns what goes into result.json."""
 
     def __init__(self, setup: LocalSetup, run_dir: str | Path, trace):
-        require_sandbox(setup.env)
+        if setup.isolation != "openshell":            # D96: the OpenShell sandbox is the boundary there
+            require_sandbox(setup.env)
         self.setup, self.trace = setup, trace
+        self.box = None                               # D96: the run's OpenShell sandbox (isolation openshell)
         self.lim = setup.limits
         self.run_dir = Path(run_dir)
         self.workspace = self.run_dir / "workspace"
@@ -136,9 +147,18 @@ class LocalToolbox:
     def start(self) -> None:
         cmd = self.setup.command or list(self.setup.config["command"])
         self.home.mkdir(parents=True, exist_ok=True)
-        self.server = StdioServer(cmd, self.workspace.resolve(), self.server_env(),
-                                  errlog=self.run_dir / "localtools.stderr.log")
+        env = self.server_env()
         try:
+            if self.setup.isolation == "openshell":   # D96: a fresh sandbox; the server runs inside it
+                scfg = sandbox_config(self.setup.config)
+                self.box = OpenShellBox(scfg, str(self.run_dir.resolve()), record=lambda e, d: self.trace.event(
+                    e, {"amoeba.box": "localtools", **d}))
+                self.box.create()
+                cmd = [sys.executable, "-m", "amoeba.localtools.sandbox", "bridge", self.box.name,
+                       "--endpoint", scfg["endpoint"], "--", *cmd]
+                env = {"PATH": env["PATH"], "LANG": "C.UTF-8"}   # the relay needs nothing else
+            self.server = StdioServer(cmd, self.workspace.resolve(), env,
+                                      errlog=self.run_dir / "localtools.stderr.log")
             self.listing = self.server.start()
         except Exception as e:                        # no CLI, no start: the run goes on without local tools
             self.error = f"{type(e).__name__}: {e}"[:300]
@@ -236,8 +256,18 @@ class LocalToolbox:
         body = card_text(entry, int(self.lim["max_skill_chars"]))
         if body is None:
             return False
-        dest = copy_skill(entry, self.workspace)
-        self._seen = self._snapshot()                 # the copied skill is input, not a file the team made
+        boxed = self.setup.isolation == "openshell"
+        if boxed:                                     # D96: skills are baked into the image, read-only
+            rel = Path(entry["path"]).resolve().relative_to(Path(entry["root"]).resolve()) \
+                if Path(entry["path"]).resolve().is_relative_to(Path(entry["root"]).resolve()) else None
+            if rel is None or "anthropics_skills" not in str(entry["root"]):
+                self.trace.event("skill_refused", {"amoeba.box": "localtools", "amoeba.skill": entry["id"],
+                                                   "amoeba.reason": "not in the sandbox image"})
+                return False
+            dest = Path("/opt/skills") / rel
+        else:
+            dest = copy_skill(entry, self.workspace)
+            self._seen = self._snapshot()             # the copied skill is input, not a file the team made
         note = ""
         if entry["name"] == "xlsx":                   # D71: can formulas be recalculated here? checked once per run
             if self.office is None:
@@ -251,7 +281,9 @@ class LocalToolbox:
         a.pool.append({"kind": "skill", "id": entry["id"], "name": entry["name"], "source": "local", "request": request,
                        "text": f"Skill: {entry['name']} (local, from {entry['root']})\n"
                                f"{data_block('skill ' + entry['name'], body)}\n"
-                               f"Full skill files are in skills/{entry['name']}/; read them with local:Read if needed."
+                               + (f"Full skill files are in {dest}/ (read-only); read them with local:Read if needed."
+                                  if boxed else
+                                  f"Full skill files are in skills/{entry['name']}/; read them with local:Read if needed.")
                                + note})
         for n in ("Read", "Bash", "Write", "Edit"):  # a skill is used by reading and running its files
             if n in self.exposed:
@@ -259,7 +291,7 @@ class LocalToolbox:
         rec = next((s for s in self.skills_attached if s["id"] == entry["id"]), None)
         if rec is None:
             rec = {"id": entry["id"], "name": entry["name"], "root": entry["root"],
-                   "path": str(dest.relative_to(self.run_dir)), "helpers": []}
+                   "path": f"sandbox:{dest}" if boxed else str(dest.relative_to(self.run_dir)), "helpers": []}
             self.skills_attached.append(rec)
         rec["helpers"].append(a.name)
         return True
@@ -320,20 +352,38 @@ class LocalToolbox:
         if bad is not None:
             return self.refuse(tool, "bad_input", bad, what)
         timeout_s = float(self.lim["timeout_s"])
+        boxed = self.box is not None
+        if boxed and self.box.expired():               # D96: the run's time limit
+            return self.refuse(tool, "run_time_cap", f"{self.box.cfg['run_timeout_s']} s per run", what)
+        ws = str(self.workspace.resolve())
         if tool == "Bash":
-            why = screen_command(str(args.get("command", "")), self.workspace)
+            command = str(args.get("command", ""))
+            screened = command.replace(SANDBOX_WORKSPACE, ws) if boxed else command
+            why = protected_command(command) or screen_command(screened, self.workspace)
             if why:
                 return self.refuse(tool, *why, what=what)
-            args = {"command": in_workspace(args["command"], self.workspace), "timeout": int(timeout_s * 1000)}
+            run_in = Path(SANDBOX_WORKSPACE) if boxed else self.workspace
+            args = {"command": in_workspace(command, run_in) if boxed else in_workspace(command, self.workspace),
+                    "timeout": int(timeout_s * 1000)}
         if tool in PATH_ARG:
             key = PATH_ARG[tool]
             if key in args or key == "file_path":
-                p = inside(str(args.get(key, "")), self.workspace)
-                if p is None:
-                    return self.refuse(tool, "outside_workspace", "", what)
-                args[key] = str(p)
+                raw = str(args.get(key, ""))
+                if boxed and raw.startswith(SANDBOX_WORKSPACE):
+                    raw = ws + raw[len(SANDBOX_WORKSPACE):]
+                if boxed and tool in READ_TOOLS and readonly_root(raw, sandbox_config(self.setup.config)):
+                    pass                              # D96: a baked-in skill file, read-only in the sandbox
+                else:
+                    p = inside(raw, self.workspace)
+                    if p is None:
+                        return self.refuse(tool, "outside_workspace", "", what)
+                    if tool not in READ_TOOLS and protected_path(p, self.workspace):
+                        return self.refuse(tool, "protected_config", "MCP configs, skills and hooks are read-only",
+                                           what)
+                    raw = str(p)
+                args[key] = (SANDBOX_WORKSPACE + raw[len(ws):]) if boxed and raw.startswith(ws) else raw
             else:
-                args[key] = str(self.workspace.resolve())
+                args[key] = SANDBOX_WORKSPACE if boxed else ws
         self.calls += 1
         self.step_calls += 1
         t0 = time.perf_counter()
@@ -344,6 +394,11 @@ class LocalToolbox:
             out, is_error, timed_out = f"timed out after {timeout_s:.0f} s", True, True
         except Exception as e:                        # a broken call is an error line, never a crash
             out, is_error, timed_out = f"{type(e).__name__}: {e}"[:300], True, False
+        if boxed:                                     # D96: the files the team made, copied out of the sandbox
+            try:
+                self.box.pull(self.workspace)
+            except Exception as e:
+                self.trace.event("sandbox_pull_failed", {"amoeba.box": "localtools", "amoeba.error": str(e)[:200]})
         new = self._scan()
         cap = int(self.lim["max_output_chars"])
         cut = shorten(out, cap)                       # D64: head, result lines and the last lines of output kept
@@ -397,9 +452,18 @@ class LocalToolbox:
 
     def finish(self) -> dict:
         """Copy the workspace to runs/<id>/artifacts/files/ (skills/ left out), close the server, and report."""
+        if self.box is not None:                      # D96: last copy, the sandbox's own decisions, then delete it
+            try:
+                self.box.pull(self.workspace)
+            except Exception:
+                pass
         self._scan()
         if self.server is not None:
             self.server.close()
+        if self.box is not None:
+            self.trace.event("sandbox_log", {"amoeba.box": "localtools", "amoeba.sandbox": self.box.name,
+                                             "amoeba.decisions": self.box.logs()})
+            self.box.delete()
         dest = self.run_dir / "artifacts" / "files"
         for rel in self._snapshot():
             (dest / rel).parent.mkdir(parents=True, exist_ok=True)

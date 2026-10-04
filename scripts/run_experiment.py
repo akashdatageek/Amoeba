@@ -27,7 +27,7 @@ from pathlib import Path
 import yaml
 
 from amoeba.adapt.evidence import (EvidenceLog, experiment_refs, make_shipper, refuse_cloud_vars, run_env,
-                                   secret_values)
+                                   run_finished, secret_values)
 from amoeba.adapt.experimenter import SubprocessRunner, calibrate, experiment, experiment_flags
 from amoeba.adapt.gate import Hypothesis, decide, decision_row, noise_floor, noise_floor_tasks, task_spread
 from amoeba.adapt.ledger import Ledger
@@ -265,7 +265,8 @@ def main(argv=None) -> int:
     if not args.no_ship:                     # D95: each finished run is key-scanned and shipped (batched) as it ends
         st = load_ship_state(root)
         shipper = make_shipper(root, stream.name, secret_values(env), st.get("unshipped"), st.get("ship_state"))
-        runner.on_done = lambda rec: rec.run_dir and (shipper.queue_run(Path(rec.run_dir)), ship(root, shipper))
+        runner.on_done = lambda rec: rec.run_dir and (run_finished(EvidenceLog(root), root, Path(rec.run_dir), shipper),
+                                                      ship(root, shipper))
     if args.calibrate_only:
         print(json.dumps(ensure_calibration(stream, args.family, runner, root, store, repeats)))
     else:
