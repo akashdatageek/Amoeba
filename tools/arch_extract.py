@@ -150,7 +150,8 @@ BOXES: list[dict] = [
                "A job with a rubric and no known answer gets the fraction of rubric items it passes: each deliverable "
                "and constraint found by pattern, each number found with its unit within a tolerance (10 TB and "
                "9.1 TiB are the same amount), and nothing it must not do (such as a price with no source nearby).",
-               "No AI judges the answer in Phase 1; a hook can store a judge's view beside the score, never in it."],
+               "No AI judges the answer in Phase 1; a hook can store a judge's view beside the score, never in it.",
+               "D94: a rubric item can also check content, not just a heading: it passes only when the section its pattern finds has a body that names one of the item's entities (section_entity; \"**Assumptions:** no resale value\" counts, an empty Assumptions heading does not)."],
          proposes="The answer text (from the team).", disposes="Plain code decides match or no match.",
          anchors=["amoeba/task/evaluate.py::normalise", "amoeba/task/evaluate.py::score",
                   "amoeba/task/evaluate.py::rubric_score", "amoeba/task/evaluate.py::number_found",
@@ -182,7 +183,7 @@ BOXES: list[dict] = [
          anchors=[("amoeba/task/draft.py::draft_team", None, "# state 1"),
                   "amoeba/task/parsers.py::parse_open_questions", "scripts/run_task.py::ask_user",
                   "amoeba/task/draft.py::toolbox_text"]),
-    dict(id="interpret", view="plan", title="Task interpretation (D77)", kind="llm", plan=None, ai="interpreter",
+    dict(id="interpret", view="plan", title="Task interpretation and family (D77, D101)", kind="llm", plan=None, ai="interpreter",
          sentence="Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a "
                   "clear winner, asks the user one question, or makes the answer state its assumption.",
          what=["One call reads the task (and the read-only user context from --context: location, organisation, role) "
@@ -388,7 +389,8 @@ BOXES: list[dict] = [
                "With --equal-tools on (D62) the writer holds every tool the team was given and may call them first "
                "(Action / ActionInput lines, at most 5 calls); reviewers may call their own tools the same way.",
                "D70: a reply that is only a tool request is no answer: the writer is asked once more for its "
-               "answer, and a run whose last answer is still a tool request ends with error 'no_answer'."],
+               "answer, and a run whose last answer is still a tool request ends with error 'no_answer'.",
+               "D102: a tool the run's niche profile does not allow is refused before it runs (refused: <tool>) and logged as niche_refused; general allows every tool."],
          proposes="The answer text (and, with D62, tool calls).",
          disposes="Plain code decides when it is asked again and takes its last answer as the result.",
          prompts=["agentverse_solver_prepend", "agentverse_solver_append"],
@@ -683,7 +685,8 @@ BOXES: list[dict] = [
                "and reply length. Every log line names the profile, and each AI line the exact model the service "
                "returned.",
                "Temperature is set once for the connection, not per helper.",
-               "Every call from every box goes through here, wrapped so it is logged."],
+               "Every call from every box goes through here, wrapped so it is logged.",
+               "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
@@ -847,7 +850,7 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes, chains and verifies the log.",
          anchors=[]),
-    dict(id="router", view="adapt", title="Model router (D97)", kind="code", plan=None,
+    dict(id="router", view="adapt", title="Model router (D97–D98)", kind="code", plan=None,
          sentence="Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters "
                   "that are never relaxed, then the recipe's or the role's preference or the cheapest of the right size.",
          what=["Every call states its role, step, size, needed features and data class; the router keeps the models "
