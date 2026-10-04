@@ -39,7 +39,7 @@ PROVENANCE = {"cause:checks": "observed", "cause:max_turns": "observed", "cause:
               "verdict_fail": "declared", "rework": "declared"}
 
 
-# box: diagnoser
+# box: diag_signals
 def provenance_of(key: str) -> str:
     return PROVENANCE.get(key) or PROVENANCE.get(key.split(":")[0], "declared")
 
@@ -62,7 +62,7 @@ class Diagnosis(BaseModel):
     provenance: dict[str, str] = Field(default_factory=dict)         # D93: counts key -> observed | declared
 
 
-# box: diagnoser
+# box: diag_signals
 def _load(p: Path) -> dict:
     try:
         return json.loads(p.read_text(encoding="utf-8"))
@@ -70,17 +70,17 @@ def _load(p: Path) -> dict:
         return {}
 
 
-# box: diagnoser
+# box: diag_signals
 def _steps(run_dir: Path) -> list[dict]:
     return [s for f in sorted((run_dir / "artifacts").glob("step_*.json")) if (s := _load(f))]
 
 
-# box: diagnoser
+# box: diag_signals
 def _plan(run_dir: Path) -> dict:
     return _load(run_dir / "plan.json")
 
 
-# box: diagnoser
+# box: diag_signals
 def run_signals(run_dir: str | Path, failed_items: list[str]) -> dict:
     """What one run shows, by cause and provenance (D93): {"by_cause": observed {cause: [evidence lines]},
     "declared": declared {cause: [lines]}, "counts": raw counts}."""
@@ -130,7 +130,7 @@ def run_signals(run_dir: str | Path, failed_items: list[str]) -> dict:
     return {"by_cause": obs, "declared": dec, "counts": counts, "tools": tools, "steps_by_n": by_step}
 
 
-# box: diagnoser
+# box: diag_edits
 def _allowed(cause: str) -> list[str]:
     """The cause's edits from the table; prefer_model only when model edits are on (D98)."""
     edits = list(adapt_config()["diagnoser"]["allowed_edits"].get(cause, []))
@@ -139,7 +139,7 @@ def _allowed(cause: str) -> list[str]:
     return edits
 
 
-# box: diagnoser
+# box: diagnoser, ov_m5
 def diagnose(alarm: Alarm, records: list[PracticeRecord], stream: Stream) -> Diagnosis:
     """Box 5: count the window's run records, name the cause that rose most, and say which edits may answer it."""
     c = adapt_config()["diagnoser"]
@@ -237,7 +237,7 @@ def examples(window: list[PracticeRecord], sigs: list[dict], cause: str, stream:
     return out
 
 
-# box: diagnoser
+# box: diag_edits
 def diagnose_none(alarm: Alarm) -> Diagnosis:
     """--diagnoser none: the alarm only, every edit allowed (the untargeted baseline of the ablation)."""
     ops = [e for e in EDIT_OPS if e != "prefer_model" or adapt_config()["recipe"].get("allow_model_edits")]

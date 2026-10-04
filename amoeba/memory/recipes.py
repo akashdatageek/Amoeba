@@ -28,7 +28,7 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-# box: memory
+# box: memory, ov_m9
 class RecipeStore:
     def __init__(self, root: str | Path):
         self.root = Path(root)

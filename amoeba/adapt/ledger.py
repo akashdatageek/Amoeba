@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-# box: gate
+# box: ledger
 class Ledger:
     def __init__(self, path: str | Path):
         self.path = Path(path)

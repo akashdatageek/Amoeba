@@ -44,7 +44,7 @@ CALIBRATION_SEED_OFFSET = 1000          # arm A′ of the noise-floor calibratio
 ROOT = Path(__file__).resolve().parents[2]
 
 
-# box: experimenter
+# box: exp_runners
 @dataclass
 class Job:
     """One run of Boxes 1–3 on one held-out task."""
@@ -60,7 +60,7 @@ class Job:
     disabled_tools: list[str] = field(default_factory=list)
 
 
-# box: experimenter
+# box: exp_runners
 class RunRecord(BaseModel):
     arm: str
     task_id: str
@@ -131,7 +131,7 @@ class ReplayResult(BaseModel):
 
 
 # ---- what a run left behind ---------------------------------------------------------------------------------------
-# box: experimenter
+# box: exp_score
 def honesty_parts(run_dir: str | Path) -> dict:
     """D84b: the honesty signals of one run, by kind (counts), and whether it ended in an error."""
     d = Path(run_dir)
@@ -151,14 +151,14 @@ def honesty_parts(run_dir: str | Path) -> dict:
     return out
 
 
-# box: experimenter
+# box: exp_score
 def flagged(parts: dict) -> bool:
     """D84b (Gate v2 rule 5): a run is flagged when it has at least one honesty signal; an error is not one."""
     return any(parts.get(k, 0) for k in ("hallucinated_citations", "mislabelled_citations", "claimed_files_missing",
                                          "unverified_checks"))
 
 
-# box: experimenter
+# box: exp_score
 def honesty_flags(run_dir: str | Path) -> float:
     """Gate v1: hallucinated citations + Σ mislabelled citations + Σ claimed files missing + unverified checks + 1 if
     error (kept for v1 rows and as information)."""
@@ -168,7 +168,7 @@ def honesty_flags(run_dir: str | Path) -> float:
 DRAFT_AGENTS = {"planner", "agent_observer", "plan_observer", "interpreter"}
 
 
-# box: experimenter
+# box: exp_score
 def draft_tokens(run_dir: str | Path) -> int:
     """Tokens a run spent in Box 2 (interpretation, Planner, both Observers), from its trace."""
     t = Path(run_dir) / "trace.jsonl"
@@ -182,7 +182,7 @@ def draft_tokens(run_dir: str | Path) -> int:
     return n
 
 
-# box: experimenter
+# box: exp_score
 def refusals(r: dict) -> int:
     """Sandbox refusals (local tools) and side-effect refusals (pool vetting) in one run."""
     n = sum((r.get("local_refusals") or {}).values())
@@ -190,7 +190,7 @@ def refusals(r: dict) -> int:
     return int(n)
 
 
-# box: experimenter
+# box: exp_score
 def score_of(result: dict, task: StreamTask) -> float | None:
     """The run's score by the current D30 scorer, from its saved answer (a scorer fix applies to every run alike,
     including runs scored before it)."""
@@ -200,7 +200,7 @@ def score_of(result: dict, task: StreamTask) -> float | None:
     return rubric_score(result.get("answer"), task.rubric)["score"]
 
 
-# box: experimenter
+# box: exp_runners
 def record_of(job: Job, run_dir: Path | None, error: str | None = None) -> RunRecord:
     if run_dir is None or not (run_dir / "result.json").exists():
         return RunRecord(arm=job.arm, task_id=job.task.id, k=job.k, seed=job.seed, error=error or "runner: no result")
@@ -211,7 +211,7 @@ def record_of(job: Job, run_dir: Path | None, error: str | None = None) -> RunRe
                      refusals=refusals(r), error=r.get("error"), flags=honesty_parts(run_dir))
 
 
-# box: experimenter
+# box: exp_runners
 def finished_run(out: Path) -> Path | None:
     """D73 resume: the newest run folder under `out` that has a result.json and did not crash."""
     runs = sorted((p for p in out.glob("*/result.json")), key=lambda p: p.stat().st_mtime) if out.exists() else []
@@ -223,7 +223,7 @@ def finished_run(out: Path) -> Path | None:
 
 
 # ---- runners --------------------------------------------------------------------------------------------------------
-# box: experimenter
+# box: exp_runners
 class InProcessRunner:
     """Runs each job with run_one in this process, one after another (the mock-LLM tests). llm_for(job) gives the
     client; tools() a fresh Box 3 registry."""
@@ -256,7 +256,7 @@ class InProcessRunner:
         return out
 
 
-# box: experimenter
+# box: exp_runners
 class SubprocessRunner:
     """Runs each job as `python -m scripts.run_task` (the bench runners' pattern), `parallel` at once; a run whose
     folder already holds a finished result is not run again (D73 resume), and a crash that is not the team's doing
@@ -312,7 +312,7 @@ class SubprocessRunner:
 
 
 # ---- the arm-A cache -------------------------------------------------------------------------------------------------
-# box: experimenter
+# box: exp_cache
 class ArmACache:
     """Arm A (and A′) runs per recipe version: <root>/armA/<recipe hash>/<task>.k<k>.s<seed>/<run_id>/, and an index
     <root>/armA/<recipe hash>/index.jsonl of their records."""
@@ -341,19 +341,19 @@ class ArmACache:
 
 
 # ---- the experiment --------------------------------------------------------------------------------------------------
-# box: experimenter
+# box: exp_runners
 def _slug(s: str) -> str:
     return "".join(c if c.isalnum() or c in "-_." else "-" for c in s)[:80]
 
 
-# box: experimenter
+# box: exp_cache
 def heldout_disabled(stream: Stream, task: StreamTask) -> list[str]:
     """A remove_tool shift is in effect for the family's held-out post tasks."""
     return [s.tool for s in stream.shifts if s.family == task.family and s.kind == "remove_tool"
             and task.phase == "post"]
 
 
-# box: experimenter
+# box: exp_cache
 def _arm_a(stream: Stream, recipe_A: Recipe, root: Path, tasks: list[StreamTask], repeats: int, runner,
            seed_offset: int = 0, arm: str = "A") -> tuple[dict, int]:
     """Arm A (or A′) records per (task, k), from the cache or run now (one batch)."""
@@ -401,7 +401,7 @@ def _rel(p: str) -> str:
         return p
 
 
-# box: experimenter
+# box: experimenter, ov_m7
 def experiment(recipe_A: Recipe, edit: Edit, hypothesis_id: str, stream: Stream, runner, root: str | Path,
                repeats: int = 3, created_by: str = "human", slices: tuple[str, ...] = ("post", "pre")) -> ReplayResult:
     """Box 7: recipe A against recipe A + edit on the family's held-out tasks. Writes
@@ -440,7 +440,7 @@ def replay(recipe_A: Recipe, recipe_B: Recipe, hypothesis_id: str, stream: Strea
     return res
 
 
-# box: experimenter
+# box: exp_calib
 def calibrate(recipe_A: Recipe, stream: Stream, runner, root: str | Path, repeats: int = 3) -> ReplayResult:
     """§9.1 runs: recipe A against itself (A vs A′, A′ with seeds k + 1000) on the family's held-out post slice.
     Both arms land in the arm-A cache; arm A (seeds 0..repeats-1) is what later hypotheses reuse."""
@@ -466,7 +466,7 @@ def write_result(folder: Path, res: ReplayResult) -> None:
     (folder / "experiment.json").write_text(rel.model_dump_json(indent=2, exclude={"pairs"}), encoding="utf-8")
 
 
-# box: experimenter
+# box: exp_runners
 def experiment_flags() -> list[str]:
     """The run_task flags every experiment run gets (amoeba/config/adapt.yaml experiment.run_flags)."""
     return [str(x) for x in adapt_config().get("experiment", {}).get("run_flags", [])]

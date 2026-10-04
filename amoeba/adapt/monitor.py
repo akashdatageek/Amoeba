@@ -26,7 +26,7 @@ from amoeba.adapt.stream import StreamTask, feedback
 D61_CAUSES = ("capability", "checks", "max_turns", "unused_tool", "claimed_file_missing")
 
 
-# box: monitor
+# box: mon_records
 class PracticeRecord(BaseModel):
     """What the loop keeps from one practice run (the only rubric information is the failed item names)."""
 
@@ -45,7 +45,7 @@ class PracticeRecord(BaseModel):
         return set(self.causes) | {f"feedback:{i}" for i in self.failed_items}
 
 
-# box: monitor
+# box: mon_records
 def practice_record(task: StreamTask, run_dir: str | Path, recipe_version: int = 1) -> PracticeRecord:
     """Read one practice run's folder: score, failed item names (feedback channel), D61 causes, error."""
     d = Path(run_dir)
@@ -65,7 +65,7 @@ def practice_record(task: StreamTask, run_dir: str | Path, recipe_version: int =
                           recipe_version=recipe_version, error=r.get("error"))
 
 
-# box: monitor
+# box: mon_records
 class LoopState(BaseModel):
     """Per family: where the reference starts (after the last accepted change) and the quiet period."""
 
@@ -93,7 +93,7 @@ def _rate(recs: list[PracticeRecord], sig: str) -> float:
     return sum(sig in r.signals() for r in recs) / len(recs)
 
 
-# box: monitor
+# box: monitor, ov_m4
 def monitor(records: list[PracticeRecord], state: LoopState) -> Alarm | None:
     """Box 4 after the family's latest practice run. A score alarm wins over a cause alarm (both are reported)."""
     c = adapt_config()["monitor"]

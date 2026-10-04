@@ -36,7 +36,7 @@ def cfg() -> dict:
 
 
 # ---- statistics (no scipy) ------------------------------------------------------------------------------------------
-# box: gate
+# box: gate_stats
 def noise_floor(cal: ReplayResult | list[float]) -> float:
     """2 × std(d_AA) / √n over the calibration's post pairs (A′ − A)."""
     d = [p.d for p in cal.post()] if isinstance(cal, ReplayResult) else list(cal)
@@ -45,7 +45,7 @@ def noise_floor(cal: ReplayResult | list[float]) -> float:
     return round(2 * stdev(d) / math.sqrt(len(d)), 4)
 
 
-# box: gate
+# box: gate_stats
 def _ranks(xs: list[float]) -> list[float]:
     """Average ranks (1-based) of xs, ties sharing the mean rank."""
     order = sorted(range(len(xs)), key=lambda i: xs[i])
@@ -61,7 +61,7 @@ def _ranks(xs: list[float]) -> list[float]:
     return r
 
 
-# box: gate
+# box: gate_stats
 def wilcoxon_greater(d: list[float]) -> float:
     """One-sided Wilcoxon signed-rank p-value for H1: the median of d is > 0 (zeros dropped; exact, ties by mean
     rank: the null distribution of W+ over the 2^n sign assignments, by dynamic programming on doubled ranks)."""
@@ -80,7 +80,7 @@ def wilcoxon_greater(d: list[float]) -> float:
     return sum(c for s, c in dist.items() if s >= w) / 2 ** n
 
 
-# box: gate
+# box: gate_stats
 def _betacf(a: float, b: float, x: float) -> float:
     qab, qap, qam = a + b, a + 1, a - 1
     c, dd = 1.0, 1 - qab * x / qap
@@ -104,7 +104,7 @@ def _betacf(a: float, b: float, x: float) -> float:
     return h
 
 
-# box: gate
+# box: gate_stats
 def _betainc(a: float, b: float, x: float) -> float:
     """Regularised incomplete beta I_x(a, b)."""
     if x <= 0:
@@ -117,7 +117,7 @@ def _betainc(a: float, b: float, x: float) -> float:
     return 1 - math.exp(lb) * _betacf(b, a, 1 - x) / b
 
 
-# box: gate
+# box: gate_stats
 def ttest_greater(d: list[float]) -> float:
     """One-sided paired t-test p-value for H1: mean(d) > 0."""
     n = len(d)
@@ -131,7 +131,7 @@ def ttest_greater(d: list[float]) -> float:
     return tail if t > 0 else 1 - tail
 
 
-# box: gate
+# box: gate_stats
 def paired_p(d: list[float]) -> tuple[float, str]:
     """§9.2.2: a t-test when every d is distinct and n ≥ ttest_min_n, otherwise the Wilcoxon signed-rank test."""
     if len(d) >= cfg()["ttest_min_n"] and len(set(d)) == len(d):
@@ -139,7 +139,7 @@ def paired_p(d: list[float]) -> tuple[float, str]:
     return wilcoxon_greater(d), "wilcoxon"
 
 
-# box: gate
+# box: gate_stats
 def task_means(pairs: list) -> dict[str, float]:
     """D91: d_t = mean over the repeats of score_B − mean over the repeats of score_A, per task (task order kept)."""
     by: dict[str, list] = {}
@@ -148,7 +148,7 @@ def task_means(pairs: list) -> dict[str, float]:
     return {k: round(mean(x.score_B for x in v) - mean(x.score_A for x in v), 6) for k, v in by.items()}
 
 
-# box: gate
+# box: gate_stats
 def permutation_greater(d: list[float], exact_max: int | None = None, n_random: int | None = None,
                         seed: int | None = None) -> float:
     """D91: one-sided paired permutation (sign-flip) test of H1: mean(d) > 0. p = share of the 2^n sign assignments
@@ -175,7 +175,7 @@ def permutation_greater(d: list[float], exact_max: int | None = None, n_random: 
     return hits / n_random
 
 
-# box: gate
+# box: gate_stats
 def noise_floor_tasks(cal: ReplayResult) -> float:
     """D91: 2 × std(per-task mean d_AA) / √n_tasks over the calibration's post (gate-set) pairs."""
     d = list(task_means(cal.post()).values())
@@ -184,7 +184,7 @@ def noise_floor_tasks(cal: ReplayResult) -> float:
     return round(2 * stdev(d) / math.sqrt(len(d)), 4)
 
 
-# box: gate
+# box: gate_stats
 def task_spread(cal: ReplayResult) -> dict[str, dict]:
     """D91: each gate task's scores across seeds in the calibration (A and A′) and their standard deviation."""
     out: dict[str, dict] = {}
@@ -262,7 +262,7 @@ def _sign(x: float) -> int:
     return (x > 0) - (x < 0)
 
 
-# box: gate
+# box: gate, ov_m8
 def decide(recipe_A: Recipe, recipe_B: Recipe, h: Hypothesis, res: ReplayResult, noise: float, N: int,
            heldout: list, envelope=None, sample_draft=None, version: str | None = None,
            hypothesis_index: int | None = None, alpha: float | None = None) -> Decision:
@@ -334,7 +334,7 @@ def decide(recipe_A: Recipe, recipe_B: Recipe, h: Hypothesis, res: ReplayResult,
                     honesty_counts_B=_counts(post, "B"))
 
 
-# box: gate
+# box: gate_rules
 def _rules_1_4_5(recipe_B: Recipe, h: Hypothesis, res: ReplayResult, md: float, heldout: list, envelope,
                  sample_draft, reasons: list[str]) -> dict:
     """Rules 1, 4, 5 (v2, per run) and 5b, shared by v3."""
@@ -404,7 +404,7 @@ def _decide_v3(recipe_B: Recipe, h: Hypothesis, res: ReplayResult, noise: float,
                     task_d=td, hypothesis_index=hypothesis_index, alpha=a, prediction=pred, **rest)
 
 
-# box: gate
+# box: gate_rules
 def honesty_shares(post: list) -> tuple:
     """v2: (flagged share A, flagged share B, error rate A, error rate B) over the post pairs; None without pairs."""
     if not post:
@@ -419,7 +419,7 @@ def honesty_shares(post: list) -> tuple:
     return share("A"), share("B"), errs("A"), errs("B")
 
 
-# box: gate
+# box: gate_rules
 def _counts(post: list, arm: str) -> dict:
     out: dict = {}
     for p in post:
@@ -438,7 +438,7 @@ def decision_row(h: Hypothesis, recipe_A: Recipe, recipe_B: Recipe, dec: Decisio
             "decision": dec.decision, "reasons": dec.reasons, "runs": runs, "post_hoc": post_hoc}
 
 
-# box: gate
+# box: gate_rollback
 def rollback_watch(after_accept: list[float], alarm_window_mean: float, noise: float, window: int | None = None) -> str:
     """§9.3: over the first `window` practice scores after an accept — "reverted" if their mean is below the mean of
     the window that raised the alarm minus the noise floor, "kept" otherwise; "watching" until there are enough."""
@@ -448,7 +448,7 @@ def rollback_watch(after_accept: list[float], alarm_window_mean: float, noise: f
     return "reverted" if mean(after_accept[:window]) < alarm_window_mean - noise else "kept"
 
 
-# box: retention
+# box: prune
 def decide_prune(res, noise: float) -> dict:
     """D100: the Gate on a prune (arm A = the recipe, arm B = it without one line, on the gate set). Accept when
     removing the line does not lower the score beyond noise AND lowers cost (USD when both arms have prices, else

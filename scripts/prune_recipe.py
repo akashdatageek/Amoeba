@@ -24,7 +24,7 @@ from scripts.run_experiment import (cfg_gate_version, ensure_calibration, load_e
 ROOT = Path(__file__).resolve().parents[1]
 
 
-# box: retention
+# box: prune
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--stream", required=True)

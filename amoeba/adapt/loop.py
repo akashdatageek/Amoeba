@@ -110,7 +110,7 @@ def practice_jobs(tasks: list[StreamTask], stream: Stream, store: RecipeStore, r
     return jobs
 
 
-# box: loop
+# box: loop, ov_around
 def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], object], repeats: int = 3,
              parallel_until: int = 0, diagnoser: str = "tier0", envelope=None, calibrate: Callable | None = None,
              log: Callable[[str], None] = print, secrets: list[str] = (), upload: Callable | None = None,

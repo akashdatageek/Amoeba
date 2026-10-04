@@ -69,7 +69,7 @@ def retention_alarm(row: dict, order: int) -> Alarm:
                  at_order=order, signals=["retention"], inputs={k: v for k, v in row.items() if k != "alarm"})
 
 
-# box: retention
+# box: prune
 def remove_line(recipe: Recipe, key: str, hypothesis_id: str | None = None) -> Recipe:
     """Pure: the recipe without one line (by its provenance key), version + 1."""
     r = recipe.model_copy(deep=True)
@@ -90,7 +90,7 @@ def remove_line(recipe: Recipe, key: str, hypothesis_id: str | None = None) -> R
                                 "created_by": "prune", "hypothesis_id": hypothesis_id})
 
 
-# box: retention
+# box: prune
 def prune_family(stream, family: str, store, ledger, runner, root: str | Path, repeats: int, noise: float,
                  ev=None, log=print, gate_version: str = "v3") -> list[dict]:
     """Each line of the family's current recipe, removed one at a time; a prune the Gate accepts is committed
