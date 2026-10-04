@@ -82,6 +82,7 @@ def standards_slots(ctx: Mapping | None) -> dict[str, str]:
     return {who: f"{STANDARDS_HEAD}{body}\n{tail}" for who, tail in STANDARDS_TAIL.items()}
 
 
+# box: memory
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 

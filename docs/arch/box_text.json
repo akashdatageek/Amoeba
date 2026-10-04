@@ -1008,7 +1008,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "1398f7a",
+  "checked_at": "cca1861",
   "facts": {
    "anchors": [
     {
@@ -1096,6 +1096,7 @@
     {
      "callees": [
       "amoeba/adapt/diagnoser.py::provenance_of",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::InProcessRunner.run",
       "amoeba/adapt/experimenter.py::SubprocessRunner.run",
       "amoeba/adapt/recipe.py::Recipe.hash",
@@ -1111,6 +1112,7 @@
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.spans",
       "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::api_error",
       "amoeba/llm/client.py::describe_api_error",
       "amoeba/llm/limits.py::estimate",
@@ -1119,7 +1121,10 @@
       "amoeba/localtools/server.py::StdioServer.close",
       "amoeba/localtools/toolbox.py::LocalToolbox",
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
+      "amoeba/memory/context.py::standards_slots",
+      "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/pool/stock.py::stock_toolbox",
       "amoeba/task/draft.py::draft_team",
       "amoeba/task/draft.py::toolbox_text",
@@ -1169,7 +1174,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "73746a924e7ddeb0",
+  "facts_hash": "96645f14d189f927",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -5405,7 +5410,7 @@
   ]
  },
  "interpret": {
-  "checked_at": "1398f7a",
+  "checked_at": "cca1861",
   "facts": {
    "anchors": [
     {
@@ -5475,6 +5480,7 @@
      "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/context.py::approved_standards",
       "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -5483,10 +5489,40 @@
      "signature": "load_context(path: str | Path | None) -> Mapping[str, str]"
     },
     {
-     "callees": [],
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D99: the standards that count — the user's own plain lines and entries carrying `approved:`; a proposal",
+     "key": "amoeba/memory/context.py::approved_standards",
+     "signature": "approved_standards(entries) -> tuple[str, ...]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
      "doc": "",
      "key": "amoeba/memory/context.py::context_text",
-     "signature": "context_text(ctx: Mapping[str, str]) -> str"
+     "signature": "context_text(ctx: Mapping) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D99: Box 2's text for the approved standards, per reader (appended to the {lessons} slot); {} without any,",
+     "key": "amoeba/memory/context.py::standards_slots",
+     "signature": "standards_slots(ctx: Mapping | None) -> dict[str, str]"
     },
     {
      "callees": [
@@ -5561,6 +5597,16 @@
     ],
     [
      "correct",
+     "if isinstance(e, dict) and e.get('approved') and str(e.get('text') or '').strip()",
+     "add str(e['text']).strip()"
+    ],
+    [
+     "correct",
+     "if isinstance(e, str) and e.strip()",
+     "add e.strip()"
+    ],
+    [
+     "correct",
      "if isinstance(r, dict) and str(r.get('reading', '')).strip()",
      "add {'reading': str(r['reading']).strip(), 'why': str(r.get('why', '')).strip(), 'confidence': round(conf, 3)}"
     ],
@@ -5608,6 +5654,11 @@
      "decide",
      "if reply.isdigit() and 1 <= int(reply) <= len(options) - 1",
      "set chosen = options[int(reply) - 1]"
+    ],
+    [
+     "decide",
+     "if stds",
+     "set out['standards'] = stds"
     ],
     [
      "fallback",
@@ -5738,6 +5789,11 @@
      "stop",
      "if not rows",
      "return None"
+    ],
+    [
+     "stop",
+     "if not stds",
+     "return {}"
     ]
    ],
    "kind": "llm",
@@ -5753,13 +5809,13 @@
    },
    "title": "Task interpretation (D77)"
   },
-  "facts_hash": "a192ea0cdc3f74ec",
+  "facts_hash": "b1a50474e5d04d2b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4d5f47795f6babb8",
   "sentence": "Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a clear winner, asks the user one question, or makes the answer state its assumption.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
-   "One call reads the task (and the read-only user context from --context: location, organisation, role) and lists the key entities and terms that could be read more than one way — names, abbreviations, acronyms, likely voice-input errors such as \"P and W\" for \"PNW\" — each reading with a one-line reason and a confidence.",
+   "One call reads the task and the user context (including any approved standards) and lists the key entities and terms that could be read more than one way — names, abbreviations, acronyms, likely voice-input errors — each reading with a one-line reason and a confidence.",
    "Plain code: a reading whose confidence beats the next by {DOMINANCE_GAP} or more (DOMINANCE_GAP) (or the only one) is the working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question (the readings + other); without it the top reading is an assumption.",
    "The working interpretation is added to the task text, so the Planner, both checkers and every helper in all three runners read it; an open question the Planner writes about one of these names is answered from it, not by its guess.",
    "After the run, when the reading was assumed, plain code makes the answer open with \"I read X as Y; if you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing."
@@ -6616,7 +6672,7 @@
   ]
  },
  "loop": {
-  "checked_at": "1398f7a",
+  "checked_at": "cca1861",
   "facts": {
    "anchors": [
     {
@@ -6712,6 +6768,7 @@
       "amoeba/interp/trace.py::TraceWriter.close",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/server.py::StdioServer.close",
+      "amoeba/memory/context.py::_now",
       "amoeba/memory/recipes.py::RecipeStore.commit",
       "amoeba/memory/recipes.py::RecipeStore.current_or_seed",
       "amoeba/memory/recipes.py::RecipeStore.get",
@@ -6746,6 +6803,7 @@
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/adapt/loop.py::_now",
       "amoeba/adapt/loop.py::loop_gate_version",
+      "amoeba/memory/context.py::_now",
       "amoeba/memory/recipes.py::RecipeStore.revert",
       "amoeba/memory/recipes.py::_now",
       "scripts/run_audit.py::AuditLog.append",
@@ -6833,6 +6891,8 @@
       "amoeba/interp/plan_runner.py::PlanRunner.run",
       "amoeba/interp/runtime.py::Interpreter.run",
       "amoeba/llm/router.py::ModelRouter.load",
+      "amoeba/memory/context.py::_now",
+      "amoeba/memory/context.py::propose_standards",
       "amoeba/memory/recipes.py::RecipeStore",
       "amoeba/memory/recipes.py::RecipeStore.current_or_seed",
       "amoeba/memory/recipes.py::RecipeStore.ensure_seed",
@@ -7151,7 +7211,7 @@
    "prompts": {},
    "title": "Loop driver (D89)"
   },
-  "facts_hash": "e3fb5bdf3e7c5e82",
+  "facts_hash": "24256055c3d1905e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8e2e699426ec6515",
   "sentence": "Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
@@ -7163,9 +7223,54 @@
   ]
  },
  "memory": {
-  "checked_at": "ecf0733",
+  "checked_at": "cca1861",
   "facts": {
    "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/memory/context.py::_now",
+     "signature": "_now() -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::_now",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/context.py::_now",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/memory/recipes.py::_now",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D99: the user's approval (scripts/approve_memory.py): the proposal's line (or the user's rewording) is added",
+     "key": "amoeba/memory/context.py::approve_standard",
+     "signature": "approve_standard(context_file: str | Path, proposal: dict, text: str | None=None, ev=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/diagnoser.py::run_signals.add",
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add",
+      "amoeba/adapt/loop.py::_now",
+      "amoeba/memory/context.py::_now",
+      "amoeba/memory/context.py::read_proposals",
+      "amoeba/memory/recipes.py::_now",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D99: the loop's only way toward user memory. A feedback item failed in ≥`runs` practice runs across",
+     "key": "amoeba/memory/context.py::propose_standards",
+     "signature": "propose_standards(records, root: str | Path, ev=None, runs: int=PROPOSE_RUNS, families: int=PROPOSE_FAMILIES) -> list[dict]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/memory/context.py::read_proposals",
+     "signature": "read_proposals(root: str | Path) -> list[dict]"
+    },
     {
      "callees": [],
      "doc": "",
@@ -7200,10 +7305,44 @@
      "doc": "run_task: the family's current recipe from --recipes, else from --recipes-from; None = a Phase 1 run.",
      "key": "amoeba/memory/recipes.py::load_family_recipe",
      "signature": "load_family_recipe(family: str, store: str | Path | None, fallback: str | Path | None=None) -> Recipe | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::Recipe.line_keys",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D99: the accepting Gate row on the lines this hypothesis added; a line from before D99 is marked so.",
+     "key": "amoeba/memory/recipes.py::stamp_provenance",
+     "signature": "stamp_provenance(recipe: Recipe, decision: dict) -> Recipe"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog",
+      "amoeba/memory/context.py::approve_standard",
+      "amoeba/memory/context.py::read_proposals",
+      "scripts/eval_draft.py::parse_args",
+      "scripts/run_task.py::parse_args"
+     ],
+     "doc": "",
+     "key": "scripts/approve_memory.py::main",
+     "signature": "main(argv=None) -> int"
     }
    ],
    "checks": [],
    "guards": [
+    [
+     "correct",
+     "if ev is not None",
+     "add 'memory_approval'"
+    ],
+    [
+     "correct",
+     "if ev is not None",
+     "add 'memory_proposal'"
+    ],
     [
      "decide",
      "if family not in index",
@@ -7211,8 +7350,23 @@
     ],
     [
      "decide",
+     "if p.get('gate_row') is None and p.get('hypothesis_id') and (p['hypothesis_id'] == decision.get('hypothesis_id'))",
+     "set p['gate_row'] = row"
+    ],
+    [
+     "decide",
      "if root",
      "set r = RecipeStore(root).current(family)"
+    ],
+    [
+     "fallback",
+     "Path(args.root) if args.root else ROOT / 'eval' / 'loop' / args.stream",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[json.loads(l) for l in f.read_text(encoding='utf-8').splitlines() if l.strip()] if f.exists() else []",
+     "choose value"
     ],
     [
      "fallback",
@@ -7227,6 +7381,11 @@
     [
      "fallback",
      "self.get(family, cur) if cur is not None else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "yaml.safe_load(path.read_text(encoding='utf-8')) if path.exists() else None",
      "choose value"
     ],
     [
@@ -7245,6 +7404,16 @@
      "drop the rest"
     ],
     [
+     "filter",
+     "keep only if r['id'] == args.id",
+     "drop the rest"
+    ],
+    [
+     "reject",
+     "if any((isinstance(e, dict) and e.get('proposal') == proposal['id'] for e in stds))",
+     "raise ValueError"
+    ],
+    [
      "reject",
      "if decision.get('event') != 'decision' or decision.get('decision') != 'accept' or decision.get('post_hoc')",
      "raise PermissionError"
@@ -7256,8 +7425,23 @@
     ],
     [
      "reject",
+     "if item in have or len(s['runs']) < runs or len(s['families']) < families",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if not isinstance(data, dict)",
+     "raise ValueError"
+    ],
+    [
+     "reject",
      "if recipe.parent_version != index[recipe.family]['current']",
      "raise ValueError"
+    ],
+    [
+     "stop",
+     "if args.list or not args.id",
+     "return 0"
     ],
     [
      "stop",
@@ -7269,16 +7453,17 @@
    "numbers": [
     "Episode.seed",
     "Recipe.version",
+    "ReplayResult.runs",
     "TeamConfig.version"
    ],
    "prompts": {},
    "title": "9 · Recipe store (D88)"
   },
-  "facts_hash": "3beb780cf083cce9",
+  "facts_hash": "0ca24b345e747a6a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "e98cbf551f1f71ce",
   "sentence": "Keeps every kind of task's recipe versions, which one is current, and a log of every decided change; only the Gate writes it.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "A folder per stream: one YAML file per recipe version of each kind, an index naming the current version with the full history (parent, the hypothesis that made it, when it was accepted or reverted), and an experience log with one line per decided hypothesis.",
    "A run reads the current recipe of its kind with --recipes; --recipes-from is a second, read-only store used when the first has none (a warm start from another stream).",
@@ -7549,12 +7734,13 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "1398f7a",
+  "checked_at": "cca1861",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/diagnoser.py::provenance_of",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::InProcessRunner.run",
       "amoeba/adapt/experimenter.py::SubprocessRunner.run",
       "amoeba/adapt/recipe.py::Recipe.hash",
@@ -7570,6 +7756,7 @@
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.spans",
       "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::api_error",
       "amoeba/llm/client.py::describe_api_error",
       "amoeba/llm/limits.py::estimate",
@@ -7578,7 +7765,10 @@
       "amoeba/localtools/server.py::StdioServer.close",
       "amoeba/localtools/toolbox.py::LocalToolbox",
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
+      "amoeba/memory/context.py::standards_slots",
+      "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/pool/stock.py::stock_toolbox",
       "amoeba/task/draft.py::draft_team",
       "amoeba/task/draft.py::toolbox_text",
@@ -7633,14 +7823,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "2e293c602dfcea74",
+  "facts_hash": "f12fb0fa647c7c71",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves nineteen files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, and the experiment summary.",
+  "sentence": "Every run saves twenty files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, the experiment summary, and the cache state.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, and the experiment summary.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, the experiment summary, and the cache state.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -11232,7 +11422,7 @@
   },
   "facts_hash": "a2ec9ed5e1acf2ee",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "a05bec416b5b4ecf",
+  "rejected_hash": "90235a839d6b677f",
   "seed_hash": "f9eb9803cd472f96",
   "sentence": "Per kind of task, a small piece of data says what to tell the Planner, how code reshapes the drafted plan and which run settings to use; one typed edit makes the next version.",
   "source": "model: kept",
@@ -12020,7 +12210,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "1398f7a",
+  "checked_at": "cca1861",
   "facts": {
    "anchors": [
     {
@@ -12195,6 +12385,7 @@
     {
      "callees": [
       "amoeba/adapt/diagnoser.py::provenance_of",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::InProcessRunner.run",
       "amoeba/adapt/experimenter.py::SubprocessRunner.run",
       "amoeba/adapt/recipe.py::Recipe.hash",
@@ -12210,6 +12401,7 @@
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.spans",
       "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::api_error",
       "amoeba/llm/client.py::describe_api_error",
       "amoeba/llm/limits.py::estimate",
@@ -12218,7 +12410,10 @@
       "amoeba/localtools/server.py::StdioServer.close",
       "amoeba/localtools/toolbox.py::LocalToolbox",
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
+      "amoeba/memory/context.py::standards_slots",
+      "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/pool/stock.py::stock_toolbox",
       "amoeba/task/draft.py::draft_team",
       "amoeba/task/draft.py::toolbox_text",
@@ -12273,11 +12468,11 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "dee3770e7826d503",
+  "facts_hash": "ec34bcf633b3545f",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bef6a71b78aeb520",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, interpretation, and any pool, selection, clarification, recipe, or routing details.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
