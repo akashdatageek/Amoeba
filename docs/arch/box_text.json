@@ -2271,7 +2271,7 @@
   ]
  },
  "diagnoser": {
-  "checked_at": "1398f7a",
+  "checked_at": "450ac2b",
   "facts": {
    "anchors": [
     {
@@ -2288,7 +2288,7 @@
       ],
       [
        "cause",
-       "Literal['capability', 'checks', 'max_turns', 'unused_tool', 'claimed_file_missing', 'feedback', 'honesty', 'alarm_only']"
+       "Literal['capability', 'checks', 'max_turns', 'unused_tool', 'claimed_file_missing', 'feedback', 'honesty', 'alarm_only', 'retention']"
       ],
       [
        "where",
@@ -2473,6 +2473,11 @@
     ],
     [
      "decide",
+     "if alarm.kind == 'retention'",
+     "set i = alarm.inputs"
+    ],
+    [
+     "decide",
      "if cause == 'alarm_only'",
      "set symptom = f'{alarm.kind} alarm at order {alarm.at_order}: {alarm.before:.2f} -> {alarm.aft"
     ],
@@ -2609,13 +2614,13 @@
    "prompts": {},
    "title": "5 · Diagnoser (D86)"
   },
-  "facts_hash": "c25c51597be6ca86",
+  "facts_hash": "729ba02033b21df0",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "9faebe54a7745a22",
   "sentence": "Counts what the runs of the alarm's window recorded and names the cause that rose most, with the edits that may answer it.",
   "source": "model: rewritten",
   "what": [
-   "It reads the window's run folders for step causes, blocked capabilities, unused tools, missing files, unverified checks, citations, failed rubric items, and provenance, while identifying the step kind and tool roles where the cause appears most.",
+   "It reads the window's run folders for step causes, blocked capabilities, unused tools, missing files, unverified checks, citations, failed rubric items, retention issues, and provenance, while identifying the step kind and tool roles where the cause appears most.",
    "The cause is the one whose share of runs rose most from the reference runs to the window — a cause that was always there does not explain an alarm — then the most frequent, then the table order.",
    "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice examples (never held-out tasks) go to the Architect with the evidence lines, excluding model-based edits unless enabled.",
    "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation)."
@@ -3202,7 +3207,7 @@
   ]
  },
  "experimenter": {
-  "checked_at": "1398f7a",
+  "checked_at": "450ac2b",
   "facts": {
    "anchors": [
     {
@@ -3577,31 +3582,26 @@
       "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
+     "doc": "Arm B needs its own draft: the edit changes what Box 1/2 read or which model drafts.",
+     "key": "amoeba/adapt/experimenter.py::changes_draft",
+     "signature": "changes_draft(op: str, params: dict | None=None) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
      "doc": "Tokens a run spent in Box 2 (interpretation, Planner, both Observers), from its trace.",
      "key": "amoeba/adapt/experimenter.py::draft_tokens",
      "signature": "draft_tokens(run_dir: str | Path) -> int"
     },
     {
      "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/experimenter.py::InProcessRunner.run",
-      "amoeba/adapt/experimenter.py::Job",
-      "amoeba/adapt/experimenter.py::ReplayResult",
-      "amoeba/adapt/experimenter.py::SubprocessRunner.run",
-      "amoeba/adapt/experimenter.py::_arm_a",
-      "amoeba/adapt/experimenter.py::_pair",
-      "amoeba/adapt/experimenter.py::_slug",
-      "amoeba/adapt/experimenter.py::heldout_disabled",
-      "amoeba/adapt/experimenter.py::write_result",
-      "amoeba/adapt/ledger.py::Ledger.append",
-      "amoeba/adapt/loop.py::_slug",
-      "amoeba/adapt/recipe.py::Recipe.hash",
-      "amoeba/adapt/recipe.py::apply_edit",
-      "amoeba/adapt/recipe.py::write_store",
-      "amoeba/adapt/stream.py::Stream.heldout",
-      "amoeba/interp/plan_runner.py::PlanRunner.run",
-      "amoeba/interp/runtime.py::Interpreter.run",
-      "scripts/run_audit.py::AuditLog.append"
+      "amoeba/adapt/experimenter.py::changes_draft",
+      "amoeba/adapt/experimenter.py::replay",
+      "amoeba/adapt/recipe.py::apply_edit"
      ],
      "doc": "Box 7: recipe A against recipe A + edit on the family's held-out tasks. Writes",
      "key": "amoeba/adapt/experimenter.py::experiment",
@@ -3692,6 +3692,31 @@
      "doc": "Sandbox refusals (local tools) and side-effect refusals (pool vetting) in one run.",
      "key": "amoeba/adapt/experimenter.py::refusals",
      "signature": "refusals(r: dict) -> int"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::InProcessRunner.run",
+      "amoeba/adapt/experimenter.py::Job",
+      "amoeba/adapt/experimenter.py::ReplayResult",
+      "amoeba/adapt/experimenter.py::SubprocessRunner.run",
+      "amoeba/adapt/experimenter.py::_arm_a",
+      "amoeba/adapt/experimenter.py::_pair",
+      "amoeba/adapt/experimenter.py::_slug",
+      "amoeba/adapt/experimenter.py::heldout_disabled",
+      "amoeba/adapt/experimenter.py::write_result",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::_slug",
+      "amoeba/adapt/recipe.py::Recipe.hash",
+      "amoeba/adapt/recipe.py::write_store",
+      "amoeba/adapt/stream.py::Stream.heldout",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter.run",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "Recipe A against any recipe B on the family's held-out tasks (an edit, or D100's prune: A minus one line).",
+     "key": "amoeba/adapt/experimenter.py::replay",
+     "signature": "replay(recipe_A: Recipe, recipe_B: Recipe, hypothesis_id: str, stream: Stream, runner, root: str | Path, repeats: int, same_draft: bool, edit: dict | None=None, slices: tuple[str, ...]=('post', 'pre')) -> ReplayResult"
     },
     {
      "callees": [
@@ -4072,11 +4097,11 @@
    "prompts": {},
    "title": "7 · Experimenter (D83)"
   },
-  "facts_hash": "c3c57e8c76e2522e",
+  "facts_hash": "e61b76d464f7ac3d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0af422728bb53ada",
   "sentence": "Runs the old recipe against the old recipe plus one edit on the kind's held-out tasks, {experiment.repeats} times each, with the same seed, tools and model, and returns the score and cost pairs, optionally shipping results to a remote store.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "For each held-out task (after-shift tasks first, then before-shift ones for the retention check) and each repeat, arm A drafts afresh with the old recipe and runs it.",
    "For a transform or run-option edit, arm B reuses arm A's saved draft, so the only difference between the arms is the edit; for a planner-rule edit, arm B drafts with its own rules and draft variance is part of the noise.",
@@ -5016,7 +5041,7 @@
   },
   "facts_hash": "471b08c4c8c1a6c9",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "64d9a0d063c80ce4",
+  "rejected_hash": "b16c64ab18bcfa6a",
   "seed_hash": "38d5bf9c1121e7e6",
   "sentence": "Keeps a recipe change only when its gain on held-out tasks beats the measured noise, was predicted, is worth its cost, keeps the team honest and loses nothing on the tasks that already worked.",
   "source": "model: kept",
@@ -6672,7 +6697,7 @@
   ]
  },
  "loop": {
-  "checked_at": "cca1861",
+  "checked_at": "450ac2b",
   "facts": {
    "anchors": [
     {
@@ -6791,6 +6816,28 @@
      "signature": "_now() -> str"
     },
     {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/evidence.py::EvidenceLog.has",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::calibrate",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::_handle",
+      "amoeba/adapt/loop.py::_now",
+      "amoeba/adapt/retention.py::retention_alarm",
+      "amoeba/adapt/retention.py::retention_check",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/context.py::_now",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/memory/recipes.py::_now",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D100: one retention replay (once per family and count; resumable through the evidence key); a drop beyond",
+     "key": "amoeba/adapt/loop.py::_retention",
+     "signature": "_retention(t, st, count, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser, envelope, calibrate, sample_draft, g, log, ev) -> None"
+    },
+    {
      "callees": [],
      "doc": "",
      "key": "amoeba/adapt/loop.py::_slug",
@@ -6865,6 +6912,7 @@
       "amoeba/adapt/evidence.py::Shipper.queue_events",
       "amoeba/adapt/evidence.py::make_shipper",
       "amoeba/adapt/evidence.py::run_finished",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::InProcessRunner.run",
       "amoeba/adapt/experimenter.py::SubprocessRunner.run",
       "amoeba/adapt/experimenter.py::calibrate",
@@ -6878,7 +6926,9 @@
       "amoeba/adapt/loop.py::LoopIO.save",
       "amoeba/adapt/loop.py::_handle",
       "amoeba/adapt/loop.py::_now",
+      "amoeba/adapt/loop.py::_retention",
       "amoeba/adapt/loop.py::_watch",
+      "amoeba/adapt/loop.py::loop_gate_version",
       "amoeba/adapt/loop.py::practice_jobs",
       "amoeba/adapt/loop.py::run_loop.run_practice",
       "amoeba/adapt/loop.py::run_loop.ship",
@@ -6886,22 +6936,28 @@
       "amoeba/adapt/monitor.py::PracticeRecord",
       "amoeba/adapt/monitor.py::monitor",
       "amoeba/adapt/monitor.py::practice_record",
+      "amoeba/adapt/retention.py::prune_family",
+      "amoeba/adapt/retention.py::retention_cfg",
+      "amoeba/adapt/retention.py::retention_due",
       "amoeba/adapt/stream.py::Stream.families",
       "amoeba/adapt/stream.py::Stream.practice",
       "amoeba/interp/plan_runner.py::PlanRunner.run",
       "amoeba/interp/runtime.py::Interpreter.run",
+      "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/router.py::ModelRouter.load",
       "amoeba/memory/context.py::_now",
       "amoeba/memory/context.py::propose_standards",
       "amoeba/memory/recipes.py::RecipeStore",
       "amoeba/memory/recipes.py::RecipeStore.current_or_seed",
       "amoeba/memory/recipes.py::RecipeStore.ensure_seed",
+      "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/memory/recipes.py::_now",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "scripts/run_audit.py::AuditLog.append"
      ],
      "doc": "The loop over the stream's practice tasks. llm_for(hypothesis_id) gives the Architect's client; calibrate(",
      "key": "amoeba/adapt/loop.py::run_loop",
-     "signature": "run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], object], repeats: int=3, parallel_until: int=0, diagnoser: str='tier0', envelope=None, calibrate: Callable | None=None, log: Callable[[str], None]=print, secrets: list[str]=(), upload: Callable | None=None, shipper=None) -> dict"
+     "signature": "run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], object], repeats: int=3, parallel_until: int=0, diagnoser: str='tier0', envelope=None, calibrate: Callable | None=None, log: Callable[[str], None]=print, secrets: list[str]=(), upload: Callable | None=None, shipper=None, retention_every: int | None=None, prune: str | None=None) -> dict"
     },
     {
      "callees": [
@@ -6922,6 +6978,56 @@
      "doc": "summary.json and a plain REPORT.md next to the ledger.",
      "key": "amoeba/adapt/loop.py::write_summary",
      "signature": "write_summary(stream: Stream, root: Path, records: list[PracticeRecord], ledger: Ledger, store: RecipeStore, loop: Loop) -> dict"
+    },
+    {
+     "callees": [
+      "scripts/run_experiment.py::summary.mean"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/retention.py::_mean_score",
+     "signature": "_mean_score(got: dict) -> float"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/monitor.py::Alarm"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/retention.py::retention_alarm",
+     "signature": "retention_alarm(row: dict, order: int) -> Alarm"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/retention.py::retention_cfg",
+     "signature": "retention_cfg() -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/experimenter.py::_arm_a",
+      "amoeba/adapt/recipe.py::Recipe.hash",
+      "amoeba/adapt/retention.py::_mean_score",
+      "amoeba/adapt/stream.py::Stream.heldout",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.current_or_seed",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "One retention replay: the current recipe against the seed (v1) on the pre-shift gate tasks.",
+     "key": "amoeba/adapt/retention.py::retention_check",
+     "signature": "retention_check(stream, family: str, store, runner, root: str | Path, repeats: int, noise: float, count: int) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "The family's practice count when a retention replay is due now (every N-th practice task), else None.",
+     "key": "amoeba/adapt/retention.py::retention_due",
+     "signature": "retention_due(records, family: str, every: int) -> int | None"
     },
     {
      "callees": [
@@ -6970,6 +7076,16 @@
      "add row['event']"
     ],
     [
+     "correct",
+     "if not any((e.get('hypothesis_id') == row['hypothesis_id'] for e in loop.events))",
+     "add {'ts': _now(), 'event': 'prune', 'family': fam, 'line': row.get('line'), 'hypothesis_id': row['hypothesis_id'], 'decision': row['decision']}"
+    ],
+    [
+     "decide",
+     "if alarm.kind != 'retention'",
+     "set st.watch = {'accept_order': t.order, 'alarm_mean': alarm.after, 'noise': cal['noise'], 've"
+    ],
+    [
      "decide",
      "if args.allow_model_edits",
      "set os.environ['AMOEBA_ALLOW_MODEL_EDITS'] = '1'"
@@ -7006,6 +7122,11 @@
     ],
     [
      "decide",
+     "if row['alarm']",
+     "set alarm = retention_alarm(row, t.order)"
+    ],
+    [
+     "decide",
      "if row['decision'] == 'accept'",
      "set accepted = True"
     ],
@@ -7026,7 +7147,17 @@
     ],
     [
      "fallback",
+     "'ALARM' if row['alarm'] else row.get('skipped', 'ok')",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'none' if args.no_ship else 'config'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'r' if alarm.kind == 'retention' else ''",
      "choose value"
     ],
     [
@@ -7066,6 +7197,11 @@
     ],
     [
      "fallback",
+     "n if n and n % every == 0 else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "pa['mean_abs_error'] if pa['mean_abs_error'] is not None else '—'",
      "choose value"
     ],
@@ -7077,6 +7213,16 @@
     [
      "fallback",
      "practice_record(t, rec.run_dir, v) if rec.run_dir else PracticeRecord(order=t.order, task_id=t.id, family=t.family, score=None, error=rec.error, recipe_version=v)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "rc['every'] if retention_every is None else retention_every",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "round(mean((r.score or 0.0 for r in got.values())), 4) if got else 0.0",
      "choose value"
     ],
     [
@@ -7111,6 +7257,16 @@
     ],
     [
      "filter",
+     "keep only if e['event'] == 'retention'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k != 'alarm'",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if k not in ('window', 'reference_orders')",
      "drop the rest"
     ],
@@ -7126,12 +7282,22 @@
     ],
     [
      "filter",
+     "keep only if r.family == family",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if r.family == st.family and r.order > st.watch['accept_order']",
      "drop the rest"
     ],
     [
      "filter",
-     "keep only if r.get('event') == 'decision'",
+     "keep only if r.get('event') == 'decision' and (not r.get('prune'))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.get('event') == 'decision' and r.get('prune')",
      "drop the rest"
     ],
     [
@@ -7176,6 +7342,21 @@
     ],
     [
      "stop",
+     "if cur.version == 1 or cur.hash() == store.get(family, 1).hash()",
+     "return {**row, 'skipped': 'the seed recipe is current', 'alarm': False}"
+    ],
+    [
+     "stop",
+     "if ev.has(key)",
+     "return None"
+    ],
+    [
+     "stop",
+     "if not every",
+     "return None"
+    ],
+    [
+     "stop",
      "if not self.practice_file.exists()",
      "return []"
     ],
@@ -7183,6 +7364,11 @@
      "stop",
      "if not st.watch",
      "return None"
+    ],
+    [
+     "stop",
+     "if not tasks",
+     "return {**row, 'skipped': 'no pre-shift gate tasks', 'alarm': False}"
     ],
     [
      "stop",
@@ -7197,6 +7383,7 @@
    ],
    "kind": "code",
    "numbers": [
+    "Decision.noise",
     "Episode.seed",
     "LoopState.quiet_until",
     "LoopState.reference_from",
@@ -7211,14 +7398,14 @@
    "prompts": {},
    "title": "Loop driver (D89)"
   },
-  "facts_hash": "24256055c3d1905e",
+  "facts_hash": "0e56109cc18d1993",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8e2e699426ec6515",
   "sentence": "Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "Calibrates the noise floor first, then runs every practice task with its kind's current recipe (shifts apply: the later rubrics ask for more, a removed tool is taken out). Tasks before the shift may run in one batch; later ones run one at a time, because each can trigger a change.",
-   "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then up to {MAX_PER_ALARM} Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down, and results are queued for shipping.",
+   "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser or retention replay, then up to {MAX_PER_ALARM} Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down, and results are queued for shipping.",
    "Everything it does is on disk — practice runs, experiments, ledger, recipes, proposals, diagnoses, state — so a crash resumes where it stopped, and it writes summary.json and a plain report."
   ]
  },
@@ -7702,9 +7889,11 @@
   },
   "facts_hash": "0fa3ff11a7531304",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "434c094800f3c795",
   "seed_hash": "f5c981fdbe929488",
   "sentence": "Watches each kind of task's practice scores and raises an alarm when the last few drop below what was normal, or when a cause or a missing rubric item suddenly appears.",
   "source": "model: kept",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "After every practice run it reads the run's score, the names of the rubric items it failed and the step causes recorded by the step contract.",
    "Score alarm: the mean of the last three scores falls below the reference mean minus twice its spread (at least 0.10); the reference is the kind's practice runs since its last accepted change, before the window, and there must be at least four.",
@@ -11422,7 +11611,7 @@
   },
   "facts_hash": "a2ec9ed5e1acf2ee",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "90235a839d6b677f",
+  "rejected_hash": "8e1fea85c90c2ed0",
   "seed_hash": "f9eb9803cd472f96",
   "sentence": "Per kind of task, a small piece of data says what to tell the Planner, how code reshapes the drafted plan and which run settings to use; one typed edit makes the next version.",
   "source": "model: kept",
