@@ -78,7 +78,7 @@ L = {  # id: (x, y, w, h)
     "tools": (30, 400, 420, 80), "client": (30, 530, 205, 128), "toymock": (245, 530, 205, 128),
     "plan_graph": (510, 705, 180, 130), "plan_step": (715, 705, 215, 130), "step_check": (955, 705, 195, 136),
     "artifacts": (510, 855, 180, 128), "provenance": (715, 855, 215, 128), "plan_summary": (955, 855, 195, 128),
-    "toolbox": (30, 700, 205, 140), "localtools": (245, 700, 205, 140), "pool_index": (30, 860, 420, 90),
+    "toolbox": (30, 700, 205, 140), "localtools": (245, 700, 205, 156), "pool_index": (30, 860, 420, 90),
     "action_obs": (715, 1145, 215, 160),
 }
 DECOR = {  # static enclosures, captions and loop arrows (text filled from data where it states a fact)
@@ -325,6 +325,18 @@ def box_svg(b: dict, A: dict, changed: set) -> str:
         sl = wrap(b["sentence"], w - 20, 5.75)
         for i, t in enumerate(sl):
             parts.append(f'<text x="{x + 10}" y="{sy + i * 14}" class="s">{esc(t)}</text>')
+        wy, bottom = sy + len(sl) * 14 + 6, y + h - 24      # the unit's detail lines, as many as fit on its face
+        for item in (src_b.get("what") or []):
+            wl = wrap("• " + item, w - 26, 5.6)
+            room = int((bottom - wy) // 13)
+            if room <= 0:
+                break
+            if len(wl) > room:
+                wl = wl[:room]
+                wl[-1] = wl[-1].rstrip(" ,.;") + " …"
+            for i, t in enumerate(wl):
+                parts.append(f'<text x="{x + 12}" y="{wy + i * 13}" class="s wl">{esc(t)}</text>')
+            wy += len(wl) * 13 + 3
         src = f"{short(src_b['src'])}" if src_b.get("src") and src_b["src"] != "unknown" else "unknown"
         parts.append(f'<text x="{x + 10}" y="{y + h - 9}" class="src">{esc(src)}</text>')
         parts.append(f'<text x="{x + 10}" y="{y + h - 9}" class="cost" id="cost-{esc(b["id"])}"></text>')
@@ -457,7 +469,7 @@ svg{display:block;min-width:900px;width:100%;height:auto;font-family:"IBM Plex S
 rect.big{fill:var(--p1-fill);stroke:var(--p1);stroke-width:3}
 .hit{cursor:pointer}.hit:hover rect.big,.hit:focus-visible rect.big{fill:var(--hover)}
 .t{fill:var(--ink);font-size:14px;font-weight:600}.t2{fill:var(--ink);font-size:12.5px;font-weight:600}
-.s{fill:var(--muted);font-size:11px}.src{fill:var(--muted);font-size:10px;font-family:"IBM Plex Mono",monospace}
+.s{fill:var(--muted);font-size:11px}.s.wl{font-size:10.5px}.src{fill:var(--muted);font-size:10px;font-family:"IBM Plex Mono",monospace}
 .cost{fill:var(--llm-line);font-size:10.5px;font-weight:600;display:none}
 body.costmode .cost{display:inline}body.costmode .boxg.ai .src{display:none}
 .open{fill:var(--p1);font-size:10.5px;font-weight:600;letter-spacing:.05em}
