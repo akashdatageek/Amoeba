@@ -18,13 +18,17 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Callable, Mapping
+
+import yaml
 
 from amoeba.config.prompts import PROMPT, render
 from amoeba.interp.trace import TracedLLM
 from amoeba.memory.context import context_text
 from amoeba.task.parsers import parse_sections
 
+FAMILIES = Path(__file__).resolve().parents[1] / "config" / "families.yaml"
 DOMINANCE_GAP = 0.3          # confidence lead a reading needs over the next to be taken without asking
 MAX_TOKENS = 4096
 OTHER = "other (type what you meant)"
@@ -197,3 +201,51 @@ def enforce_opening(answer: str | None, interp: dict | None) -> tuple[str | None
         answer = f"{answer.rstrip()}\n\n{body}\n" if m else f"{answer.rstrip()}\n\n## Limitations\n{body}\n"
         added["alternatives_added"] = [a for _, a in missing]
     return answer, added
+
+
+# ---- D101: the task family of a free-text task (warm start) ---------------------------------------------------------
+# box: interpret
+def load_families(path: str | Path = FAMILIES) -> dict[str, dict]:
+    return (yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}).get("families") or {}
+
+
+# box: interpret
+def family_by_rule(text: str, families: dict[str, dict]) -> tuple[str | None, list[str]]:
+    """The family whose keywords match the task most often (whole words, case-insensitive); a tie or no match is
+    None. Returns (family, the keywords that matched it)."""
+    hits = {}
+    for name, f in families.items():
+        found = [k for k in f.get("keywords") or [] if re.search(rf"(?<![\w-]){k}(?![\w-])", text, re.I)]
+        if found:
+            hits[name] = found
+    if not hits:
+        return None, []
+    best = max(len(v) for v in hits.values())
+    top = [n for n, v in hits.items() if len(v) == best]
+    return (top[0], hits[top[0]]) if len(top) == 1 else (None, sorted(k for n in top for k in hits[n]))
+
+
+# box: interpret
+def classify_family(task_text: str, llm: TracedLLM | None, families: dict[str, dict] | None = None,
+                    seed: int = 0) -> dict:
+    """Box 1 (D101): {family, how, ...} for a free-text task. Rules first; only if none decides, one routed call
+    (role family_classifier) choosing from the list or "new", validated by code (anything else → "new")."""
+    families = load_families() if families is None else families
+    fam, kws = family_by_rule(task_text, families)
+    if fam:
+        return {"family": fam, "how": "rule", "keywords": kws}
+    if llm is None:
+        return {"family": "new", "how": "no_rule_no_call", "keywords": kws}
+    listing = "\n".join(f"- {n}: {f.get('description', '')}" for n, f in families.items()) + \
+        "\n- new: none of the above fits"
+    raw = llm.chat_messages([{"role": "user", "content": render(PROMPT.family_classify, task=task_text,
+                                                                families=listing)}],
+                            seed=seed, max_tokens=200, agent_name="family_classifier", role="planner").content
+    m = re.search(r"\{[\s\S]*\}", raw or "")
+    try:
+        answer = str(json.loads(m.group(0)).get("family", "")).strip() if m else ""
+    except (json.JSONDecodeError, AttributeError):
+        answer = ""
+    if answer in families or answer == "new":
+        return {"family": answer, "how": "llm", "keywords": kws}
+    return {"family": "new", "how": "llm_invalid", "answer": answer[:80], "keywords": kws}

@@ -25,7 +25,7 @@ from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, desc
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
-from amoeba.task.interpret import ask_one, enforce_opening, opening_line, read_task, with_note
+from amoeba.task.interpret import ask_one, classify_family, enforce_opening, opening_line, read_task, with_note
 from amoeba.memory.context import load_context, standards_slots
 from amoeba.interp.trace import TracedLLM
 from amoeba.task.evaluate import rubric_score, score
@@ -59,7 +59,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             picks_only: bool = False, timezone: str | None = None, interpret: bool = False,
             context=None, disabled_tools=(), recipe: Recipe | None = None,
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
-            default_max_turns: int | None = None) -> RunResult:
+            default_max_turns: int | None = None, family_classify: bool = False,
+            recipe_source: tuple | None = None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -73,7 +74,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     recipe: D82 --recipes — the task family's team recipe (plan runner only; the baselines never get one): its
     planner rules fill the d24 prompts' {lessons} slot, its transforms are applied by code to the final draft, its
     run options overlay plan_options and the helpers' max_turns unless the CLI set them (cli_explicit: the flags
-    given on the command line). With a saved draft only the transforms and run options apply."""
+    given on the command line). With a saved draft only the transforms and run options apply.
+    family_classify: D101 — a free-text task (family "freeform") gets a family from Box 1 (keyword rules, else one
+    routed family_classifier call); a known family then starts from its current recipe in recipe_source
+    ((--recipes, --recipes-from)); "new" starts empty."""
     if recipe is not None and topology != "plan":
         raise ValueError("recipes are for Amoeba's plan runner only; the baselines never get one (D82)")
     run_id = str(uuid4())
@@ -86,6 +90,18 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         llm.begin_run(data_class="sensitive" if "sensitive" in (task.tags or []) else "normal",
                       recipe_prefs=getattr(recipe, "model_prefs", None) if recipe is not None else None)
     t0 = time.perf_counter()
+    family_rec = None
+    if family_classify and topology == "plan" and task.family == "freeform":      # D101: Box 1 names the family
+        family_rec = classify_family(task.prompt, TracedLLM(llm, trace), seed=seed)
+        trace.event("task_family", {"amoeba.box": "interpret", "amoeba.family": family_rec["family"],
+                                    "amoeba.family_how": family_rec["how"]})
+        if family_rec["family"] != "new":
+            task = task.model_copy(update={"family": family_rec["family"]})
+            if recipe is None and recipe_source:
+                recipe = load_family_recipe(task.family, *recipe_source)
+                if recipe is not None and hasattr(llm, "recipe_prefs"):
+                    llm.recipe_prefs = dict(recipe.model_prefs)
+        family_rec["recipe_version"] = recipe.version if recipe is not None else None
     if disabled_tools:
         trace.event("tools_disabled", {"amoeba.box": "stream", "amoeba.tools": list(disabled_tools)})
     lessons = lessons_text(recipe) if saved_draft is None else {}               # D82: Box 2's {lessons} slot
@@ -237,7 +253,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace),
         replan=ep.replan if ep else {},
         interpretation=interpretation_of(interp, stated),
-        pool=pool_summary, disabled_tools=list(disabled_tools) or None, recipe=recipe_rec,
+        pool=pool_summary, disabled_tools=list(disabled_tools) or None, recipe=recipe_rec, family=family_rec,
         routing=llm.summary() if hasattr(llm, "summary") and hasattr(llm, "registry") else None, **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
@@ -606,6 +622,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--timezone", default=None, metavar="IANA",
                    help="D75: the run's time zone for today's date and weekday in every step prompt, e.g. "
                         "America/Chicago (default: the machine's local zone)")
+    p.add_argument("--family-classify", choices=["auto", "on", "off"], default="auto",
+                   help="D101: give a free-text task (family freeform) a task family in Box 1 (keyword rules, else one "
+                        "routed call) so it starts from that family's recipe; auto = on for the plan runner, off for "
+                        "the baselines")
     p.add_argument("--recipes", default=None, metavar="DIR",
                    help="D82: a Phase 2 recipe store (index.json, <family>/v<N>.yaml); the current recipe of the "
                         "task's family is applied — planner rules to Box 2, transforms to the draft, run options to "
@@ -657,6 +677,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return args
 
 
+# box: interpret
+def family_classify_on(flag: str, topology: str) -> bool:
+    """D101: on for Amoeba's plan runner by default; the baselines keep their behaviour unless asked."""
+    return flag == "on" or (flag == "auto" and topology == "plan")
+
+
 # box: free_text
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
@@ -696,7 +722,9 @@ def main(argv: list[str] | None = None) -> int:
                     disabled_tools=disabled, cli_explicit=args.explicit,
                     max_turns=args.max_turns if "--max-turns" in args.explicit else None,
                     default_max_turns=None if "--max-turns" in args.explicit else args.max_turns,
-                    recipe=load_family_recipe(task.family, args.recipes, args.recipes_from))   # D82, D88
+                    recipe=load_family_recipe(task.family, args.recipes, args.recipes_from),   # D82, D88
+                    family_classify=family_classify_on(args.family_classify, args.topology),     # D101
+                    recipe_source=(args.recipes, args.recipes_from))
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

@@ -479,6 +479,14 @@ At the end of a stream (`--prune end`, the default; `off` disables it) and on de
 gate set. A line is dropped when removing it loses no score beyond the noise and saves cost. Each prune is a Gate
 decision in the ledger (`prune: true`) and does not use up the hypothesis quota.
 
+## Task family for new tasks (D101)
+
+A free-text task (one whose source gave no family) is assigned a task family before planning, so it can start from
+that family's recipe. Keyword rules in `amoeba/config/families.yaml` are tried first. Only if none decides does one
+routed model call pick from the family list or "new", and code checks the answer. The family and how it was chosen
+are recorded in result.json (`family`). This is on by default for Amoeba's plan runner and off for the baselines
+(`--family-classify auto|on|off`). A "new" family starts with an empty recipe.
+
 ## Cost controls (D45–D48)
 
 ```bash

@@ -320,4 +320,5 @@ class RunResult(BaseModel):
     # Phase 2 fields, left out of result.json when None (a Phase 1 run's record is unchanged)
     disabled_tools: list[str] | None = None   # D80 --disable-tools: tools taken out of this run
     recipe: dict | None = None   # D82 --recipes: the family's recipe, the transforms applied and the run options
+    family: dict | None = None   # D101: the family assigned to a free-text task and how ({family, how, keywords})
     routing: dict | None = None  # D97: the router's per-model calls, tokens and USD, and its decision counts
