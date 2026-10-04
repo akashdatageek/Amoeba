@@ -210,7 +210,7 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
     return summary
 
 
-# box: loop
+# box: retention
 def _retention(t, st, count, recs, stream, runner, root, store, ledger, loop, llm_for, repeats, diagnoser, envelope,
                calibrate, sample_draft, g, log, ev) -> None:
     """D100: one retention replay (once per family and count; resumable through the evidence key); a drop beyond

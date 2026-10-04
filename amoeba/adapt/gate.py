@@ -448,7 +448,7 @@ def rollback_watch(after_accept: list[float], alarm_window_mean: float, noise: f
     return "reverted" if mean(after_accept[:window]) < alarm_window_mean - noise else "kept"
 
 
-# box: gate
+# box: retention
 def decide_prune(res, noise: float) -> dict:
     """D100: the Gate on a prune (arm A = the recipe, arm B = it without one line, on the gate set). Accept when
     removing the line does not lower the score beyond noise AND lowers cost (USD when both arms have prices, else

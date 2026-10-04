@@ -25,12 +25,12 @@ from amoeba.adapt.monitor import Alarm
 from amoeba.adapt.recipe import Recipe, adapt_config
 
 
-# box: loop
+# box: retention
 def retention_cfg() -> dict:
     return {"every": 12, "prune": "end", **(adapt_config().get("retention") or {})}
 
 
-# box: loop
+# box: retention
 def retention_due(records, family: str, every: int) -> int | None:
     """The family's practice count when a retention replay is due now (every N-th practice task), else None."""
     if not every:
@@ -39,12 +39,12 @@ def retention_due(records, family: str, every: int) -> int | None:
     return n if n and n % every == 0 else None
 
 
-# box: loop
+# box: retention
 def _mean_score(got: dict) -> float:
     return round(mean(r.score or 0.0 for r in got.values()), 4) if got else 0.0
 
 
-# box: loop
+# box: retention
 def retention_check(stream, family: str, store, runner, root: str | Path, repeats: int, noise: float,
                     count: int) -> dict:
     """One retention replay: the current recipe against the seed (v1) on the pre-shift gate tasks."""
@@ -63,13 +63,13 @@ def retention_check(stream, family: str, store, runner, root: str | Path, repeat
     return {**row, "reference_mean": m_ref, "mean": m_now, "drop": drop, "alarm": drop > noise}
 
 
-# box: loop
+# box: retention
 def retention_alarm(row: dict, order: int) -> Alarm:
     return Alarm(family=row["family"], kind="retention", window=[], before=row["reference_mean"], after=row["mean"],
                  at_order=order, signals=["retention"], inputs={k: v for k, v in row.items() if k != "alarm"})
 
 
-# box: gate
+# box: retention
 def remove_line(recipe: Recipe, key: str, hypothesis_id: str | None = None) -> Recipe:
     """Pure: the recipe without one line (by its provenance key), version + 1."""
     r = recipe.model_copy(deep=True)
@@ -90,7 +90,7 @@ def remove_line(recipe: Recipe, key: str, hypothesis_id: str | None = None) -> R
                                 "created_by": "prune", "hypothesis_id": hypothesis_id})
 
 
-# box: gate
+# box: retention
 def prune_family(stream, family: str, store, ledger, runner, root: str | Path, repeats: int, noise: float,
                  ev=None, log=print, gate_version: str = "v3") -> list[dict]:
     """Each line of the family's current recipe, removed one at a time; a prune the Gate accepts is committed

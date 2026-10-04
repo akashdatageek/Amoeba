@@ -18,6 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ARCH = ROOT / "docs" / "arch"
 TITLE = "Amoeba Phase 1 As-Built"
+LITE_TITLE = "Amoeba v1.0 As-Built"      # --lite: docs/arch/asbuilt_lite.html, the page that is published
+LITE_CAP = 2000                          # --lite: longest embedded example, prompt or trace text, in characters
 
 # ------------------------------------------------------------------------------------------------ layout
 VIEWS = {
@@ -30,9 +32,10 @@ VIEWS = {
     "run": {"h": 1320, "label": "3 · Team runs the task", "heading": "INSIDE BOX 3 · TEAM RUNS THE TASK",
             "note": "Three runners, chosen when the run starts: flat and boss + reviewers are the AutoAgents / AgentVerse "
                     "baselines; plan runs the step graph (ours, D31–D36). All write the same log and result record."},
-    "adapt": {"h": 810, "label": "4–9 · Adaptation loop", "heading": "PHASE 2 · THE ADAPTATION LOOP (WEEK 1: MEASURING HALF)",
-              "note": "Only Amoeba's plan runner gets recipes. Nothing here calls an AI: the change is hand-written in "
-                      "week 1, and plain code decides what is kept."},
+    "adapt": {"h": 940, "label": "4–9 · Adaptation loop", "heading": "PHASE 2 · THE ADAPTATION LOOP AND THE v1.0 PARTS AROUND IT",
+              "note": "Only Amoeba's plan runner gets recipes. Inside the loop only the Architect calls an AI; plain code "
+                      "decides what is kept. Below the loop: the evidence log, the model router, niche profiles, user "
+                      "memory and recipe expiry."},
 }
 L = {  # id: (x, y, w, h)
     "ov_task": (30, 60, 250, 150), "ov_plan": (365, 60, 300, 150), "ov_run": (750, 60, 300, 150),
@@ -43,6 +46,8 @@ L = {  # id: (x, y, w, h)
     "evidence": (30, 570, 1130, 90),
     "router": (30, 680, 550, 110),
     "niche": (610, 680, 550, 110),
+    "user_memory": (30, 810, 550, 110),
+    "retention": (610, 810, 550, 110),
     "memory": (900, 250, 260, 150),
     "architect": (610, 250, 260, 150),
     "diagnoser": (320, 250, 260, 150),
@@ -879,8 +884,66 @@ def diff_prev(A: dict) -> tuple[list[str], set]:
     return [head] + (lines or ["no box was added, removed or changed."]), changed
 
 
-def render() -> Path:
+FULL_JSON = "docs/arch/architecture.json (rebuilt by tools/arch_extract.py)"
+
+
+def _cut(s: str, where: str) -> str:
+    """--lite: a text cut to LITE_CAP characters with a note saying where the whole of it lives."""
+    if not isinstance(s, str) or len(s) <= LITE_CAP:
+        return s
+    return s[:LITE_CAP] + f"\n… [shortened for the lite page: {LITE_CAP:,} of {len(s):,} characters shown; full text: {where}]"
+
+
+def _cap(v, where: str):
+    """--lite: one example value at most LITE_CAP characters (a long structure becomes its shortened JSON text)."""
+    if isinstance(v, str):
+        return _cut(v, where)
+    t = json.dumps(v, ensure_ascii=False, indent=1, default=str)
+    return v if len(t) <= LITE_CAP else _cut(t, where)
+
+
+def _walk_cut(o, where: str):
+    if isinstance(o, str):
+        return _cut(o, where)
+    if isinstance(o, list):
+        return [_walk_cut(x, where) for x in o]
+    if isinstance(o, dict):
+        return {k: _walk_cut(v, where) for k, v in o.items()}
+    return o
+
+
+def lite_data(data: dict) -> dict:
+    """--lite: the same views, boxes, cards, badges, arrows, plan-vs-built notes and change-request buttons; embedded
+    examples, prompts and traces at most LITE_CAP characters each, and the per-test call graph (not shown on the
+    page; only its summary is) left out. Each shortened text says where the full text lives in the repository."""
+    d = dict(data)
+    t = d.get("tests") or {}
+    d["tests"] = {"summary": t.get("summary", "unknown"), "n_tests": len(t.get("tests") or {}),
+                  "note": "per-test call graph left out of the lite page; full map in " + FULL_JSON}
+    d["prompts"] = [{**p, "text": _cut(p.get("text", ""), p.get("path") or "amoeba/config/prompts/")} for p in d["prompts"]]
+    ex = {}
+    for box, per in d["__examples"].items():
+        ex[box] = {tp: [[lab, _cap(v, FULL_JSON + " → sample." + ("runs." + tp if tp != "any" else "") + " (" + box + ")")]
+                        for lab, v in items] for tp, items in per.items()}
+    d["__examples"] = ex
+    S = dict(d["sample"])
+    runs = {}
+    for tp, r in S["runs"].items():
+        where = (f"{r.get('dir')}/trace.jsonl" if r.get("real") else FULL_JSON + f" → sample.runs.{tp}")
+        r = dict(r)
+        r["calls"] = [{**c, "messages": [{**m, "content": _cut(m.get("content"), where)} for m in c.get("messages") or []],
+                       "response": _cut(c.get("response"), where)} for c in r.get("calls") or []]
+        r["trace_lines"] = [_cut(x, where) for x in r.get("trace_lines") or []]
+        r["timeline"] = [{**x, "raw": _walk_cut(x.get("raw"), where)} for x in r.get("timeline") or []]
+        runs[tp] = _walk_cut(r, where)
+    S["runs"] = runs
+    d["sample"] = S
+    return _walk_cut(d, FULL_JSON)
+
+
+def render(lite: bool = False) -> Path:
     A = json.loads((ARCH / "architecture.json").read_text())
+    title = LITE_TITLE if lite else TITLE
     changes, changed = diff_prev(A)
     views_svg = []
     for v, meta in VIEWS.items():
@@ -908,6 +971,8 @@ def render() -> Path:
     data["__examples"] = examples(A)
     for k in ("functions", "modules", "classes", "constants", "guards", "defs", "tags"):   # shown per box already; keep the page light
         data.pop(k, None)
+    if lite:
+        data = lite_data(data)
     blob = json.dumps(data, ensure_ascii=False, default=str).replace("</", "<\\/")
     gloss = "".join(f"<dt>{esc(t)}</dt><dd>{esc(d)}</dd>" for t, d in A["glossary"])
     changes_html = "<ul class='changes'>" + "".join(f"<li>{esc(l)}</li>" for l in changes) + "</ul>"
@@ -949,12 +1014,12 @@ def render() -> Path:
         + "".join(f"<li><code>{esc(u['key'])}</code></li>" for u in un if not u["new"]) + "</ul></details>")
     page = f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{TITLE}</title>
+<title>{title}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>{CSS}</style></head><body>
 <div class="wrap">
-<h1>{TITLE}</h1>
+<h1>{title}</h1>
 <p class="sub">Task → Plan a new team → Team runs the task, read from the code at the commit below, not from the plan. Every box says in one sentence what it does; click it for the exact code, prompt, example and tests. To ask about a box or change it, press its ✎ (or use “Ask or change this box” at the top of its panel): “Send to Claude Code” delivers it with that box’s reference.</p>
 <div class="summary" id="summary">{summary}</div>
 <div class="legend">
@@ -1009,7 +1074,12 @@ def render() -> Path:
 <script>{JS}</script>
 </body></html>
 """
-    out = ARCH / "phase1.html"
+    if lite:
+        page = page.replace('<p class="foot">', '<p class="foot">Lite page (tools/arch_render.py --lite): every view, box, '
+                            f'card, badge, arrow, plan-vs-built note and change-request button of docs/arch/phase1.html; '
+                            f'embedded examples, prompts and traces are cut to {LITE_CAP:,} characters, each with a note '
+                            'saying where the full text lives. ', 1)
+    out = ARCH / ("asbuilt_lite.html" if lite else "phase1.html")
     out.write_text(page, encoding="utf-8")
     print(f"wrote {out.relative_to(ROOT)} ({len(page) // 1024} KB)")
     return out
@@ -1067,5 +1137,5 @@ def check(out: Path) -> int:
 
 
 if __name__ == "__main__":
-    o = render()
+    o = render(lite="--lite" in sys.argv)
     sys.exit(0 if "--no-check" in sys.argv else check(o))

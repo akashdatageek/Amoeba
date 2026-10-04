@@ -100,11 +100,15 @@ BOXES: list[dict] = [
          plan=None,
          sentence="A stream of tasks per kind; one typed change to that kind's team recipe is tested old against new on "
                   "held-out tasks, and plain code keeps it only if the gain is real.",
-         what=["Phase 2 (spec/BUILD_SPEC_PHASE2.md). Week 1 builds the measuring half: the task stream, the team recipe "
-               "and its hook into Boxes 2–3, the Experimenter and the Gate.",
-               "A hand-written change goes through the Experimenter and the Gate before any AI may propose one.",
-               "Only Amoeba's plan runner gets recipes; the two baselines never do. Nothing in Boxes 7–8 calls an AI."],
-         proposes="Nothing yet: in week 1 the change is written by hand.",
+         what=["Phase 2 (spec/BUILD_SPEC_PHASE2.md), the whole loop as of v1.0: the task stream with its three task sets, "
+               "the team recipe and its hook into Boxes 2–3, the Monitor, the Diagnoser, the Architect, the "
+               "Experimenter, Gate v3 with its ledger, the recipe store and the loop driver.",
+               "Around it: the evidence log shipped to the evidence branch (D95), the per-call model router (D97–D98), "
+               "user memory with proposals and approval (D99), retention replay and pruning (D100) and niche profiles "
+               "(D102).",
+               "Only Amoeba's plan runner gets recipes; the two baselines never do. Inside the loop only the Architect "
+               "calls an AI; everything else is plain code."],
+         proposes="The Architect (Box 6) proposes one typed recipe change per attempt.",
          disposes="Plain code runs both arms, measures the noise floor and accepts or rejects with recorded reasons.",
          anchors=[], guard_anchors=[]),
     # ---------------------------------------------------------------- task view
@@ -469,7 +473,9 @@ BOXES: list[dict] = [
                "producer whose only problem is a missing capability is not sent back (rework_skipped).",
                "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, "
                "through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no "
-               "re-checking tool call on code, files or cited figures is an unverified check and makes it partial."],
+               "re-checking tool call on code, files or cited figures is an unverified check and makes it partial.",
+               "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
+               "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",
@@ -635,31 +641,14 @@ BOXES: list[dict] = [
          anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
                   "amoeba/pool/match.py::rank", "amoeba/pool/mcp.py::PoolTools", "amoeba/pool/mcp.py::SdkConnector",
                   "amoeba/pool/match.py::document_format", "amoeba/pool/stock.py::SharedPicks"]),
-    dict(id="localtools", view="run", title="Local toolbox (sandboxed)", kind="code", plan=None,
-         sentence="With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp "
-                  "serve`, inside a workspace folder of the run.",
-         what=["Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at "
-               "the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused "
-               "and logged once. They become local:<Name> tools of the run.",
-               "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); "
-               "a Bash command runs from there, network commands are refused (network_command) and destructive or "
-               "escaping ones too (unsafe_command).",
-               "Limits (localtools.yaml): 60 s per call, 8,000 characters of output, 20 calls per step and 60 "
-               "per run; a trace line for every call and "
-               "every refusal.",
-               "Skills are listed only from the kept anthropics/skills clone (D60: not the user's ~/.claude/skills); an attached "
-               "skill's folder is copied to workspace/skills/<name>/ and its SKILL.md (frontmatter and first 5,000 "
-               "characters) goes on the helper's card.",
-               "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first; any other "
-               "local item goes first only if it matches at least as well as the best internet one (D61).",
-               "A successful call's result gets a source id [S#] in the run's one source list (D61); a command "
-               "written inside a code fence runs without the fence.",
-               "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); "
-               "result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the "
-               "workspace is copied to artifacts/files/.",
-               "D71: LibreOffice Calc headless (scripts/setup_office.sh) recalculates spreadsheet formulas with a "
-               "fresh profile and HOME; when the xlsx skill is attached, plain code checks once that a two-cell "
-               "workbook comes back with its value, and if not the helper's card says recalc.py will fail."],
+    dict(id="localtools", view="run", title="Local toolbox (OpenShell sandbox, D96)", kind="code", plan=None,
+         sentence="With --local-tools on, the team may borrow Claude Code's own tools and skills; by default they run in a fresh NVIDIA OpenShell sandbox per run, with no network and only the workspace writable.",
+         what=[
+               "D96: `claude mcp serve` and every command run inside a fresh OpenShell sandbox per run (image amoeba-sandbox:local, gateway on 127.0.0.1:17680): no network, Landlock lets only /sandbox, /tmp and /dev/null be written, skills are read-only under /opt/skills, no secrets, runs as user sandbox; the sandbox is deleted at the end.",
+               "The harness gate refuses first what it can see: network commands, paths outside the workspace, writes to MCP configs, hooks, settings, CLAUDE.md or skills (protected_config); what a command hides is stopped by the sandbox. Files are copied back to runs/<id>/workspace/ after each call.",
+               "Limits: 300 s per command (D96a), 1 CPU, 1 GiB, one hour per run, 8,000 characters of output, 20 calls per step and 60 per run; a niche profile can set its own sandbox limits (D102).",
+               "--local-tools-mode sandbox is the default; inprocess (the earlier host process) runs only when asked for and needs AMOEBA_SANDBOX=1. Every allow and deny decision goes to the trace and from there to events.jsonl (tool_decisions); a live test shows the agent cannot reach the OpenShell gateway API.",
+               "Skills are listed only from the kept anthropics/skills clone; an attached skill's SKILL.md goes on the helper's card. Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first (D61)."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",
@@ -710,8 +699,7 @@ BOXES: list[dict] = [
          anchors=["amoeba/llm/toy_mock.py::toy_mock_client", "amoeba/llm/client.py::MockLLMClient"]),
     # ---------------------------------------------------------------- adaptation loop (Phase 2)
     dict(id="stream", view="adapt", title="0 · Task stream (D80)", kind="code", plan=None,
-         sentence="Tasks arrive in a fixed order per kind of task; held-out tasks are kept apart for testing, and the "
-                  "loop learns only the names of the rubric items a practice run failed.",
+         sentence="Tasks arrive in a fixed order, in three sets kept apart by code: practice tasks the loop learns from, gate tasks only the Experimenter replays, and audit tasks only scripts/run_audit.py reads; the loop learns only the names of the rubric items a practice run failed.",
          what=["tasks/stream_<name>.jsonl: each task has its kind (family), its D30 rubric, whether it is practice or "
                "held-out, whether it comes before or after its kind's shift, and (practice only) its place in the order.",
                "tasks/stream_<name>.shifts.yaml: a feedback shift (the later rubrics ask for something new that the "
@@ -721,7 +709,8 @@ BOXES: list[dict] = [
                "The loop only ever gets practice tasks; held-out ones are for the Experimenter. The feedback it keeps "
                "is the failed item names, never patterns or expected numbers.",
                "The leakage screen refuses an edit text holding an 8-word run of a held-out prompt, a held-out "
-               "expected number or a held-out task id."],
+               "expected number or a held-out task id.",
+               "D92: the three task sets — practice (in order, the only ones the loop sees), gate (held-out, replayed by Box 7 for calibration, experiments, retention replays and prunes) and audit (tasks/audit/, read once per thesis by scripts/run_audit.py; a stream file holding an audit task is refused)."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code orders the tasks, applies the shifts and filters what the loop may see.",
          anchors=[]),
@@ -742,7 +731,9 @@ BOXES: list[dict] = [
                "baselines never get one). Its rules fill the lessons slot of the Planner's and both checkers' "
                "prompts, with one more check item for the plan checker; code applies its transforms to the final draft "
                "(draft.json keeps Box 2's own draft) and records what each changed; its run options overlay the run "
-               "settings unless the command line set them. With a reused draft only transforms and run options apply."],
+               "settings unless the command line set them. With a reused draft only transforms and run options apply.",
+               "D98: one more edit, prefer_model {role, model}, sets the router's preference for one role in one kind of task; it is built but off (--allow-model-edits), offered only for the causes max_turns, checks and capability, checked by V6 (role and registry model known, model edits on), and can never bypass the allowlist or the router's hard filters.",
+               "D99: every recipe line (rule, transform, run option, model preference) carries its provenance — the hypothesis that added it, the date and the Gate row that accepted it — kept outside the recipe's hash."],
          proposes="Nothing yet: in week 1 an edit is written by hand (the Architect proposes them in week 2).",
          disposes="Plain code applies the edit, applies the transforms and refuses a recipe that breaks V1–V5.",
          anchors=[]),
@@ -762,9 +753,8 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI decides here (the runs it starts call the model inside Boxes 1–3).",
          disposes="Plain code builds both arms, runs them and writes the pairs.",
          anchors=[]),
-    dict(id="gate", view="adapt", title="8 · Gate and ledger (D84)", kind="code", plan=None,
-         sentence="Keeps a recipe change only when its gain on held-out tasks beats the measured noise, was predicted, is "
-                  "worth its cost, keeps the team honest and loses nothing on the tasks that already worked.",
+    dict(id="gate", view="adapt", title="8 · Gate v3 and ledger (D84, D91)", kind="code", plan=None,
+         sentence="Keeps a recipe change only when its gain on the gate tasks beats the measured noise by a permutation test within the kind's fixed hypothesis quota, is worth its cost in US dollars (tokens while prices are 0), keeps the team honest and loses nothing on the tasks that already worked.",
          what=["Noise floor, once per kind and recipe version: the recipe against itself with other seeds on the "
                "held-out after-shift tasks; noise = 2 × the spread of those score differences / √(pairs).",
                "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from "
@@ -776,7 +766,10 @@ BOXES: list[dict] = [
                "Every event is a ledger line (calibration, hypothesis, decision with its numbers and reasons); an "
                "accepted recipe becomes the kind's current version. After an accept, a rollback watch reverts to the "
                "parent version if the next practice tasks fall below the alarm window minus the noise.",
-               "Thresholds are in amoeba/config/adapt.yaml; nothing here calls an AI."],
+               "Thresholds are in amoeba/config/adapt.yaml; nothing here calls an AI.",
+               "D91 Gate v3: per-task means, a one-sided permutation test at alpha 0.05/6 within a fixed quota of 6 hypotheses per kind (accepts included, no reset), noise from per-task spread; prediction accuracy is reported, never a Gate rule; one pre-registered check (--check) is decided at its own alpha and kept out of the quota and the recipe store.",
+               "D97: rule 4 compares US dollars from the model registry's prices when both arms have them, tokens otherwise (cost_basis in the ledger row).",
+               "D100: the Gate also decides prunes — a recipe line goes when removing it loses nothing beyond noise and saves cost; each prune is a ledger row with prune: true that counts toward no quota."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code computes the noise floor, applies rules 1–6 and writes the ledger and the store.",
          anchors=[]),
@@ -790,7 +783,8 @@ BOXES: list[dict] = [
                "window, and there must be at least four.",
                "Cause alarm: a cause or a failed item is in at least half of the last three runs after at most a fifth "
                "of the reference runs.",
-               "No alarm while the kind is in its dwell period after an accept or cooling down after a reject."],
+               "No alarm while the kind is in its dwell period after an accept or cooling down after a reject.",
+               "D100: every 12 practice tasks of a kind (--retention-every), the old pre-shift gate tasks are replayed with the current recipe against the starting one; a drop beyond noise raises a retention alarm at once (see Retention replay and pruning)."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code computes the window and the reference and decides whether to raise an alarm.",
          anchors=[]),
@@ -804,7 +798,9 @@ BOXES: list[dict] = [
                "that was always there does not explain an alarm — then the most frequent, then the table order.",
                "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice "
                "examples (never held-out tasks) go to the Architect with the evidence lines.",
-               "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation)."],
+               "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation).",
+               "D93: only causes observed in the run files (tool calls, files, checks) can be named; causes that only the model's own words support are reported apart as declared (supporting evidence and declared shares), never as the cause.",
+               "D100: a retention alarm is diagnosed from scores alone (held-out tasks never reach a prompt), with the edits remove_planner_rule, add_planner_rule, tighten_done_when and add_role_rule."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code counts the records, names the cause and limits the edits.",
          anchors=[]),
@@ -831,7 +827,8 @@ BOXES: list[dict] = [
                "A run reads the current recipe of its kind with --recipes; --recipes-from is a second, read-only store "
                "used when the first has none (a warm start from another stream).",
                "Only a Gate accept writes a version (a post-hoc decision never does); the rollback watch can send a kind "
-               "back to its parent version."],
+               "back to its parent version.",
+               "D99: every line of a recipe carries its provenance (hypothesis id, date, the Gate row and gate version that accepted it), stamped by the store when the accept commits it; lines from before D99 are marked so. The size caps (8 rules, 8 transforms) are unchanged."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes versions on the Gate's accept and reverts on the rollback watch.",
          anchors=[]),
@@ -844,7 +841,9 @@ BOXES: list[dict] = [
                "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; "
                "scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
                "A finished run is key-scanned and queued for the bucket copy; unshipped items are listed in "
-               "loop_state.json. Cloud credentials are removed from every run's environment."],
+               "loop_state.json. Cloud credentials are removed from every run's environment.",
+               "D95a: finished runs that pass the key scan and the new events.jsonl rows are shipped as normal fast-forward commits to the repository's orphan `evidence` branch, at most one commit per 10 minutes plus a final one; each commit message carries the hash-chain head (Chain-Head) so scripts/verify_evidence.py --branch evidence can check the chain against GitHub's history. Shipping runs in the harness only; agents never get git credentials. The bucket uploader is kept but disabled.",
+               "D97–D100: routing decisions, local-tool decisions, memory proposals and approvals, retention replays and prunes are events in the same log."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes, chains and verifies the log.",
          anchors=[]),
@@ -858,7 +857,9 @@ BOXES: list[dict] = [
                "One token bucket per model, shared by every process, keeps calls inside the model's per-minute limits; "
                "a 429 cools a model down and the next one of the same size is used (with one model: wait).",
                "Every decision — candidates, what was filtered and why, the choice, fallbacks and waits — is logged; "
-               "result.json gets calls, tokens and US dollars per model. A new model is a registry entry only."],
+               "result.json gets calls, tokens and US dollars per model. A new model is a registry entry only.",
+               "D98: a recipe's prefer_model edit (built, off) fills the router's per-role preference; it is used only when that model is still a candidate after every filter, and a verifier preference for the checked work's family is logged as verifier_same_family: recipe preference.",
+               "D102: the niche profile's model allowlist and verifier-independence setting feed the router; a model outside the profile is filtered out with reason profile."],
          proposes="Nothing: no AI takes part in the decision.",
          disposes="Plain code picks the model; no call is made when no model passes the filters (no_model).",
          anchors=[]),
@@ -873,6 +874,37 @@ BOXES: list[dict] = [
                "and a failed one earns a retry turn."],
          proposes="Nothing: a person writes the profile.",
          disposes="Plain code applies the profile's allowlists, limits, done clauses and checks.",
+         anchors=[]),
+    dict(id="user_memory", view="adapt", title="Memory proposals and approval (D99)", kind="code", plan=None,
+         sentence="The loop may only propose a lasting user standard; it enters the user's context file only when the "
+                  "user approves it, and Box 1 and Box 2 read approved standards only.",
+         what=["Three kinds of memory, one writer each: recipe memory (the Gate), user memory (the user) and event "
+               "memory (the harness's evidence log, never fed raw into prompts).",
+               "When the same failed rubric item appears in at least 3 practice runs across at least 2 kinds of task, "
+               "plain code writes one proposal to eval/loop/<stream>/memory_proposals.jsonl and a memory_proposal event.",
+               "scripts/approve_memory.py --id P<n> --context user.yaml is the only writer of an approved line: it adds "
+               "it under standards: with approved: and the proposal id, and logs memory_approval in events.jsonl.",
+               "A standard counts only when the user wrote it or approved it; approved standards reach Box 1's context "
+               "and the Planner's and Plan Observer's prompts (no standards: prompts unchanged). No agent can write any "
+               "memory file: they all sit outside the run workspace and the sandbox mounts none of them."],
+         proposes="Nothing: plain code proposes from counts; no AI works here.",
+         disposes="The user approves; plain code writes the approved line and logs it.",
+         anchors=[]),
+    dict(id="retention", view="adapt", title="Retention replay and pruning (D100)", kind="code", plan=None,
+         sentence="Recipes expire: every 12 practice tasks the old gate tasks are replayed with the current recipe, and "
+                  "at the end of a stream each recipe line is removed in turn and dropped if it costs without helping.",
+         what=["Retention replay: every N practice tasks of a kind (--retention-every, default 12, 0 = off) the kind's "
+               "pre-shift gate tasks are replayed with the current recipe and with the starting one, same seeds, "
+               "through the arm-A cache; a drop beyond the calibration noise raises a retention alarm at once, handled "
+               "like any alarm (scores only reach the Diagnoser). Each replay is a retention row and event.",
+               "Pruning: at the end of a stream (--prune end, the default) and on demand (scripts/prune_recipe.py), "
+               "each line — rule, transform, run option, model preference — is removed one at a time and replayed "
+               "against the recipe with it on the gate set.",
+               "The Gate removes a line when removing it does not lower the score beyond noise and lowers cost (US "
+               "dollars when priced, else tokens); each prune is a ledger decision with prune: true, counted toward no "
+               "hypothesis quota and never shown to the Architect as a failed hypothesis."],
+         proposes="Nothing: no AI takes part; the runs themselves use the team.",
+         disposes="Plain code decides when to replay, raises the alarm and the Gate decides each prune.",
          anchors=[]),
     dict(id="loop", view="adapt", title="Loop driver (D89)", kind="code", plan=None,
          sentence="Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes "

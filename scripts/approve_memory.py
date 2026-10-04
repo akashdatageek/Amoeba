@@ -18,7 +18,7 @@ from amoeba.memory.context import approve_standard, read_proposals
 ROOT = Path(__file__).resolve().parents[1]
 
 
-# box: memory
+# box: user_memory
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--stream")

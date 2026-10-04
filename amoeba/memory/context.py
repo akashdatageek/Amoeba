@@ -82,18 +82,18 @@ def standards_slots(ctx: Mapping | None) -> dict[str, str]:
     return {who: f"{STANDARDS_HEAD}{body}\n{tail}" for who, tail in STANDARDS_TAIL.items()}
 
 
-# box: memory
+# box: user_memory
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-# box: memory
+# box: user_memory
 def read_proposals(root: str | Path) -> list[dict]:
     f = Path(root) / "memory_proposals.jsonl"
     return [json.loads(l) for l in f.read_text(encoding="utf-8").splitlines() if l.strip()] if f.exists() else []
 
 
-# box: memory
+# box: user_memory
 def propose_standards(records, root: str | Path, ev=None, runs: int = PROPOSE_RUNS,
                       families: int = PROPOSE_FAMILIES) -> list[dict]:
     """D99: the loop's only way toward user memory. A feedback item failed in ≥`runs` practice runs across
@@ -124,7 +124,7 @@ def propose_standards(records, root: str | Path, ev=None, runs: int = PROPOSE_RU
     return new
 
 
-# box: memory
+# box: user_memory
 def approve_standard(context_file: str | Path, proposal: dict, text: str | None = None, ev=None) -> dict:
     """D99: the user's approval (scripts/approve_memory.py): the proposal's line (or the user's rewording) is added
     to `standards:` with `approved:` and the proposal id, and the approval is an events.jsonl row. A proposal is
