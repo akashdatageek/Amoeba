@@ -142,6 +142,7 @@ class NoopListener:
         pass
 
 
+# box: router
 def _route_attrs(dec: dict) -> dict:
     """D97: a routing decision as trace attributes."""
     return {f"amoeba.route.{k}": v for k, v in dec.items()}

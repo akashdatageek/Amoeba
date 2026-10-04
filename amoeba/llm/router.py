@@ -47,6 +47,7 @@ GROUP_ROLE = {"workers": "worker", "reviewers": "verifier", "summariser": "summa
               "planner": "planner", "observers": "plan_observer"}
 
 
+# box: router
 class NoModelAvailable(RuntimeError):
     """No model passed the hard filters: the call is not made (cause `no_model`)."""
     code = "no_model"

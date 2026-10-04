@@ -32,6 +32,7 @@ def adapt_config() -> dict:
     return _adapt_config(os.environ.get("AMOEBA_ALLOW_MODEL_EDITS") == "1")
 
 
+# box: recipe
 @lru_cache(maxsize=2)
 def _adapt_config(model_edits: bool) -> dict:
     cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))

@@ -681,7 +681,7 @@
   ]
  },
  "architect": {
-  "checked_at": "8baa733",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -841,6 +841,7 @@
       "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
       "amoeba/llm/limits.py::RunLimits.check",
       "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/llm/router.py::ModelRouter.chat_messages",
       "amoeba/pool/mcp.py::PoolTools.call.check",
       "scripts/eval_draft.py::Recording.chat_messages",
       "scripts/run_audit.py::AuditLog.append"
@@ -935,7 +936,7 @@
    },
    "title": "6 · Architect (D87)"
   },
-  "facts_hash": "2b666baabbb22732",
+  "facts_hash": "e44415bc9a55174f",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "f8fe62b1f0fa2f99",
   "sentence": "An AI reads the diagnosis, recipe, and history, proposing one typed change with a reason and predicted gain; plain code validates it before testing.",
@@ -1007,7 +1008,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "e322aab",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -1113,6 +1114,8 @@
       "amoeba/llm/client.py::api_error",
       "amoeba/llm/client.py::describe_api_error",
       "amoeba/llm/limits.py::estimate",
+      "amoeba/llm/router.py::ModelRouter.begin_run",
+      "amoeba/llm/router.py::ModelRouter.summary",
       "amoeba/localtools/server.py::StdioServer.close",
       "amoeba/localtools/toolbox.py::LocalToolbox",
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
@@ -1129,6 +1132,7 @@
       "amoeba/task/interpret.py::read_task",
       "amoeba/task/interpret.py::with_note",
       "amoeba/task/models.py::RunResult",
+      "scripts/run_experiment.py::summary",
       "scripts/run_task.py::ask_user",
       "scripts/run_task.py::blocked_of",
       "scripts/run_task.py::intake_text",
@@ -1165,7 +1169,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "82a2ff50e4307687",
+  "facts_hash": "73746a924e7ddeb0",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -2150,7 +2154,7 @@
   },
   "facts_hash": "e1b5a59d3e3c6d4d",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "f9b1e2c883f38a3a",
+  "rejected_hash": "bb66eb429b49dacd",
   "seed_hash": "bbd14a5aace21969",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand (model: still true)",
@@ -2165,7 +2169,7 @@
   ]
  },
  "critics": {
-  "checked_at": "64c0f64",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -2173,6 +2177,7 @@
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
       "amoeba/interp/runtime.py::_Msg",
       "amoeba/interp/runtime.py::with_card",
+      "amoeba/llm/router.py::ModelRouter.call",
       "amoeba/localtools/server.py::StdioServer.call",
       "amoeba/localtools/toolbox.py::LocalToolbox.call",
       "amoeba/pool/mcp.py::Connector.call",
@@ -2249,7 +2254,7 @@
    },
    "title": "Critics (all others)"
   },
-  "facts_hash": "ecfff224dcfb9b27",
+  "facts_hash": "f0c5a716952fff10",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "7d6586e2c55f4a4e",
   "sentence": "Every other helper reviews the answer and must reply Agree or Disagree; unreadable replies count as agreement.",
@@ -2261,7 +2266,7 @@
   ]
  },
  "diagnoser": {
-  "checked_at": "8baa733",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -2333,7 +2338,7 @@
       "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
-     "doc": "",
+     "doc": "The cause's edits from the table; prefer_model only when model edits are on (D98).",
      "key": "amoeba/adapt/diagnoser.py::_allowed",
      "signature": "_allowed(cause: str) -> list[str]"
     },
@@ -2394,7 +2399,12 @@
     },
     {
      "callees": [
-      "amoeba/adapt/diagnoser.py::Diagnosis"
+      "amoeba/adapt/diagnoser.py::Diagnosis",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
      ],
      "doc": "--diagnoser none: the alarm only, every edit allowed (the untargeted baseline of the ablation).",
      "key": "amoeba/adapt/diagnoser.py::diagnose_none",
@@ -2478,6 +2488,11 @@
     ],
     [
      "decide",
+     "if not adapt_config()['recipe'].get('allow_model_edits')",
+     "set edits = [e for e in edits if e != 'prefer_model']"
+    ],
+    [
+     "decide",
      "if not present",
      "set cause = 'alarm_only'"
     ],
@@ -2558,6 +2573,16 @@
     ],
     [
      "filter",
+     "keep only if e != 'prefer_model'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if e != 'prefer_model' or adapt_config()['recipe'].get('allow_model_edits')",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if o in by_order",
      "drop the rest"
     ],
@@ -2579,15 +2604,15 @@
    "prompts": {},
    "title": "5 · Diagnoser (D86)"
   },
-  "facts_hash": "bb4614c8dafcb51d",
+  "facts_hash": "c25c51597be6ca86",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "9faebe54a7745a22",
   "sentence": "Counts what the runs of the alarm's window recorded and names the cause that rose most, with the edits that may answer it.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "It reads the window's run folders for step causes, blocked capabilities, unused tools, missing files, unverified checks, citations, failed rubric items, and provenance, while identifying the step kind and tool roles where the cause appears most.",
    "The cause is the one whose share of runs rose most from the reference runs to the window — a cause that was always there does not explain an alarm — then the most frequent, then the table order.",
-   "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice examples (never held-out tasks) go to the Architect with the evidence lines.",
+   "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice examples (never held-out tasks) go to the Architect with the evidence lines, excluding model-based edits unless enabled.",
    "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation)."
   ]
  },
@@ -3160,7 +3185,7 @@
    "title": "Evidence log (D95)"
   },
   "facts_hash": "e23241252984a6f4",
-  "rejected_hash": "702e6abc6ba9949b",
+  "rejected_hash": "8d8a74cad0b88ff4",
   "seed_hash": "76b2670f897da3ae",
   "sentence": "Writes every loop event to one append-only, hash-chained log outside the agents' reach, with a fingerprint of every run folder it refers to, and queues finished runs for an off-container copy.",
   "source": "hand",
@@ -3172,7 +3197,7 @@
   ]
  },
  "experimenter": {
-  "checked_at": "3b83636",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -3319,6 +3344,14 @@
       [
        "flags_B",
        "dict"
+      ],
+      [
+       "usd_A",
+       "float"
+      ],
+      [
+       "usd_B",
+       "float"
       ]
      ],
      "key": "amoeba/adapt/experimenter.py::Pair",
@@ -3418,6 +3451,10 @@
       [
        "tokens",
        "int"
+      ],
+      [
+       "usd",
+       "float"
       ],
       [
        "honesty",
@@ -3781,6 +3818,11 @@
     ],
     [
      "decide",
+     "if args.allow_model_edits",
+     "set os.environ['AMOEBA_ALLOW_MODEL_EDITS'] = '1'"
+    ],
+    [
+     "decide",
      "if hit is not None",
      "set got[t.id, k] = hit"
     ],
@@ -4008,12 +4050,15 @@
     "Episode.seed",
     "Pair.refusals_A",
     "Pair.refusals_B",
+    "Pair.usd_A",
+    "Pair.usd_B",
     "Recipe.version",
     "ReplayResult.arm_a_cache_hits",
     "ReplayResult.runs",
     "RunRecord.honesty",
     "RunRecord.refusals",
     "RunRecord.tokens",
+    "RunRecord.usd",
     "TeamConfig.version",
     "_arm_a.seed_offset",
     "calibrate.repeats",
@@ -4022,20 +4067,20 @@
    "prompts": {},
    "title": "7 · Experimenter (D83)"
   },
-  "facts_hash": "cd85e586d1d39c5a",
+  "facts_hash": "c3c57e8c76e2522e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0af422728bb53ada",
-  "sentence": "Runs the old recipe against the old recipe plus one edit on the kind's held-out tasks, {experiment.repeats} times each, with the same seed, tools and model, and returns the score pairs, optionally shipping results to a remote store.",
+  "sentence": "Runs the old recipe against the old recipe plus one edit on the kind's held-out tasks, {experiment.repeats} times each, with the same seed, tools and model, and returns the score and cost pairs, optionally shipping results to a remote store.",
   "source": "model: rewritten",
   "what": [
    "For each held-out task (after-shift tasks first, then before-shift ones for the retention check) and each repeat, arm A drafts afresh with the old recipe and runs it.",
    "For a transform or run-option edit, arm B reuses arm A's saved draft, so the only difference between the arms is the edit; for a planner-rule edit, arm B drafts with its own rules and draft variance is part of the noise.",
    "Arm A runs are cached per recipe version (by the recipe's hash), so a later hypothesis against the same version runs arm B only; the noise-floor calibration (A against A' with {CALIBRATION_SEED_OFFSET} added to the seed) fills that cache.",
-   "Each pair records both scores, tokens, honesty signals (by kind and error status), and refusals. Runs go out as run_task processes, eight at once; a finished run is never redone, a model-service crash is re-run once, and results may be shipped to a remote location."
+   "Each pair records both scores, tokens, costs, honesty signals (by kind and error status), and refusals. Runs go out as run_task processes, eight at once; a finished run is never redone, a model-service crash is re-run once, and results may be shipped to a remote location."
   ]
  },
  "free_text": {
-  "checked_at": "b967583",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -4111,7 +4156,7 @@
     ],
     [
      "fallback",
-     "LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir) if args.local_tools == 'on' else None",
+     "LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir, mode=args.local_tools_mode) if args.local_tools == 'on' else None",
      "choose value"
     ],
     [
@@ -4211,7 +4256,7 @@
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "fcf9b1a1cfe598cc",
+  "facts_hash": "f24937ce055c4e0e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
@@ -4966,7 +5011,7 @@
   },
   "facts_hash": "471b08c4c8c1a6c9",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "3d967a77d5465828",
+  "rejected_hash": "64d9a0d063c80ce4",
   "seed_hash": "38d5bf9c1121e7e6",
   "sentence": "Keeps a recipe change only when its gain on held-out tasks beats the measured noise, was predicted, is worth its cost, keeps the team honest and loses nothing on the tasks that already worked.",
   "source": "model: kept",
@@ -5360,7 +5405,7 @@
   ]
  },
  "interpret": {
-  "checked_at": "8baa733",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -5374,6 +5419,7 @@
       "amoeba/llm/client.py::MockLLMClient.chat_messages",
       "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
       "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/llm/router.py::ModelRouter.chat_messages",
       "amoeba/memory/context.py::context_text",
       "amoeba/task/interpret.py::decide",
       "amoeba/task/interpret.py::parse_entities",
@@ -5707,7 +5753,7 @@
    },
    "title": "Task interpretation (D77)"
   },
-  "facts_hash": "1f1db2875b9f1ed4",
+  "facts_hash": "a192ea0cdc3f74ec",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4d5f47795f6babb8",
   "sentence": "Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a clear winner, asks the user one question, or makes the answer state its assumption.",
@@ -6553,7 +6599,7 @@
   },
   "facts_hash": "6f7f8d97fb5b33cf",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "08068f35b758c402",
+  "rejected_hash": "4ef6f8dad3051acb",
   "seed_hash": "cf9559fad29b1143",
   "sentence": "With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp serve`, inside a workspace folder of the run.",
   "source": "model: kept",
@@ -6570,7 +6616,7 @@
   ]
  },
  "loop": {
-  "checked_at": "f2ac57d",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -6786,6 +6832,7 @@
       "amoeba/adapt/stream.py::Stream.practice",
       "amoeba/interp/plan_runner.py::PlanRunner.run",
       "amoeba/interp/runtime.py::Interpreter.run",
+      "amoeba/llm/router.py::ModelRouter.load",
       "amoeba/memory/recipes.py::RecipeStore",
       "amoeba/memory/recipes.py::RecipeStore.current_or_seed",
       "amoeba/memory/recipes.py::RecipeStore.ensure_seed",
@@ -6861,6 +6908,11 @@
      "correct",
      "if ev is not None",
      "add row['event']"
+    ],
+    [
+     "decide",
+     "if args.allow_model_edits",
+     "set os.environ['AMOEBA_ALLOW_MODEL_EDITS'] = '1'"
     ],
     [
      "decide",
@@ -7099,7 +7151,7 @@
    "prompts": {},
    "title": "Loop driver (D89)"
   },
-  "facts_hash": "fb5880a33ba327e9",
+  "facts_hash": "e3fb5bdf3e7c5e82",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8e2e699426ec6515",
   "sentence": "Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
@@ -7497,7 +7549,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "e322aab",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -7521,6 +7573,8 @@
       "amoeba/llm/client.py::api_error",
       "amoeba/llm/client.py::describe_api_error",
       "amoeba/llm/limits.py::estimate",
+      "amoeba/llm/router.py::ModelRouter.begin_run",
+      "amoeba/llm/router.py::ModelRouter.summary",
       "amoeba/localtools/server.py::StdioServer.close",
       "amoeba/localtools/toolbox.py::LocalToolbox",
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
@@ -7537,6 +7591,7 @@
       "amoeba/task/interpret.py::read_task",
       "amoeba/task/interpret.py::with_note",
       "amoeba/task/models.py::RunResult",
+      "scripts/run_experiment.py::summary",
       "scripts/run_task.py::ask_user",
       "scripts/run_task.py::blocked_of",
       "scripts/run_task.py::intake_text",
@@ -7578,14 +7633,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "aa505a69f42e691f",
+  "facts_hash": "2e293c602dfcea74",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves seventeen files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, and the provenance record.",
+  "sentence": "Every run saves nineteen files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, and the experiment summary.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), and the provenance record.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, and the experiment summary.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -8204,7 +8259,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "8baa733",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -8290,6 +8345,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.deliverables_text",
       "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
       "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
+      "amoeba/interp/plan_runner.py::PlanRunner.route_ids",
       "amoeba/interp/plan_runner.py::plan_card",
       "amoeba/interp/plan_runner.py::step_detail",
       "amoeba/interp/runtime.py::Interpreter._dispatch",
@@ -8710,6 +8766,11 @@
     ],
     [
      "fallback",
+     "except NoModelAvailable",
+     "return ('no_model', f'BLOCKED: no_model — {str(e)[:200]}', '', 'no_model')"
+    ],
+    [
+     "fallback",
      "f\"Constraints: {'; '.join(agent.constraints)}\" if agent.constraints else ''",
      "choose value"
     ],
@@ -9021,15 +9082,15 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "25d3e15aa6f0ab1d",
+  "facts_hash": "4c475f2c101a82cf",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, and mark what it could not do as BLOCKED: <capability>.",
-   "It picks one action per turn: a tool, Print, or Final Output; up to {Limits.max_turns} turns per step.",
+   "It picks one action per turn: a tool, Print, or Final Output; if no model is available, it reports a blocked status; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search or lacks specific tools gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information.",
    "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check before the final output is kept.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
@@ -11171,9 +11232,11 @@
   },
   "facts_hash": "a2ec9ed5e1acf2ee",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "a05bec416b5b4ecf",
   "seed_hash": "f9eb9803cd472f96",
   "sentence": "Per kind of task, a small piece of data says what to tell the Planner, how code reshapes the drafted plan and which run settings to use; one typed edit makes the next version.",
   "source": "model: kept",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "A recipe holds planner rules (lessons shown in Box 2), transforms (applied by code to the final draft) and run options (whitelisted plan-runner settings). Every kind starts from an empty recipe, and an empty recipe changes nothing.",
    "The edit menu: add or remove a planner rule, add a check step after selected steps, add a clause to selected steps' done-when, grant or revoke a tool on selected roles, add a rule to selected roles' cards, set one run option. Each edit is a pure function that makes version N+1 with parent N.",
@@ -11357,8 +11420,607 @@
    "Nothing is built here. From D56 Box 3 starts by trying to fill each request from the tool/skill pool (see Stock the toolbox); a request it cannot fill keeps the behaviour above."
   ]
  },
+ "router": {
+  "checked_at": "1398f7a",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D97: what the router needs to know about a step's call: its number and, for a verify step, the steps it",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.route_ids",
+     "signature": "route_ids(self, n: int, step: PlanStep) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "D97: a routing decision as trace attributes.",
+     "key": "amoeba/interp/trace.py::_route_attrs",
+     "signature": "_route_attrs(dec: dict) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "role",
+       "str"
+      ],
+      [
+       "step",
+       "int | None"
+      ],
+      [
+       "prompt_tokens",
+       "int"
+      ],
+      [
+       "max_output",
+       "int"
+      ],
+      [
+       "needs",
+       "frozenset"
+      ],
+      [
+       "data_class",
+       "str"
+      ],
+      [
+       "checks",
+       "tuple"
+      ]
+     ],
+     "key": "amoeba/llm/router.py::CallSpec",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "name",
+       "str"
+      ],
+      [
+       "provider",
+       "str"
+      ],
+      [
+       "model",
+       "str"
+      ],
+      [
+       "family",
+       "str"
+      ],
+      [
+       "size_tier",
+       "str"
+      ],
+      [
+       "base_url",
+       "str | None"
+      ],
+      [
+       "api_key_env",
+       "str | None"
+      ],
+      [
+       "context_window",
+       "int"
+      ],
+      [
+       "max_output",
+       "int"
+      ],
+      [
+       "supports",
+       "dict"
+      ],
+      [
+       "price",
+       "dict"
+      ],
+      [
+       "rate",
+       "dict"
+      ],
+      [
+       "privacy",
+       "str"
+      ],
+      [
+       "merge_system",
+       "bool"
+      ],
+      [
+       "reasoning_effort",
+       "str | None"
+      ]
+     ],
+     "key": "amoeba/llm/router.py::ModelEntry",
+     "methods": [
+      "usd(self, input_tokens: int, output_tokens: int) -> float"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "The router of one run. make(entry) builds a client for a registry entry (endpoint, key, options, cache).",
+     "fields": [],
+     "key": "amoeba/llm/router.py::ModelRouter",
+     "methods": [
+      "__init__(self, registry: dict[str, ModelEntry], policy: dict, make: Callable[[ModelEntry], LLMClient], mode: str='routed', allowed: list[str] | None=None, profile_allowed: list[str] | None=None, usd_cap: float | None=None, env=None, rate_dir: str | Path | None=None, recipe_prefs: dict | None=None, fixed_model: str | None=None, clock=time.time, sleep=time.sleep, failing_after: int=3)",
+      "begin_run(self, data_class: str='normal', recipe_prefs: dict | None=None, usd_cap: float | None=None) -> None",
+      "client(self, name: str) -> LLMClient",
+      "bucket(self, name: str) -> SharedBucket",
+      "spent_usd(self) -> float",
+      "load(self, name: str) -> int",
+      "role_tier(self, role: str) -> str",
+      "route(self, spec: CallSpec) -> tuple[str, dict]",
+      "call(self, spec: CallSpec, messages: Messages, seed: int, max_tokens: int | None) -> tuple[ChatResponse, dict]",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None) -> ChatResponse",
+      "summary(self) -> dict",
+      "models(self) -> dict[str, str]"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "No model passed the hard filters: the call is not made (cause `no_model`).",
+     "fields": [],
+     "key": "amoeba/llm/router.py::NoModelAvailable",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "Requests and tokens per minute for one model, shared by every process through a locked JSON file.",
+     "fields": [],
+     "key": "amoeba/llm/router.py::SharedBucket",
+     "methods": [
+      "__init__(self, folder: Path, model: str, rpm: float | None, tpm: float | None, clock=time.time, sleep=time.sleep)",
+      "acquire(self, tokens: int=0) -> float",
+      "cooldown(self, seconds: float) -> None",
+      "cooling(self) -> float"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/llm/router.py::estimate_tokens",
+     "signature": "estimate_tokens(messages: Messages) -> int"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/router.py::ModelEntry",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "(name → ModelEntry, routing policy) from models.yaml's `registry` and `routing` blocks.",
+     "key": "amoeba/llm/router.py::load_registry",
+     "signature": "load_registry(path: str | Path=MODELS) -> tuple[dict[str, ModelEntry], dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/router.py::CallSpec",
+      "amoeba/llm/router.py::estimate_tokens",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/llm/router.py::spec_for",
+     "signature": "spec_for(agent_name: str | None, group: str | None, messages: Messages, max_tokens: int | None, step: int | None=None, checks=(), needs=(), data_class: str='normal') -> CallSpec"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::CachedLLM",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/client.py::OpenAICompatibleClient",
+      "amoeba/llm/router.py::ModelRouter",
+      "amoeba/llm/router.py::load_registry",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D97: the per-call model router over the registry (amoeba/config/models.yaml).",
+     "key": "scripts/run_task.py::build_router_llm",
+     "signature": "build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=None)"
+    },
+    {
+     "callees": [],
+     "doc": "D97: --routing; by default routed for Amoeba's plan runner, fixed for the baselines (and Paper 1's benchmark).",
+     "key": "scripts/run_task.py::routing_mode",
+     "signature": "routing_mode(args: argparse.Namespace) -> str"
+    }
+   ],
+   "checks": [],
+   "guards": [
+    [
+     "correct",
+     "if level < need",
+     "add (need - level) * 60.0 / cap"
+    ],
+    [
+     "correct",
+     "if others and self.mode == 'routed'",
+     "add {'from': name, 'to': others[0], 'reason': 'cooldown'}"
+    ],
+    [
+     "correct",
+     "if self.failures[name] >= self.failing_after",
+     "add {'from': name, 'reason': 'failing in this run'}"
+    ],
+    [
+     "correct",
+     "if status == 429",
+     "add {'from': name, 'reason': '429', 'cooldown_s': 60}"
+    ],
+    [
+     "decide",
+     "if (self.policy.get('role_defaults') or {}).get(spec.role) in left",
+     "set chosen, how = (self.policy['role_defaults'][spec.role], 'role default')"
+    ],
+    [
+     "decide",
+     "if any((not (e.supports or {}).get(f) for f in spec.needs))",
+     "set why = 'lacks ' + ', '.join((f for f in spec.needs if not (e.supports or {}).get(f)))"
+    ],
+    [
+     "decide",
+     "if any((r.get('status') == 429 for r in resp.retries or []))",
+     "set dec['rate_limited'] = sum((r.get('status') == 429 for r in resp.retries))"
+    ],
+    [
+     "decide",
+     "if args.model",
+     "set fixed = next((n for n, e in registry.items() if args.model in (n, e.model)), None)"
+    ],
+    [
+     "decide",
+     "if cool > 0",
+     "set others = [n for n in dec['candidates'] if n != name and self.bucket(n).cooling() <= 0 and "
+    ],
+    [
+     "decide",
+     "if e.api_key_env and (not self.env.get(e.api_key_env))",
+     "set why = f'no key ({e.api_key_env})'"
+    ],
+    [
+     "decide",
+     "if e.context_window < spec.prompt_tokens + spec.max_output",
+     "set why = f'context {e.context_window} < {spec.prompt_tokens + spec.max_output}'"
+    ],
+    [
+     "decide",
+     "if indep == 'preferred' and produced",
+     "set other = [n for n in pool if self.registry[n].family not in produced] or [n for n in left i"
+    ],
+    [
+     "decide",
+     "if indep == 'required' and produced and (e.family in produced)",
+     "set why = f'verifier independence required: same family as the checked work ({e.family})'"
+    ],
+    [
+     "decide",
+     "if indep in ('preferred', 'required') and produced",
+     "set dec['checked_family'] = sorted(produced)"
+    ],
+    [
+     "decide",
+     "if n in self.failing",
+     "set why = 'failing in this run'"
+    ],
+    [
+     "decide",
+     "if name not in self._buckets",
+     "set r = self.registry[name].rate or {}"
+    ],
+    [
+     "decide",
+     "if name not in self._clients",
+     "set self._clients[name] = self.make(self.registry[name])"
+    ],
+    [
+     "decide",
+     "if not left",
+     "set dec['chosen'] = None"
+    ],
+    [
+     "decide",
+     "if pref in left",
+     "set chosen, how = (pref, 'recipe preference')"
+    ],
+    [
+     "decide",
+     "if registry is None",
+     "set registry, policy = load_registry()"
+    ],
+    [
+     "decide",
+     "if self.allowed is not None and n not in self.allowed",
+     "set why = 'not in --allowed-models'"
+    ],
+    [
+     "decide",
+     "if self.mode == 'fixed'",
+     "set chosen, how = (left[0], 'fixed')"
+    ],
+    [
+     "decide",
+     "if self.mode == 'fixed'",
+     "set names = [self.fixed] if self.fixed in self.registry else []"
+    ],
+    [
+     "decide",
+     "if self.profile_allowed is not None and n not in self.profile_allowed",
+     "set why = \"not in the niche profile's models\""
+    ],
+    [
+     "decide",
+     "if self.registry[chosen].family in produced",
+     "set alt = any((self.registry[n].family not in produced for n in left))"
+    ],
+    [
+     "decide",
+     "if self.rpm",
+     "set st['r'] -= 1"
+    ],
+    [
+     "decide",
+     "if self.tpm",
+     "set st['t'] -= min(tokens, self.tpm)"
+    ],
+    [
+     "decide",
+     "if self.usd_cap is not None and self.spent_usd() + e.usd(spec.prompt_tokens, spec.max_output) > self.usd_cap + 1e-12",
+     "set why = f'over the run USD cap (${self.usd_cap:.4f})'"
+    ],
+    [
+     "decide",
+     "if spec.data_class == 'sensitive' and e.privacy != 'local'",
+     "set why = 'sensitive data: local models only'"
+    ],
+    [
+     "decide",
+     "if spec.step is not None and spec.role in ('worker', 'summariser')",
+     "set self.step_family[spec.step] = e.family"
+    ],
+    [
+     "decide",
+     "if status is not None and status >= 500 or getattr(e, 'amoeba_retries', None)",
+     "set self.failures[name] = self.failures.get(name, 0) + 1"
+    ],
+    [
+     "decide",
+     "if usd_cap is not None",
+     "set self.usd_cap = usd_cap"
+    ],
+    [
+     "decide",
+     "if why",
+     "set dec['filtered'][n] = why"
+    ],
+    [
+     "fallback",
+     "'recipe preference' if alt and how == 'recipe preference' else 'no alternative'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'routed' if getattr(args, 'topology', 'flat') == 'plan' else 'fixed'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "0.0 if resp.cached else e.usd(resp.input_tokens, billed_out)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else client",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "None if args.reasoning_effort == 'unset' else args.reasoning_effort",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[m.strip() for m in allowed_arg.split(',') if m.strip()] if allowed_arg else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[self.fixed] if self.fixed in self.registry else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "e.merge_system if args.merge_system is None else args.merge_system",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except (OSError, ValueError)",
+     "return 0.0"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "set status = getattr(e, 'status_code', None)"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "set st = {}"
+    ],
+    [
+     "fallback",
+     "os.environ if env is None else env",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.policy.get('verifier_independence') or 'off' if spec.role == 'verifier' else 'off'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.registry[self.fixed].model if self.fixed in self.registry else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "tuple(dependencies(self.cfg.plan).get(n, [])) if self.is_verification(step) else ()",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if args.model in (n, e.model)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if d.get('cause') == 'no_model'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if d.get('verifier_same_family')",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if m.strip()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n != name",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n != name and self.bucket(n).cooling() <= 0 and (self.registry[n].size_tier == self.registry[name].size_tier)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not (e.supports or {}).get(f)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if s in self.step_family",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if self.registry[n].family not in produced",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if self.registry[n].size_tier == tier",
+     "drop the rest"
+    ],
+    [
+     "loop cap",
+     "while True",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if any((n != name for n in dec['candidates']))",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if len([n for n in dec['candidates'] if n != name]) == 0",
+     "raise "
+    ],
+    [
+     "reject",
+     "if mode not in ('fixed', 'routed')",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if not cap",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if policy['verifier_independence'] not in ('required', 'preferred', 'off')",
+     "raise ValueError"
+    ],
+    [
+     "stop",
+     "if not (self.rpm or self.tpm)",
+     "return 0.0"
+    ],
+    [
+     "stop",
+     "if not hasattr(self.i.llm, 'llm') or not hasattr(self.i.llm.llm, 'registry')",
+     "return {}"
+    ],
+    [
+     "stop",
+     "if wait <= 0",
+     "return waited"
+    ]
+   ],
+   "kind": "code",
+   "numbers": [
+    "AgentResult.input_tokens",
+    "AgentResult.output_tokens",
+    "AgentSpec.max_tokens",
+    "CallSpec.max_output",
+    "CallSpec.prompt_tokens",
+    "ChatResponse.input_tokens",
+    "ChatResponse.output_tokens",
+    "ChatResponse.reasoning_tokens",
+    "Episode.seed",
+    "ModelEntry.context_window",
+    "ModelEntry.max_output",
+    "RunRecord.tokens",
+    "RunRecord.usd"
+   ],
+   "prompts": {},
+   "title": "Model router (D97)"
+  },
+  "facts_hash": "fbbc256766574bfe",
+  "model": "gemini-3.1-flash-lite",
+  "seed_hash": "6ea4fccafecd294c",
+  "sentence": "Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters that are never relaxed, then the recipe's or the role's preference or the cheapest of the right size.",
+  "source": "hand (model: still true)",
+  "what": [
+   "Every call states its role, step, size, needed features and data class; the router keeps the models that are allowed (niche profile, --allowed-models) and available (key present, not cooling down, not failing), drops those whose context, features, privacy, budget or verifier-independence rule fails, then chooses.",
+   "One token bucket per model, shared by every process, keeps calls inside the model's per-minute limits; a 429 cools a model down and the next one of the same size is used (with one model: wait).",
+   "Every decision — candidates, what was filtered and why, the choice, fallbacks and waits — is logged; result.json gets calls, tokens and US dollars per model. A new model is a registry entry only."
+  ]
+ },
  "runresult": {
-  "checked_at": "e322aab",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -11520,6 +12182,10 @@
       [
        "recipe",
        "dict | None"
+      ],
+      [
+       "routing",
+       "dict | None"
       ]
      ],
      "key": "amoeba/task/models.py::RunResult",
@@ -11547,6 +12213,8 @@
       "amoeba/llm/client.py::api_error",
       "amoeba/llm/client.py::describe_api_error",
       "amoeba/llm/limits.py::estimate",
+      "amoeba/llm/router.py::ModelRouter.begin_run",
+      "amoeba/llm/router.py::ModelRouter.summary",
       "amoeba/localtools/server.py::StdioServer.close",
       "amoeba/localtools/toolbox.py::LocalToolbox",
       "amoeba/localtools/toolbox.py::LocalToolbox.finish",
@@ -11563,6 +12231,7 @@
       "amoeba/task/interpret.py::read_task",
       "amoeba/task/interpret.py::with_note",
       "amoeba/task/models.py::RunResult",
+      "scripts/run_experiment.py::summary",
       "scripts/run_task.py::ask_user",
       "scripts/run_task.py::blocked_of",
       "scripts/run_task.py::intake_text",
@@ -11604,15 +12273,15 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "05620855294a2dbc",
+  "facts_hash": "dee3770e7826d503",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bef6a71b78aeb520",
-  "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, interpretation, and any pool, selection, clarification, or recipe details.",
+  "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, interpretation, and any pool, selection, clarification, recipe, or routing details.",
   "source": "model: rewritten",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
-   "It also lists the steps that answered BLOCKED, every capability request, local tool usage, files created, skills attached, replan details, refinement data, interpretation, disabled tools, recipe information, and provenance, while tracking pool usage and clarifications."
+   "It also lists the steps that answered BLOCKED, every capability request, local tool usage, files created, skills attached, replan details, refinement data, interpretation, disabled tools, recipe information, routing, and provenance, while tracking pool usage and clarifications."
   ]
  },
  "scoring": {
@@ -11882,9 +12551,11 @@
    "title": "Solver"
   },
   "facts_hash": "3559a5bcfdca0dc7",
+  "rejected_hash": "1d513d491073841d",
   "seed_hash": "4b267170a8d8ee95",
   "sentence": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply gets one retry.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
    "It writes a full new answer each time it is asked.",
@@ -13529,7 +14200,7 @@
   ]
  },
  "toolbox": {
-  "checked_at": "8baa733",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -13596,6 +14267,7 @@
       "amoeba/llm/client.py::MockLLMClient.chat_messages",
       "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
       "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/llm/router.py::ModelRouter.chat_messages",
       "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/mcp.py::data_block",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -14528,7 +15200,7 @@
    "prompts": {},
    "title": "Stock the toolbox"
   },
-  "facts_hash": "06de819e479ff132",
+  "facts_hash": "8a739e38700fe031",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "7524778ff38722f5",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
@@ -15023,7 +15695,7 @@
   ]
  },
  "trace": {
-  "checked_at": "a371bd0",
+  "checked_at": "1398f7a",
   "facts": {
    "anchors": [
     {
@@ -15061,11 +15733,13 @@
      "callees": [
       "amoeba/adapt/architect.py::check",
       "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
       "amoeba/interp/trace.py::NoopListener.on_llm_call",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TracedLLM._log_retries",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/interp/trace.py::_route_attrs",
       "amoeba/llm/cache.py::CachedLLM.chat_messages",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::LLMClient.chat_messages",
@@ -15075,15 +15749,24 @@
       "amoeba/llm/limits.py::RunLimits.check",
       "amoeba/llm/profiles.py::RoleRouter.chat_messages",
       "amoeba/llm/profiles.py::RoleRouter.route",
+      "amoeba/llm/router.py::ModelRouter.call",
+      "amoeba/llm/router.py::ModelRouter.chat_messages",
+      "amoeba/llm/router.py::ModelRouter.route",
+      "amoeba/llm/router.py::spec_for",
+      "amoeba/localtools/server.py::StdioServer.call",
+      "amoeba/localtools/toolbox.py::LocalToolbox.call",
       "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/mcp.py::Connector.call",
+      "amoeba/pool/mcp.py::PoolTools.call",
       "amoeba/pool/mcp.py::PoolTools.call.check",
+      "amoeba/pool/mcp.py::SdkConnector.call",
       "amoeba/pool/stock.py::SharedPicks.get",
       "scripts/eval_draft.py::Recording.chat_messages",
       "scripts/eval_draft.py::Recording.route"
      ],
      "doc": "role: the call's role group (D54; Box 2 callers are known by name). A profile's RoleRouter picks the",
      "key": "amoeba/interp/trace.py::TracedLLM.chat_messages",
-     "signature": "chat_messages(self, messages: Messages, seed: int=0, *, agent_id: str | None=None, agent_name: str | None=None, max_tokens: int | None=None, role: str | None=None, _retry: bool=False) -> ChatResponse"
+     "signature": "chat_messages(self, messages: Messages, seed: int=0, *, agent_id: str | None=None, agent_name: str | None=None, max_tokens: int | None=None, role: str | None=None, step: int | None=None, checks=None, needs=(), _retry: bool=False) -> ChatResponse"
     },
     {
      "callees": [],
@@ -15114,14 +15797,14 @@
    "prompts": {},
    "title": "Every AI call → one trace line"
   },
-  "facts_hash": "0f69a9e3375bd6f1",
+  "facts_hash": "4203b86c4c6e018a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0f5f3df261f75ad2",
-  "sentence": "Writes one log line per AI call and tool call: who, which model, tokens, reasoning tokens, and time. Nothing enforces a budget.",
-  "source": "model: kept",
+  "sentence": "Writes one log line per AI call and tool call: who, which model, tokens, reasoning tokens, time, and step. Nothing enforces a budget.",
+  "source": "model: rewritten",
   "what": [
-   "Every AI call becomes one log line with the helper, model, tokens in and out, reasoning tokens, and time taken.",
-   "Tool calls, each helper's turn and the whole run get their own lines too.",
+   "Every AI call becomes one log line with the helper, model, tokens in and out, reasoning tokens, time taken, and step number.",
+   "Tool calls, each helper's turn, and the whole run get their own lines too.",
    "Point events are logged too: capability_request, blocked and unknown_tool.",
    "From the command line each AI line also holds the exact prompt sent and the reply received (turn off with --no-log-content).",
    "Token counts are only recorded; no code reads them to stop a run.",
