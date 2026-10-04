@@ -310,7 +310,9 @@ class ModelRouter(LLMClient):
             how = f"cheapest in tier {tier}"
         if indep in ("preferred", "required") and produced:
             if self.registry[chosen].family in produced:
-                dec["verifier_same_family"] = "no alternative"
+                alt = any(self.registry[n].family not in produced for n in left)
+                dec["verifier_same_family"] = "recipe preference" if alt and how == "recipe preference" else \
+                    "no alternative"
             dec["checked_family"] = sorted(produced)
         dec.update(chosen=chosen, why=how, family=self.registry[chosen].family)
         self.decisions.append(dec)

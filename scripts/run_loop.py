@@ -54,8 +54,12 @@ def main(argv=None) -> int:
                    help="none: the Architect gets the alarm only, every edit allowed (the ablation)")
     p.add_argument("--recipes-from", default=None, help="D88: start the stream's recipe store from another one")
     p.add_argument("--env-file", action="append", default=[])
+    p.add_argument("--allow-model-edits", action="store_true",
+                   help="D98: let the Architect propose prefer_model edits (off: one real model)")
     p.add_argument("--no-ship", action="store_true", help="D95: do not ship evidence to the evidence branch")
     args, passthrough = p.parse_known_args(argv)
+    if args.allow_model_edits:
+        os.environ["AMOEBA_ALLOW_MODEL_EDITS"] = "1"
     env = load_env(args.env_file)
     for k in OVERRIDES:                                  # the Architect's client is built in this process
         os.environ.pop(k, None)

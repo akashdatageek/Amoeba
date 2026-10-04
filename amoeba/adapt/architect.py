@@ -36,7 +36,8 @@ SHAPES = {"add_planner_rule": '{"text": "<lesson, at most 300 characters>"}',
           "grant_tool": '{"select": SELECTOR, "tool": "<tool name>"}',
           "revoke_tool": '{"select": SELECTOR, "tool": "<tool name>"}',
           "add_role_rule": '{"select": SELECTOR, "text": "<one rule for the role card>"}',
-          "set_run_option": '{"name": "<option>", "value": <value>}'}
+          "set_run_option": '{"name": "<option>", "value": <value>}',
+          "prefer_model": '{"role": "<interpreter|planner|worker|verifier|summariser|...>", "model": "<registry name>"}'}
 SELECTOR = ('SELECTOR = {"kind": "work"|"verify"|"any", "roles_with_tool": "<tool>"|null, "last_work_step": true|false, '
             '"all_roles": true|false} (fields you leave out take their defaults: any, null, false, false)')
 

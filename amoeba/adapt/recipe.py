@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -23,13 +24,20 @@ from amoeba.task.models import Draft, DraftedRole, DraftPlanStep
 
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "adapt.yaml"
 TRANSFORM_OPS = ("add_verify_step", "tighten_done_when", "grant_tool", "revoke_tool", "add_role_rule")
-EDIT_OPS = ("add_planner_rule", "remove_planner_rule", *TRANSFORM_OPS, "set_run_option")
+EDIT_OPS = ("add_planner_rule", "remove_planner_rule", *TRANSFORM_OPS, "set_run_option", "prefer_model")
 
 
 # box: recipe
-@lru_cache(maxsize=1)
 def adapt_config() -> dict:
-    return yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    return _adapt_config(os.environ.get("AMOEBA_ALLOW_MODEL_EDITS") == "1")
+
+
+@lru_cache(maxsize=2)
+def _adapt_config(model_edits: bool) -> dict:
+    cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    if model_edits:                                       # D98: --allow-model-edits (run_loop, run_experiment)
+        cfg["recipe"]["allow_model_edits"] = True
+    return cfg
 
 
 # box: recipe
@@ -71,17 +79,21 @@ class Recipe(BaseModel):
     planner_rules: list[Rule] = Field(default_factory=list)
     transforms: list[Transform] = Field(default_factory=list)
     run_options: dict[str, Any] = Field(default_factory=dict)
+    model_prefs: dict[str, str] = Field(default_factory=dict)   # D98: role -> registry model (the router's 3c)
     created_by: Literal["seed", "human", "architect"] = "seed"
     hypothesis_id: str | None = None
 
     def is_empty(self) -> bool:
-        return not (self.planner_rules or self.transforms or self.run_options)
+        return not (self.planner_rules or self.transforms or self.run_options or self.model_prefs)
 
     def content(self) -> dict:
         """What the recipe does (not its version or history): the key of the arm-A cache (D83)."""
-        return {"rules": [r.text for r in self.planner_rules],
-                "transforms": [t.model_dump(exclude={"id"}) for t in self.transforms],
-                "run_options": dict(sorted(self.run_options.items()))}
+        out = {"rules": [r.text for r in self.planner_rules],
+               "transforms": [t.model_dump(exclude={"id"}) for t in self.transforms],
+               "run_options": dict(sorted(self.run_options.items()))}
+        if self.model_prefs:                          # D98: only when set, so earlier recipes keep their hash
+            out["model_prefs"] = dict(sorted(self.model_prefs.items()))
+        return out
 
     def hash(self) -> str:
         return hashlib.sha256(json.dumps(self.content(), sort_keys=True).encode()).hexdigest()[:12]
@@ -137,9 +149,16 @@ class SetOption(_P):
     value: Any
 
 
+# box: recipe
+class PreferModel(_P):
+    role: str
+    model: str
+
+
 PARAMS: dict[str, type[_P]] = {"add_planner_rule": AddRule, "remove_planner_rule": RemoveRule,
                                "add_verify_step": SelectOnly, "tighten_done_when": Tighten, "grant_tool": ToolEdit,
-                               "revoke_tool": ToolEdit, "add_role_rule": RoleRule, "set_run_option": SetOption}
+                               "revoke_tool": ToolEdit, "add_role_rule": RoleRule, "set_run_option": SetOption,
+                               "prefer_model": PreferModel}
 
 
 # box: recipe
@@ -148,7 +167,7 @@ class Edit(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     op: Literal["add_planner_rule", "remove_planner_rule", "add_verify_step", "tighten_done_when", "grant_tool",
-                "revoke_tool", "add_role_rule", "set_run_option"]
+                "revoke_tool", "add_role_rule", "set_run_option", "prefer_model"]
     params: dict = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -187,6 +206,8 @@ def apply_edit(recipe: Recipe, edit: Edit, created_by: str = "architect", hypoth
         r.planner_rules = [x for x in r.planner_rules if x.id != p["id"]]
     elif edit.op == "set_run_option":
         r.run_options[p["name"]] = p["value"]
+    elif edit.op == "prefer_model":                   # D98: the router's preference for one role
+        r.model_prefs[p["role"]] = p["model"]
     else:
         extra = {k: v for k, v in p.items() if k != "select"}
         r.transforms.append(Transform(id=_next_id("T", [x.id for x in r.transforms]), op=edit.op,
@@ -368,7 +389,7 @@ def apply_transforms(draft: Draft, recipe: Recipe | None) -> tuple[Draft, list[d
 # ---- validation (§3.3) ---------------------------------------------------------------------------------------------
 # box: recipe
 class Violation(BaseModel):
-    rule: Literal["V1", "V2", "V3", "V4", "V5"]
+    rule: Literal["V1", "V2", "V3", "V4", "V5", "V6"]
     detail: str
 
 
@@ -454,6 +475,18 @@ def validate_recipe(recipe: Recipe, envelope=None, sample_draft: Draft | None = 
         hits = [w for w in cfg["denylist"] if w in low]
         if hits:
             out.append(Violation(rule="V4", detail=f"{where}: denied wording {hits} (review by hand)"))
+    # V6 (D98): a model preference names a router role and a registry model, and model edits are switched on;
+    # it never bypasses the allowlist or the hard filters (the router applies it only to a remaining candidate)
+    if recipe.model_prefs:
+        models = yaml.safe_load((CONFIG.parent / "models.yaml").read_text(encoding="utf-8")) or {}
+        reg, roles = models.get("registry") or {}, (models.get("routing") or {}).get("roles") or []
+        if not cfg.get("allow_model_edits"):
+            out.append(Violation(rule="V6", detail="model edits are off (--allow-model-edits)"))
+        for role, model in recipe.model_prefs.items():
+            if role not in roles:
+                out.append(Violation(rule="V6", detail=f"prefer_model: unknown role {role!r}"))
+            if model not in reg:
+                out.append(Violation(rule="V6", detail=f"prefer_model: {model!r} is not in the model registry"))
     # V5: the step graph still passes the plan checks after the transforms
     if sample_draft is not None and recipe.transforms:
         try:

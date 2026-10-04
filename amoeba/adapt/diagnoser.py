@@ -132,7 +132,11 @@ def run_signals(run_dir: str | Path, failed_items: list[str]) -> dict:
 
 # box: diagnoser
 def _allowed(cause: str) -> list[str]:
-    return list(adapt_config()["diagnoser"]["allowed_edits"].get(cause, []))
+    """The cause's edits from the table; prefer_model only when model edits are on (D98)."""
+    edits = list(adapt_config()["diagnoser"]["allowed_edits"].get(cause, []))
+    if not adapt_config()["recipe"].get("allow_model_edits"):
+        edits = [e for e in edits if e != "prefer_model"]
+    return edits
 
 
 # box: diagnoser
@@ -229,5 +233,6 @@ def examples(window: list[PracticeRecord], sigs: list[dict], cause: str, stream:
 # box: diagnoser
 def diagnose_none(alarm: Alarm) -> Diagnosis:
     """--diagnoser none: the alarm only, every edit allowed (the untargeted baseline of the ablation)."""
-    return Diagnosis(family=alarm.family, cause="alarm_only", allowed_edits=list(EDIT_OPS), alarm=alarm.model_dump(),
+    ops = [e for e in EDIT_OPS if e != "prefer_model" or adapt_config()["recipe"].get("allow_model_edits")]
+    return Diagnosis(family=alarm.family, cause="alarm_only", allowed_edits=ops, alarm=alarm.model_dump(),
                      symptom=f"{alarm.kind} alarm at order {alarm.at_order}: {alarm.before:.2f} -> {alarm.after:.2f}")

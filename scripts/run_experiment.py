@@ -236,6 +236,8 @@ def parse(argv=None):
     p.add_argument("--redecide", default=None, metavar="HYPOTHESIS_ID",
                    help="D84b: decide a hypothesis again from its saved pairs (no runs); the row is marked post_hoc")
     p.add_argument("--gate-version", default="v2", choices=["v1", "v2", "v3"], help="with --redecide")
+    p.add_argument("--allow-model-edits", action="store_true",
+                   help="D98: let the Architect propose prefer_model edits (off: one real model)")
     p.add_argument("--no-ship", action="store_true", help="D95: do not ship evidence to the evidence branch")
     p.add_argument("--check", action="store_true",
                    help="D91: the single pre-registered check (Gate v3 at gate.v3.check_alpha, rows marked check, "
@@ -247,6 +249,8 @@ def parse(argv=None):
 # box: experimenter
 def main(argv=None) -> int:
     args, passthrough = parse(argv)
+    if args.allow_model_edits:
+        os.environ["AMOEBA_ALLOW_MODEL_EDITS"] = "1"
     cfg = adapt_config().get("experiment", {})
     root = Path(args.root or ROOT / "eval" / "loop" / args.stream)
     stream = load_stream(args.stream)

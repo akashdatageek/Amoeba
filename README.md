@@ -444,6 +444,15 @@ cheapest of the right size. Per-model rate buckets, shared by all processes, kee
 `--routing routed` is the default for Amoeba; the baselines use `fixed`. Today the registry holds Gemma 4 31B only;
 adding a model is a registry entry. Each decision is in the trace, events.jsonl and result.json.
 
+## Model preference as a recipe edit (D98, off)
+
+The recipe menu has one more edit, `prefer_model {role, model}`: it tells the router (D97) which model to try first for
+one role in one task family. The router still applies every allowlist and hard filter first, so a preference can only
+pick among models that were allowed anyway. The Diagnoser offers it only for the causes `max_turns`, `checks` and
+`capability`, and the Gate judges it on gain and USD like any other edit. It is built but **off**
+(`--allow-model-edits` on `scripts/run_loop.py` / `scripts/run_experiment.py` turns it on): Gemma 4 31B is the only
+real model today.
+
 ## Cost controls (D45–D48)
 
 ```bash

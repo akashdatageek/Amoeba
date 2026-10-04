@@ -76,4 +76,4 @@ def test_diagnoser_none_is_the_alarm_only(tmp_path):
     recs = [run(tmp_path, i, 1.0) for i in range(1, 9)] + [run(tmp_path, i, 0.5) for i in range(9, 11)]
     alarm, _ = alarm_of(recs)
     d = diagnose_none(alarm)
-    assert d.cause == "alarm_only" and d.allowed_edits == list(EDIT_OPS) and d.evidence == [] and d.examples == []
+    assert d.cause == "alarm_only" and d.allowed_edits == [e for e in EDIT_OPS if e != "prefer_model"] and d.evidence == [] and d.examples == []
