@@ -82,6 +82,7 @@ class RecipeStore:
         index = self.index()
         if recipe.parent_version != index[recipe.family]["current"]:
             raise ValueError(f"recipe v{recipe.version} is not built on the current v{index[recipe.family]['current']}")
+        recipe = stamp_provenance(recipe, decision)
         self._write(recipe)
         index[recipe.family]["current"] = recipe.version
         index[recipe.family]["history"].append({"version": recipe.version, "parent": recipe.parent_version,
@@ -119,6 +120,20 @@ class RecipeStore:
         if not (dst / "index.json").exists() and (src / "index.json").exists():
             shutil.copytree(src, dst, dirs_exist_ok=True, ignore=shutil.ignore_patterns("experience.jsonl"))
         return cls(dst)
+
+
+# box: memory
+def stamp_provenance(recipe: Recipe, decision: dict) -> Recipe:
+    """D99: the accepting Gate row on the lines this hypothesis added; a line from before D99 is marked so."""
+    r = recipe.model_copy(deep=True)
+    row = f"ledger.jsonl decision {decision.get('hypothesis_id')} {decision.get('ts', '')}".strip()
+    for k in r.line_keys():
+        p = r.provenance.setdefault(k, {"hypothesis_id": None, "created_by": None, "date": None, "gate_row": None,
+                                        "note": "added before D99 provenance"})
+        if p.get("gate_row") is None and p.get("hypothesis_id") and p["hypothesis_id"] == decision.get("hypothesis_id"):
+            p["gate_row"] = row
+            p["gate_version"] = decision.get("gate_version")
+    return r
 
 
 # box: memory

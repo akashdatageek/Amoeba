@@ -34,6 +34,7 @@ from amoeba.adapt.experimenter import Job, experiment
 from amoeba.adapt.gate import alpha_for, cfg as gate_cfg, decide, decision_row, rollback_watch
 from amoeba.adapt.ledger import Ledger
 from amoeba.adapt.monitor import LoopState, PracticeRecord, monitor, practice_record
+from amoeba.memory.context import propose_standards
 from amoeba.adapt.recipe import apply_edit
 from amoeba.adapt.stream import Stream, StreamTask
 from amoeba.interp.trace import TraceWriter
@@ -173,6 +174,8 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
             continue
         st = loop.families[t.family]
         recs = [done[o] for o in sorted(done) if o <= t.order]
+        for prop in propose_standards(recs, root, ev):    # D99: a proposal only; the user approves (approve_memory)
+            log(f"[memory] proposal {prop['id']}: {prop['item']!r} failed in runs {prop['runs']} ({prop['families']})")
         _watch(st, recs, t, store, ledger, loop, log, ev)
         alarm = monitor(recs, st)
         if alarm is not None:

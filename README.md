@@ -453,6 +453,20 @@ pick among models that were allowed anyway. The Diagnoser offers it only for the
 (`--allow-model-edits` on `scripts/run_loop.py` / `scripts/run_experiment.py` turns it on): Gemma 4 31B is the only
 real model today.
 
+## Memory: three kinds (D99)
+
+- **Recipe memory** (the recipe store): only the Gate writes. Every recipe line says which hypothesis added it, on
+  which date, and which Gate decision accepted it.
+- **User memory** (`standards:` in the `--context` file): lasting preferences such as "answers end with an
+  Assumptions section". The loop can only *propose* one (a feedback item failing in ≥3 practice runs across ≥2 task
+  families → `eval/loop/<stream>/memory_proposals.jsonl`). It counts once you approve it:
+  `python -m scripts.approve_memory --stream m2 --id P1 --context user.yaml` (logged in events.jsonl). Box 1 and
+  Box 2 read approved standards.
+- **Event memory**: the evidence log (`events.jsonl`, D95). It is append-only, written only by the harness, and never
+  fed raw into prompts.
+
+No agent can write any of these files.
+
 ## Cost controls (D45–D48)
 
 ```bash

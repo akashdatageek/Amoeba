@@ -26,7 +26,7 @@ from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
 from amoeba.task.interpret import ask_one, enforce_opening, opening_line, read_task, with_note
-from amoeba.memory.context import load_context
+from amoeba.memory.context import load_context, standards_slots
 from amoeba.interp.trace import TracedLLM
 from amoeba.task.evaluate import rubric_score, score
 from amoeba.task.instantiate import instantiate
@@ -89,6 +89,11 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     if disabled_tools:
         trace.event("tools_disabled", {"amoeba.box": "stream", "amoeba.tools": list(disabled_tools)})
     lessons = lessons_text(recipe) if saved_draft is None else {}               # D82: Box 2's {lessons} slot
+    if saved_draft is None and topology == "plan" and (context or {}).get("standards"):   # D99: approved standards
+        lessons = dict(lessons)
+        for who, text in standards_slots(context).items():
+            lessons[who] = lessons.get(who, "") + text
+        trace.event("user_standards", {"amoeba.box": "memory", "amoeba.standards": list(context["standards"])})
     plan_options, recipe_turns, opts_applied, opts_cli = overlay_run_options(plan_options, recipe, cli_explicit)
     # --max-turns given on the command line wins over the recipe; a harness default (--option-defaults) yields to it
     max_turns = max_turns or recipe_turns or default_max_turns

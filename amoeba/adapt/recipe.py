@@ -11,6 +11,7 @@ One edit per hypothesis; each is a pure function Recipe -> Recipe (a new version
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime, timezone
 import json
 import os
 from functools import lru_cache
@@ -81,6 +82,9 @@ class Recipe(BaseModel):
     transforms: list[Transform] = Field(default_factory=list)
     run_options: dict[str, Any] = Field(default_factory=dict)
     model_prefs: dict[str, str] = Field(default_factory=dict)   # D98: role -> registry model (the router's 3c)
+    # D99: where each line came from — key "L1" / "T1" / "run_options.<name>" / "model_prefs.<role>" ->
+    # {hypothesis_id, created_by, date, gate_row}; gate_row is filled by the store when the Gate's accept commits it
+    provenance: dict[str, dict] = Field(default_factory=dict)
     created_by: Literal["seed", "human", "architect"] = "seed"
     hypothesis_id: str | None = None
 
@@ -95,6 +99,11 @@ class Recipe(BaseModel):
         if self.model_prefs:                          # D98: only when set, so earlier recipes keep their hash
             out["model_prefs"] = dict(sorted(self.model_prefs.items()))
         return out
+
+    def line_keys(self) -> list[str]:
+        """D99: every line of the recipe, by its provenance key."""
+        return [r.id for r in self.planner_rules] + [t.id for t in self.transforms] + \
+            [f"run_options.{k}" for k in self.run_options] + [f"model_prefs.{k}" for k in self.model_prefs]
 
     def hash(self) -> str:
         return hashlib.sha256(json.dumps(self.content(), sort_keys=True).encode()).hexdigest()[:12]
@@ -199,20 +208,28 @@ def apply_edit(recipe: Recipe, edit: Edit, created_by: str = "architect", hypoth
     """Pure: a new recipe (version + 1, parent = this version) with the edit applied. The input is not changed."""
     r = recipe.model_copy(deep=True)
     p = edit.params
+    key = None
     if edit.op == "add_planner_rule":
-        r.planner_rules.append(Rule(id=_next_id("L", [x.id for x in r.planner_rules]), text=p["text"]))
+        key = _next_id("L", [x.id for x in r.planner_rules])
+        r.planner_rules.append(Rule(id=key, text=p["text"]))
     elif edit.op == "remove_planner_rule":
         if p["id"] not in [x.id for x in r.planner_rules]:
             raise ValueError(f"no planner rule {p['id']} in {recipe.family} v{recipe.version}")
         r.planner_rules = [x for x in r.planner_rules if x.id != p["id"]]
+        r.provenance.pop(p["id"], None)
     elif edit.op == "set_run_option":
         r.run_options[p["name"]] = p["value"]
+        key = f"run_options.{p['name']}"
     elif edit.op == "prefer_model":                   # D98: the router's preference for one role
         r.model_prefs[p["role"]] = p["model"]
+        key = f"model_prefs.{p['role']}"
     else:
         extra = {k: v for k, v in p.items() if k != "select"}
-        r.transforms.append(Transform(id=_next_id("T", [x.id for x in r.transforms]), op=edit.op,
-                                      select=Selector.model_validate(p["select"]), params=extra))
+        key = _next_id("T", [x.id for x in r.transforms])
+        r.transforms.append(Transform(id=key, op=edit.op, select=Selector.model_validate(p["select"]), params=extra))
+    if key:                                           # D99: provenance on every line (not part of content/hash)
+        r.provenance[key] = {"hypothesis_id": hypothesis_id, "created_by": created_by,
+                             "date": datetime.now(timezone.utc).date().isoformat(), "gate_row": None}
     return r.model_copy(update={"version": recipe.version + 1, "parent_version": recipe.version,
                                 "created_by": created_by, "hypothesis_id": hypothesis_id})
 
