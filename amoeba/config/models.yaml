@@ -61,3 +61,36 @@ profiles:
 #       planner: {model: gemini-3.5-flash, max_tokens: 8192}
 #       reviewers: {model: gemini-3.1-flash-lite}
 #       pool: {model: gemini-3.1-flash-lite, max_tokens: 256}
+
+# ---- D97: the model registry and the routing policy (the router: amoeba/llm/router.py) -------------------------------
+# One entry per model. A new model is an entry here only — no code change. Keys: provider, base_url, model (the API's
+# id), api_key_env, family (gemma, qwen, llama, gemini…), size_tier (small | medium | large), context_window,
+# max_output, supports {json, tools, vision}, price (USD per 1M tokens: input, output), rate (requests and tokens per
+# minute: rpm, tpm; rpd for the record), privacy (local | cloud), merge_system, reasoning_effort.
+registry:
+  gemma-4-31b:
+    provider: google-ai-studio
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    model: gemma-4-31b-it
+    api_key_env: GEMINI_API_KEY
+    family: gemma
+    size_tier: large
+    context_window: 262144       # 256K tokens
+    max_output: 32768
+    supports: {json: true, tools: false, vision: true}   # tools: no native tool calling is used (text actions)
+    # Gemini API price page (ai.google.dev/gemini-api/docs/pricing, read 2026-10-04): Gemma 4 is "Free of charge"
+    # on the free tier; no paid tier is offered
+    price: {input: 0.0, output: 0.0}
+    # per-project free-tier limits (secondary sources, 2026-10-04; check AI Studio → API key → Rate limit):
+    # 15 requests per minute, no token limit, 1,500 requests per day
+    rate: {rpm: 15, tpm: null, rpd: 1500}
+    privacy: cloud
+    merge_system: true
+
+routing:
+  default_model: gemma-4-31b       # fixed mode, and the baselines
+  # verifier independence: required (only another family may check, else no_model) | preferred (another family when
+  # one is available, else the same one, logged as verifier_same_family) | off. Overridable per niche profile (D102)
+  verifier_independence: preferred
+  role_tiers: {}                   # role -> size tier for the cheapest-in-tier choice (default large)
+  role_defaults: {}                # role -> registry name (the profile's default for that role)

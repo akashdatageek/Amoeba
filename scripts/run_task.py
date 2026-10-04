@@ -47,7 +47,7 @@ from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
-PHASE2_FIELDS = {"disabled_tools", "recipe"}           # left out of result.json when None (Phase 1 records unchanged)
+PHASE2_FIELDS = {"disabled_tools", "recipe", "routing"}           # left out of result.json when None (Phase 1 records unchanged)
 
 
 # box: ov_leave, capreq, runresult
@@ -82,6 +82,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id, log_content=log_content,
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
+    if hasattr(llm, "begin_run"):  # D97: the router's account for this run (data class, recipe preferences)
+        llm.begin_run(data_class="sensitive" if "sensitive" in (task.tags or []) else "normal",
+                      recipe_prefs=getattr(recipe, "model_prefs", None) if recipe is not None else None)
     t0 = time.perf_counter()
     if disabled_tools:
         trace.event("tools_disabled", {"amoeba.box": "stream", "amoeba.tools": list(disabled_tools)})
@@ -229,7 +232,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace),
         replan=ep.replan if ep else {},
         interpretation=interpretation_of(interp, stated),
-        pool=pool_summary, disabled_tools=list(disabled_tools) or None, recipe=recipe_rec, **local_out)
+        pool=pool_summary, disabled_tools=list(disabled_tools) or None, recipe=recipe_rec,
+        routing=llm.summary() if hasattr(llm, "summary") and hasattr(llm, "registry") else None, **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
@@ -420,11 +424,48 @@ def endpoint(args: argparse.Namespace, profile) -> tuple[str, str]:
     return base_url, api_key
 
 
+# box: router
+def routing_mode(args: argparse.Namespace) -> str:
+    """D97: --routing; by default routed for Amoeba's plan runner, fixed for the baselines (and Paper 1's benchmark)."""
+    return getattr(args, "routing", None) or ("routed" if getattr(args, "topology", "flat") == "plan" else "fixed")
+
+
+# box: router
+def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=None):
+    """D97: the per-call model router over the registry (amoeba/config/models.yaml)."""
+    from amoeba.llm.router import ModelRouter, load_registry
+    if registry is None:
+        registry, policy = load_registry()
+    effort = None if args.reasoning_effort == "unset" else args.reasoning_effort
+
+    def make(e):
+        key = args.api_key or os.environ.get(e.api_key_env or "", "")
+        client = OpenAICompatibleClient(base_url=e.base_url, api_key=key, model=e.model, max_tokens=2048,
+                                        max_rate_retries=args.max_rate_retries, min_seconds_between_calls=0.0,
+                                        merge_system=e.merge_system if args.merge_system is None else args.merge_system,
+                                        reasoning_effort=effort or e.reasoning_effort)
+        return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
+            else client
+    allowed_arg = getattr(args, "allowed_models", None)
+    allowed = [m.strip() for m in allowed_arg.split(",") if m.strip()] if allowed_arg else None
+    fixed = None
+    if args.model:                                    # --model names a registry entry or an API model id
+        fixed = next((n for n, e in registry.items() if args.model in (n, e.model)), None)
+    router = ModelRouter(registry, policy, make, mode=mode, allowed=allowed, usd_cap=getattr(args, "max_usd_per_run", None),
+                         fixed_model=fixed, profile_allowed=getattr(args, "profile_models", None))
+    router.profile = f"router:{mode}"
+    return router
+
+
 # box: client
 def build_llm(args: argparse.Namespace) -> LLMClient:
     if args.llm == "mock":
         mock = toy_mock_client()
         return CachedLLM(mock, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else mock
+    mode = routing_mode(args)
+    if mode == "routed":                              # D97: every call through the per-call router
+        return build_router_llm(args, mode)
+    # fixed (the baselines' default) and role: the D54 profile path, unchanged; fixed drops per-role models
     # D54: flags win; else the AMOEBA_* env vars; else the profile (amoeba/config/models.yaml)
     profile = get_profile(args.profile)
     base_url, api_key = endpoint(args, profile)
@@ -442,6 +483,10 @@ def build_llm(args: argparse.Namespace) -> LLMClient:
     # a reply limit given on the command line wins over the profile's for that group (D27 flags)
     keep = set(ROLE_GROUPS) - ({"planner"} if getattr(args, "planner_max_tokens", None) else set()) \
         - ({"observers"} if getattr(args, "observer_max_tokens", None) else set())
+    if mode == "fixed":
+        from dataclasses import replace
+        profile = replace(profile, roles={g: {k: v for k, v in r.items() if k != "model"}
+                                          for g, r in profile.roles.items()})
     return build_router(profile, make, model, keep)
 
 
@@ -534,6 +579,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="Box 3 may also borrow Claude Code's tools (Bash, Read, Write, Edit, Glob, Grep) and skills "
                         "through `claude mcp serve`, in a fresh OpenShell sandbox per run (D96; isolation process: the D59 server "
                         "on this host, which needs AMOEBA_SANDBOX=1)")
+    p.add_argument("--routing", choices=["fixed", "role", "routed"], default=None,
+                   help="D97: fixed = one model for every call (default for the baselines); role = the profile's "
+                        "static per-role models (D54); routed = the per-call router (default for --topology plan)")
+    p.add_argument("--allowed-models", default=None,
+                   help="D97: comma-separated registry names the router may use (default: the whole registry)")
+    p.add_argument("--max-usd-per-run", type=float, default=None,
+                   help="D97: the router drops a model whose estimated cost would pass this run budget")
     p.add_argument("--local-tools-mode", choices=["sandbox", "inprocess"], default="sandbox",
                    help="D96a: sandbox (default) = a fresh OpenShell sandbox per run; inprocess = the D59 server on "
                         "this host, only when asked for and only with AMOEBA_SANDBOX=1")

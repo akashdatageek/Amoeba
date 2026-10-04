@@ -61,6 +61,7 @@ class RunRecord(BaseModel):
     run_dir: str = ""
     score: float | None = None
     tokens: int = 0
+    usd: float = 0.0                                # D97: the router's estimated USD (0 without prices)
     honesty: float = 0.0
     refusals: int = 0
     error: str | None = None
@@ -91,6 +92,8 @@ class Pair(BaseModel):
     error_B: str | None = None
     flags_A: dict = Field(default_factory=dict)     # D84b: honesty signals by kind, per arm
     flags_B: dict = Field(default_factory=dict)
+    usd_A: float = 0.0                              # D97: the router's USD per run (0 without prices)
+    usd_B: float = 0.0
 
     @property
     def d(self) -> float:
@@ -195,7 +198,8 @@ def record_of(job: Job, run_dir: Path | None, error: str | None = None) -> RunRe
         return RunRecord(arm=job.arm, task_id=job.task.id, k=job.k, seed=job.seed, error=error or "runner: no result")
     r = json.loads((run_dir / "result.json").read_text(encoding="utf-8"))
     return RunRecord(arm=job.arm, task_id=job.task.id, k=job.k, seed=job.seed, run_dir=str(run_dir),
-                     score=score_of(r, job.task), tokens=int(r.get("total_tokens") or 0), honesty=honesty_flags(run_dir),
+                     score=score_of(r, job.task), tokens=int(r.get("total_tokens") or 0),
+                     usd=float((r.get("routing") or {}).get("usd") or 0.0), honesty=honesty_flags(run_dir),
                      refusals=refusals(r), error=r.get("error"), flags=honesty_parts(run_dir))
 
 
@@ -377,7 +381,8 @@ def _pair(t: StreamTask, k: int, a: RunRecord, b: RunRecord, shared_draft: bool 
     return Pair(task_id=t.id, phase=t.phase, k=k, seed=a.seed, score_A=a.score or 0.0, score_B=b.score or 0.0,
                 tokens_A=a.tokens, tokens_B=b.tokens + extra, honesty_A=a.honesty, honesty_B=b.honesty,
                 refusals_A=a.refusals, refusals_B=b.refusals, run_A=a.run_dir, run_B=b.run_dir,
-                error_A=a.error, error_B=b.error, flags_A=a.flags or _parts(a.run_dir), flags_B=b.flags or _parts(b.run_dir))
+                error_A=a.error, error_B=b.error, flags_A=a.flags or _parts(a.run_dir), flags_B=b.flags or _parts(b.run_dir),
+                usd_A=a.usd, usd_B=b.usd)
 
 
 # box: experimenter

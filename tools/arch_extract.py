@@ -848,6 +848,20 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes, chains and verifies the log.",
          anchors=[]),
+    dict(id="router", view="adapt", title="Model router (D97)", kind="code", plan=None,
+         sentence="Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters "
+                  "that are never relaxed, then the recipe's or the role's preference or the cheapest of the right size.",
+         what=["Every call states its role, step, size, needed features and data class; the router keeps the models "
+               "that are allowed (niche profile, --allowed-models) and available (key present, not cooling down, not "
+               "failing), drops those whose context, features, privacy, budget or verifier-independence rule fails, "
+               "then chooses.",
+               "One token bucket per model, shared by every process, keeps calls inside the model's per-minute limits; "
+               "a 429 cools a model down and the next one of the same size is used (with one model: wait).",
+               "Every decision — candidates, what was filtered and why, the choice, fallbacks and waits — is logged; "
+               "result.json gets calls, tokens and US dollars per model. A new model is a registry entry only."],
+         proposes="Nothing: no AI takes part in the decision.",
+         disposes="Plain code picks the model; no call is made when no model passes the filters (no_model).",
+         anchors=[]),
     dict(id="loop", view="adapt", title="Loop driver (D89)", kind="code", plan=None,
          sentence="Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes "
                   "it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",

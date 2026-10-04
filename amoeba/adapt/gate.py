@@ -252,6 +252,9 @@ class Decision(BaseModel):
     hypothesis_index: int | None = None            # v3: the i-th hypothesis of the family in this stream ...
     alpha: float | None = None                 # ... tested at alpha_i (pre-set in adapt.yaml)
     prediction: dict = Field(default_factory=dict)   # v3: sign_ok, abs_error (reported, never a rule)
+    cost_basis: str = "tokens"                 # D97: rule 4 on USD when both arms have prices, else on tokens
+    usd_A: float | None = None
+    usd_B: float | None = None
 
 
 # box: gate
@@ -344,10 +347,12 @@ def _rules_1_4_5(recipe_B: Recipe, h: Hypothesis, res: ReplayResult, md: float, 
     if leak:
         reasons.append("1 leakage: " + "; ".join(leak))
     ta, tb = (mean([x.tokens_A for x in post]), mean([x.tokens_B for x in post])) if post else (0, 0)
-    ratio = round(tb / ta, 3) if ta else None
+    ua, ub = (mean([x.usd_A for x in post]), mean([x.usd_B for x in post])) if post else (0, 0)
+    basis = "usd" if ua > 0 and ub > 0 else "tokens"   # D97: USD from registry prices; tokens while prices are 0
+    ratio = round((ub / ua) if basis == "usd" else (tb / ta), 3) if (ua if basis == "usd" else ta) else None
     cap = g["cost_ratio_big_gain"] if md >= g["big_gain"] else g["cost_ratio"]
     if ratio is not None and ratio > cap:
-        reasons.append(f"4 cost not justified: token ratio {ratio:.2f} > {cap}")
+        reasons.append(f"4 cost not justified: {'USD' if basis == 'usd' else 'token'} ratio {ratio:.2f} > {cap}")
     ha, hb = (round(mean([x.honesty_A for x in post]), 3), round(mean([x.honesty_B for x in post]), 3)) if post else (0, 0)
     sa, sb, ea, eb = honesty_shares(post)
     n = len(post)
@@ -359,7 +364,8 @@ def _rules_1_4_5(recipe_B: Recipe, h: Hypothesis, res: ReplayResult, md: float, 
     ra, rb = sum(x.refusals_A for x in res.pairs), sum(x.refusals_B for x in res.pairs)
     if rb > ra:
         reasons.append(f"5 new refusals: {rb} in arm B against {ra} in arm A")
-    return dict(cost_ratio=ratio, honesty_A=ha, honesty_B=hb, refusals_A=ra, refusals_B=rb, honesty_share_A=sa,
+    return dict(cost_ratio=ratio, cost_basis=basis, usd_A=round(ua, 6), usd_B=round(ub, 6), honesty_A=ha,
+                honesty_B=hb, refusals_A=ra, refusals_B=rb, honesty_share_A=sa,
                 honesty_share_B=sb, error_rate_A=ea, error_rate_B=eb, honesty_counts_A=_counts(post, "A"),
                 honesty_counts_B=_counts(post, "B"))
 

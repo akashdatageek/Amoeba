@@ -23,6 +23,7 @@ from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_
 from amoeba.interp.freshness import stale_figure, time_sensitive
 from amoeba.interp.shorten import shorten
 from amoeba.llm.profiles import role_group
+from amoeba.llm.router import NoModelAvailable
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.localtools.claims import claimed_files
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text, full_action_input
@@ -1533,6 +1534,15 @@ class PlanRunner:
             (self.dir / f"step_{n}.json").write_text(json.dumps(self.artifacts[n]["meta"], indent=2, ensure_ascii=False),
                                                    encoding="utf-8")
 
+    # box: router
+    def route_ids(self, n: int, step: PlanStep) -> dict:
+        """D97: what the router needs to know about a step's call: its number and, for a verify step, the steps it
+        checks (verifier independence)."""
+        if not hasattr(self.i.llm, "llm") or not hasattr(self.i.llm.llm, "registry"):
+            return {}
+        checks = tuple(dependencies(self.cfg.plan).get(n, [])) if self.is_verification(step) else ()
+        return {"step": n, "checks": checks}
+
     # box: plan_step
     def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int,
               extra: str = "", template: str = "") -> tuple[str, str, str, str | None]:
@@ -1557,8 +1567,12 @@ class PlanRunner:
                                                 "amoeba.step": n}):
             before = self.i.trace.n_llm_calls
             group = role_group(is_summariser=agent.is_summariser, reviewing=self.is_verification(step))   # D54
-            raw, sec = self.i.llm.chat_sections(system, user, PLAN_SECTIONS, self.ep.seed, agent_id=agent.agent_id,
-                                              agent_name=agent.name, max_tokens=PLAN_MAX_TOKENS, role=group)
+            try:
+                raw, sec = self.i.llm.chat_sections(system, user, PLAN_SECTIONS, self.ep.seed,
+                                                  agent_id=agent.agent_id, agent_name=agent.name,
+                                                  max_tokens=PLAN_MAX_TOKENS, role=group, **self.route_ids(n, step))
+            except NoModelAvailable as e:                 # D97: no model passed the router's filters
+                return "no_model", f"BLOCKED: no_model — {str(e)[:200]}", "", "no_model"
             for rec in self.i.trace.spans("chat")[before:]:
                 self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                rec.get("gen_ai.usage.output_tokens", 0))
@@ -1569,7 +1583,8 @@ class PlanRunner:
                 before = self.i.trace.n_llm_calls
                 raw, sec = self.i.llm.chat_sections(system, f"{user}\n\n{LAST_TURN_AGAIN}", PLAN_SECTIONS,
                                                     self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
-                                                    max_tokens=PLAN_MAX_TOKENS, role=group)
+                                                    max_tokens=PLAN_MAX_TOKENS, role=group,
+                                                    **self.route_ids(n, step))
                 for rec in self.i.trace.spans("chat")[before:]:
                     self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                    rec.get("gen_ai.usage.output_tokens", 0))

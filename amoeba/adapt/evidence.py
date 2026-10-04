@@ -104,6 +104,21 @@ def tool_decisions(run_dir: Path) -> list[dict]:
 
 
 # box: evidence
+def route_decisions(run_dir: Path) -> list[dict]:
+    """D97: the router's decisions of a run (its `route` trace events), as plain dicts."""
+    out = []
+    for f in sorted(Path(run_dir).glob("trace*.jsonl")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if r.get("name") == "route":
+                out.append({k.removeprefix("amoeba.route."): v for k, v in r.items() if k.startswith("amoeba.route.")})
+    return out
+
+
+# box: evidence
 class EvidenceLog:
     """<root>/events.jsonl: append-only, hash-chained. A row with a `key` already in the log is not written twice
     (a resumed loop logs nothing again)."""
@@ -509,6 +524,16 @@ def run_finished(ev: EvidenceLog, root: Path, run_dir: Path, shipper=None) -> No
     """D95/D96: when a run finishes: its local-tool decisions (gate.py and the sandbox) go into events.jsonl, and the
     run is key-scanned and queued for the evidence branch."""
     run_dir = Path(run_dir)
+    routes = [d for f in sorted(run_dir.glob("*/")) for d in route_decisions(f)] + route_decisions(run_dir)
+    if routes:                                    # D97: every routing decision of the run
+        try:
+            rel_r = run_dir.resolve().relative_to(Path(root).resolve()).as_posix()
+        except ValueError:
+            rel_r = str(run_dir)
+        ev.append("routing", {"run": rel_r, "decisions": routes,
+                              "verifier_same_family": sum(1 for d in routes if d.get("verifier_same_family")),
+                              "no_model": sum(1 for d in routes if d.get("cause") == "no_model")},
+                  key=f"routing:{rel_r}")
     found = [d for f in sorted(run_dir.glob("*/")) for d in tool_decisions(f)] + tool_decisions(run_dir)
     if found:
         try:

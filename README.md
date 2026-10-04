@@ -435,6 +435,15 @@ per machine:
     # the gateway's signing keys, once: docker run --rm --user 0 -v /var/lib/openshell:/var/lib/openshell \
     #   ghcr.io/nvidia/openshell/gateway:latest generate-certs --output-dir /var/lib/openshell/tls
 
+## The model router (D97)
+
+Every model call says what it is (role, step, size, needed features, data class) and plain code picks the model from
+the registry in `amoeba/config/models.yaml`: only allowed and available models, never one that fails a hard filter
+(context, features, privacy, cost cap, verifier independence), then the recipe's or the role's preference, else the
+cheapest of the right size. Per-model rate buckets, shared by all processes, keep calls inside each model's limits.
+`--routing routed` is the default for Amoeba; the baselines use `fixed`. Today the registry holds Gemma 4 31B only;
+adding a model is a registry entry. Each decision is in the trace, events.jsonl and result.json.
+
 ## Cost controls (D45–D48)
 
 ```bash
