@@ -686,7 +686,7 @@ BOXES: list[dict] = [
                   "amoeba/pool/match.py::rank", "amoeba/pool/mcp.py::PoolTools", "amoeba/pool/mcp.py::SdkConnector",
                   "amoeba/pool/match.py::document_format", "amoeba/pool/stock.py::SharedPicks"]),
     dict(id="localtools", view="run", title="Local toolbox (OpenShell sandbox, D96)", kind="code", plan=None,
-         sentence="With --local-tools on, the team may borrow Claude Code's own tools and skills; by default they run in a fresh NVIDIA OpenShell sandbox per run, with no network and only the workspace writable.",
+         sentence="With --local-tools on, Claude Code's tools and skills run in a fresh OpenShell sandbox per run: no network, only the workspace writable.",
          what=[
                "D96: `claude mcp serve` and every command run inside a fresh OpenShell sandbox per run (image amoeba-sandbox:local, gateway on 127.0.0.1:17680): no network, Landlock lets only /sandbox, /tmp and /dev/null be written, skills are read-only under /opt/skills, no secrets, runs as user sandbox; the sandbox is deleted at the end.",
                "The harness gate refuses first what it can see: network commands, paths outside the workspace, writes to MCP configs, hooks, settings, CLAUDE.md or skills (protected_config); what a command hides is stopped by the sandbox. Files are copied back to runs/<id>/workspace/ after each call.",

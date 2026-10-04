@@ -23,7 +23,7 @@ LITE_CAP = 2000                          # --lite: longest embedded example, pro
 
 # ------------------------------------------------------------------------------------------------ layout
 VIEWS = {
-    "overview": {"h": 700, "label": "Amoeba overview", "heading": "BOXES 1–3 · ONE TASK, AS BUILT",
+    "overview": {"h": 740, "label": "Amoeba overview", "heading": "BOXES 1–3 · ONE TASK, AS BUILT",
                  "note": "Click a box to open it and see the units inside. Colour says who decides; the badge says whether the code matches the plan."},
     "task": {"h": 500, "label": "1 · Task", "heading": "INSIDE BOX 1 · TASK",
              "note": "Nothing in this box calls an AI. The known answer is only used for scoring after Box 3. Phase 2 tasks come from a stream."},
@@ -49,10 +49,10 @@ VIEWS = {
 }
 L = {  # id: (x, y, w, h)
     "ov_task": (30, 60, 250, 150), "ov_plan": (365, 60, 300, 150), "ov_run": (750, 60, 300, 150),
-    "ov_leave": (30, 245, 1125, 68),
-    "ov_m4": (30, 380, 170, 170), "ov_m5": (222, 380, 170, 170), "ov_m6": (414, 380, 170, 170),
-    "ov_m7": (606, 380, 170, 170), "ov_m8": (798, 380, 170, 170), "ov_m9": (990, 380, 170, 170),
-    "ov_around": (30, 590, 1130, 90),
+    "ov_leave": (30, 245, 1125, 96),
+    "ov_m4": (30, 410, 170, 170), "ov_m5": (222, 410, 170, 170), "ov_m6": (414, 410, 170, 170),
+    "ov_m7": (606, 410, 170, 170), "ov_m8": (798, 410, 170, 170), "ov_m9": (990, 410, 170, 170),
+    "ov_around": (30, 620, 1130, 104),
     "stream": (30, 340, 570, 130),
     "mon_records": (30, 70, 330, 150), "monitor": (400, 70, 360, 150), "retention": (800, 70, 360, 150),
     "diag_signals": (30, 70, 350, 160), "diagnoser": (420, 70, 330, 160), "diag_edits": (790, 70, 370, 160),
@@ -82,8 +82,8 @@ L = {  # id: (x, y, w, h)
     "action_obs": (715, 1145, 215, 160),
 }
 DECOR = {  # static enclosures, captions and loop arrows (text filled from data where it states a fact)
-    "overview": [("hd", 30, 362, "BOXES 4–9 · THE ADAPTATION LOOP (AMOEBA'S PLAN RUNNER ONLY)"),
-                 ("hd", 30, 576, "AROUND EVERY BOX")],
+    "overview": [("hd", 30, 398, "BOXES 4–9 · THE ADAPTATION LOOP (AMOEBA'S PLAN RUNNER ONLY)"),
+                 ("hd", 30, 608, "AROUND EVERY BOX")],
     "plan": [("group", 30, 56, 770, 320), ("lbl", 44, 76, "loop_plan"),
              ("loop", "M645 306 V338 H157 V236", "loop_plan_cap", 400, 358)],
     "run": [("group", 490, 60, 670, 270), ("hd", 505, 82, "STEP BY STEP (flat) · AutoAgents Group"),
@@ -99,13 +99,13 @@ EDGES = [  # (view, from, to, path, label, data key, label x, label y)
     ("overview", "ov_task", "ov_plan", "M280 135 H365", "Task", "Task", 322, 127),
     ("overview", "ov_plan", "ov_run", "M665 135 H750", "TeamConfig", "TeamConfig", 707, 127),
     ("overview", "ov_run", "answer", "M1050 135 H1085", "", "answer", 0, 0),
-    ("overview", "ov_leave", "ov_m4", "M115 313 V380", "practice runs", "PracticeRecord", 160, 340),
-    ("overview", "ov_m4", "ov_m5", "M200 465 H222", "", "Alarm", 0, 0),
-    ("overview", "ov_m5", "ov_m6", "M392 465 H414", "", "Diagnosis", 0, 0),
-    ("overview", "ov_m6", "ov_m7", "M584 465 H606", "", "Hypothesis", 0, 0),
-    ("overview", "ov_m7", "ov_m8", "M776 465 H798", "", "ReplayResult", 0, 0),
-    ("overview", "ov_m8", "ov_m9", "M968 465 H990", "", "Decision", 0, 0),
-    ("overview", "ov_m9", "ov_plan", "M1160 465 H1172 V228 H515 V210", "current recipe → Boxes 2–3", "Recipe", 840, 222),
+    ("overview", "ov_leave", "ov_m4", "M115 341 V410", "practice runs", "PracticeRecord", 165, 370),
+    ("overview", "ov_m4", "ov_m5", "M200 495 H222", "", "Alarm", 0, 0),
+    ("overview", "ov_m5", "ov_m6", "M392 495 H414", "", "Diagnosis", 0, 0),
+    ("overview", "ov_m6", "ov_m7", "M584 495 H606", "", "Hypothesis", 0, 0),
+    ("overview", "ov_m7", "ov_m8", "M776 495 H798", "", "ReplayResult", 0, 0),
+    ("overview", "ov_m8", "ov_m9", "M968 495 H990", "", "Decision", 0, 0),
+    ("overview", "ov_m9", "ov_plan", "M1160 495 H1172 V228 H515 V210", "current recipe → Boxes 2–3", "Recipe", 840, 222),
     ("task", "stream", "task_record", "M315 340 V300 H485 V225", "practice task", "StreamTask", 322, 322),
     ("m4", "mon_records", "monitor", "M360 145 H400", "", "PracticeRecord", 0, 0),
     ("m4", "retention", "monitor", "M800 145 H760", "", "Alarm", 0, 0),
