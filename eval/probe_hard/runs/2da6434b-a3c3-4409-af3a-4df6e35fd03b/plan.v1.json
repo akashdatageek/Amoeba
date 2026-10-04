@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "diff": null,
+  "roles": [
+    {
+      "name": "Economic Data Researcher",
+      "tools": [
+        "web_search",
+        "fetch_url"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Economic Data Analyst",
+      "tools": [
+        "local:Bash",
+        "local:Write"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Data Visualization Specialist",
+      "tools": [
+        "local:Bash",
+        "local:Write"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Delivery Lead",
+      "tools": [],
+      "missing_tools": []
+    }
+  ],
+  "steps": [
+    {
+      "number": 1,
+      "roles": [
+        "Economic Data Researcher"
+      ],
+      "text": "[Economic Data Researcher]: Data Extraction",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R10"
+      ],
+      "depends_on": [],
+      "do": "\n- Search for and extract nominal median household income for USA and Indiana (2015-2023) from US Census Bureau.\n- Search for and extract annual average CPI-U (2015-2023) from BLS.\n- Record the specific survey and index names.\n- Collect URLs for all data points.",
+      "output": "table: Year | US Nominal Income | IN Nominal Income | CPI-U | Source URL",
+      "done_when": "Table is complete for all 9 years with valid URLs.",
+      "status": "not run"
+    },
+    {
+      "number": 2,
+      "roles": [
+        "Economic Data Analyst"
+      ],
+      "text": "[Economic Data Analyst]: Inflation Adjustment and CSV Generation",
+      "kind": "work",
+      "covers": [
+        "R4",
+        "R5",
+        "R6",
+        "R8"
+      ],
+      "depends_on": [
+        1
+      ],
+      "do": "\n- Use Python to calculate real income for all years using the 2023 CPI as the base.\n- Calculate the % change from 2015 to 2023 for both regions.\n- Generate the CSV file containing nominal and real values.",
+      "output": "\n- csv: Year, US_Nominal, US_Real_2023, IN_Nominal, IN_Real_2023\n- table: Region | % Change (Real 2015-2023)",
+      "done_when": "CSV is written to disk and % changes are calculated.",
+      "status": "not run"
+    },
+    {
+      "number": 3,
+      "roles": [
+        "Data Visualization Specialist"
+      ],
+      "text": "[Data Visualization Specialist]: Chart Creation",
+      "kind": "work",
+      "covers": [
+        "R9"
+      ],
+      "depends_on": [
+        2
+      ],
+      "do": "\n- Use Python/Matplotlib to create a grouped bar chart of real income (2015-2023) for US vs Indiana.\n- Label axes and title clearly.\n- Save as PNG.",
+      "output": "png: real_income_comparison.png",
+      "done_when": "PNG file is generated and visually verified.",
+      "status": "not run"
+    },
+    {
+      "number": 4,
+      "roles": [
+        "Economic Data Researcher"
+      ],
+      "text": "[Economic Data Researcher]: Verification of Calculations",
+      "kind": "verify",
+      "covers": [
+        "R4",
+        "R5"
+      ],
+      "depends_on": [
+        2
+      ],
+      "do": "\n- Spot-check the Analyst's real income calculations for 2015 and 2023 using a calculator.\n- Verify that the nominal 2023 value equals the real 2023 value.",
+      "output": "memo: Verification results (Pass/Fail)",
+      "done_when": "Calculations are confirmed accurate.",
+      "status": "not run"
+    },
+    {
+      "number": 5,
+      "roles": [
+        "Delivery Lead"
+      ],
+      "text": "[Delivery Lead]: Final Assembly",
+      "kind": "work",
+      "covers": [
+        "R6",
+        "R7",
+        "R10"
+      ],
+      "depends_on": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "do": "\n- Compile the final report.\n- Write the justification for the Census survey and BLS index.\n- Insert the nominal/real tables and % changes.\n- Attach the CSV and PNG.\n- Ensure every figure has a citation.",
+      "output": "memo: Final Report including tables, justifications, and citations.",
+      "done_when": "All requirements R1-R10 are satisfied in the final output.",
+      "status": "not run"
+    }
+  ]
+}
