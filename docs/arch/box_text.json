@@ -11441,17 +11441,15 @@
   ]
  },
  "plan_step": {
-  "checked_at": "122663f",
+  "checked_at": "2fcbf34",
   "facts": {
    "anchors": [
     {
      "callees": [
-      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/capabilities/__init__.py::normalise",
       "amoeba/interp/citecheck.py::mislabelled_citations",
       "amoeba/interp/dates.py::dated_finding",
       "amoeba/interp/dates.py::undated_figures",
-      "amoeba/interp/disputes.py::dispute_text",
       "amoeba/interp/disputes.py::disputed_figures",
       "amoeba/interp/freshness.py::time_sensitive",
       "amoeba/interp/plan_runner.py::PlanRunner._loop",
@@ -11480,8 +11478,8 @@
       "amoeba/interp/plan_runner.py::PlanRunner.own_result",
       "amoeba/interp/plan_runner.py::PlanRunner.raw_results_text",
       "amoeba/interp/plan_runner.py::PlanRunner.refine",
+      "amoeba/interp/plan_runner.py::PlanRunner.resolve_disputes",
       "amoeba/interp/plan_runner.py::PlanRunner.rework_producers",
-      "amoeba/interp/plan_runner.py::PlanRunner.reworkable",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
       "amoeba/interp/plan_runner.py::PlanRunner.source_texts",
       "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
@@ -11503,14 +11501,11 @@
       "amoeba/interp/provenance.py::strip_unverified",
       "amoeba/interp/shorten.py::shorten",
       "amoeba/interp/trace.py::TraceWriter.event",
-      "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/claims.py::claimed_files",
       "amoeba/localtools/toolbox.py::LocalToolbox.begin_step",
       "amoeba/localtools/toolbox.py::LocalToolbox.has_file",
-      "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/mcp.py::PoolTools.begin_step",
       "amoeba/pool/mcp.py::SourceBook.begin_step",
-      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/evaluate.py::normalise",
       "amoeba/tools/web.py::WebTools.begin_step"
      ],
@@ -11715,17 +11710,12 @@
     [
      "decide",
      "if disputes",
-     "set status = 'partial' if status == 'done' else status"
+     "set meta['dispute'] = {'state': 'unresolved' if unresolved else 'resolved', 'figures': dispute"
     ],
     [
      "decide",
-     "if disputes and (not reverify) and self.reworkable(deps)",
-     "set status, reason = ('disputed', '; '.join((x for x in (reason, 'disputed: ' + listed) if x))"
-    ],
-    [
-     "decide",
-     "if disputes and state == 'unresolved' and (meta['verdict'] == 'PASS')",
-     "set meta['verdict_model'], meta['verdict'] = ('PASS', 'DISPUTED')"
+     "if disputes",
+     "set resolutions = self.resolve_disputes(step, n, writers, disputes)"
     ],
     [
      "decide",
@@ -11884,16 +11874,6 @@
     ],
     [
      "decide",
-     "if state",
-     "set meta['dispute'] = {'state': state, 'figures': disputes, 'first': first}"
-    ],
-    [
-     "decide",
-     "if status == 'disputed'",
-     "set m2 = self.artifacts[n]['meta']"
-    ],
-    [
-     "decide",
      "if summarising or (on and answer_step)",
      "set text, added = self.enforce_limitations(text)"
     ],
@@ -11906,6 +11886,16 @@
      "decide",
      "if undeclared",
      "set reason += '; not declared by the helper: ' + ', '.join(undeclared)"
+    ],
+    [
+     "decide",
+     "if unresolved",
+     "set status = 'partial' if status == 'done' else status"
+    ],
+    [
+     "decide",
+     "if unresolved and meta['verdict'] == 'PASS'",
+     "set meta['verdict_model'], meta['verdict'] = ('PASS', 'DISPUTED')"
     ],
     [
      "decide",
@@ -11924,8 +11914,8 @@
     ],
     [
      "decide",
-     "if verifier and (meta['verdict'] == 'FAIL' or status == 'disputed') and (not reverify)",
-     "set issues = '\\n'.join((x for x in (meta['issues'], dispute_text(disputes)) if x))"
+     "if verifier and meta['verdict'] == 'FAIL' and (not reverify)",
+     "set reworked = self.rework_producers(n, deps, meta['issues'])"
     ],
     [
      "decide",
@@ -11959,16 +11949,6 @@
     ],
     [
      "fallback",
-     "'disputed after rework' if reverify else 'disputed (no rework possible)'",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "'disputed' if status == 'disputed' else 'unresolved' if disputes else 'resolved' if first else None",
-     "choose value"
-    ],
-    [
-     "fallback",
      "'partial' if status == 'done' else status",
      "choose value"
     ],
@@ -11984,17 +11964,7 @@
     ],
     [
      "fallback",
-     "'resolved' if first else None",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "'unresolved' if disputes else 'resolved' if first else None",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "2 if reverify else 1",
+     "'unresolved' if unresolved else 'resolved'",
      "choose value"
     ],
     [
@@ -12254,6 +12224,11 @@
     ],
     [
      "filter",
+     "keep only if r['verdict'] == 'unresolved'",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if t not in agent.tools",
      "drop the rest"
     ],
@@ -12360,7 +12335,7 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "40c65159b811dd2b",
+  "facts_hash": "4434781ce920ee1f",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
@@ -12370,7 +12345,7 @@
    "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, identify undated figures, verify spreadsheet data, and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; if no model is available, it reports a blocked status; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search, lacks specific tools, or is performing research gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information; if local files are available, it is provided with a summary of those files and their source identifiers.",
-   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including identifying disputed figures, before the final output is kept.",
+   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including resolving disputed figures, before the final output is kept.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
   ]
  },
@@ -16566,7 +16541,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "94b56f1",
+  "checked_at": "2fcbf34",
   "facts": {
    "anchors": [
     {
@@ -16826,12 +16801,6 @@
      "signature": "undated_figures(text: str, web_ids: set[str]) -> list[dict]"
     },
     {
-     "callees": [],
-     "doc": "The disagreements as rework issues: both values, where each comes from.",
-     "key": "amoeba/interp/disputes.py::dispute_text",
-     "signature": "dispute_text(disputes: list[dict]) -> str"
-    },
-    {
      "callees": [
       "amoeba/adapt/diagnoser.py::run_signals.add",
       "amoeba/adapt/evidence.py::EvidenceLog.append",
@@ -16849,6 +16818,20 @@
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "What the resolver is shown: each disputed figure, both lines, and the source text behind them.",
+     "key": "amoeba/interp/disputes.py::disputes_text",
+     "signature": "disputes_text(disputes: list[dict], sources: dict[str, str]) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/disputes.py::_kind",
@@ -16860,6 +16843,41 @@
      "doc": "Each figure of a text with the label before it on its line: list markers, [S#] tags, step labels, bare years",
      "key": "amoeba/interp/disputes.py::labelled_figures",
      "signature": "labelled_figures(text: str) -> list[dict]"
+    },
+    {
+     "callees": [],
+     "doc": "The resolver's blocks: figure number -> {value, evidence, verdict} (missing fields are empty).",
+     "key": "amoeba/interp/disputes.py::parse_resolution",
+     "signature": "parse_resolution(text: str) -> dict[int, dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "The producer's output with `old` replaced by `new` on the line that starts like `line` (one place only).",
+     "key": "amoeba/interp/disputes.py::replace_figure",
+     "signature": "replace_figure(text: str, line: str, old: str, new: str) -> tuple[str, bool]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/interp/citecheck.py::norm",
+      "amoeba/interp/disputes.py::_value",
+      "amoeba/interp/disputes.py::agree",
+      "amoeba/interp/disputes.py::parse_resolution",
+      "amoeba/interp/provenance.py::computed_values",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "Plain code's verdict on each disputed figure from the resolver's reply: worker (its value stands), verifier",
+     "key": "amoeba/interp/disputes.py::settle",
+     "signature": "settle(text: str, disputes: list[dict], sources: dict[str, str], tool_results: list[str]) -> list[dict]"
     },
     {
      "callees": [
@@ -16918,14 +16936,22 @@
     },
     {
      "callees": [
-      "amoeba/adapt/experimenter.py::ArmACache.get",
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/memory/recipes.py::RecipeStore.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/interp/disputes.py::disputes_text",
+      "amoeba/interp/disputes.py::replace_figure",
+      "amoeba/interp/disputes.py::settle",
+      "amoeba/interp/plan_runner.py::PlanRunner._loop",
+      "amoeba/interp/plan_runner.py::PlanRunner._text",
+      "amoeba/interp/plan_runner.py::PlanRunner._write",
+      "amoeba/interp/plan_runner.py::PlanRunner.source_texts",
+      "amoeba/interp/plan_runner.py::_Work",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "scripts/run_audit.py::AuditLog.append"
      ],
-     "doc": "D109: the checked steps a rework could still re-run (the same rules as rework_producers).",
-     "key": "amoeba/interp/plan_runner.py::PlanRunner.reworkable",
-     "signature": "reworkable(self, deps: list[int]) -> list[int]"
+     "doc": "D109 (amended): one fresh call (the verify step's first helper, plan_resolve.txt) settles each disputed",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.resolve_disputes",
+     "signature": "resolve_disputes(self, step: PlanStep, n: int, writers: list[AgentSpec], disputes: list[dict]) -> list[dict]"
     },
     {
      "callees": [
@@ -17117,6 +17143,31 @@
     ],
     [
      "decide",
+     "if done",
+     "set art['text'], r['replaced'] = (new, True)"
+    ],
+    [
+     "decide",
+     "if got is not None",
+     "set v, dv = got"
+    ],
+    [
+     "decide",
+     "if inside and any((agree(v, dv, x, dx) for x, dx in filter(None, map(_value, NUM.findall(q)))))",
+     "set kind = 'source'"
+    ],
+    [
+     "decide",
+     "if kind is None and any((agree(v, dv, x, 6) for x in ran))",
+     "set kind = 'command'"
+    ],
+    [
+     "decide",
+     "if kind is not None",
+     "set wv, cv = (_value(d['worker']), _value(d['verifier']))"
+    ],
+    [
+     "decide",
      "if len(body) > EVIDENCE_CAP",
      "set body = body[:EVIDENCE_CAP].rstrip() + f'\\n[… {len(body) - EVIDENCE_CAP:,} characters of ra"
     ],
@@ -17139,6 +17190,16 @@
      "decide",
      "if new",
      "set a.tools = [*a.tools, *new]"
+    ],
+    [
+     "decide",
+     "if not done and key and ln.strip().startswith(key) and (old in ln)",
+     "set ln, done = (ln.replace(old, new, 1), True)"
+    ],
+    [
+     "decide",
+     "if r['verdict'] in ('verifier', 'corrected') and r['step'] in self.artifacts",
+     "set art = self.artifacts[r['step']]"
     ],
     [
      "decide",
@@ -17182,6 +17243,16 @@
     ],
     [
      "fallback",
+     "'verifier' if cv and agree(v, dv, *cv) else 'corrected'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'worker' if wv and agree(v, dv, *wv) else 'verifier' if cv and agree(v, dv, *cv) else 'corrected'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "b.source_texts() if hasattr(b, 'source_texts') else {}",
      "choose value"
     ],
@@ -17207,6 +17278,11 @@
     ],
     [
      "fallback",
+     "field('verdict').upper().split()[0] if field('verdict') else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "issues[1].strip() if len(issues) > 1 else ''",
      "choose value"
     ],
@@ -17218,6 +17294,11 @@
     [
      "fallback",
      "matched if any((same(v, d, x, dx) for x, dx in theirs)) else own_only",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "r['value'][:60] if kind else None",
      "choose value"
     ],
     [
@@ -17243,11 +17324,6 @@
     [
      "filter",
      "keep only if d in self.artifacts",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if d in self.artifacts and d not in self.reworked and (not self.artifacts[d]['meta'].get('verification')) and (self.artifacts[d]['meta'].get('causes') != ['capability'])",
      "drop the rest"
     ],
     [
@@ -17278,6 +17354,11 @@
     [
      "filter",
      "keep only if lines[i].strip() and hit(lines[i])",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if norm(q).strip(' .,;:') in norm(t)",
      "drop the rest"
     ],
     [
@@ -17313,6 +17394,11 @@
     [
      "filter",
      "keep only if re.search('\\\\[S\\\\d+', l)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if sources.get(s)",
      "drop the rest"
     ],
     [
@@ -17479,8 +17565,8 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "b3c7290b73a88448",
-  "seed_hash": "3d4a80a4b5f1aa5e",
+  "facts_hash": "4cd3669d6c714765",
+  "seed_hash": "aa19c49741e23407",
   "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
   "source": "hand",
   "what": [
@@ -17493,7 +17579,7 @@
    "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial.",
    "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
    "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
-   "D109: plain code pairs the verifier's blind figures with the checked outputs' figures by label (5% tolerance); a disagreement makes the step disputed, earns one rework with both values shown, and if it stays the step is partial, the verdict DISPUTED and both values go into Limitations.",
+   "D109 (resolver): plain code pairs the verifier's blind figures with the worker's by label (5% tolerance); one fresh resolver call settles each disagreement by source text or a re-run, plain code checks its evidence, a settled value replaces the wrong one, and an unresolved one keeps the step from PASS and goes into Limitations.",
    "D110: on the answer step every web-sourced figure must carry its source's date (on its line or in its source entry); undated ones earn the refine turn, and those still undated are listed in Limitations.",
    "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked."
   ]
