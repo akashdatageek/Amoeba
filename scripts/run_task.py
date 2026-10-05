@@ -31,6 +31,7 @@ from amoeba.memory.context import load_context, standards_slots
 from amoeba.interp.trace import TracedLLM
 from amoeba.task.evaluate import rubric_score, score
 from amoeba.task.instantiate import instantiate
+from amoeba.task.deliverables import check_deliverables, no_deliverable_error
 from amoeba.task.models import RunResult, Task, run_status
 from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
@@ -48,7 +49,7 @@ from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
-PHASE2_FIELDS = {"disabled_tools", "recipe", "routing"}           # left out of result.json when None (Phase 1 records unchanged)
+PHASE2_FIELDS = {"disabled_tools", "recipe", "routing", "deliverables"}           # left out of result.json when None (Phase 1 records unchanged)
 
 
 # box: ov_leave, capreq, runresult
@@ -61,7 +62,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             context=None, disabled_tools=(), recipe: Recipe | None = None,
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
             default_max_turns: int | None = None, family_classify: bool = False,
-            recipe_source: tuple | None = None, niche=None) -> RunResult:
+            recipe_source: tuple | None = None, niche=None, deliverable_check: bool = False) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -159,6 +160,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     box = LocalToolbox(local, run_dir, trace) if local is not None else None   # D59: refuses without AMOEBA_SANDBOX=1
     local_out: dict = {}
     interp = None
+    cfg = None
     stated: dict = {}
     try:
         if saved_draft is not None:   # D45: reuse a saved Box 2 draft; no drafting call is made
@@ -257,6 +259,12 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     requested = requests + during
     (run_dir / "capability_requests.json").write_text(
         json.dumps([q.model_dump() for q in requested], indent=2, ensure_ascii=False), encoding="utf-8")
+    deliverables = None
+    if deliverable_check and topology == "plan" and error is None and cfg is not None:   # D105: what the team owes
+        texts = {**{f"step {s.index + 1} output": s.output for s in cfg.plan if s.output},
+                 **{f"requirement {k}": v for k, v in (cfg.requirements or {}).items()}}
+        deliverables = check_deliverables(answer, texts, local_out.get("files_created") if box is not None else None)
+        error = no_deliverable_error(deliverables)
     # D30: a task with a rubric and no single right answer is scored by the rubric fraction (Box 1, after the run)
     graded = rubric_score(answer, task.rubric) if task.rubric else None
     result = RunResult(
@@ -280,7 +288,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         interpretation=interpretation_of(interp, stated),
         pool=pool_summary, disabled_tools=list(disabled_tools) or None, recipe=recipe_rec, family=family_rec,
         routing=llm.summary() if hasattr(llm, "summary") and hasattr(llm, "registry") else None,
-        status=run_status(error), **local_out)
+        status=run_status(error), deliverables=deliverables, **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
@@ -611,6 +619,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: a verify step first works out its own result from the checked steps' inputs and its "
                         "tools, without their outputs, in a fresh context; then it sees the outputs and compares. "
                         "Both are recorded in step_N.json (D90)")
+    p.add_argument("--deliverable-check", choices=["on", "off"], default="on",
+                   help="plan: a run whose answer has no content, or that never made a file the plan promised (with "
+                        "--local-tools on), ends with error 'no_deliverable: …' and status no_deliverable; "
+                        "result.json records `deliverables` (D105). The baselines are never checked")
     p.add_argument("--disputes", choices=["on", "off"], default="on",
                    help="plan, with --verify-first on: plain code compares the verifier's own result with the checked "
                         "outputs' figures by label (5%% tolerance); a disagreement earns the producers one rework turn "
@@ -795,7 +807,8 @@ def main(argv: list[str] | None = None) -> int:
                     default_max_turns=None if "--max-turns" in args.explicit else args.max_turns,
                     recipe=load_family_recipe(task.family, args.recipes, args.recipes_from),   # D82, D88
                     family_classify=family_classify_on(args.family_classify, args.topology),     # D101
-                    recipe_source=(args.recipes, args.recipes_from), niche=niche)
+                    recipe_source=(args.recipes, args.recipes_from), niche=niche,
+                    deliverable_check=args.deliverable_check == "on" and args.topology == "plan")   # D105
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

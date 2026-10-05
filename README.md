@@ -513,6 +513,12 @@ A verify step first works out its own result without seeing the outputs it check
 
 If a figure disagrees, the verify step is `disputed`. The producers get one rework turn that shows both values and where each came from, and the verifier checks again. If they still disagree, the step is partial, the verdict is recorded as `DISPUTED` even when the verifier wrote PASS, and both values are listed in the answer's Limitations. A figure the outputs never mention is not a disagreement. `--disputes off` turns this off; it needs `--verify-first on`.
 
+## Missing deliverables (D105)
+
+After a plan run, plain code checks what the team owes: an answer with real content, and every file the plan promised. A promised file is one that a step's output or a requirement names (`income_real.csv`) or asks for by kind (a CSV file, an Excel workbook, a PNG chart, a Word memo). Files are checked only with `--local-tools on`.
+
+If something is missing, the run ends with `error: "no_deliverable: …"` and `status: no_deliverable` instead of no error, and result.json lists what was promised and what is missing under `deliverables`. `--deliverable-check off` turns this off. The baselines are never checked.
+
 ## Cost controls (D45–D48)
 
 ```bash

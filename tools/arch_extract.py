@@ -632,7 +632,8 @@ BOXES: list[dict] = [
          what=["Summarises the run in one record saved as result.json.",
                "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
                "It also lists the steps that answered BLOCKED and every capability request, and counts how many "
-               "requests round 1 made and how many the checkers talked the planner out of."],
+               "requests round 1 made and how many the checkers talked the planner out of.",
+               "D105: a plan run with no answer content, or that never made a file its plan promised (local tools on), ends with error 'no_deliverable: …' and status no_deliverable; result.json records deliverables."],
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,

@@ -289,6 +289,8 @@ def run_status(error: str | None) -> str:
     if not error:
         return "ok"
     e = str(error)
+    if e.startswith("no_deliverable"):
+        return "no_deliverable"
     if e.startswith("api:"):
         m = re.match(r"api: \w+ (\d{3})\b", e)
         return "agent_error" if m and int(m.group(1)) in TEAM_API_STATUS else "infra_error"
@@ -345,5 +347,6 @@ class RunResult(BaseModel):
     disabled_tools: list[str] | None = None   # D80 --disable-tools: tools taken out of this run
     recipe: dict | None = None   # D82 --recipes: the family's recipe, the transforms applied and the run options
     family: dict | None = None   # D101: the family assigned to a free-text task and how ({family, how, keywords})
+    deliverables: dict | None = None   # D105 (plan, --deliverable-check on): answer content and promised files
     status: str | None = None    # D111: ok | infra_error | agent_error (D105: no_deliverable); run_status
     routing: dict | None = None  # D97: the router's per-model calls, tokens and USD, and its decision counts
