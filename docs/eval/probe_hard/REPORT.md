@@ -59,6 +59,8 @@ pause; the probe's router waited out its cooldowns of 16 s, 33 s and 19 s.
 
 ## H1: freight optimisation
 
+Every turn, command and check of this run is in [H1_STEPS.md](H1_STEPS.md).
+
 **Box 1.** It took the family `calc` from the keyword rule ("total", "cost"). The interpretation step found nothing
 ambiguous.
 
@@ -74,10 +76,11 @@ with the local xlsx skill and `local:Bash` for two helpers.
 
 **Step by step**
 
-1. **Solve.** The step took 4 turns, 2 `local:Bash` calls and one format retry (headings). The helper wrote and ran a
-   depth-first search in the sandbox. It explored every valid assignment of 10 loads to 4 trucks, pruning on the weight
-   and mileage limits, and returned **$6,356.25**. The step was marked partial only because the citation check flagged
-   "4¹⁰ = 1,048,576 [S1]" as a mislabelled citation.
+1. **Solve.** The step took 4 turns, 2 `local:Bash` calls and one format retry (headings). The helper wrote and ran an
+   exhaustive search in the sandbox (`itertools.product`, all 4¹⁰ = 1,048,576 assignments of 10 loads to 4 trucks, each
+   checked against the weight and mileage limits) and returned **$6,356.25**. (Corrected 5 Oct: an earlier version
+   called this a pruned depth-first search; that was the verifier's script, plan step 2.) The step was marked partial only
+   because the citation check flagged "4¹⁰ = 1,048,576 [S1]" as a mislabelled citation.
 2. **Re-plan.** After wave 1, the Action Observer ran once. Its trigger was "Document Specialist now holds local:Bash".
    It answered CONTINUE.
 3. **Verify (blind first).** The verifier had `web_search`, `fetch_url`, `local:Bash` and `local:Read`.
