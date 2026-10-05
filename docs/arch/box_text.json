@@ -2386,9 +2386,11 @@
    "title": "AI connection"
   },
   "facts_hash": "8d1df6eef9e61fcc",
+  "rejected_hash": "95a6965af87744d7",
   "seed_hash": "f87c523a91cf0ee9",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
    "Waits out rate limits (HTTP 429/503: up to {WebLimits.max_results} retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message and set the reasoning effort.",
@@ -11050,7 +11052,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "77dcd7f",
+  "checked_at": "d039d7e",
   "facts": {
    "anchors": [
     {
@@ -11407,6 +11409,11 @@
      "decide",
      "if not reason and mode == 'always'",
      "set reason = 'self_review'"
+    ],
+    [
+     "decide",
+     "if not summarising and getattr(self.web, 'research', False) and any((set(WEB_TOOLS) & set(a.tools) for a in agents))",
+     "set extra += RESEARCH_NOTE"
     ],
     [
      "decide",
@@ -11946,7 +11953,7 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "bd32ec3c655ce37e",
+  "facts_hash": "5e94e1f2ec20d536",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
@@ -11955,7 +11962,7 @@
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; if no model is available, it reports a blocked status; up to {Limits.max_turns} turns per step.",
-   "With --web-tools, a role that asked for web search or lacks specific tools gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information.",
+   "With --web-tools, a role that asked for web search, lacks specific tools, or is performing research gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information.",
    "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including identifying disputed figures, before the final output is kept.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
   ]
@@ -16151,7 +16158,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "77dcd7f",
+  "checked_at": "d039d7e",
   "facts": {
    "anchors": [
     {
@@ -16339,6 +16346,7 @@
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/research.py::excerpt",
       "scripts/run_audit.py::AuditLog.append"
      ],
      "doc": "D65: the raw tool results every upstream step used (not only their text), for a verify step. D76: as the",
@@ -16990,10 +16998,11 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "1fb2985a94a7e898",
+  "facts_hash": "9ac990fc59ba5d7a",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "9efc4bbb08a99c1e",
   "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
@@ -18750,7 +18759,7 @@
   ]
  },
  "tools": {
-  "checked_at": "a371bd0",
+  "checked_at": "d039d7e",
   "facts": {
    "anchors": [
     {
@@ -18816,6 +18825,18 @@
       [
        "_used",
        "dict"
+      ],
+      [
+       "research",
+       "bool"
+      ],
+      [
+       "data_files",
+       "list"
+      ],
+      [
+       "on_data",
+       "Callable | None"
       ]
      ],
      "key": "amoeba/tools/web.py::WebTools",
@@ -18836,7 +18857,9 @@
      "methods": [
       "__init__(self, api_key: str | None=None, timeout_s: float=20.0)",
       "search(self, query: str, max_results: int) -> list[dict]",
-      "fetch(self, url: str) -> dict"
+      "fetch(self, url: str) -> dict",
+      "fetch_data(self, url: str, max_bytes: int=8000000) -> dict",
+      "page_links(self, url: str) -> list[str]"
      ],
      "signature": null
     },
@@ -18850,7 +18873,117 @@
      ],
      "doc": "A fresh Box 3 registry for one run: echo, calc, web_search and fetch_url (Tavily unless a provider is given).",
      "key": "amoeba/tools/web.py::web_registry",
-     "signature": "web_registry(provider: SearchProvider | None=None, limits: WebLimits | None=None)"
+     "signature": "web_registry(provider: SearchProvider | None=None, limits: WebLimits | None=None, research: bool=False)"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "",
+     "key": "amoeba/tools/research.py::data_ext",
+     "signature": "data_ext(url: str) -> str | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/diagnoser.py::run_signals.add",
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add",
+      "amoeba/tools/research.py::terms",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "Links to data files in a page's text or HTML, absolute, best match to the query first.",
+     "key": "amoeba/tools/research.py::data_links",
+     "signature": "data_links(text: str, base_url: str, query: str='', limit: int=2) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/research.py::terms",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "The lines of a page that share the most query words (numbers kept), in page order, up to `limit` chars.",
+     "key": "amoeba/tools/research.py::excerpt",
+     "signature": "excerpt(text: str, query: str, limit: int) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "A primary source by its domain: government, military, education, international and statistical agencies.",
+     "key": "amoeba/tools/research.py::official",
+     "signature": "official(url: str) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "{kind, sheets, rows} from a data file: CSV/TSV, the first sheet of an XLSX workbook, a JSON list of records",
+     "key": "amoeba/tools/research.py::parse_table",
+     "signature": "parse_table(content: bytes, ext: str, max_rows: int=3000, max_cols: int=40) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "Official domains first, each group in the provider's order.",
+     "key": "amoeba/tools/research.py::rank_official",
+     "signature": "rank_official(results: list[dict]) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::SubprocessRunner._one",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/tools/research.py::_one",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "One query per packed query, place and year (or year range): at most max_sub, in order, without repeats.",
+     "key": "amoeba/tools/research.py::split_query",
+     "signature": "split_query(query: str, max_sub: int=4) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/research.py::terms"
+     ],
+     "doc": "The first rows (titles and header) and the rows that name a query word, as pipe-separated lines.",
+     "key": "amoeba/tools/research.py::table_excerpt",
+     "signature": "table_excerpt(table: dict, query: str, head: int=8, matches: int=12) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "The words of a query that a relevant line, link or table row should contain.",
+     "key": "amoeba/tools/research.py::terms",
+     "signature": "terms(query: str) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/web.py::WebToolError"
+     ],
+     "doc": "D106: one direct GET (a data file or a page's links), at most max_bytes; (content, content type).",
+     "key": "amoeba/tools/web.py::http_get",
+     "signature": "http_get(url: str, max_bytes: int, timeout_s: float=20.0) -> tuple[bytes, str]"
     },
     {
      "callees": [
@@ -18874,13 +19007,63 @@
    "guards": [
     [
      "correct",
+     "if again",
+     "add f\"  already read in this run: {', '.join((f'[{i}]' for i in again))}\""
+    ],
+    [
+     "correct",
+     "if cells",
+     "add cells"
+    ],
+    [
+     "correct",
+     "if s and s.lower() not in {x.lower() for x in out}",
+     "add s"
+    ],
+    [
+     "correct",
+     "if self._used.get('auto_fetch', 0) >= self.limits.max_auto_fetches_per_step",
+     "add f'(plain code read {self.limits.max_auto_fetches_per_step} pages this step; no more)'"
+    ],
+    [
+     "correct",
      "if self.step is not None and self.step not in s['steps']",
      "add self.step"
+    ],
+    [
+     "correct",
+     "if url.startswith('http') and url not in seen",
+     "add url"
+    ],
+    [
+     "decide",
+     "if data",
+     "set out += '\\n\\nData files this page links, read by plain code:\\n' + '\\n'.join(data)"
+    ],
+    [
+     "decide",
+     "if ext in ('csv', 'tsv')",
+     "set text = content.decode('utf-8-sig', errors='replace')"
+    ],
+    [
+     "decide",
+     "if ext in ('xlsx', 'xlsm')",
+     "set wb = load_workbook(io.BytesIO(content), read_only=True, data_only=True)"
     ],
     [
      "decide",
      "if hasattr(self, 'web')",
      "set new.web = self.web"
+    ],
+    [
+     "decide",
+     "if isinstance(data, dict)",
+     "set data = next((v for v in data.values() if isinstance(v, list)), data)"
+    ],
+    [
+     "decide",
+     "if isinstance(data, list) and data and isinstance(data[0], dict)",
+     "set keys = list(dict.fromkeys((k for d in data[:max_rows] for k in d)))[:max_cols]"
     ],
     [
      "decide",
@@ -18899,6 +19082,11 @@
     ],
     [
      "decide",
+     "if known is not None and known.get('fetched')",
+     "set read += 1"
+    ],
+    [
+     "decide",
      "if m",
      "set known = next((s for s in self.sources if s['id'] == m.group(1)), None)"
     ],
@@ -18909,6 +19097,21 @@
     ],
     [
      "decide",
+     "if self.research",
+     "set data = self._linked_data(text, s, s['title'])"
+    ],
+    [
+     "decide",
+     "if self.research",
+     "set lines += self._read_top(shown, query)"
+    ],
+    [
+     "decide",
+     "if self.research",
+     "set results = rank_official(results)"
+    ],
+    [
+     "decide",
      "if text",
      "set source['seen'] = (source.get('seen', '') + '\\n' + text)[-60000:]"
     ],
@@ -18916,6 +19119,41 @@
      "decide",
      "if trace is not None",
      "set self.trace = trace"
+    ],
+    [
+     "fallback",
+     "'' if v is None else str(v)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'\\t' if ext == 'tsv' else ','",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'csv' if 'csv' in ctype else 'json' if 'json' in ctype else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'json' if 'json' in ctype else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'official' if official(s['url']) else 'not an official domain'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'xlsx' if 'spreadsheet' in ctype else 'csv' if 'csv' in ctype else 'json' if 'json' in ctype else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "0.5 if re.search('\\\\d', ln) else 0",
+     "choose value"
     ],
     [
      "fallback",
@@ -18930,6 +19168,11 @@
     [
      "fallback",
      "except (WebToolError, urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError)",
+     "add f\"  could not read {r['url']}: {type(e).__name__}\""
+    ],
+    [
+     "fallback",
+     "except (WebToolError, urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError)",
      "return self._fail('fetch_url', f'{type(e).__name__}: {e}')"
     ],
     [
@@ -18939,13 +19182,58 @@
     ],
     [
      "fallback",
+     "except (WebToolError, urllib.error.URLError, TimeoutError, OSError, ValueError, KeyError)",
+     "set links = []"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "return f'  data file {url}: could not read it ({type(e).__name__}: {str(e)[:120]})'"
+    ],
+    [
+     "fallback",
      "except SyntaxError",
      "return f'error: {e.msg}'"
     ],
     [
      "fallback",
+     "f\", sheets {', '.join(table['sheets'][:5])}\" if table.get('sheets') else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "f', first {len(cut)} of {len(text)} characters' if len(text) > len(cut) else ''",
      "choose value"
+    ],
+    [
+     "fallback",
+     "m.group(1) if m else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "split_query(query, self.limits.max_subqueries) if self.research else [query]",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if i >= head and any((w in ' '.join(r).lower() for w in words))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if isinstance(v, list)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if ln.strip()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if p.strip(' \"')",
+     "drop the rest"
     ],
     [
      "filter",
@@ -18963,9 +19251,34 @@
      "drop the rest"
     ],
     [
+     "filter",
+     "keep only if w not in STOP",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if x['url'] == r['url']",
+     "drop the rest"
+    ],
+    [
+     "loop cap",
+     "while cells and (not cells[-1])",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if ext is None",
+     "raise WebToolError"
+    ],
+    [
      "reject",
      "if isinstance(n.op, ast.Pow) and abs(b) > 1000",
      "raise ToolError"
+    ],
+    [
+     "reject",
+     "if len(body) > max_bytes",
+     "raise WebToolError"
     ],
     [
      "reject",
@@ -19009,6 +19322,16 @@
     ],
     [
      "stop",
+     "if len(rows) >= max_rows",
+     "stop (break)"
+    ],
+    [
+     "stop",
+     "if not keep",
+     "return (text or '')[:limit].strip()"
+    ],
+    [
+     "stop",
      "if not query",
      "return 'error: web_search needs a query'"
     ],
@@ -19024,39 +19347,72 @@
     ],
     [
      "stop",
+     "if read >= self.limits.auto_fetch",
+     "stop (break)"
+    ],
+    [
+     "stop",
      "if s['url'] == url",
      "return s"
     ],
     [
      "stop",
+     "if sc < 1 or size >= limit",
+     "stop (break)"
+    ],
+    [
+     "stop",
+     "if self._used.get('data', 0) >= self.limits.max_data_files_per_step or not hasattr(self.provider, 'fetch_data')",
+     "return f'  data file {url}: not read (limit of {self.limits.max_data_files_per_step} per step)'"
+    ],
+    [
+     "stop",
      "if self._used.get(tool, 0) >= cap",
      "return f'error: {tool} limit reached ({cap} per step); work with the sources you have'"
+    ],
+    [
+     "stop",
+     "if self.research and data_ext(url)",
+     "return self._read_data(url, '', None).lstrip()"
     ]
    ],
    "kind": "code",
    "numbers": [
     "PoolLimits.timeout_s",
+    "WebLimits.auto_fetch",
+    "WebLimits.data_links_per_page",
+    "WebLimits.excerpt_chars",
+    "WebLimits.max_auto_fetches_per_step",
+    "WebLimits.max_data_files_per_step",
     "WebLimits.max_fetch_chars",
     "WebLimits.max_fetches_per_step",
     "WebLimits.max_results",
     "WebLimits.max_searches_per_step",
+    "WebLimits.max_subqueries",
     "WebLimits.snippet_chars",
-    "WebLimits.timeout_s"
+    "WebLimits.timeout_s",
+    "data_links.limit",
+    "http_get.timeout_s",
+    "parse_table.max_cols",
+    "parse_table.max_rows",
+    "split_query.max_sub",
+    "table_excerpt.head",
+    "table_excerpt.matches"
    ],
    "prompts": {},
    "title": "Tool box"
   },
-  "facts_hash": "7a9c7b966ade5a41",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "e40d467b502b090d",
-  "sentence": "Repeat a text back, do arithmetic, or get the current time; with --web-tools the plan runner also has web search and page reading.",
-  "source": "model: kept",
+  "facts_hash": "67ae383dc44908bd",
+  "seed_hash": "d05b27c35fe8d109",
+  "sentence": "Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search and page reading.",
+  "source": "hand",
   "what": [
    "Tools are looked up by name; a name that is not registered is an error, not a web search.",
    "The arithmetic tool accepts numbers and + − × ÷ and powers only, never arbitrary code.",
    "web_search and fetch_url (Tavily) give every result a source id [S#]; searches and fetches per step, page length and time are capped, and a failure comes back as an error line, never a crash.",
    "Pool tools (D56) are remote MCP servers registered as pool:<name> for the helper that asked; they run here too, with the same caps, [S#] source ids and error lines.",
-   "This is the single place any tool is ever run."
+   "This is the single place any tool is ever run.",
+   "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#]."
   ]
  },
  "toy_source": {
