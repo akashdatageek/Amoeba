@@ -18,6 +18,7 @@ from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.citecheck import mislabelled_citations
+from amoeba.interp.dates import dated_finding, undated_figures
 from amoeba.interp.disputes import dispute_text, disputed_figures
 from amoeba.interp.replan_method import failed_method, failed_methods_text, method_change, replaces
 from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_values, numbers_in,
@@ -78,6 +79,10 @@ class PlanOptions:
     # type or a decomposed query, stated in the step); the observer is shown each failed step's method. The CLI
     # default is on; this library default keeps the earlier behaviour.
     replan_method: str = "off"
+    # D110: on = every web-sourced figure of the final answer must carry its source's date (publication or data
+    # period); missing → the refine turn, then listed in Limitations. The CLI default is on; this library default
+    # keeps the earlier behaviour.
+    dated: str = "off"
     max_replans: int = 2             # D63: observer calls per run
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
     domain_checks: tuple = ()        # D102: the niche profile's checks (amoeba/checks/<name>.py) after each step
@@ -572,6 +577,7 @@ class PlanRunner:
         self.unmet: dict[str, str] = {}                   # requirement id -> why a re-plan left it unmet
         self.mislabelled: dict[int, list] = {}            # D74: step -> its mislabelled citations (latest version)
         self.disputes: dict[int, list] = {}               # D109: verify step -> its disagreements still open
+        self.undated: list[dict] = []                     # D110: web-sourced figures of the answer without a date
         self.max_num = max((number(s) for s in cfg.plan), default=0)
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
@@ -1003,6 +1009,9 @@ class PlanRunner:
         found = self.contract_check(contract, w, text) if contract else None                # D61 (G1, G2)
         produced = self.answer_gaps(n, text) if on and answer_step else None               # D61 (G5)
         items = (self.contract_findings(found) if found else []) + (self.answer_findings(produced) if produced else [])
+        dated = answer_step and self.opt.dated == "on"
+        if dated and (undated := undated_figures(text, self.web_ids())):          # D110: earns the refine turn
+            items = items + [dated_finding(undated)]
         refine = self.refine(step, n, agents, inputs, extra, w, template, checks, prov, items)   # D42 / D50 / D61
         if refine:
             exact = computed_values(self.computed_results(w))
@@ -1023,6 +1032,11 @@ class PlanRunner:
                                           "amoeba.findings": len(refine["findings"]),
                                           **{f"amoeba.before.{k}": v for k, v in refine["before"].items()},
                                           **{f"amoeba.after.{k}": v for k, v in refine["after"].items()}})
+        if dated:                                       # D110: still undated after the refine turn → Limitations
+            self.undated = undated_figures(text, self.web_ids())
+            if self.undated:
+                self.i.trace.event("undated_figures", {"amoeba.step": n, "amoeba.count": len(self.undated),
+                                                       "amoeba.figures": self.undated[:10]})
         failed = [c["name"] for c in checks if not c["pass"]]
         retried = bool(refine)
         # D36: what the step could not do for lack of a capability — BLOCKED as an action or marked in the output.
@@ -1493,6 +1507,10 @@ class PlanRunner:
                     where = f"; it is in {', '.join(x['found_in'])}" if x["found_in"] else ""
                     lines.append(f"- Mislabelled citation: step {d} cites {x['source']} for {x['claim']!r}, which "
                                  f"{x['source']} does not contain{where} (added by plain code)")
+        if "undated" not in section:                                             # D110: no date after the refine
+            for u in self.undated[:8]:
+                lines.append(f"- UNDATED: {u['figure']} [{', '.join(u['sources'])}] — the source's date (publication or "
+                             f"data period) is not stated (added by plain code)")
         if "disput" not in section:                                              # D109: both values, never dropped
             for d, items in sorted(self.disputes.items()):
                 for x in items[:5]:

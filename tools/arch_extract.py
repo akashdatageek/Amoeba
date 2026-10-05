@@ -520,7 +520,8 @@ BOXES: list[dict] = [
                "re-checking tool call on code, files or cited figures is an unverified check and makes it partial.",
                "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
                "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
-               "D109: plain code pairs the verifier's blind figures with the checked outputs' figures by label (5% tolerance); a disagreement makes the step disputed, earns one rework with both values shown, and if it stays the step is partial, the verdict DISPUTED and both values go into Limitations."],
+               "D109: plain code pairs the verifier's blind figures with the checked outputs' figures by label (5% tolerance); a disagreement makes the step disputed, earns one rework with both values shown, and if it stays the step is partial, the verdict DISPUTED and both values go into Limitations.",
+               "D110: on the answer step every web-sourced figure must carry its source's date (on its line or in its source entry); undated ones earn the refine turn, and those still undated are listed in Limitations."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",

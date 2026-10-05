@@ -541,6 +541,10 @@ With `--web-tools` and `--local-tools on`, every page and data file the web tool
 
 With `--replan on`, the Action Observer may add or rewrite steps after a step fails. It is now shown how each failed step worked: the tools it used, the sites it read and its queries. A step it adds or rewrites for a failed step must change the method and say how in its text: a different tool, a different source type (a data file, an official source, an API, another site), or one search per entity, year or series. A step that repeats the method gets the whole decision rejected, and the rejection is logged with what was repeated. `--replan-method off` turns this off.
 
+## Dates on web figures (D110)
+
+Every figure in the final answer that cites a web source must carry that source's date: its publication date or the period its data covers. The date can sit on the figure's line or in the source's entry under Sources. Undated figures get the answer step one refine turn to add the dates. Any still undated afterwards are listed in the Limitations section by plain code. `--dated-figures off` turns this off.
+
 ## Cost controls (D45–D48)
 
 ```bash
