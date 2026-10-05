@@ -694,7 +694,8 @@ BOXES: list[dict] = [
                "The harness gate refuses first what it can see: network commands, paths outside the workspace, writes to MCP configs, hooks, settings, CLAUDE.md or skills (protected_config); what a command hides is stopped by the sandbox. Files are copied back to runs/<id>/workspace/ after each call.",
                "Limits: 300 s per command (D96a), 1 CPU, 1 GiB, one hour per run, 8,000 characters of output, 20 calls per step and 60 per run; a niche profile can set its own sandbox limits (D102).",
                "--local-tools-mode sandbox is the default; inprocess (the earlier host process) runs only when asked for and needs AMOEBA_SANDBOX=1. Every allow and deny decision goes to the trace and from there to events.jsonl (tool_decisions); a live test shows the agent cannot reach the OpenShell gateway API.",
-               "Skills are listed only from the kept anthropics/skills clone; an attached skill's SKILL.md goes on the helper's card. Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first (D61)."],
+               "Skills are listed only from the kept anthropics/skills clone; an attached skill's SKILL.md goes on the helper's card. Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first (D61).",
+               "D103: in the sandbox a pool skill maps to /opt/skills/<name> (the entry's root is a label; its folder is root_path), and Bash may name /opt/skills read-only so the skill's scripts run; writing there is refused."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",

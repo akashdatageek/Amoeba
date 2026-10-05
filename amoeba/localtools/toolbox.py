@@ -33,7 +33,7 @@ from amoeba.localtools.gate import (in_workspace, inside, protected_command, pro
 from amoeba.localtools.sandbox import SANDBOX_WORKSPACE, OpenShellBox, sandbox_config
 from amoeba.localtools.office import office_check
 from amoeba.localtools.server import StdioServer
-from amoeba.localtools.skills import card_text, copy_skill, list_skills
+from amoeba.localtools.skills import card_text, copy_skill, list_skills, sandbox_skill_path
 from amoeba.pool.match import document_format, rank
 from amoeba.pool.mcp import SourceBook, data_block
 
@@ -276,13 +276,11 @@ class LocalToolbox:
             return False
         boxed = self.setup.isolation == "openshell"
         if boxed:                                     # D96: skills are baked into the image, read-only
-            rel = Path(entry["path"]).resolve().relative_to(Path(entry["root"]).resolve()) \
-                if Path(entry["path"]).resolve().is_relative_to(Path(entry["root"]).resolve()) else None
-            if rel is None or "anthropics_skills" not in str(entry["root"]):
+            dest = sandbox_skill_path(entry)          # D103: the root is a label; its folder is root_path
+            if dest is None:
                 self.trace.event("skill_refused", {"amoeba.box": "localtools", "amoeba.skill": entry["id"],
                                                    "amoeba.reason": "not in the sandbox image"})
                 return False
-            dest = Path("/opt/skills") / rel
         else:
             dest = copy_skill(entry, self.workspace)
             self._seen = self._snapshot()             # the copied skill is input, not a file the team made
@@ -377,7 +375,8 @@ class LocalToolbox:
         if tool == "Bash":
             command = str(args.get("command", ""))
             screened = command.replace(SANDBOX_WORKSPACE, ws) if boxed else command
-            why = protected_command(command) or screen_command(screened, self.workspace)
+            why = protected_command(command) or screen_command(
+                screened, self.workspace, sandbox_config(self.setup.config) if boxed else None)   # D103
             if why:
                 return self.refuse(tool, *why, what=what)
             run_in = Path(SANDBOX_WORKSPACE) if boxed else self.workspace

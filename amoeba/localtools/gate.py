@@ -64,8 +64,10 @@ ALLOWED_ABS = ("/dev/null", "/dev/stdout", "/dev/stderr", "/dev/stdin")
 
 
 # box: localtools
-def screen_command(command: str, workspace: Path) -> tuple[str, str] | None:
-    """(reason, what matched) for a Bash command that must not run, or None."""
+def screen_command(command: str, workspace: Path, readonly: dict | None = None) -> tuple[str, str] | None:
+    """(reason, what matched) for a Bash command that must not run, or None. readonly: in the sandbox, the config
+    whose readable_roots (the baked-in skills, /opt/skills) a command may name — D103: a helper runs a skill's scripts
+    from there; writing there fails in the sandbox (read-only mount) and protected_command refuses it first."""
     if not isinstance(command, str) or not command.strip():
         return "unsafe_command", "empty command"
     m = NETWORK.search(command)
@@ -77,6 +79,8 @@ def screen_command(command: str, workspace: Path) -> tuple[str, str] | None:
     ws = str(workspace.resolve())
     for p in ABS_PATH.findall(command):
         if p in ALLOWED_ABS or p == ws or p.startswith(ws + "/"):
+            continue
+        if readonly is not None and readonly_root(p, readonly):
             continue
         if inside(p, workspace) is None:
             return "unsafe_command", f"path outside the workspace: {p[:80]}"

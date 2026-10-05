@@ -519,6 +519,10 @@ After a plan run, plain code checks what the team owes: an answer with real cont
 
 If something is missing, the run ends with `error: "no_deliverable: …"` and `status: no_deliverable` instead of no error, and result.json lists what was promised and what is missing under `deliverables`. `--deliverable-check off` turns this off. The baselines are never checked.
 
+## Skills in the sandbox (D103)
+
+With `--local-tools on` the skills the pool picks (xlsx, docx, pdf, pptx …) now reach the helpers in the OpenShell sandbox. The sandbox image holds the skills clone read-only at `/opt/skills/<name>/`. A helper reads the skill there with `local:Read` and runs its scripts with `local:Bash`. Writing into `/opt/skills` is still refused. Before this fix every skill was refused in sandbox mode, so helpers fell back to plain openpyxl or python-docx.
+
 ## Cost controls (D45–D48)
 
 ```bash
