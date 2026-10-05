@@ -700,7 +700,8 @@ BOXES: list[dict] = [
                "--local-tools-mode sandbox is the default; inprocess (the earlier host process) runs only when asked for and needs AMOEBA_SANDBOX=1. Every allow and deny decision goes to the trace and from there to events.jsonl (tool_decisions); a live test shows the agent cannot reach the OpenShell gateway API.",
                "Skills are listed only from the kept anthropics/skills clone; an attached skill's SKILL.md goes on the helper's card. Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first (D61).",
                "D103: in the sandbox a pool skill maps to /opt/skills/<name> (the entry's root is a label; its folder is root_path), and Bash may name /opt/skills read-only so the skill's scripts run; writing there is refused.",
-               "D107: every page and data file the web tools read is saved read-only under sources/ in the workspace (and uploaded into the sandbox), with sources/index.json giving each file's [S#], url and time; writes there are refused and the files never count as made."],
+               "D107: every page and data file the web tools read is saved read-only under sources/ in the workspace (and uploaded into the sandbox), with sources/index.json giving each file's [S#], url and time; writes there are refused and the files never count as made.",
+               "D112: a Python program sent to local:Bash (a ```python block, or a first line that starts like Python) runs as python3 from a quoted heredoc; the rewrite is logged and the gate still screens it."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",

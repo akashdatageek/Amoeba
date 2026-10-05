@@ -122,6 +122,33 @@ def unfence(text: str) -> str:
     return m.group(1).strip() if m else text
 
 
+PY_FENCE = re.compile(r"```(?:python3?|py)[ \t]*\n(.*?)\n?```", re.S | re.I)
+PY_START = re.compile(r"^(?:import\s+[\w.]+|from\s+[\w.]+\s+import\s|def\s+\w+\s*\(|class\s+\w+[\s(:]|print\s*\(|"
+                      r"with\s+open\s*\(|for\s+\w+(?:\s*,\s*\w+)*\s+in\s+.+:\s*$|#!.*python)")
+PY_DELIM = "AMOEBA_PY"
+
+
+# box: localtools
+def python_source(text: str) -> str | None:
+    """D112: the Python program in a local:Bash input — a fenced block tagged python, or a text whose first line
+    starts like Python (import, from … import, def, class, print(, with open(, a for loop, a python shebang) — or None
+    for a shell command."""
+    t = (text or "").strip()
+    m = PY_FENCE.fullmatch(t)
+    if m:
+        return m.group(1).strip()
+    body = unfence(t)
+    first = next((ln.strip() for ln in body.splitlines() if ln.strip()), "")
+    return body if PY_START.match(first) else None
+
+
+# box: localtools
+def as_python_command(src: str) -> str:
+    """D112: run a program with python3 from a quoted heredoc (no shell expansion inside)."""
+    delim = PY_DELIM if PY_DELIM not in src else f"{PY_DELIM}_{hashlib.sha1(src.encode()).hexdigest()[:8]}"
+    return f"python3 - <<'{delim}'\n{src}\n{delim}"
+
+
 # box: localtools
 def alias_words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", (text or "").lower()))
@@ -342,6 +369,12 @@ class LocalToolbox:
                ". Nothing was run; stay inside the workspace, with no network."
 
     def arguments(self, tool: str, text: str) -> dict:
+        if tool == "Bash" and self.setup.config.get("bash_python", True):
+            src = python_source(text)                 # D112: Python sent to Bash runs with python3
+            if src is not None:
+                self.trace.event("bash_python", {"amoeba.box": "localtools", "amoeba.step": self.step,
+                                                 "amoeba.lines": src.count("\n") + 1})
+                return {"command": as_python_command(src)}
         text = unfence(text)                          # D61 (P17): a ```bash ... ``` block is its content
         if text.startswith("{"):
             try:

@@ -549,6 +549,10 @@ Every figure in the final answer that cites a web source must carry that source'
 
 The citation check (D74) no longer flags arithmetic. A number the line shows as a calculation's result (after `=` or `≈`), the base and exponent of a power, and the years of a range are not treated as claims about the cited source. The calculation's operands are still checked. `--cite-arithmetic off` restores the earlier check.
 
+## Python sent to Bash (D112)
+
+When a helper sends a Python program to `local:Bash`, either a fenced block tagged `python` or text whose first line starts like Python, it now runs with `python3` from a quoted heredoc instead of failing as a shell command. The rewrite is logged and the gate still screens the program. Set `bash_python: false` in `amoeba/config/localtools.yaml` to turn this off.
+
 ## Cost controls (D45–D48)
 
 ```bash

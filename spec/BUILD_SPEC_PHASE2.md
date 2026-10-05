@@ -544,6 +544,7 @@ the report too.
 | D108 | Re-plan method check: a step a re-plan adds or rewrites for a failed step must state a different tool, source type, site or a split query, else the decision is rejected and logged; the observer is shown each failed step's tools, sources and queries (`--replan-method`, default on) | `amoeba/interp/replan_method.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 | D110 | Dated figures: every web-sourced figure in the final answer must carry its source's date (line or source entry); undated → the answer step's refine turn, then listed in Limitations (`--dated-figures`, default on) | `amoeba/interp/dates.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 | D104 | Citation check skips in-line arithmetic: calculation results (after = / ≈), powers and year ranges are not claims; operands still checked (`--cite-arithmetic`, default on) | `amoeba/interp/citecheck.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
+| D112 | Python sent to local:Bash (```python block, or a first line that starts like Python) runs as `python3 - <<'AMOEBA_PY'`; logged; still screened by the gate (localtools.yaml `bash_python`, default true) | `amoeba/localtools/toolbox.py`, `amoeba/config/localtools.yaml` | v1 |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit
