@@ -725,10 +725,10 @@ BOXES: list[dict] = [
     dict(id="client", view="run", title="AI connection", kind="code", plan=None,
          sentence="The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
          what=["Sends the messages to the AI service and returns the reply with its token counts.",
-               "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged), dropped "
+               "Waits out rate limits (HTTP 429/503: up to five retries, Retry-After honoured, each wait logged), dropped "
                "connections and timeouts too; an error still there after that ends the run with error 'api: …' "
                "and its records are still written. It can space calls out, fold the system message into the user "
-               "message and set the reasoning effort.",
+               "message, set the reasoning effort and count hidden reasoning tokens.",
                "With --llm-cache every reply is stored and can be replayed without a call; --max-tokens-per-run / "
                "--max-calls-per-run stop a run cleanly; every run prints its tokens and estimated cost.",
                "A named profile (amoeba/config/models.yaml, default gemma-api) sets the service, the model and how to "
@@ -738,7 +738,7 @@ BOXES: list[dict] = [
                "Temperature is set once for the connection, not per helper.",
                "Every call from every box goes through here, wrapped so it is logged.",
                "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
-               "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error or infra_error."],
+               "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error or no_deliverable."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
@@ -831,7 +831,7 @@ BOXES: list[dict] = [
     dict(id="monitor", view="m4", title="Score and cause alarms", kind="code", plan=None,
          sentence="Raises an alarm when a kind's last few practice scores drop below normal, or when a cause or a missing rubric item suddenly rises.",
          what=["After every practice run it reads the run's score, the names of the rubric items it failed and the "
-               "step causes recorded by the step contract.",
+               "step causes recorded by the step contract. D111: a run that ended in an infra error is skipped.",
                "Score alarm: the mean of the last three scores falls below the reference mean minus twice its spread "
                "(at least 0.10); the reference is the kind's practice runs since its last accepted change, before the "
                "window, and there must be at least four.",
@@ -895,7 +895,8 @@ BOXES: list[dict] = [
                "A finished run is key-scanned and queued for the bucket copy; unshipped items are listed in "
                "loop_state.json. Cloud credentials are removed from every run's environment.",
                "D95a: finished runs that pass the key scan and the new events.jsonl rows are shipped as normal fast-forward commits to the repository's orphan `evidence` branch, at most one commit per 10 minutes plus a final one; each commit message carries the hash-chain head (Chain-Head) so scripts/verify_evidence.py --branch evidence can check the chain against GitHub's history. Shipping runs in the harness only; agents never get git credentials. The bucket uploader is kept but disabled.",
-               "D97–D100: routing decisions, local-tool decisions, memory proposals and approvals, retention replays and prunes are events in the same log."],
+               "D97–D100: routing decisions, local-tool decisions, memory proposals and approvals, retention replays and prunes are events in the same log.",
+               "D111: a practice run still failing on an infra error after its retries is logged as an infra_error event with its run folder, and left out of the scores."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes, chains and verifies the log.",
          anchors=[]),
@@ -948,7 +949,8 @@ BOXES: list[dict] = [
          what=[
                "Every N practice tasks of a kind (--retention-every, default 12, 0 = off), the kind's pre-shift gate tasks are replayed with the current recipe and with the starting one, same seeds, through the arm-A cache.",
                "A drop beyond the calibration noise raises a retention alarm at once, handled like any alarm; the Diagnoser gets scores only, never the held-out tasks.",
-               "Each replay is a row in retention.jsonl and a retention event; it is resumable by its event key."],
+               "Each replay is a row in retention.jsonl and a retention event; it is resumable by its event key.",
+               "D111: a replay run that ends in an infra error is never counted as a score."],
          proposes="Nothing: no AI takes part; the runs themselves use the team.",
          disposes="Plain code decides when to replay, raises the alarm and the Gate decides each prune.",
          anchors=[]),
