@@ -545,6 +545,7 @@ the report too.
 | D110 | Dated figures: every web-sourced figure in the final answer must carry its source's date (line or source entry); undated → the answer step's refine turn, then listed in Limitations (`--dated-figures`, default on) | `amoeba/interp/dates.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 | D104 | Citation check skips in-line arithmetic: calculation results (after = / ≈), powers and year ranges are not claims; operands still checked (`--cite-arithmetic`, default on) | `amoeba/interp/citecheck.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 | D112 | Python sent to local:Bash (```python block, or a first line that starts like Python) runs as `python3 - <<'AMOEBA_PY'`; logged; still screened by the gate (localtools.yaml `bash_python`, default true) | `amoeba/localtools/toolbox.py`, `amoeba/config/localtools.yaml` | v1 |
+| D113 | Spreadsheet checks: after a step that made an .xlsx, typed totals and typed derived cells (row/column sums, products of row cells) fail `domain_xlsx_formulas` with the cell names and earn the retry turn; task numbers are inputs (`--xlsx-formulas`, default on) | `amoeba/checks/xlsx_formulas.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit

@@ -86,6 +86,10 @@ class PlanOptions:
     # D104: on = the citation check (D74) leaves out calculation results shown on the line, powers and year ranges.
     # The CLI default is on; this library default keeps the earlier behaviour.
     cite_arithmetic: str = "off"
+    # D113: on = after a step that made an .xlsx file, plain code checks that totals and derived cells are formulas,
+    # not typed numbers (amoeba/checks/xlsx_formulas.py); a typed one fails the check. The CLI default is on; this
+    # library default keeps the earlier behaviour.
+    xlsx_formulas: str = "off"
     max_replans: int = 2             # D63: observer calls per run
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
     domain_checks: tuple = ()        # D102: the niche profile's checks (amoeba/checks/<name>.py) after each step
@@ -1006,6 +1010,7 @@ class PlanRunner:
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
         checks += conclusion_check(text, w)                                       # D76
         checks += self.domain_checks(n, text, inputs, w, answer_step)             # D102
+        checks += self.xlsx_checks(n, text)                                       # D113
         own, visible = self._sources(n, deps)
         prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,   # D33
                                 self.computed_results(w), self.web_ids())
@@ -1023,6 +1028,7 @@ class PlanRunner:
             checks = step_checks(step, text, deps, self.artifacts, verifier)
             checks += conclusion_check(text, w)
             checks += self.domain_checks(n, text, inputs, w, answer_step)
+            checks += self.xlsx_checks(n, text)
             own, visible = self._sources(n, deps)
             prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,
                                     self.computed_results(w), self.web_ids())
@@ -1202,6 +1208,18 @@ class PlanRunner:
         ev = {"task": self.task.prompt, "inputs": inputs, "computed": done + self.computed_results(w),
               "answer_step": answer_step, "step": n}
         return run_checks(self.opt.domain_checks, text, ev)
+
+    # box: niche
+    def xlsx_checks(self, n: int, text: str) -> list[dict]:
+        """D113: totals and derived cells of the workbooks this step made must be formulas."""
+        if self.opt.xlsx_formulas != "on" or self.local is None:
+            return []
+        books = [str(self.local.workspace / f["path"]) for f in self.files_of(n)
+                 if f["path"].lower().endswith((".xlsx", ".xlsm"))]
+        if not books:
+            return []
+        from amoeba.checks import run_checks
+        return run_checks(["xlsx_formulas"], text, {"xlsx_files": books, "task": self.task.prompt, "step": n})
 
     @staticmethod
     def computed_results(w: "_Work") -> list[str]:

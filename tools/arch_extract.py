@@ -922,7 +922,8 @@ BOXES: list[dict] = [
                "profile, asking the team to assess the environment first and plan only with what is allowed.",
                "Box 3 refuses any tool outside the profile even when a plan or a replan asks for it, and logs the "
                "refusal; the router refuses any model outside it; domain checks (amoeba/checks/) run after each step "
-               "and a failed one earns a retry turn."],
+               "and a failed one earns a retry turn.",
+               "D113: after a step that made a workbook, typed totals and typed derived cells (row or column sums, products of row cells) fail the domain_xlsx_formulas check with the cell names and earn the retry turn."],
          proposes="Nothing: a person writes the profile.",
          disposes="Plain code applies the profile's allowlists, limits, done clauses and checks.",
          anchors=[]),

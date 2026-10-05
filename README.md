@@ -553,6 +553,10 @@ The citation check (D74) no longer flags arithmetic. A number the line shows as 
 
 When a helper sends a Python program to `local:Bash`, either a fenced block tagged `python` or text whose first line starts like Python, it now runs with `python3` from a quoted heredoc instead of failing as a shell command. The rewrite is logged and the gate still screens the program. Set `bash_python: false` in `amoeba/config/localtools.yaml` to turn this off.
 
+## Spreadsheet formulas (D113)
+
+After a step that made a workbook (.xlsx), plain code checks that totals and derived cells are formulas, not typed numbers. Three kinds of typed number are flagged: one in a total row or column, one that equals the sum of the cells beside or above it, and one that equals the product of two cells in its row. A flagged cell fails the step check with the cell names, which earns the step's retry turn. Numbers the task states are inputs and are never flagged. `--xlsx-formulas off` turns this off.
+
 ## Cost controls (D45–D48)
 
 ```bash

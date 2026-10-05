@@ -440,7 +440,8 @@ def cli_plan_options(args: argparse.Namespace):
                        collab=args.collab, contract=args.step_contract, replan=args.replan,
                        verify_first=getattr(args, "verify_first", "off"), disputes=getattr(args, "disputes", "off"),
                        replan_method=getattr(args, "replan_method", "off"), dated=getattr(args, "dated_figures", "off"),
-                       cite_arithmetic=getattr(args, "cite_arithmetic", "off"), **extra)
+                       cite_arithmetic=getattr(args, "cite_arithmetic", "off"),
+                       xlsx_formulas=getattr(args, "xlsx_formulas", "off"), **extra)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -640,6 +641,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: a run whose answer has no content, or that never made a file the plan promised (with "
                         "--local-tools on), ends with error 'no_deliverable: …' and status no_deliverable; "
                         "result.json records `deliverables` (D105). The baselines are never checked")
+    p.add_argument("--xlsx-formulas", choices=["on", "off"], default="on",
+                   help="plan, with --local-tools on: after a step that made an .xlsx file, plain code checks that "
+                        "totals and derived cells are formulas, not typed numbers; a typed one fails the check with the "
+                        "cell names and earns the retry turn (D113)")
     p.add_argument("--cite-arithmetic", choices=["on", "off"], default="on",
                    help="plan: the citation check (D74) leaves out a number the line shows as a calculation's result "
                         "(after = or ≈), a power's base and exponent, and the years of a range; the operands are "
