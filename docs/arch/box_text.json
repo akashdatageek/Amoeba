@@ -1074,7 +1074,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "789895c",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -1209,6 +1209,7 @@
       "amoeba/task/interpret.py::read_task",
       "amoeba/task/interpret.py::with_note",
       "amoeba/task/models.py::RunResult",
+      "amoeba/task/models.py::run_status",
       "amoeba/tools/registry.py::ToolRegistry.names",
       "scripts/run_experiment.py::summary",
       "scripts/run_task.py::ask_user",
@@ -1247,7 +1248,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "11dbaaf636bfb3c3",
+  "facts_hash": "eb6919bc12abdd72",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -1858,7 +1859,7 @@
   ]
  },
  "client": {
-  "checked_at": "06dbc12",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -2050,6 +2051,32 @@
      "signature": "build_llm(args: argparse.Namespace) -> LLMClient"
     },
     {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "The current proxy from the file `AMOEBA_PROXY_FILE` names; None when unset, unreadable or without one.",
+     "key": "amoeba/config/proxy.py::fresh_proxy",
+     "signature": "fresh_proxy(env=None) -> str | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/config/proxy.py::fresh_proxy",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "Set the fresh proxy in `env` (default this process) when it differs from the one there; return it, or None",
+     "key": "amoeba/config/proxy.py::refresh_proxy",
+     "signature": "refresh_proxy(env=None) -> str | None"
+    },
+    {
      "callees": [],
      "doc": "Wraps a web SearchProvider (D32). The real provider is built only when a live call is needed, so replay",
      "fields": [],
@@ -2094,6 +2121,11 @@
     ],
     [
      "decide",
+     "if lost == 'connection' and refresh_proxy() is not None",
+     "set self._client = self._connect()"
+    ],
+    [
+     "decide",
      "if m not in clients",
      "set clients[m] = make(m)"
     ],
@@ -2106,6 +2138,11 @@
      "decide",
      "if mode == 'fixed'",
      "set profile = replace(profile, roles={g: {k: v for k, v in r.items() if k != 'model'} for g, r"
+    ],
+    [
+     "decide",
+     "if old and env[k] == old",
+     "set env[k] = new"
     ],
     [
      "decide",
@@ -2131,6 +2168,11 @@
      "decide",
      "if status not in RATE_STATUS and lost is None or len(retries) >= self.max_rate_retries or spend_cap(e)",
      "set e.amoeba_retries = retries"
+    ],
+    [
+     "fallback",
+     "(m.group(1) if m.re is _LINE else m.group(0)).rstrip('/') if m else None",
+     "choose value"
     ],
     [
      "fallback",
@@ -2169,12 +2211,27 @@
     ],
     [
      "fallback",
+     "except OSError",
+     "return None"
+    ],
+    [
+     "fallback",
      "load_prices() if prices is None else prices",
      "choose value"
     ],
     [
      "fallback",
+     "m.group(1) if m.re is _LINE else m.group(0)",
+     "choose value"
+    ],
+    [
+     "fallback",
      "merge_system(messages) if self.merge_system else messages",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "os.environ if env is None else env",
      "choose value"
     ],
     [
@@ -2284,6 +2341,16 @@
     ],
     [
      "stop",
+     "if not new or (old or '').rstrip('/') == new",
+     "return None"
+    ],
+    [
+     "stop",
+     "if not path",
+     "return None"
+    ],
+    [
+     "stop",
      "if not system",
      "return rest"
     ],
@@ -2316,8 +2383,8 @@
    "prompts": {},
    "title": "AI connection"
   },
-  "facts_hash": "bb66eb429b49dacd",
-  "seed_hash": "140d4aa779790880",
+  "facts_hash": "8d1df6eef9e61fcc",
+  "seed_hash": "f87c523a91cf0ee9",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand",
   "what": [
@@ -2327,7 +2394,8 @@
    "A named profile (amoeba/config/models.yaml, default gemma-api) sets the service, the model and how to call it; each role group (planner, checkers, helpers, reviewers, summariser) may get its own model and reply length. Every log line names the profile, and each AI line the exact model the service returned.",
    "Temperature is set once for the connection, not per helper.",
    "Every call from every box goes through here, wrapped so it is logged.",
-   "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path."
+   "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
+   "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error or infra_error."
   ]
  },
  "critics": {
@@ -3895,14 +3963,14 @@
   ]
  },
  "exp_calib": {
-  "checked_at": "ee6ec77",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/experimenter.py::ReplayResult",
       "amoeba/adapt/experimenter.py::_arm_a",
-      "amoeba/adapt/experimenter.py::_pair",
+      "amoeba/adapt/experimenter.py::_scored_pairs",
       "amoeba/adapt/experimenter.py::write_result",
       "amoeba/adapt/recipe.py::Recipe.hash",
       "amoeba/adapt/stream.py::Stream.heldout"
@@ -3926,17 +3994,18 @@
    "prompts": {},
    "title": "Noise calibration"
   },
-  "facts_hash": "0295344d8e771ba0",
+  "facts_hash": "958c8f6c410e748d",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "c389b82189617681",
   "sentence": "Runs the recipe against itself with other seeds on the gate tasks to measure how much scores move by chance.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Once per kind and recipe version; per-task spread for Gate v3.",
    "Both arms land in the arm-A cache."
   ]
  },
  "exp_runners": {
-  "checked_at": "ee6ec77",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -4050,7 +4119,8 @@
      ],
      "key": "amoeba/adapt/experimenter.py::RunRecord",
      "methods": [
-      "crashed(self) -> bool"
+      "crashed(self) -> bool",
+      "status(self) -> str"
      ],
      "signature": null
     },
@@ -4089,11 +4159,24 @@
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/memory/recipes.py::RecipeStore.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/models.py::infra_error"
      ],
      "doc": "D73 resume: the newest run folder under `out` that has a result.json and did not crash.",
      "key": "amoeba/adapt/experimenter.py::finished_run",
      "signature": "finished_run(out: Path) -> Path | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D111: adapt.yaml `infra` — retries of a run that ended in an infrastructure error, and whether such runs are",
+     "key": "amoeba/adapt/experimenter.py::infra_cfg",
+     "signature": "infra_cfg() -> dict"
     },
     {
      "callees": [
@@ -4131,7 +4214,17 @@
     ],
     [
      "fallback",
-     "' (re-run after a crash)' if attempt == 2 else ''",
+     "' status=infra_error' if rec.crashed() else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'agent_error' if self.error else 'ok'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'infra_error' if self.crashed() else 'agent_error' if self.error else 'ok'",
      "choose value"
     ],
     [
@@ -4151,6 +4244,11 @@
     ],
     [
      "fallback",
+     "f' (retry {attempt} of {retries} after an infra error)' if attempt else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "pick(load_saved_drafts(job.drafts_from), job.task.id, 0) if job.drafts_from else None",
      "choose value"
     ],
@@ -4161,8 +4259,23 @@
     ],
     [
      "fallback",
+     "self.env if self.env is not None else os.environ.copy()",
+     "choose value"
+    ],
+    [
+     "fallback",
      "sorted((p for p in out.glob('*/result.json')), key=lambda p: p.stat().st_mtime) if out.exists() else []",
      "choose value"
+    ],
+    [
+     "loop cap",
+     "for attempt in range(1 + int(infra_cfg()['retries']))",
+     "loop ends"
+    ],
+    [
+     "loop cap",
+     "for attempt in range(1 + retries)",
+     "loop ends"
     ],
     [
      "stop",
@@ -4171,7 +4284,7 @@
     ],
     [
      "stop",
-     "if not err.startswith(('api:', 'cache_miss'))",
+     "if not infra_error(json.loads(p.read_text(encoding='utf-8')).get('error'))",
      "return p.parent"
     ],
     [
@@ -4197,17 +4310,18 @@
    "prompts": {},
    "title": "Runners"
   },
-  "facts_hash": "39d9fd67b259dfa1",
-  "seed_hash": "6e1bd6f4be698ea2",
+  "facts_hash": "ea52ae9465fbcde7",
+  "seed_hash": "ac2cc7cbeec2c5f8",
   "sentence": "Run the arms' jobs: in this process for tests, or as separate run_task processes (several at once) for real runs.",
   "source": "hand",
   "what": [
    "Each job has a task, an arm, a repeat, a seed, a recipe store and (same-draft edits) the draft to reuse.",
-   "A finished run folder is found again on resume and not rerun."
+   "A finished run folder is found again on resume and not rerun.",
+   "D111: a run that ended in an infra error (model service, connection or proxy, cache miss, no result) is run again at most twice; still infra, its (task, k) is left out of the pairs and listed in experiment.json under excluded. Each run starts with the current proxy."
   ]
  },
  "exp_score": {
-  "checked_at": "ee6ec77",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -4245,7 +4359,8 @@
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/memory/recipes.py::RecipeStore.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/models.py::infra_error"
      ],
      "doc": "D84b: the honesty signals of one run, by kind (counts), and whether it ended in an error.",
      "key": "amoeba/adapt/experimenter.py::honesty_parts",
@@ -4284,7 +4399,7 @@
     ],
     [
      "fallback",
-     "1 if r.get('error') else 0",
+     "1 if r.get('error') and (not infra_error(r.get('error'))) else 0",
      "choose value"
     ],
     [
@@ -4323,17 +4438,18 @@
    "prompts": {},
    "title": "Score, cost and honesty per run"
   },
-  "facts_hash": "d21bad48eb7abda6",
+  "facts_hash": "1359c7d6d89b90c8",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "94db9806594b827c",
   "sentence": "Reads each run's score, tokens, US dollars, honesty flags and refusals.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Honesty parts: hallucinated citations, untagged figures, unverified checks, claimed files missing.",
    "A same-draft arm B counts arm A's drafting tokens too."
   ]
  },
  "experimenter": {
-  "checked_at": "ee6ec77",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -4478,6 +4594,10 @@
       [
        "runs",
        "int"
+      ],
+      [
+       "excluded",
+       "list[dict]"
       ]
      ],
      "key": "amoeba/adapt/experimenter.py::ReplayResult",
@@ -4515,6 +4635,19 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::RunRecord.crashed",
+      "amoeba/adapt/experimenter.py::_pair",
+      "amoeba/adapt/experimenter.py::infra_cfg",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D111: the pairs to score, and the (task, k) left out because an arm still ended in an infra error after its",
+     "key": "amoeba/adapt/experimenter.py::_scored_pairs",
+     "signature": "_scored_pairs(tasks: list[StreamTask], repeats: int, a: dict, b: dict, shared_draft: bool=False) -> tuple"
+    },
+    {
+     "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/memory/recipes.py::RecipeStore.get",
@@ -4542,7 +4675,7 @@
       "amoeba/adapt/experimenter.py::ReplayResult",
       "amoeba/adapt/experimenter.py::SubprocessRunner.run",
       "amoeba/adapt/experimenter.py::_arm_a",
-      "amoeba/adapt/experimenter.py::_pair",
+      "amoeba/adapt/experimenter.py::_scored_pairs",
       "amoeba/adapt/experimenter.py::_slug",
       "amoeba/adapt/experimenter.py::heldout_disabled",
       "amoeba/adapt/experimenter.py::write_result",
@@ -4661,6 +4794,11 @@
    "checks": [],
    "guards": [
     [
+     "correct",
+     "if bad and infra_cfg()['exclude']",
+     "add {'task_id': t.id, 'phase': t.phase, 'k': k, 'status': 'infra_error', 'arms': {arm: r.error for arm, r in bad}}"
+    ],
+    [
      "decide",
      "if '=' in line and (not line.startswith('#'))",
      "set k, v = line.split('=', 1)"
@@ -4751,6 +4889,11 @@
      "drop the rest"
     ],
     [
+     "filter",
+     "keep only if r.crashed()",
+     "drop the rest"
+    ],
+    [
      "loop cap",
      "for k in range(repeats)",
      "loop ends"
@@ -4788,15 +4931,16 @@
    "prompts": {},
    "title": "Replay: old recipe vs old + edit"
   },
-  "facts_hash": "dbe77b208a2f54e3",
+  "facts_hash": "8c5f0026112cb1b7",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "716d100f7393872a",
   "sentence": "Runs the old recipe and the old recipe plus the edit on the gate tasks, same seeds, {experiment.repeats} times each, and pairs the scores and costs.",
-  "source": "hand",
+  "source": "model: rewritten",
   "what": [
    "For each held-out task (after-shift tasks first, then before-shift ones for the retention check) and each repeat, arm A drafts afresh with the old recipe and runs it.",
    "For a transform or run-option edit, arm B reuses arm A's saved draft, so the only difference between the arms is the edit; for a planner-rule edit, arm B drafts with its own rules and draft variance is part of the noise.",
    "Arm A runs are cached per recipe version (by the recipe's hash), so a later hypothesis against the same version runs arm B only; the noise-floor calibration (A against A' with other seeds) fills that cache.",
-   "Each pair records both scores, tokens, honesty flags (made-up or mislabelled citations, claimed files missing, checks that re-checked nothing, an error) and refusals. Runs go out as run_task processes, 8 at once; a finished run is never redone, and a model-service crash is re-run once."
+   "Each pair records both scores, tokens, honesty flags (made-up or mislabelled citations, claimed files missing, checks that re-checked nothing, an error), refusals, and costs. Runs go out as run_task processes, eight at once; a finished run is never redone, and a model-service crash is re-run once, with persistent infrastructure errors logged as exclusions."
   ]
  },
  "free_text": {
@@ -5893,7 +6037,7 @@
   ]
  },
  "gate_rules": {
-  "checked_at": "ee6ec77",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -5929,7 +6073,8 @@
      "callees": [
       "amoeba/adapt/experimenter.py::flagged",
       "amoeba/adapt/gate.py::honesty_shares.errs",
-      "amoeba/adapt/gate.py::honesty_shares.share"
+      "amoeba/adapt/gate.py::honesty_shares.share",
+      "amoeba/task/models.py::infra_error"
      ],
      "doc": "v2: (flagged share A, flagged share B, error rate A, error rate B) over the post pairs; None without pairs.",
      "key": "amoeba/adapt/gate.py::honesty_shares",
@@ -6036,13 +6181,14 @@
    "prompts": {},
    "title": "Rules 1, 4 and 5"
   },
-  "facts_hash": "e4dfdbf50aa32230",
-  "seed_hash": "02dff63524826292",
+  "facts_hash": "f40c1e02e4926ac3",
+  "seed_hash": "09269879101bc2c0",
   "sentence": "Validity and leakage (1), cost justified in US dollars or tokens (4), honesty and errors not worse (5).",
   "source": "hand",
   "what": [
    "Rule 4 uses US dollars when both arms have prices, tokens otherwise (cost_basis).",
-   "Rule 5 compares the share of runs with an honesty signal and the share that ended in an error."
+   "Rule 5 compares the share of runs with an honesty signal and the share that ended in an error.",
+   "D111: rule 5b counts agent errors only; an infra error is never the team's."
   ]
  },
  "gate_stats": {
@@ -8396,7 +8542,7 @@
   ]
  },
  "loop": {
-  "checked_at": "6f200d8",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -8591,8 +8737,10 @@
       "amoeba/adapt/evidence.py::run_finished",
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::InProcessRunner.run",
+      "amoeba/adapt/experimenter.py::RunRecord.crashed",
       "amoeba/adapt/experimenter.py::SubprocessRunner.run",
       "amoeba/adapt/experimenter.py::calibrate",
+      "amoeba/adapt/experimenter.py::infra_cfg",
       "amoeba/adapt/ledger.py::Ledger",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/adapt/loop.py::FamilyState",
@@ -8749,6 +8897,11 @@
     ],
     [
      "decide",
+     "if rec.crashed() and infra_cfg()['exclude']",
+     "set pr = PracticeRecord(order=t.order, task_id=t.id, family=t.family, run_dir=rec.run_dir or '"
+    ],
+    [
+     "decide",
      "if row['decision'] == 'accept'",
      "set accepted = True"
     ],
@@ -8766,6 +8919,11 @@
      "decide",
      "if verdict == 'reverted'",
      "set back = store.revert(st.family, f\"rollback watch: practice mean {row['practice_mean']} < al"
+    ],
+    [
+     "fallback",
+     "' status=infra_error (not scored)' if pr.status == 'infra_error' else ''",
+     "choose value"
     ],
     [
      "fallback",
@@ -8974,14 +9132,14 @@
    "prompts": {},
    "title": "Loop driver (D89)"
   },
-  "facts_hash": "b2c56a1386a3489b",
+  "facts_hash": "31f3f9d954d2f5a8",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8e2e699426ec6515",
   "sentence": "Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
   "source": "model: rewritten",
   "what": [
    "Calibrates the noise floor first, then runs every practice task with its kind's current recipe (shifts apply: the later rubrics ask for more, a removed tool is taken out). Tasks before the shift may run in one batch; later ones run one at a time, because each can trigger a change.",
-   "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then up to {MAX_PER_ALARM} Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down, and results are queued for shipping.",
+   "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then up to {MAX_PER_ALARM} Architect proposals, each measured by the Experimenter and decided by the Gate; an accept goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a cool-down, and results are queued for shipping; crashes are recorded as infrastructure errors.",
    "Everything it does is on disk — practice runs, experiments, ledger, recipes, proposals, diagnoses, state — so a crash resumes where it stopped, and it writes summary.json and a plain report."
   ]
  },
@@ -9126,7 +9284,7 @@
   ]
  },
  "mon_records": {
-  "checked_at": "ee6ec77",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -9193,6 +9351,10 @@
       [
        "error",
        "str | None"
+      ],
+      [
+       "status",
+       "str | None"
       ]
      ],
      "key": "amoeba/adapt/monitor.py::PracticeRecord",
@@ -9245,14 +9407,15 @@
    "prompts": {},
    "title": "Practice records"
   },
-  "facts_hash": "a76eec97d4d3234e",
-  "seed_hash": "547bb58497ad2713",
+  "facts_hash": "c6bf6449190b3e04",
+  "seed_hash": "fa56a85cdfb307a5",
   "sentence": "What the loop keeps from each practice run: score, failed rubric item names, observed and declared causes.",
   "source": "hand",
   "what": [
    "One PracticeRecord per practice run (order, task, kind, score, failed items, causes, declared causes, recipe version).",
    "The only rubric information the loop ever sees is the names of the failed items.",
-   "Each kind keeps its own reference window, reset after an accepted change."
+   "Each kind keeps its own reference window, reset after an accepted change.",
+   "D111: a practice run still in an infra error after its retries is kept with status infra_error and no score; the Monitor never sees it."
   ]
  },
  "monitor": {
@@ -9382,9 +9545,11 @@
    "title": "Score and cause alarms"
   },
   "facts_hash": "3532e90cdb8511e8",
+  "rejected_hash": "d2e9efab37457108",
   "seed_hash": "430182574d4a3d27",
   "sentence": "Raises an alarm when a kind's last few practice scores drop below normal, or when a cause or a missing rubric item suddenly rises.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "After every practice run it reads the run's score, the names of the rubric items it failed and the step causes recorded by the step contract.",
    "Score alarm: the mean of the last three scores falls below the reference mean minus twice its spread (at least 0.10); the reference is the kind's practice runs since its last accepted change, before the window, and there must be at least four.",
@@ -9747,7 +9912,7 @@
   ]
  },
  "ov_around": {
-  "checked_at": "ee6ec77",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -9764,8 +9929,10 @@
       "amoeba/adapt/evidence.py::run_finished",
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/experimenter.py::InProcessRunner.run",
+      "amoeba/adapt/experimenter.py::RunRecord.crashed",
       "amoeba/adapt/experimenter.py::SubprocessRunner.run",
       "amoeba/adapt/experimenter.py::calibrate",
+      "amoeba/adapt/experimenter.py::infra_cfg",
       "amoeba/adapt/ledger.py::Ledger",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/adapt/loop.py::FamilyState",
@@ -9823,16 +9990,17 @@
    "prompts": {},
    "title": "Around every box"
   },
-  "facts_hash": "862580511b43c91d",
+  "facts_hash": "7714db423ff66572",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "9d5417c3ac38e53c",
   "sentence": "The loop driver that runs Boxes 4–9 in order, the model router behind every AI call, and the niche profile every run obeys.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Loop driver (D89), model router (D97–D98), niche profiles (D102)."
   ]
  },
  "ov_leave": {
-  "checked_at": "789895c",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -9885,6 +10053,7 @@
       "amoeba/task/interpret.py::read_task",
       "amoeba/task/interpret.py::with_note",
       "amoeba/task/models.py::RunResult",
+      "amoeba/task/models.py::run_status",
       "amoeba/tools/registry.py::ToolRegistry.names",
       "scripts/run_experiment.py::summary",
       "scripts/run_task.py::ask_user",
@@ -9928,14 +10097,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "eb2ffaadc9b20967",
+  "facts_hash": "382c71651c21d4fe",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves twenty-three files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, and the niche profile.",
+  "sentence": "Every run saves twenty-four files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, the niche profile, and the run status.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, and the niche profile.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, the niche profile, and the run status.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -14410,9 +14579,11 @@
    "title": "Retention replay (D100)"
   },
   "facts_hash": "20769c07d3d97fd6",
+  "rejected_hash": "29283aa2e7bbdf98",
   "seed_hash": "db8e0b8833721c8f",
   "sentence": "Every 12 practice tasks the old gate tasks are replayed with the current recipe; a drop beyond noise is an alarm at once.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Every N practice tasks of a kind (--retention-every, default 12, {Decision.noise} = off), the kind's pre-shift gate tasks are replayed with the current recipe and with the starting one, same seeds, through the arm-A cache.",
    "A drop beyond the calibration noise raises a retention alarm at once, handled like any alarm; the Diagnoser gets scores only, never the held-out tasks.",
@@ -15036,7 +15207,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "789895c",
+  "checked_at": "3e8e86b",
   "facts": {
    "anchors": [
     {
@@ -15204,6 +15375,10 @@
        "dict | None"
       ],
       [
+       "status",
+       "str | None"
+      ],
+      [
        "routing",
        "dict | None"
       ]
@@ -15262,6 +15437,7 @@
       "amoeba/task/interpret.py::read_task",
       "amoeba/task/interpret.py::with_note",
       "amoeba/task/models.py::RunResult",
+      "amoeba/task/models.py::run_status",
       "amoeba/tools/registry.py::ToolRegistry.names",
       "scripts/run_experiment.py::summary",
       "scripts/run_task.py::ask_user",
@@ -15275,6 +15451,20 @@
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
      "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, recipe_source: tuple | None=None, niche=None) -> RunResult"
+    },
+    {
+     "callees": [
+      "amoeba/task/models.py::run_status"
+     ],
+     "doc": "",
+     "key": "amoeba/task/models.py::infra_error",
+     "signature": "infra_error(error: str | None) -> bool"
+    },
+    {
+     "callees": [],
+     "doc": "D111: ok | infra_error | agent_error, from a run's error (D105 adds no_deliverable at the end of a plan run).",
+     "key": "amoeba/task/models.py::run_status",
+     "signature": "run_status(error: str | None) -> str"
     }
    ],
    "checks": [
@@ -15305,15 +15495,15 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "d1e4b906a4572ab9",
+  "facts_hash": "0aeaaf963f4d5e2d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bef6a71b78aeb520",
-  "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, interpretation, and any pool, selection, clarification, recipe, family, routing, or niche details.",
+  "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds, consensus, interpretation, status, and any pool, selection, clarification, recipe, family, or routing details.",
   "source": "model: rewritten",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
-   "It also lists the steps that answered BLOCKED, every capability request, local tool usage, files created, skills attached, replan details, refinement data, interpretation, disabled tools, recipe information, family classification, routing, provenance, and niche profile, while tracking pool usage and clarifications."
+   "It also lists the steps that answered BLOCKED, every capability request, local tool usage, files created, skills attached, replan details, refinement data, interpretation, disabled tools, recipe information, family classification, routing, provenance, status, and niche profile, while tracking pool usage and clarifications."
   ]
  },
  "scoring": {
