@@ -1058,7 +1058,7 @@
   ]
  },
  "architect": {
-  "checked_at": "ee6ec77",
+  "checked_at": "122663f",
   "facts": {
    "anchors": [
     {
@@ -1118,6 +1118,7 @@
       "amoeba/adapt/gate.py::Hypothesis",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/checks/calc.py::check",
+      "amoeba/checks/xlsx_formulas.py::check",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TracedLLM",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
@@ -1172,11 +1173,11 @@
    },
    "title": "Propose one edit (AI)"
   },
-  "facts_hash": "fa307b3776cfde8c",
+  "facts_hash": "a2252c4847f4ce1b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "f8fe62b1f0fa2f99",
   "sentence": "An AI reads the diagnosis, recipe, and history, proposing one typed change with a reason and predicted gain; plain code validates it before testing.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "The loop calls a model (Gemma) with the diagnosis, recipe, allowed edits, rejected changes, and up to two practice examples—never a held-out task.",
    "It must reply with one JSON object: an edit, a short reason, a predicted score change, the metric, and a unique identifier.",
@@ -9897,7 +9898,7 @@
   ]
  },
  "niche": {
-  "checked_at": "789895c",
+  "checked_at": "122663f",
   "facts": {
    "anchors": [
     {
@@ -9906,6 +9907,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/checks/calc.py::check",
+      "amoeba/checks/xlsx_formulas.py::check",
       "amoeba/llm/limits.py::RunLimits.check",
       "amoeba/pool/mcp.py::PoolTools.call.check",
       "scripts/run_audit.py::AuditLog.append"
@@ -9937,6 +9939,21 @@
      "doc": "",
      "key": "amoeba/checks/calc.py::figures",
      "signature": "figures(text: str) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/checks/xlsx_formulas.py::_given",
+      "amoeba/checks/xlsx_formulas.py::_same",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "Typed numbers where a formula belongs: {sheet, cell, value, why}.",
+     "key": "amoeba/checks/xlsx_formulas.py::typed_derived_cells",
+     "signature": "typed_derived_cells(path: str | Path, task: str='') -> list[dict]"
     },
     {
      "callees": [],
@@ -10065,6 +10082,15 @@
     },
     {
      "callees": [
+      "amoeba/checks/__init__.py::run_checks",
+      "amoeba/interp/plan_runner.py::PlanRunner.files_of"
+     ],
+     "doc": "D113: totals and derived cells of the workbooks this step made must be formulas.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.xlsx_checks",
+     "signature": "xlsx_checks(self, n: int, text: str) -> list[dict]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/config/niche.py::tool_allowed",
       "amoeba/llm/cache.py::_Store.get",
@@ -10124,6 +10150,31 @@
      "add '- Tools you may use: ' + (', '.join(sorted(shown)) or 'none')"
     ],
     [
+     "correct",
+     "if why",
+     "add {'sheet': ws.title, 'cell': name, 'value': cell.value, 'why': why}"
+    ],
+    [
+     "decide",
+     "if TOTAL.search(label(r, c))",
+     "set why = 'a total typed in'"
+    ],
+    [
+     "decide",
+     "if a not in (0, 1) and b not in (0, 1) and _same(a * b, v) and (not _same(v, a))",
+     "set why = 'the product of two cells to its left'"
+    ],
+    [
+     "decide",
+     "if len(left) >= 2 and _same(sum(left), v)",
+     "set why = f'the sum of the {len(left)} cells to its left'"
+    ],
+    [
+     "decide",
+     "if len(up) >= 2 and _same(sum(up), v)",
+     "set why = f'the sum of the {len(up)} cells above it'"
+    ],
+    [
      "decide",
      "if local is not None",
      "set local = local.without([f'local:{t}' for t in local.config['allowed_tools'] if not tool_all"
@@ -10170,6 +10221,16 @@
     ],
     [
      "filter",
+     "keep only if c.value is not None",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if f['path'].lower().endswith(('.xlsx', '.xlsm'))",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if not equals_computed(f, stated + computed)",
      "drop the rest"
     ],
@@ -10189,8 +10250,33 @@
      "drop the rest"
     ],
     [
+     "loop cap",
+     "for i in range(len(near))",
+     "loop ends"
+    ],
+    [
+     "loop cap",
+     "for j in range(i + 1, len(near))",
+     "loop ends"
+    ],
+    [
+     "loop cap",
+     "while k >= 1 and typed(k, c)",
+     "loop ends"
+    ],
+    [
+     "loop cap",
+     "while k >= 1 and typed(r, k)",
+     "loop ends"
+    ],
+    [
      "reject",
      "if bare and 0 <= v <= 10 or (bare and len(tok) == 4 and (1900 <= v <= 2100))",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if not typed(r, c) or round(float(cell.value), 6) in given",
      "skip (continue)"
     ],
     [
@@ -10210,8 +10296,18 @@
     ],
     [
      "stop",
+     "if len(out) >= MAX_CELLS",
+     "return out"
+    ],
+    [
+     "stop",
      "if loose",
      "return (False, 'figures not reproducible by calc from the stated inputs: ' + ', '.join(dict.fromkeys(loose))[:300] + \" — compute each with calc from the task's numbers, or drop it\")"
+    ],
+    [
+     "stop",
+     "if not books",
+     "return []"
     ],
     [
      "stop",
@@ -10232,21 +10328,29 @@
      "stop",
      "if prof.is_neutral()",
      "return ''"
+    ],
+    [
+     "stop",
+     "if self.opt.xlsx_formulas != 'on' or self.local is None",
+     "return []"
     ]
    ],
    "kind": "code",
-   "numbers": [],
+   "numbers": [
+    "MAX_CELLS"
+   ],
    "prompts": {},
    "title": "Niche profiles (D102)"
   },
-  "facts_hash": "2007964c4d9c4048",
-  "seed_hash": "31543e323d5fbb05",
+  "facts_hash": "ca2fdfbe9a943622",
+  "seed_hash": "d219f1b6cf765c75",
   "sentence": "One file per environment says which tools and models are allowed, the limits, what counts as done, the domain's rules and words, and which domain checks run; plain code enforces it.",
   "source": "hand",
   "what": [
    "--niche <name> loads profiles/<name>.yaml; the default, general, changes nothing.",
    "The prompts stay generic: one Environment section in Box 1's and Box 2's prompts is filled from the profile, asking the team to assess the environment first and plan only with what is allowed.",
-   "Box 3 refuses any tool outside the profile even when a plan or a replan asks for it, and logs the refusal; the router refuses any model outside it; domain checks (amoeba/checks/) run after each step and a failed one earns a retry turn."
+   "Box 3 refuses any tool outside the profile even when a plan or a replan asks for it, and logs the refusal; the router refuses any model outside it; domain checks (amoeba/checks/) run after each step and a failed one earns a retry turn.",
+   "D113: after a step that made a workbook, typed totals and typed derived cells (row or column sums, products of row cells) fail the domain_xlsx_formulas check with the cell names and earn the retry turn."
   ]
  },
  "ov_around": {
@@ -10531,7 +10635,7 @@
   ]
  },
  "ov_m6": {
-  "checked_at": "ee6ec77",
+  "checked_at": "122663f",
   "facts": {
    "anchors": [
     {
@@ -10543,6 +10647,7 @@
       "amoeba/adapt/gate.py::Hypothesis",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/checks/calc.py::check",
+      "amoeba/checks/xlsx_formulas.py::check",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TracedLLM",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
@@ -10574,10 +10679,11 @@
    "prompts": {},
    "title": "6 · Architect"
   },
-  "facts_hash": "471c9f61b7dc98a5",
+  "facts_hash": "81f40b359015d779",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "32a7ccd36032c0d0",
   "sentence": "The only AI in the loop: proposes one typed edit to the recipe.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Gets the diagnosis, the recipe, the allowed edits and the failed hypotheses, never a held-out task.",
    "Plain code checks the edit; three rejects go to a person."
@@ -11335,7 +11441,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "bbd52c8",
+  "checked_at": "122663f",
   "facts": {
    "anchors": [
     {
@@ -11382,6 +11488,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.upstream",
       "amoeba/interp/plan_runner.py::PlanRunner.verifier_tools",
       "amoeba/interp/plan_runner.py::PlanRunner.web_ids",
+      "amoeba/interp/plan_runner.py::PlanRunner.xlsx_checks",
       "amoeba/interp/plan_runner.py::_Work",
       "amoeba/interp/plan_runner.py::blocked_marks",
       "amoeba/interp/plan_runner.py::compare_figures",
@@ -12253,14 +12360,14 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "68dfe588f1eb84f7",
+  "facts_hash": "40c65159b811dd2b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
   "source": "model: rewritten",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, the outputs of the steps it depends on, and a list of local files it can reference.",
-   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, identify undated figures, and mark what it could not do as BLOCKED: <capability>.",
+   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, identify undated figures, verify spreadsheet data, and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; if no model is available, it reports a blocked status; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search, lacks specific tools, or is performing research gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information; if local files are available, it is provided with a summary of those files and their source identifiers.",
    "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including identifying disputed figures, before the final output is kept.",
@@ -19959,7 +20066,7 @@
   ]
  },
  "trace": {
-  "checked_at": "789895c",
+  "checked_at": "122663f",
   "facts": {
    "anchors": [
     {
@@ -19998,6 +20105,7 @@
       "amoeba/adapt/architect.py::check",
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/checks/calc.py::check",
+      "amoeba/checks/xlsx_formulas.py::check",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
       "amoeba/interp/trace.py::NoopListener.on_llm_call",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -20062,11 +20170,11 @@
    "prompts": {},
    "title": "Every AI call → one trace line"
   },
-  "facts_hash": "bd96d541514ccdad",
+  "facts_hash": "e5e421339992e3f6",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0f5f3df261f75ad2",
   "sentence": "Writes one log line per AI call and tool call: who, which model, tokens, reasoning tokens, time, step, and automated safety checks. Nothing enforces a budget.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Every AI call becomes one log line with the helper, model, tokens in and out, reasoning tokens, time taken, and step number.",
    "Tool calls, each helper's turn, and the whole run get their own lines too.",
