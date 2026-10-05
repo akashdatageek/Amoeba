@@ -567,7 +567,7 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .timeline th{position:sticky;top:0;background:var(--panel);font-size:11.5px;color:var(--muted)}
 .timeline tr.row{cursor:pointer}.timeline tr.row:hover{background:var(--hover)}.timeline tr.on{background:var(--p1-fill);outline:2px solid var(--p1)}
 .timeline tr.det td{background:var(--bg)}.timeline pre{margin:0;font-family:"IBM Plex Mono",monospace;font-size:11px;white-space:pre-wrap;overflow-wrap:anywhere}
-.changes{font-size:13px}.changes li{margin:2px 0}
+.changes{font-size:13px}.changes li{margin:2px 0;overflow-wrap:anywhere}
 .gloss{display:grid;grid-template-columns:minmax(0,16em) minmax(0,1fr);gap:4px 14px;font-size:13px;margin:0}
 @media (max-width:640px){.gloss{grid-template-columns:minmax(0,1fr)}.gloss dd{margin-bottom:6px}input[type=search]{min-width:0;width:100%}}
 .legend svg{min-width:0;width:14px;height:16px;display:inline-block}
