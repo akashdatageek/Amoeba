@@ -19,6 +19,8 @@ recipe:                       # D81: what a team recipe may hold (validate_recip
     collab: {values: ["concat", "critique"]}
     max_turns: {min: 3, max: 8}
     check_retry_turns: {min: 1, max: 3}
+    max_input_chars: {min: 3000, max: 20000}           # D114: characters of one input a step is shown (default 6000)
+    max_summary_input_chars: {min: 15000, max: 60000}  # D114: characters of all outputs the summariser is shown (30000)
   allow_model_edits: false    # D98: prefer_model edits (built, off: one real model; --allow-model-edits turns it on)
   checker_role:               # add_verify_step: the role added when the team has no checker
     name: "Checker"
@@ -77,12 +79,14 @@ diagnoser:                    # D86: Box 5, tier 0 (spec §6); the cause -> edit
   # "set_run_option:<name>" allows that one run option only
   allowed_edits:
     capability: [grant_tool, add_planner_rule, "set_run_option:replan", prefer_model]
-    checks: [add_verify_step, tighten_done_when, add_role_rule, "set_run_option:check_retry_turns", prefer_model]
+    checks: [add_verify_step, tighten_done_when, add_role_rule, "set_run_option:check_retry_turns", prefer_model,
+             "set_run_option:max_input_chars"]                                                   # D114
     max_turns: [add_planner_rule, "set_run_option:max_turns", prefer_model]
     unused_tool: [revoke_tool, add_role_rule]
     retention: [remove_planner_rule, add_planner_rule, tighten_done_when, add_role_rule]   # D100 (a retention alarm)
     claimed_file_missing: [add_role_rule, add_verify_step]
-    feedback: [add_planner_rule, tighten_done_when, add_role_rule]
+    feedback: [add_planner_rule, tighten_done_when, add_role_rule, "set_run_option:max_input_chars",
+               "set_run_option:max_summary_input_chars"]                                         # D114
     honesty: [add_verify_step, add_role_rule, tighten_done_when]
   max_evidence: 8
   examples: 2                 # practice examples handed to the Architect (practice tasks only)

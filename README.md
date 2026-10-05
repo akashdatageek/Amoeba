@@ -559,6 +559,10 @@ When a helper sends a Python program to `local:Bash`, either a fenced block tagg
 
 After a step that made a workbook (.xlsx), plain code checks that totals and derived cells are formulas, not typed numbers. Three kinds of typed number are flagged: one in a total row or column, one that equals the sum of the cells beside or above it, and one that equals the product of two cells in its row. A flagged cell fails the step check with the cell names, which earns the step's retry turn. Numbers the task states are inputs and are never flagged. `--xlsx-formulas off` turns this off.
 
+## Context size as a recipe option (D114)
+
+A recipe may now set `max_input_chars` (3,000–20,000 characters of one input a step is shown; default 6,000) and `max_summary_input_chars` (15,000–60,000 characters the summariser is shown; default 30,000) as run options. The ranges are in `amoeba/config/adapt.yaml`. The loop can propose them for the checks and feedback causes, and the Gate tests them like any other edit. A flag given on the command line still wins.
+
 ## Cost controls (D45–D48)
 
 ```bash

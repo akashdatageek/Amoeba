@@ -428,7 +428,9 @@ def disable_tools(names, tools: ToolRegistry, pool: PoolSetup | None = None, loc
 
 
 OPTION_FLAGS = {"replan": "--replan", "self_refine": "--self-refine", "collab": "--collab",
-                "check_retry_turns": "--check-retry-turns", "max_turns": "--max-turns"}
+                "check_retry_turns": "--check-retry-turns", "max_turns": "--max-turns",
+                "max_input_chars": "--max-input-chars", "max_summary_input_chars": "--max-summary-input-chars"}   # D114
+INT_OPTIONS = ("check_retry_turns", "max_turns", "max_input_chars", "max_summary_input_chars")
 
 
 def explicit_flags(argv: list[str]) -> frozenset:
@@ -765,7 +767,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         if k not in OPTION_FLAGS:
             p.error(f"--option-defaults: {k!r} is not one of {sorted(OPTION_FLAGS)}")
         if OPTION_FLAGS[k] not in args.explicit:
-            setattr(args, k, int(v) if k in ("check_retry_turns", "max_turns") else v.strip())
+            setattr(args, k, int(v) if k in INT_OPTIONS else v.strip())
     try:                                                                  # D102
         args.niche_profile = load_profile(args.niche)
     except ValueError as e:

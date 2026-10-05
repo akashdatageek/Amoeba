@@ -53,7 +53,8 @@ def test_the_feedback_shift_is_diagnosed_as_feedback_even_with_a_steady_cause(tm
     alarm, upto = alarm_of(recs)
     d = diagnose(alarm, upto, stream())
     assert d.cause == "feedback" and d.symptom == "feedback: assumptions section missing in 2/3 runs"
-    assert d.allowed_edits == ["add_planner_rule", "tighten_done_when", "add_role_rule"]
+    assert d.allowed_edits == ["add_planner_rule", "tighten_done_when", "add_role_rule",
+                               "set_run_option:max_input_chars", "set_run_option:max_summary_input_chars"]   # D114
     assert d.shares["checks"] == {"window": 1.0, "reference": 1.0} and d.shares["feedback"]["reference"] == 0.0
     assert d.counts["feedback:assumptions section"] == 2 and d.counts["cause:checks"] == 3
     assert all("rubric failed item 'assumptions section'" in e for e in d.evidence)

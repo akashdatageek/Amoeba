@@ -570,7 +570,9 @@ def write_store(store: str | Path, recipes: list[Recipe]) -> Path:
 
 
 PLAN_OPTION_NAMES = {"replan": "--replan", "self_refine": "--self-refine", "collab": "--collab",
-                     "check_retry_turns": "--check-retry-turns"}
+                     "check_retry_turns": "--check-retry-turns",
+                     "max_input_chars": "--max-input-chars",                      # D114: context size
+                     "max_summary_input_chars": "--max-summary-input-chars"}
 LIMIT_OPTION_NAMES = {"max_turns": "--max-turns"}
 
 

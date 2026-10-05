@@ -788,7 +788,8 @@ BOXES: list[dict] = [
                "(draft.json keeps Box 2's own draft) and records what each changed; its run options overlay the run "
                "settings unless the command line set them. With a reused draft only transforms and run options apply.",
                "D98: one more edit, prefer_model {role, model}, sets the router's preference for one role in one kind of task; it is built but off (--allow-model-edits), offered only for the causes max_turns, checks and capability, checked by V6 (role and registry model known, model edits on), and can never bypass the allowlist or the router's hard filters.",
-               "D99: every recipe line (rule, transform, run option, model preference) carries its provenance — the hypothesis that added it, the date and the Gate row that accepted it — kept outside the recipe's hash."],
+               "D99: every recipe line (rule, transform, run option, model preference) carries its provenance — the hypothesis that added it, the date and the Gate row that accepted it — kept outside the recipe's hash.",
+               "D114: max_input_chars (3000–20000) and max_summary_input_chars (15000–60000) are recipe run options too, so the loop can tune context size through the Gate."],
          proposes="Nothing yet: in week 1 an edit is written by hand (the Architect proposes them in week 2).",
          disposes="Plain code applies the edit, applies the transforms and refuses a recipe that breaks V1–V5.",
          anchors=[]),
