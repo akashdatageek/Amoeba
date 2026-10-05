@@ -145,7 +145,7 @@ only claimed are reported separately (D93). A retention alarm is diagnosed from 
 ## Box 6: Architect
 
 **What it does.** Proposes one recipe edit for the diagnosis, from the allowed menu. The menu covers planner rules,
-transforms, run options, and (D98, off by default) a model preference. Each proposal comes with a rationale and a
+transforms, run options (including the context size a step and the summariser are shown, D114), and (D98, off by default) a model preference. Each proposal comes with a rationale and a
 predicted gain.
 
 **Who decides.** AI proposes; code validates the edit against the menu and checks V1–V6, with one retry. This is the
