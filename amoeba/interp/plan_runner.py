@@ -18,6 +18,7 @@ from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.citecheck import mislabelled_citations
+from amoeba.interp.disputes import dispute_text, disputed_figures
 from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_values, numbers_in,
                                       strip_unverified)
 from amoeba.interp.freshness import stale_figure, time_sensitive
@@ -68,6 +69,10 @@ class PlanOptions:
     # their outputs (a separate turn loop, plan_verify_own.txt); only then are the outputs shown and compared. Both
     # are recorded in step_N.json. The CLI default is on; this library default keeps the earlier behaviour.
     verify_first: str = "off"
+    # D109: on = plain code compares the verifier's own result (D90) with the checked outputs' figures by label; a
+    # disagreement makes the step `disputed`: one rework turn with both values, then partial + Limitations if it
+    # stays. A PASS never overrides it. The CLI default is on; this library default keeps the earlier behaviour.
+    disputes: str = "off"
     max_replans: int = 2             # D63: observer calls per run
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
     domain_checks: tuple = ()        # D102: the niche profile's checks (amoeba/checks/<name>.py) after each step
@@ -549,6 +554,7 @@ class PlanRunner:
         self.triggered: set[tuple] = set()                # (kind, step or item) already shown to the observer
         self.unmet: dict[str, str] = {}                   # requirement id -> why a re-plan left it unmet
         self.mislabelled: dict[int, list] = {}            # D74: step -> its mislabelled citations (latest version)
+        self.disputes: dict[int, list] = {}               # D109: verify step -> its disagreements still open
         self.max_num = max((number(s) for s in cfg.plan), default=0)
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
@@ -1035,6 +1041,23 @@ class PlanRunner:
             self.i.trace.event("mislabelled_citation", {"amoeba.step": n, "amoeba.count": len(mislabelled),
                                                         "amoeba.citations": mislabelled[:10]})
         self.mislabelled[n] = mislabelled
+        disputes = []
+        if verifier and mine is not None and self.opt.disputes == "on":           # D109: blind result vs outputs
+            disputes = disputed_figures(mine["text"], {d: self.artifacts[d]["text"] for d in deps if d in self.artifacts})
+            listed = "; ".join(f"{x['label']}: step {x['step']} {x['worker']} vs verifier {x['verifier']}"
+                               for x in disputes[:4])
+            if disputes and not reverify and self.reworkable(deps):
+                status, reason = "disputed", "; ".join(x for x in (reason, "disputed: " + listed) if x)
+            elif disputes:
+                status = "partial" if status == "done" else status
+                why = "disputed after rework" if reverify else "disputed (no rework possible)"
+                reason = "; ".join(x for x in (reason, f"{why}: {listed}") if x)
+                self.disputes[n] = disputes
+            else:
+                self.disputes.pop(n, None)
+            if disputes:
+                self.i.trace.event("disputed", {"amoeba.step": n, "amoeba.round": 2 if reverify else 1,
+                                                "amoeba.status": status, "amoeba.disputes": disputes})
         if on:
             text = strip_not_needed(text) or text
         if found is not None:
@@ -1090,6 +1113,15 @@ class PlanRunner:
                 meta["comparison"] = {"verdict": meta["verdict"], "issues": meta["issues"],
                                       "figures": compare_figures(mine["text"], {d: self.artifacts[d]["text"]
                                                                               for d in deps if d in self.artifacts})}
+                if self.opt.disputes == "on":                                      # D109
+                    meta["comparison"]["disputes"] = disputes
+                    first = (reverify or {}).get("disputes") or []
+                    state = "disputed" if status == "disputed" else "unresolved" if disputes else \
+                        "resolved" if first else None
+                    if state:
+                        meta["dispute"] = {"state": state, "figures": disputes, "first": first}
+                    if disputes and state == "unresolved" and meta["verdict"] == "PASS":
+                        meta["verdict_model"], meta["verdict"] = "PASS", "DISPUTED"   # a PASS never overrides it
             # D38: both verdicts are kept; `verdict` is always the latest one
             meta["verdict_first"] = reverify["first_verdict"] if reverify else meta["verdict"]
             meta["verdict_after_rework"] = meta["verdict"] if reverify else None
@@ -1104,13 +1136,18 @@ class PlanRunner:
         if self.opt.domain_checks:                    # D102: the run's calc results, for later domain checks
             meta["computed"] = self.computed_results(w)
         self._save(n, wave, text, meta, prov)
-        if verifier and meta["verdict"] == "FAIL" and not reverify:
-            reworked = self.rework_producers(n, deps, meta["issues"])
+        if verifier and (meta["verdict"] == "FAIL" or status == "disputed") and not reverify:
+            issues = "\n".join(x for x in (meta["issues"], dispute_text(disputes)) if x)   # D109: both values shown
+            reworked = self.rework_producers(n, deps, issues)
             if reworked:                                   # D38: check once more what the rework produced
                 self.i.trace.event("reverify", {"amoeba.step": n, "amoeba.reworked": reworked})
-                self.run_step(step, wave, deps, reverify={"first_verdict": meta["verdict"],
-                                                          "first_issues": meta["issues"], "reworked": reworked})
+                self.run_step(step, wave, deps, reverify={"first_verdict": meta["verdict"], "first_issues": issues,
+                                                          "reworked": reworked, "disputes": disputes})
                 self.mark_stale(reworked, verifier_step=n)                           # D39
+            elif status == "disputed":                     # D109: nothing could be reworked after all
+                m2 = self.artifacts[n]["meta"]
+                m2["status"], m2["dispute"]["state"] = "partial", "unresolved"
+                self.disputes[n] = disputes
         return self.artifacts[n]
 
     # box: niche
@@ -1433,6 +1470,12 @@ class PlanRunner:
                     where = f"; it is in {', '.join(x['found_in'])}" if x["found_in"] else ""
                     lines.append(f"- Mislabelled citation: step {d} cites {x['source']} for {x['claim']!r}, which "
                                  f"{x['source']} does not contain{where} (added by plain code)")
+        if "disput" not in section:                                              # D109: both values, never dropped
+            for d, items in sorted(self.disputes.items()):
+                for x in items[:5]:
+                    lines.append(f"- DISPUTED: {x['label']} — step {x['step']} gives {x['worker']}; the check in step "
+                                 f"{d}, worked out independently, gives {x['verifier']}. Not settled after one rework "
+                                 f"(added by plain code)")
         stale = None
         if time_sensitive(self.task.prompt):                                     # D67: possibly not the latest
             stale = stale_figure([a["text"] for a in self.artifacts.values()] + [text or ""],
@@ -1464,6 +1507,13 @@ class PlanRunner:
             self.inferred_logged.add(number(step))
             self.i.trace.event("verification_inferred", {"amoeba.step": number(step), "amoeba.text": step.text[:120]})
         return inferred
+
+    # box: step_check
+    def reworkable(self, deps: list[int]) -> list[int]:
+        """D109: the checked steps a rework could still re-run (the same rules as rework_producers)."""
+        return [d for d in deps if d in self.artifacts and d not in self.reworked
+                and not self.artifacts[d]["meta"].get("verification")
+                and self.artifacts[d]["meta"].get("causes") != ["capability"]]
 
     # box: step_check
     def rework_producers(self, n: int, deps: list[int], issues: str) -> list[int]:

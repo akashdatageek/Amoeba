@@ -507,6 +507,12 @@ An infra-error run is never a score. The Experimenter and the loop run it again,
 
 If your HTTPS proxy can move (a cloud session restart does this), set `AMOEBA_PROXY_FILE` to a file that always holds the current proxy. On a dropped connection the client reads it and reconnects through the new proxy, and each new run starts with it.
 
+## Verifier disagreements (D109)
+
+A verify step first works out its own result without seeing the outputs it checks (D90). Plain code then pairs the figures of that blind result with the checked outputs' figures by their labels ("BEV purchase price", "electricity rate") and compares the values with the rubric's tolerance (5%).
+
+If a figure disagrees, the verify step is `disputed`. The producers get one rework turn that shows both values and where each came from, and the verifier checks again. If they still disagree, the step is partial, the verdict is recorded as `DISPUTED` even when the verifier wrote PASS, and both values are listed in the answer's Limitations. A figure the outputs never mention is not a disagreement. `--disputes off` turns this off; it needs `--verify-first on`.
+
 ## Cost controls (D45–D48)
 
 ```bash

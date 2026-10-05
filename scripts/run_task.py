@@ -426,7 +426,8 @@ def cli_plan_options(args: argparse.Namespace):
     return PlanOptions(rerun_stale=args.rerun_stale, max_input_chars=args.max_input_chars,
                        max_summary_input_chars=args.max_summary_input_chars, self_refine=args.self_refine,
                        collab=args.collab, contract=args.step_contract, replan=args.replan,
-                       verify_first=getattr(args, "verify_first", "off"), **extra)
+                       verify_first=getattr(args, "verify_first", "off"), disputes=getattr(args, "disputes", "off"),
+                       **extra)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -610,6 +611,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: a verify step first works out its own result from the checked steps' inputs and its "
                         "tools, without their outputs, in a fresh context; then it sees the outputs and compares. "
                         "Both are recorded in step_N.json (D90)")
+    p.add_argument("--disputes", choices=["on", "off"], default="on",
+                   help="plan, with --verify-first on: plain code compares the verifier's own result with the checked "
+                        "outputs' figures by label (5%% tolerance); a disagreement earns the producers one rework turn "
+                        "with both values shown, and one still there makes the step partial and goes into the "
+                        "answer's Limitations; a PASS never overrides it (D109)")
     p.add_argument("--replan", choices=["on", "off"], default="off",
                    help="plan: the Action Observer (D63) — after a wave in which a step lacked a capability, a verify "
                         "step still failed, a step reported a missing input or the team got a tool the plan never "
