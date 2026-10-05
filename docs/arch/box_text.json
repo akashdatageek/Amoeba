@@ -2042,7 +2042,7 @@
   ]
  },
  "client": {
-  "checked_at": "3e8e86b",
+  "checked_at": "79115dd",
   "facts": {
    "anchors": [
     {
@@ -2268,7 +2268,9 @@
       "__init__(self, make_inner: Callable[[], object], folder: str | Path, mode: str='record', namespace: str='', name: str='tavily')",
       "inner(self)",
       "search(self, query: str, max_results: int) -> list[dict]",
-      "fetch(self, url: str) -> dict"
+      "fetch(self, url: str) -> dict",
+      "fetch_data(self, url: str) -> dict",
+      "page_links(self, url: str) -> list[str]"
      ],
      "signature": null
     },
@@ -2566,21 +2568,19 @@
    "prompts": {},
    "title": "AI connection"
   },
-  "facts_hash": "8d1df6eef9e61fcc",
-  "rejected_hash": "95a6965af87744d7",
-  "seed_hash": "f87c523a91cf0ee9",
+  "facts_hash": "95a6965af87744d7",
+  "seed_hash": "0a28a71f5a67c8c7",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
-   "Waits out rate limits (HTTP 429/503: up to {WebLimits.max_results} retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message and set the reasoning effort.",
+   "Waits out rate limits (HTTP 429/503: up to five retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message, set the reasoning effort and count hidden reasoning tokens.",
    "With --llm-cache every reply is stored and can be replayed without a call; --max-tokens-per-run / --max-calls-per-run stop a run cleanly; every run prints its tokens and estimated cost.",
    "A named profile (amoeba/config/models.yaml, default gemma-api) sets the service, the model and how to call it; each role group (planner, checkers, helpers, reviewers, summariser) may get its own model and reply length. Every log line names the profile, and each AI line the exact model the service returned.",
    "Temperature is set once for the connection, not per helper.",
    "Every call from every box goes through here, wrapped so it is logged.",
    "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
-   "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error or infra_error."
+   "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error or no_deliverable."
   ]
  },
  "critics": {
@@ -3312,7 +3312,7 @@
   ]
  },
  "evidence": {
-  "checked_at": "6f200d8",
+  "checked_at": "79115dd",
   "facts": {
    "anchors": [
     {
@@ -4028,20 +4028,19 @@
    "kind": "code",
    "numbers": [],
    "prompts": {},
-   "title": "Evidence log (D95)"
+   "title": "Event memory: evidence log (D95)"
   },
-  "facts_hash": "8d8a74cad0b88ff4",
-  "rejected_hash": "f600205ffbe2c0c4",
-  "seed_hash": "a0e73a3a85e71ba4",
+  "facts_hash": "f600205ffbe2c0c4",
+  "seed_hash": "9a2258c8116f6a48",
   "sentence": "Writes every loop event to one append-only, hash-chained log outside the agents' reach, with a fingerprint of every run folder it refers to, and queues finished runs for an off-container copy.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "One events.jsonl per stream, written only by the harness: alarms with their inputs, diagnoses, every Architect prompt and full reply, experiments, Gate decisions, reverts, human-queue entries and finished practice runs.",
    "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
    "A finished run is key-scanned and queued for the bucket copy; unshipped items are listed in loop_state.json. Cloud credentials are removed from every run's environment.",
    "D95a: finished runs that pass the key scan and the new events.jsonl rows are shipped as normal fast-forward commits to the repository's orphan `evidence` branch, at most one commit per 10 minutes plus a final one; each commit message carries the hash-chain head (Chain-Head) so scripts/verify_evidence.py --branch evidence can check the chain against GitHub's history. Shipping runs in the harness only; agents never get git credentials. The bucket uploader is kept but disabled.",
-   "D97–D100: routing decisions, local-tool decisions, memory proposals and approvals, retention replays and prunes are events in the same log."
+   "D97–D100: routing decisions, local-tool decisions, memory proposals and approvals, retention replays and prunes are events in the same log.",
+   "D111: a practice run still failing on an infra error after its retries is logged as an infra_error event with its run folder, and left out of the scores."
   ]
  },
  "exp_cache": {
@@ -9768,7 +9767,7 @@
   ]
  },
  "monitor": {
-  "checked_at": "ee6ec77",
+  "checked_at": "79115dd",
   "facts": {
    "anchors": [
     {
@@ -9860,7 +9859,7 @@
     ],
     [
      "filter",
-     "keep only if r.family == state.family",
+     "keep only if r.family == state.family and r.status != 'infra_error'",
      "drop the rest"
     ],
     [
@@ -9893,14 +9892,12 @@
    "prompts": {},
    "title": "Score and cause alarms"
   },
-  "facts_hash": "3532e90cdb8511e8",
-  "rejected_hash": "d2e9efab37457108",
-  "seed_hash": "430182574d4a3d27",
+  "facts_hash": "d2e9efab37457108",
+  "seed_hash": "3dddb40151f8e709",
   "sentence": "Raises an alarm when a kind's last few practice scores drop below normal, or when a cause or a missing rubric item suddenly rises.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
-   "After every practice run it reads the run's score, the names of the rubric items it failed and the step causes recorded by the step contract.",
+   "After every practice run it reads the run's score, the names of the rubric items it failed and the step causes recorded by the step contract. D111: a run that ended in an infra error is skipped.",
    "Score alarm: the mean of the last three scores falls below the reference mean minus twice its spread (at least 0.10); the reference is the kind's practice runs since its last accepted change, before the window, and there must be at least four.",
    "Cause alarm: a cause or a failed item is in at least half of the last three runs after at most a fifth of the reference runs.",
    "No alarm while the kind is in its dwell period after an accept or cooling down after a reject.",
@@ -15006,7 +15003,7 @@
   ]
  },
  "retention": {
-  "checked_at": "ee6ec77",
+  "checked_at": "79115dd",
   "facts": {
    "anchors": [
     {
@@ -15033,6 +15030,7 @@
     },
     {
      "callees": [
+      "amoeba/adapt/experimenter.py::RunRecord.crashed",
       "scripts/run_experiment.py::summary.mean"
      ],
      "doc": "",
@@ -15101,12 +15099,17 @@
     ],
     [
      "fallback",
-     "round(mean((r.score or 0.0 for r in got.values())), 4) if got else 0.0",
+     "round(mean((r.score or 0.0 for r in ok)), 4) if ok else 0.0",
      "choose value"
     ],
     [
      "filter",
      "keep only if k != 'alarm'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not r.crashed()",
      "drop the rest"
     ],
     [
@@ -15145,16 +15148,15 @@
    "prompts": {},
    "title": "Retention replay (D100)"
   },
-  "facts_hash": "20769c07d3d97fd6",
-  "rejected_hash": "29283aa2e7bbdf98",
-  "seed_hash": "db8e0b8833721c8f",
+  "facts_hash": "29283aa2e7bbdf98",
+  "seed_hash": "cfde1e0dfaee763e",
   "sentence": "Every 12 practice tasks the old gate tasks are replayed with the current recipe; a drop beyond noise is an alarm at once.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Every N practice tasks of a kind (--retention-every, default 12, {Decision.noise} = off), the kind's pre-shift gate tasks are replayed with the current recipe and with the starting one, same seeds, through the arm-A cache.",
    "A drop beyond the calibration noise raises a retention alarm at once, handled like any alarm; the Diagnoser gets scores only, never the held-out tasks.",
-   "Each replay is a row in retention.jsonl and a retention event; it is resumable by its event key."
+   "Each replay is a row in retention.jsonl and a retention event; it is resumable by its event key.",
+   "D111: a replay run that ends in an infra error is never counted as a score."
   ]
  },
  "router": {
