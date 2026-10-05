@@ -1,6 +1,6 @@
 {
  "action_obs": {
-  "checked_at": "14aba5a",
+  "checked_at": "497b4fe",
   "facts": {
    "anchors": [
     {
@@ -456,6 +456,11 @@
     ],
     [
      "decide",
+     "if r in out",
+     "set out[r] = {**out[r], 'steps_claim': out[r]['status'], 'status': 'met' if x['status'] == 'me"
+    ],
+    [
+     "decide",
      "if r in self.unmet",
      "set out[r] = {'status': 'not met', 'steps': [], 'why': self.unmet[r]}"
     ],
@@ -472,6 +477,11 @@
     [
      "fallback",
      "'met' if done else 'partly' if cover else 'not met'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'met' if x['status'] == 'met' else 'not met'",
      "choose value"
     ],
     [
@@ -760,14 +770,15 @@
    },
    "title": "Action Observer (re-plan)"
   },
-  "facts_hash": "775be163641cdc28",
+  "facts_hash": "bbf5f75ece9904b2",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "5a16ab76cff4278f",
   "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code checks the change before it takes effect.",
-  "source": "hand",
+  "source": "model: rewritten",
   "what": [
    "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, or a tool the plan did not know about. No trigger, no call.",
-   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available and the budget left, and returns one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
-   "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met.",
+   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available and the budget left, and returns one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE. Each requirement is marked as met if its covering step is done and no check fails.",
+   "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met, and finished steps are tracked by their claim status.",
    "At most {PlanOptions.max_replans} re-plans and {PlanOptions.max_added_steps} added steps per run; an unreadable or invalid reply counts as CONTINUE. Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change.",
    "D108: a step a re-plan adds or rewrites for a failed step must state a different tool, source type, site or a split query, else the decision is rejected and logged; the observer is shown each failed step's tools, sources and queries."
   ]
@@ -1245,7 +1256,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "d668645",
+  "checked_at": "497b4fe",
   "facts": {
    "anchors": [
     {
@@ -1368,8 +1379,7 @@
       "amoeba/pool/stock.py::SharedPicks",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/pool/stock.py::stock_toolbox",
-      "amoeba/task/deliverables.py::check_deliverables",
-      "amoeba/task/deliverables.py::no_deliverable_error",
+      "amoeba/task/deliverables.py::no_deliverable_of",
       "amoeba/task/draft.py::draft_team",
       "amoeba/task/draft.py::toolbox_text",
       "amoeba/task/evaluate.py::rubric_score",
@@ -1421,7 +1431,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "94eb24cae9db69e9",
+  "facts_hash": "3d5e7ee1f22d8dd5",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -10442,7 +10452,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "d668645",
+  "checked_at": "497b4fe",
   "facts": {
    "anchors": [
     {
@@ -10483,8 +10493,7 @@
       "amoeba/pool/stock.py::SharedPicks",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/pool/stock.py::stock_toolbox",
-      "amoeba/task/deliverables.py::check_deliverables",
-      "amoeba/task/deliverables.py::no_deliverable_error",
+      "amoeba/task/deliverables.py::no_deliverable_of",
       "amoeba/task/draft.py::draft_team",
       "amoeba/task/draft.py::toolbox_text",
       "amoeba/task/evaluate.py::rubric_score",
@@ -10541,14 +10550,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "b7799451abb7147c",
+  "facts_hash": "617dcc346ac8e8b7",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves twenty-six files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, the niche profile, the deliverable check status, the workspace sources, and the run status.",
+  "sentence": "Every run saves twenty-six files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, the niche profile, the deliverable status, the workspace sources, and the run status.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, the niche profile, the deliverable check status, the workspace sources, and the run status.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, the niche profile, the deliverable status, the workspace sources, and the run status.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -11441,15 +11450,13 @@
   ]
  },
  "plan_step": {
-  "checked_at": "2fcbf34",
+  "checked_at": "497b4fe",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/capabilities/__init__.py::normalise",
       "amoeba/interp/citecheck.py::mislabelled_citations",
-      "amoeba/interp/dates.py::dated_finding",
-      "amoeba/interp/dates.py::undated_figures",
       "amoeba/interp/disputes.py::disputed_figures",
       "amoeba/interp/freshness.py::time_sensitive",
       "amoeba/interp/plan_runner.py::PlanRunner._loop",
@@ -11470,6 +11477,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.domain_checks",
       "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
       "amoeba/interp/plan_runner.py::PlanRunner.files_of",
+      "amoeba/interp/plan_runner.py::PlanRunner.final_answer_check",
       "amoeba/interp/plan_runner.py::PlanRunner.inputs_text",
       "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
       "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
@@ -11506,6 +11514,7 @@
       "amoeba/localtools/toolbox.py::LocalToolbox.has_file",
       "amoeba/pool/mcp.py::PoolTools.begin_step",
       "amoeba/pool/mcp.py::SourceBook.begin_step",
+      "amoeba/task/deliverables.py::final_findings",
       "amoeba/task/evaluate.py::normalise",
       "amoeba/tools/web.py::WebTools.begin_step"
      ],
@@ -11699,16 +11708,6 @@
     ],
     [
      "decide",
-     "if dated",
-     "set self.undated = undated_figures(text, self.web_ids())"
-    ],
-    [
-     "decide",
-     "if dated and (undated := undated_figures(text, self.web_ids()))",
-     "set items = items + [dated_finding(undated)]"
-    ],
-    [
-     "decide",
      "if disputes",
      "set meta['dispute'] = {'state': 'unresolved' if unresolved else 'resolved', 'figures': dispute"
     ],
@@ -11721,6 +11720,16 @@
      "decide",
      "if failed",
      "set status, reason = ('incomplete', 'checks failed: ' + ', '.join(failed))"
+    ],
+    [
+     "decide",
+     "if final",
+     "set self.final = self.final_answer_check(text)"
+    ],
+    [
+     "decide",
+     "if final and (missing := final_findings(self.final_answer_check(text)))",
+     "set items = items + missing"
     ],
     [
      "decide",
@@ -12335,22 +12344,22 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "4434781ce920ee1f",
+  "facts_hash": "7ea009c5cf79c5b6",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
   "source": "model: rewritten",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, the outputs of the steps it depends on, and a list of local files it can reference.",
-   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, identify undated figures, verify spreadsheet data, and mark what it could not do as BLOCKED: <capability>.",
+   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, verify spreadsheet data, and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; if no model is available, it reports a blocked status; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search, lacks specific tools, or is performing research gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information; if local files are available, it is provided with a summary of those files and their source identifiers.",
-   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including resolving disputed figures, before the final output is kept.",
+   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including resolving disputed figures and checking final findings, before the final output is kept.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
   ]
  },
  "plan_summary": {
-  "checked_at": "8baa733",
+  "checked_at": "497b4fe",
   "facts": {
    "anchors": [
     {
@@ -12505,6 +12514,18 @@
     },
     {
      "callees": [
+      "amoeba/interp/dates.py::undated_figures",
+      "amoeba/interp/plan_runner.py::PlanRunner.files_of",
+      "amoeba/interp/plan_runner.py::PlanRunner.web_ids",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/task/deliverables.py::final_check"
+     ],
+     "doc": "D105 + D110 (amended): the final answer against Box 2's requirements, the promised files against the",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.final_answer_check",
+     "signature": "final_answer_check(self, text: str) -> dict"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/adapt/ledger.py::Ledger.append",
@@ -12520,6 +12541,11 @@
    ],
    "checks": [],
    "guards": [
+    [
+     "correct",
+     "if f.lower() not in section",
+     "add f'- MISSING FILE: {f} (promised by the plan, not in the workspace; checked by plain code)'"
+    ],
     [
      "correct",
      "if gaps['figures']",
@@ -12587,6 +12613,11 @@
     ],
     [
      "decide",
+     "if not re.search(f'\\\\b{re.escape(r)}\\\\b[^\\\\n]*not met', section, re.I)",
+     "set why = 'marked BLOCKED' if x['status'] == 'blocked' else f\"file not made: {', '.join(x['fil"
+    ],
+    [
+     "decide",
      "if self.opt.contract == 'on'",
      "set text = self.add_files_section(text, [f for f in self.files_of() if Path(f['path']).name no"
     ],
@@ -12597,7 +12628,17 @@
     ],
     [
      "fallback",
+     "'marked BLOCKED' if x['status'] == 'blocked' else f\"file not made: {', '.join(x['files_missing'])}\" if x['files_missing'] else 'the final answer does not cover it'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "None if worst == 'done' else worst",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[Path(f['path']).name for f in self.files_of()] if self.local is not None else None",
      "choose value"
     ],
     [
@@ -12632,6 +12673,11 @@
     ],
     [
      "fallback",
+     "f\"file not made: {', '.join(x['files_missing'])}\" if x['files_missing'] else 'the final answer does not cover it'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "f'{text.rstrip()}\\n\\n{body}\\n' if m else f'{text.rstrip()}\\n\\n## Limitations\\n{body}\\n'",
      "choose value"
     ],
@@ -12653,6 +12699,11 @@
     [
      "fallback",
      "text[m.end():] if m else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "undated_figures(text, self.web_ids()) if self.opt.dated == 'on' else []",
      "choose value"
     ],
     [
@@ -12726,6 +12777,11 @@
      "drop the rest"
     ],
     [
+     "filter",
+     "keep only if s.output",
+     "drop the rest"
+    ],
+    [
      "loop cap",
      "for i in range(len(lines) - 1, head[-1] if head else -1, -1)",
      "loop ends"
@@ -12788,16 +12844,16 @@
    },
    "title": "Summariser assembles"
   },
-  "facts_hash": "e52ce3712e9bcf1c",
+  "facts_hash": "91f75677761db194",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "f8491f65001402a8",
   "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "Sees every step's latest output with its status, missing capabilities, verdict, figure counts, the deliverables the plan committed to, and where each figure was found (never the scoring rubric).",
    "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under Limitations when there are any.",
    "Code counts any number it adds, lists the answer's untagged and unverified figures, appends a line for any missing capability it left out, and logs these actions.",
-   "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code under 'Files made', and Limitations also name undeclared missing capabilities, attached items left unused (NOT USED), and audit logs.",
+   "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code under 'Files made', and Limitations also name undeclared missing capabilities, attached items left unused, and audit logs.",
    "Each input is shortened to {PlanOptions.max_input_chars} characters and all of them to {PlanOptions.max_summary_input_chars}; since D64 the head, the tail and every line with a result (a count, a total, an '=' line, the last lines of program output) are kept, with a mark for what was left out. When several final steps have no summariser step, code puts their outputs together under headings, logging the assembly.",
    "D67: for a task that asks for today's, the current or the latest value, a figure whose as-of date is more than {MAX_AGE_DAYS} days old adds 'possibly not the latest' to Limitations; it also notes where the figure was found."
   ]
@@ -15718,7 +15774,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "d668645",
+  "checked_at": "497b4fe",
   "facts": {
    "anchors": [
     {
@@ -15890,6 +15946,10 @@
        "dict | None"
       ],
       [
+       "requirement_status",
+       "dict | None"
+      ],
+      [
        "status",
        "str | None"
       ],
@@ -15940,8 +16000,7 @@
       "amoeba/pool/stock.py::SharedPicks",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/pool/stock.py::stock_toolbox",
-      "amoeba/task/deliverables.py::check_deliverables",
-      "amoeba/task/deliverables.py::no_deliverable_error",
+      "amoeba/task/deliverables.py::no_deliverable_of",
       "amoeba/task/draft.py::draft_team",
       "amoeba/task/draft.py::toolbox_text",
       "amoeba/task/evaluate.py::rubric_score",
@@ -15994,10 +16053,42 @@
      "signature": "check_deliverables(answer: str | None, plan_texts: dict[str, str], files_created: list[dict] | None) -> dict"
     },
     {
+     "callees": [
+      "amoeba/task/deliverables.py::answer_content",
+      "amoeba/task/deliverables.py::check_deliverables",
+      "amoeba/task/deliverables.py::requirement_check"
+     ],
+     "doc": "The final-answer requirement check: requirements, promised files, answer content and undated web figures;",
+     "key": "amoeba/task/deliverables.py::final_check",
+     "signature": "final_check(answer: str | None, requirements: dict[str, str], plan_texts: dict[str, str], files_made: list[str] | None, undated: list[dict] | None=None, check_requirements: bool=True) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/interp/dates.py::dated_finding",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "What the answer step's refine turn is told: each unmet requirement, missing file and undated figure.",
+     "key": "amoeba/task/deliverables.py::final_findings",
+     "signature": "final_findings(fc: dict) -> list[str]"
+    },
+    {
      "callees": [],
      "doc": "",
      "key": "amoeba/task/deliverables.py::no_deliverable_error",
      "signature": "no_deliverable_error(check: dict) -> str | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/task/deliverables.py::no_deliverable_of",
+     "signature": "no_deliverable_of(fc: dict | None) -> str | None"
     },
     {
      "callees": [
@@ -16013,6 +16104,26 @@
      "doc": "Every file the plan promised: {name or None, kind, where} from the step outputs and requirements.",
      "key": "amoeba/task/deliverables.py::promised_files",
      "signature": "promised_files(texts: dict[str, str]) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/deliverables.py::_has_term",
+      "amoeba/task/deliverables.py::promised_files",
+      "amoeba/task/deliverables.py::requirement_terms"
+     ],
+     "doc": "One requirement against the final answer (and the workspace, for a file it asks for).",
+     "key": "amoeba/task/deliverables.py::requirement_check",
+     "signature": "requirement_check(rid: str, text: str, answer: str, files_made: list[str] | None) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "A requirement's key terms: content words of four letters or more (first five letters) and its numbers.",
+     "key": "amoeba/task/deliverables.py::requirement_terms",
+     "signature": "requirement_terms(text: str) -> list[str]"
     },
     {
      "callees": [
@@ -16058,16 +16169,15 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "5680fe24166bb97b",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "e2d62ed75e583905",
+  "facts_hash": "06783e2ca2fc8a81",
+  "seed_hash": "90c6edb0abd747fc",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
-  "source": "hand (model: still true)",
+  "source": "hand",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
    "It also lists the steps that answered BLOCKED and every capability request, and counts how many requests round 1 made and how many the checkers talked the planner out of.",
-   "D105: a plan run with no answer content, or that never made a file its plan promised (local tools on), ends with error 'no_deliverable: …' and status no_deliverable; result.json records deliverables."
+   "D105 + D110: after the summariser, plain code checks each Box 2 requirement and each promised file against the final answer and the workspace (and the dates of web figures); missing → one refine turn, then Limitations, and no_deliverable when a core deliverable is missing; requirement_status records the final-answer result."
   ]
  },
  "scoring": {
@@ -16541,7 +16651,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "2fcbf34",
+  "checked_at": "497b4fe",
   "facts": {
    "anchors": [
     {
@@ -17566,7 +17676,7 @@
    "title": "Check the step"
   },
   "facts_hash": "4cd3669d6c714765",
-  "seed_hash": "aa19c49741e23407",
+  "seed_hash": "6f0a328d9f2e4908",
   "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
   "source": "hand",
   "what": [
@@ -17580,7 +17690,7 @@
    "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
    "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
    "D109 (resolver): plain code pairs the verifier's blind figures with the worker's by label (5% tolerance); one fresh resolver call settles each disagreement by source text or a re-run, plain code checks its evidence, a settled value replaces the wrong one, and an unresolved one keeps the step from PASS and goes into Limitations.",
-   "D110: on the answer step every web-sourced figure must carry its source's date (on its line or in its source entry); undated ones earn the refine turn, and those still undated are listed in Limitations.",
+   "D110 (part of D105's final-answer check): every web-sourced figure of the final answer must carry its source's date (line or source entry); undated ones share the refine turn, and those still undated are listed in Limitations.",
    "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked."
   ]
  },
