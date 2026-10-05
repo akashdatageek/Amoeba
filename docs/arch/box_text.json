@@ -1,6 +1,6 @@
 {
  "action_obs": {
-  "checked_at": "8baa733",
+  "checked_at": "14aba5a",
   "facts": {
    "anchors": [
     {
@@ -51,6 +51,7 @@
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
+      "amoeba/interp/plan_runner.py::PlanRunner.same_method",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/plan_runner.py::step_field",
       "amoeba/interp/plan_runner.py::waves",
@@ -128,6 +129,18 @@
      "signature": "dependants(by: dict[int, PlanStep], n: int) -> set[int]"
     },
     {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/interp/replan_method.py::failed_method",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D108: each finished step that failed (partial, incomplete, lacking a capability, or a verify step still",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.failed_steps",
+     "signature": "failed_steps(self) -> dict[int, dict]"
+    },
+    {
      "callees": [],
      "doc": "The step that writes the answer in a proposed plan: a revision may renumber it (the old answer step",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.final_step",
@@ -155,10 +168,82 @@
      "doc": "What the plan names: every role's drafted tools and missing tools and every capability request (name and",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.plan_items",
      "signature": "plan_items(self) -> set[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/interp/plan_runner.py::PlanRunner.failed_steps",
+      "amoeba/interp/replan_method.py::method_change",
+      "amoeba/interp/replan_method.py::replaces",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D108: an error for each proposed step that replaces a failed step without changing its method.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.same_method",
+     "signature": "same_method(self, steps: list[dict], new_role=None) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/research.py::official"
+     ],
+     "doc": "How a failed step worked: tools it used (or its roles held), source types and sites it read, its queries.",
+     "key": "amoeba/interp/replan_method.py::failed_method",
+     "signature": "failed_method(meta: dict, role_tools: set[str], queries: list[str]) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "What the observer is shown about each failed step's method (D108).",
+     "key": "amoeba/interp/replan_method.py::failed_methods_text",
+     "signature": "failed_methods_text(failed: dict[int, dict]) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "The ways the step's text changes the failed method (empty = it repeats it).",
+     "key": "amoeba/interp/replan_method.py::method_change",
+     "signature": "method_change(step: dict, f: dict, step_tools: set[str]) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/stream.py::_words",
+      "amoeba/interp/plan_runner.py::_words",
+      "amoeba/interp/replan_method.py::_words",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The failed step a new or rewritten step replaces: same requirements covered, else same role with a near text.",
+     "key": "amoeba/interp/replan_method.py::replaces",
+     "signature": "replaces(step: dict, failed: dict[int, dict]) -> int | None"
     }
    ],
    "checks": [],
    "guards": [
+    [
+     "correct",
+     "if SPLIT.search(text)",
+     "add 'decomposed query'"
+    ],
     [
      "correct",
      "if bad",
@@ -178,6 +263,11 @@
      "correct",
      "if kind == 'ADD_ROLE' and new_role and (not any((new_role.name in s['roles'] for s in change['steps'])))",
      "add f'no step for the new role {new_role.name!r}'"
+    ],
+    [
+     "correct",
+     "if kind not in f['source_types'] and re.search(pat, text, re.I)",
+     "add f'source type {kind}'"
     ],
     [
      "correct",
@@ -261,6 +351,11 @@
     ],
     [
      "correct",
+     "if re.search(TOOL_WORDS.get(t, re.escape(t.lower())), text, re.I) or t.lower() in text",
+     "add f'tool {t}'"
+    ],
+    [
+     "correct",
      "if role not in roles",
      "add f'role {role!r} is not on the team'"
     ],
@@ -336,13 +431,28 @@
     ],
     [
      "decide",
+     "if m['status'] in ('partial', 'incomplete') or m.get('blocked') or m.get('verdict') in ('FAIL', 'DISPUTED')",
+     "set held = {t for aid in self.steps[n].agent_ids for t in self.agents[aid].tools} if n in self"
+    ],
+    [
+     "decide",
      "if new_nums",
      "set change['feeds'] = {new_nums[0]: [t for t in targets if t in unrun]}"
     ],
     [
      "decide",
+     "if new_role is not None and new_role.name in st['roles']",
+     "set tools |= set(getattr(new_role, 'tools', []) or [])"
+    ],
+    [
+     "decide",
      "if not cover",
      "set out[r]['why'] = 'no step that ran covers it'"
+    ],
+    [
+     "decide",
+     "if not how",
+     "set f = failed[n]"
     ],
     [
      "decide",
@@ -421,7 +531,22 @@
     ],
     [
      "fallback",
+     "{'data'} if any((s.get('data') for s in meta.get('sources') or [])) else set()",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'official'} if any((official(u) for u in urls)) else set()",
+     "choose value"
+    ],
+    [
+     "fallback",
      "{new_role.name: 'NEW'} if new_role else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{t for aid in self.steps[n].agent_ids for t in self.agents[aid].tools} if n in self.steps else set()",
      "choose value"
     ],
     [
@@ -436,6 +561,21 @@
     ],
     [
      "filter",
+     "keep only if a.name == r",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if c.get('tool')",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if covers & set(f['covers'])",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if d not in finished and d not in batch",
      "drop the rest"
     ],
@@ -446,12 +586,22 @@
     ],
     [
      "filter",
+     "keep only if isinstance(v, str)",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if m['wave'] == wave",
      "drop the rest"
     ],
     [
      "filter",
      "keep only if n != self.answer_n",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n in x.get('steps', []) and x.get('query')",
      "drop the rest"
     ],
     [
@@ -565,6 +715,16 @@
      "skip (continue)"
     ],
     [
+     "reject",
+     "if n is None",
+     "skip (continue)"
+    ],
+    [
+     "stop",
+     "if best",
+     "return max(best)[1]"
+    ],
+    [
      "stop",
      "if not triggers",
      "return None"
@@ -573,6 +733,16 @@
      "stop",
      "if not unrun or len(self.replans) >= self.opt.max_replans",
      "return None"
+    ],
+    [
+     "stop",
+     "if self.opt.replan_method != 'on'",
+     "return []"
+    ],
+    [
+     "stop",
+     "if set(step['roles']) & set(f['roles']) and words and (len(words & fw) / max(1, len(words | fw)) >= 0.4)",
+     "return n"
     ],
     [
      "stop",
@@ -590,16 +760,16 @@
    },
    "title": "Action Observer (re-plan)"
   },
-  "facts_hash": "be73e31182d28e52",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "eab21b71f661e662",
-  "sentence": "With --replan on, after a wave, an AI may re-plan remaining steps; plain code logs the change and checks it before it takes effect.",
-  "source": "model: rewritten",
+  "facts_hash": "775be163641cdc28",
+  "seed_hash": "5a16ab76cff4278f",
+  "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code checks the change before it takes effect.",
+  "source": "hand",
   "what": [
-   "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, a tool the plan did not know about, or a missing answer step. No trigger, no call.",
-   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available, the budget left, and the final answer step, returning one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
-   "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met, and the system tracks all loop-related inputs and evidence.",
-   "At most {PlanOptions.max_replans} re-plans and {PlanOptions.max_added_steps} added steps per run; an unreadable or invalid reply counts as CONTINUE. Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change."
+   "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, or a tool the plan did not know about. No trigger, no call.",
+   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available and the budget left, and returns one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE.",
+   "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met.",
+   "At most {PlanOptions.max_replans} re-plans and {PlanOptions.max_added_steps} added steps per run; an unreadable or invalid reply counts as CONTINUE. Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change.",
+   "D108: a step a re-plan adds or rewrites for a failed step must state a different tool, source type, site or a split query, else the decision is rejected and logged; the observer is shown each failed step's tools, sources and queries."
   ]
  },
  "agent_obs": {
@@ -16232,7 +16402,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "d039d7e",
+  "checked_at": "14aba5a",
   "facts": {
    "anchors": [
     {
@@ -16256,6 +16426,7 @@
       "amoeba/interp/plan_runner.py::_words",
       "amoeba/interp/plan_runner.py::shares_words",
       "amoeba/interp/provenance.py::numbers_in",
+      "amoeba/interp/replan_method.py::_words",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
@@ -17072,11 +17243,11 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "9ac990fc59ba5d7a",
+  "facts_hash": "cbc889c981c46b85",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "9efc4bbb08a99c1e",
   "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
@@ -17091,7 +17262,7 @@
   ]
  },
  "stream": {
-  "checked_at": "ee6ec77",
+  "checked_at": "14aba5a",
   "facts": {
    "anchors": [
     {
@@ -17256,6 +17427,7 @@
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/adapt/stream.py::_words",
       "amoeba/interp/plan_runner.py::_words",
+      "amoeba/interp/replan_method.py::_words",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search",
@@ -17532,11 +17704,11 @@
    "prompts": {},
    "title": "Task stream and the three task sets (D80, D92)"
   },
-  "facts_hash": "7befec0474d0ec11",
+  "facts_hash": "6de09bb40442d4a7",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "776e5ddc13b1776d",
   "sentence": "Tasks arrive in a fixed order, in three sets: practice tasks the loop learns from, gate tasks for calibration and experiments, and audit tasks for final verification; the loop learns only the names of the rubric items a practice run failed.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "tasks/stream_<name>.jsonl: each task has its kind (family), its D30 rubric, whether it is practice or held-out, whether it comes before or after its kind's shift, and (practice only) its place in the order.",
    "tasks/stream_<name>.shifts.yaml: a feedback shift (the later rubrics ask for something new that the prompts never mention) or a tool shift (code takes a tool out of that kind's runs, --disable-tools).",
