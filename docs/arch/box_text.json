@@ -11290,7 +11290,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "d668645",
+  "checked_at": "bbd52c8",
   "facts": {
    "anchors": [
     {
@@ -11298,6 +11298,8 @@
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/capabilities/__init__.py::normalise",
       "amoeba/interp/citecheck.py::mislabelled_citations",
+      "amoeba/interp/dates.py::dated_finding",
+      "amoeba/interp/dates.py::undated_figures",
       "amoeba/interp/disputes.py::dispute_text",
       "amoeba/interp/disputes.py::disputed_figures",
       "amoeba/interp/freshness.py::time_sensitive",
@@ -11547,6 +11549,16 @@
      "decide",
      "if claimed is not None",
      "set meta['claimed_files'], meta['claimed_files_missing'] = (claimed, missing)"
+    ],
+    [
+     "decide",
+     "if dated",
+     "set self.undated = undated_figures(text, self.web_ids())"
+    ],
+    [
+     "decide",
+     "if dated and (undated := undated_figures(text, self.web_ids()))",
+     "set items = items + [dated_finding(undated)]"
     ],
     [
      "decide",
@@ -12196,14 +12208,14 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "cff3bbd5bbbe72c5",
+  "facts_hash": "68dfe588f1eb84f7",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
   "source": "model: rewritten",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, the outputs of the steps it depends on, and a list of local files it can reference.",
-   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, and mark what it could not do as BLOCKED: <capability>.",
+   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, identify undated figures, and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; if no model is available, it reports a blocked status; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search, lacks specific tools, or is performing research gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information; if local files are available, it is provided with a summary of those files and their source identifiers.",
    "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including identifying disputed figures, before the final output is kept.",
@@ -16402,7 +16414,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "14aba5a",
+  "checked_at": "bbd52c8",
   "facts": {
    "anchors": [
     {
@@ -16628,6 +16640,29 @@
      "doc": "D74: every checkable claim tagged [S#] whose source text does not contain it. `contents`: S# -> the text the",
      "key": "amoeba/interp/citecheck.py::mislabelled_citations",
      "signature": "mislabelled_citations(text: str, contents: dict[str, str], exempt: set[str] | None=None, exact: list[float] | None=None) -> list[dict]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/interp/dates.py::dated_finding",
+     "signature": "dated_finding(undated: list[dict]) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/diagnoser.py::run_signals.add",
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/adapt/loop.py::LoopIO.add",
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/interp/dates.py::_figures",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "The web-sourced figures of an answer without a date: {figure, sources, line}.",
+     "key": "amoeba/interp/dates.py::undated_figures",
+     "signature": "undated_figures(text: str, web_ids: set[str]) -> list[dict]"
     },
     {
      "callees": [],
@@ -16896,6 +16931,11 @@
     ],
     [
      "correct",
+     "if section is None",
+     "add line"
+    ],
+    [
+     "correct",
      "if t.removeprefix('local:') in getattr(self.local, 'exposed', []) and t not in names",
      "add t"
     ],
@@ -16903,6 +16943,16 @@
      "correct",
      "if verifier",
      "add {'name': 'verdict', 'pass': parse_verdict_block(body)[0] is not None, 'detail': 'a verification step must start with \"Verdict: PASS\" or \"Verdict: FAIL\"'}"
+    ],
+    [
+     "decide",
+     "if LIMITS.match(line)",
+     "set section = 'limits'"
+    ],
+    [
+     "decide",
+     "if SECTION.match(line)",
+     "set section = 'sources'"
     ],
     [
      "decide",
@@ -16928,6 +16978,16 @@
      "decide",
      "if new",
      "set a.tools = [*a.tools, *new]"
+    ],
+    [
+     "decide",
+     "if re.match('^\\\\s*#+\\\\s', line)",
+     "set section = None"
+    ],
+    [
+     "decide",
+     "if section == 'sources'",
+     "set m = re.match('^\\\\s*(?:[-*]\\\\s*)?\\\\[?(S\\\\d+)\\\\]?', line)"
     ],
     [
      "fallback",
@@ -17041,6 +17101,11 @@
     ],
     [
      "filter",
+     "keep only if i in web_ids",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if i not in ids and _has(kind, claim, t)",
      "drop the rest"
     ],
@@ -17126,6 +17191,11 @@
     ],
     [
      "reject",
+     "if all((i in dated_sources for i in web))",
+     "skip (continue)"
+    ],
+    [
+     "reject",
      "if any((_has(kind, claim, contents[i]) for i in known)) or (tuple(ids), claim) in seen",
      "skip (continue)"
     ],
@@ -17152,6 +17222,11 @@
     [
      "reject",
      "if not known",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if not web or not figs or DATE.search(TAG.sub(' ', line))",
      "skip (continue)"
     ],
     [
@@ -17243,11 +17318,10 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "cbc889c981c46b85",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "9efc4bbb08a99c1e",
+  "facts_hash": "ec8b593a1eec4107",
+  "seed_hash": "02844f2f724e2dec",
   "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
-  "source": "model: kept",
+  "source": "hand",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
@@ -17258,7 +17332,8 @@
    "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial.",
    "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
    "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
-   "D109: plain code pairs the verifier's blind figures with the checked outputs' figures by label (5% tolerance); a disagreement makes the step disputed, earns one rework with both values shown, and if it stays the step is partial, the verdict DISPUTED and both values go into Limitations."
+   "D109: plain code pairs the verifier's blind figures with the checked outputs' figures by label (5% tolerance); a disagreement makes the step disputed, earns one rework with both values shown, and if it stays the step is partial, the verdict DISPUTED and both values go into Limitations.",
+   "D110: on the answer step every web-sourced figure must carry its source's date (on its line or in its source entry); undated ones earn the refine turn, and those still undated are listed in Limitations."
   ]
  },
  "stream": {
