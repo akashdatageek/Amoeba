@@ -168,7 +168,7 @@ GAP_PATHS = {  # id: (path, label x, label y)
 }
 KIND_WHO = {"llm": "AI writes text", "code": "Plain code decides", "data": "Record passed along",
             "plain": "Input / output", "top": "See inside"}
-STATUS = {"built": ("✓", "built"), "differs": ("≠", "differs"), "missing": ("✗", "missing"), "extra": ("+", "extra")}
+STATUS = {"built": ("✓", "built"), "differs": ("≠", "differs"), "missing": ("✗", "missing"), "extra": ("+", "added")}
 
 
 def esc(s) -> str:
@@ -186,6 +186,16 @@ def wrap(text: str, width_px: float, px: float) -> list[str]:
     if cur:
         lines.append(cur)
     return lines
+
+
+def clamp(lines: list[str], room: int) -> list[str]:
+    """At most `room` lines; the last kept line ends with an ellipsis when text was cut (the full text is in the card)."""
+    room = max(1, room)
+    if len(lines) <= room:
+        return lines
+    out = lines[:room]
+    out[-1] = out[-1].rstrip(" ,.;:") + " …"
+    return out
 
 
 def short(path: str) -> str:
@@ -311,18 +321,18 @@ def box_svg(b: dict, A: dict, changed: set) -> str:
         ty = y + 44
         for i, t in enumerate(tl):
             parts.append(f'<text x="{x + w / 2}" y="{ty + i * 18}" text-anchor="middle" class="t">{esc(t)}</text>')
-        sl = wrap(b["sentence"], w - 36, 5.9)
+        sl = clamp(wrap(b["sentence"], w - 36, 5.9), int((y + h - 28 - (ty + len(tl) * 18 + 4)) // 14) + 1)
         for i, t in enumerate(sl):
             parts.append(f'<text x="{x + w / 2}" y="{ty + len(tl) * 18 + 4 + i * 14}" text-anchor="middle" class="s">{esc(t)}</text>')
         parts.append(f'<text x="{x + w / 2}" y="{y + h - 12}" text-anchor="middle" class="open">CLICK TO OPEN ▸</text>')
         parts.append(f'<text x="{x + 12}" y="{y + h - 11}" class="glyph info" role="button" aria-label="Details">ⓘ</text>')
         need = 44 + len(tl) * 18 + 4 + len(sl) * 14 + 20
     else:
-        tl = wrap(b["title"], title_room, 7.0)
+        tl = clamp(wrap(b["title"], title_room, 7.6), 2)
         for i, t in enumerate(tl):
             parts.append(f'<text x="{x + 10}" y="{y + 20 + i * 16}" class="t2">{esc(t)}</text>')
         sy = y + 20 + len(tl) * 16 + 2
-        sl = wrap(b["sentence"], w - 20, 5.75)
+        sl = clamp(wrap(b["sentence"], w - 20, 5.75), int((y + h - 22 - sy) // 14) + 1)
         for i, t in enumerate(sl):
             parts.append(f'<text x="{x + 10}" y="{sy + i * 14}" class="s">{esc(t)}</text>')
         wy, bottom = sy + len(sl) * 14 + 6, y + h - 24      # the unit's detail lines, as many as fit on its face
@@ -424,6 +434,29 @@ def decor_svg(view, A) -> str:
     return "".join(out)
 
 
+# ------------------------------------------------------------------------------------------------ what's new
+def whats_new(A: dict, first: int = 90) -> str:
+    """The spec rows from D<first> on, newest decisions included, each with a link to the boxes that name it."""
+    num = lambda i: int("".join(c for c in i[1:] if c.isdigit()) or 0)
+    rows = [r for r in A["deviations"]["spec_table"] if re.fullmatch(r"D\d+[a-z]?", r["id"] or "") and num(r["id"]) >= first]
+    seen, items = set(), []
+    for r in sorted(rows, key=lambda r: (num(r["id"]), r["id"])):
+        if r["id"] in seen:
+            continue
+        seen.add(r["id"])
+        m = re.search(r"\*\*(.+?)\*\*", r.get("ours") or "")
+        name = (m.group(1) if m else (r.get("ours") or "")[:90]).rstrip(" .:")
+        pat = re.compile(rf"\b{re.escape(r['id'])}\b")
+        boxes = [b for b in A["boxes"] if not b.get("ref") and (
+            any(d.get("id") == r["id"] for d in b.get("deviations", []))
+            or pat.search(" ".join([b.get("title", ""), b.get("sentence", "")] + list(b.get("what") or []))))]
+        links = " · ".join(f'<button type="button" class="go" data-open="{esc(b["id"])}">{esc(b["title"])}</button>'
+                           for b in boxes[:3])
+        items.append(f'<li><span class="id">{esc(r["id"])}</span><span>{esc(name)}'
+                     + (f'<br>{links}' if links else "") + "</span></li>")
+    return '<ul class="newlist">' + "".join(items) + "</ul>"
+
+
 # ------------------------------------------------------------------------------------------------ page
 CSS = r"""
 :root{--bg:#f7f8f6;--ink:#1d221f;--muted:#5d665f;--line:#8c948e;--llm-fill:#ece8f7;--llm-line:#6b5bb5;--code-fill:#e3f1e8;--code-line:#2f7d57;
@@ -458,7 +491,7 @@ code,.mono{font-family:"IBM Plex Mono",monospace;font-size:12px}
 .btn[aria-pressed="true"],.btn.primary{background:var(--p1);color:#fff}
 .btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--p1);outline-offset:2px}
 select,input[type=search]{font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
-input[type=search]{min-width:220px}
+input[type=search]{min-width:220px;max-width:100%}
 .crumb{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 8px;font-size:13.5px;min-height:32px}
 .crumb .here{color:var(--muted)}
 .panel{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--plain-fill)}
@@ -546,6 +579,18 @@ mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
 .ed .row{display:flex;gap:10px;justify-content:flex-end;margin-top:10px;align-items:center;flex-wrap:wrap}.ed .st{margin-right:auto;font-size:12.5px;color:var(--muted)}
 .queue{display:inline-flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted);margin-left:auto}
 .foot{margin-top:18px;font-size:12px;color:var(--muted)}
+.tablewrap{overflow-x:auto;max-width:100%}
+.howto{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:8px;margin:0 0 12px;padding:0;list-style:none}
+.howto li{border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--panel);font-size:13px;line-height:1.45;min-width:0}
+.howto b{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--p1);margin-bottom:2px}
+.vs{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+details.sec{margin:6px 0 0}details.sec>summary{cursor:pointer;font-size:13.5px;color:var(--p1);font-weight:600}
+details.sec[open]>summary{margin-bottom:8px}
+.newlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),1fr));gap:6px 14px;margin:0;padding:0;list-style:none}
+.newlist li{display:grid;grid-template-columns:3.4em minmax(0,1fr);gap:8px;align-items:baseline;font-size:13px;line-height:1.4;padding:5px 0;border-top:1px solid var(--line)}
+.newlist .id{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:500;color:var(--p1);font-variant-numeric:tabular-nums}
+.newlist .go{font:inherit;font-size:12px;color:var(--p1);background:none;border:none;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.newlist .go:focus-visible{outline:2px solid var(--p1);outline-offset:2px}
 @media (prefers-reduced-motion: reduce){.tt,.boxg{transition:none}}
 """
 
@@ -553,7 +598,7 @@ JS = r"""
 (function(){
 var A = JSON.parse(document.getElementById('data').textContent);
 var BOX = {}; A.boxes.forEach(function(b){ BOX[b.id] = b; });
-var VIEWS = A.__views, cur = 'overview', topo = 'flat';
+var VIEWS = A.__views, cur = 'overview', topo = A.sample.runs.real ? 'real' : 'plan';
 function $(s, r){ return (r||document).querySelector(s); }
 function $$(s, r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); }
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -589,7 +634,7 @@ document.addEventListener('scroll', hide, {passive:true});
 // ---------------- drawer
 var dr = $('#drawer'), drBox = null, drTab = 'what';
 var TABS = [['what','What it does'],['code','Code'],['prompt','Prompt'],['example','Example'],['tests','Tests'],['plan','Plan vs built']];
-function statusPill(s){ var m = {built:'✓ built', differs:'≠ differs', missing:'✗ missing', extra:'+ extra'}; return '<span class="pill ' + s + '">' + (m[s]||s) + '</span>'; }
+function statusPill(s){ var m = {built:'✓ built', differs:'≠ differs', missing:'✗ missing', extra:'+ added'}; return '<span class="pill ' + s + '">' + (m[s]||s) + '</span>'; }
 var drEl = null;
 function openDrawer(id, tab, el){
   drEl = el || document.getElementById('b-' + id) || drEl; var b = BOX[id]; if(b && b.ref) b = BOX[b.ref]; if(!b) return; drBox = b; drTab = tab || drTab;
@@ -706,9 +751,10 @@ var rows = [], replayT = null, replayI = 0;
 function buildTimeline(){
   var tl = A.sample.runs[topo].timeline, tb = $('#tlbody'); tb.innerHTML = '';
   var R = A.sample.runs[topo];
-  $('#tlmeta').textContent = (R.real ? 'Real run ' : 'Sample run ') + R.run_id.slice(0, 8) + ' · ' + R.dir + ' · ' + tl.length + ' trace lines · answer ' + JSON.stringify(R.result.answer).slice(0, 120) + ' · score ' + R.result.score + (R.real ? ' · profile ' + R.result.profile + (R.stamped ? '' : ' · this trace predates box ids: lines were placed by rule') : '') + '. Only traced steps appear: plain-code steps between them are not logged in Phase 1.';
+  var dir = String(R.dir || '').replace(/^.*?(eval\/|runs\/)/, '$1'), ans = String(R.result.answer || '').split('\n').map(function(l){ return l.replace(/[#*`>|]/g, '').trim(); }).filter(Boolean)[0] || 'none';
+  $('#tlmeta').textContent = (R.real ? 'Real run ' : 'Sample run ') + R.run_id.slice(0, 8) + (R.result.task_id ? ' (' + R.result.task_id + ')' : '') + ' · ' + dir + ' · ' + tl.length + ' trace lines · answer starts “' + ans.slice(0, 90) + '” · ' + (R.result.score == null ? 'not scored (free-text task)' : 'score ' + R.result.score) + (R.real ? ' · profile ' + R.result.profile + (R.stamped ? '' : ' · this trace predates box ids: lines were placed by rule') : '') + '. Only traced steps appear: plain-code steps between them are not logged in Phase 1.';
   var cv = R.coverage || {boxes_without_lines: [], lines_without_box: []};
-  $('#tlgaps').innerHTML = '<b>' + cv.lines_without_box.length + '</b> trace line(s) name no box' + (cv.lines_without_box.length ? ' (' + cv.lines_without_box.slice(0, 8).map(function(x){ return esc(x.span) + ' @' + x.file_line; }).join(', ') + ')' : '') + ' · <b>' + cv.boxes_without_lines.length + '</b> box(es) wrote no line in this run: ' + cv.boxes_without_lines.map(function(id){ return esc(BOX[id] ? BOX[id].title : id); }).join(', ');
+  $('#tlgaps').innerHTML = '<b>' + cv.lines_without_box.length + '</b> trace line(s) name no box' + (cv.lines_without_box.length ? ' (' + cv.lines_without_box.slice(0, 8).map(function(x){ return esc(x.span) + ' @' + x.file_line; }).join(', ') + ')' : '') + ' · <details class="sec" style="display:inline"><summary><b>' + cv.boxes_without_lines.length + '</b> box(es) wrote no line in this run</summary>' + cv.boxes_without_lines.map(function(id){ return esc(BOX[id] ? BOX[id].title : id); }).join(', ') + '</details>';
   rows = tl.map(function(r){ var b = BOX[r.box]; var tr = document.createElement('tr'); tr.className = 'row'; tr.tabIndex = 0;
     tr.innerHTML = '<td>' + (r.i + 1) + '</td><td>' + esc(b ? b.title : r.box) + '</td><td>' + esc(r.helper || '—') + '</td><td class="mono">' + esc(r.span) + '</td><td>' + (r.tokens || '') + '</td><td>' + esc(r.result) + '</td>';
     var det = document.createElement('tr'); det.className = 'det'; det.setAttribute('hidden','');
@@ -825,6 +871,8 @@ $('#askq').onclick = function(){
     if(c === 'not_granted' || c === 'sampling_disabled' || c === 'not_declared'){ SM = null; paintAsk(); }
   }).then(function(){ $('#askq').disabled = false; $('#askstop').hidden = true; askCtl = null; });
 };
+$('#topo').value = topo;
+$$('.newlist .go').forEach(function(b){ b.onclick = function(){ var id = b.getAttribute('data-open'), x = BOX[id]; if(!x) return; go(x.view); openDrawer(id); }; });
 buildTimeline(); show((location.hash || '#overview').slice(1));
 })();
 """
@@ -1011,10 +1059,11 @@ def render(lite: bool = False) -> Path:
                          + decor_svg(v, A) + "".join(edges) + "".join(items) + "</svg>")
     counts = A["status_counts"]
     date = datetime.fromisoformat(A["repo"]["commit_date"]).strftime("%-d %b")
-    summary = (f'<span class="pill built">{counts.get("built", 0)} built</span>'
-               f'<span class="pill differs">{counts.get("differs", 0)} differ</span>'
-               f'<span class="pill missing">{counts.get("missing", 0)} missing</span>'
-               f'<span class="pill extra">{counts.get("extra", 0)} extra</span>'
+    summary = (f'<span class="vs">Against the Phase 1 plan</span>'
+               f'<span class="pill built" title="parts of the plan, built as planned">{counts.get("built", 0)} built</span>'
+               f'<span class="pill differs" title="parts of the plan, built differently">{counts.get("differs", 0)} differ</span>'
+               f'<span class="pill missing" title="parts of the plan with no code">{counts.get("missing", 0)} missing</span>'
+               f'<span class="pill extra" title="parts the Phase 1 plan never had (Phase 2 and v1.0)">{counts.get("extra", 0)} added</span>'
                f'<span>commit <b class="mono">{esc(A["repo"]["short"])}</b> · {esc(date)}'
                f'{" · <b>uncommitted changes</b>" if A["repo"]["dirty"] else ""} · branch <span class="mono">{esc(A["repo"]["branch"])}</span></span>'
                f'<span>tests: {esc(A["tests"]["summary"])}</span>')
@@ -1047,13 +1096,14 @@ def render(lite: bool = False) -> Path:
         "could do, but not whether it used them or reported gaps, because these wires were missing. "
         f"<b>{n_closed} of {len(A.get('gaps', []))} closed</b> (solid green on the Box 3 view; open gaps are dashed "
         "red): D61, the step contract, lists before each step what every helper must account for and checks the "
-        "evidence after it.</p><table class='gaps'><thead><tr><th>Gap</th><th>Wire</th><th>Exists at"
+        "evidence after it.</p><div class='tablewrap'><table class='gaps'><thead><tr><th>Gap</th><th>Wire</th><th>Exists at"
         "</th><th>Was not read at</th><th>Seen in</th><th>Closed by</th></tr></thead><tbody>"
         + "".join(f"<tr><td><b>{esc(g['id'])}</b></td><td><b>{esc(g['title'])}</b><br>{esc(g['missing'])}</td>"
                   f"<td>{gref(g['data'])}</td><td>{gref(g['decides'])}</td><td>{esc('; '.join(g['evidence']))}</td>"
                   f"<td>{(esc(g['fix']) + '<br>' + gref(g['fixed'])) if g.get('fixed_by') else 'open'}</td></tr>"
                   for g in A.get("gaps", []))
-        + "</tbody></table>")
+        + "</tbody></table></div>")
+    new_html = whats_new(A)
     un = A.get("unassigned", [])
     new_un = [u for u in un if u["new"]]
     unassigned_html = (
@@ -1072,7 +1122,12 @@ def render(lite: bool = False) -> Path:
 <style>{CSS}</style></head><body>
 <div class="wrap">
 <h1>{title}</h1>
-<p class="sub">Boxes 1–3 run one task (Task → Plan a new team → Team runs the task); Boxes 4–9 learn from practice (Monitor → Diagnoser → Architect → Experimenter → Gate → Memory). Read from the code at the commit below, not from the plan. Every box says in one sentence what it does; click it for the exact code, prompt, example and tests. To ask about a box or change it, press its ✎ (or use “Ask or change this box” at the top of its panel): “Send to Claude Code” delivers it with that box’s reference.</p>
+<p class="sub">Amoeba drafts a team of AI helpers for each task and learns, from practice, which team recipe works for each kind of task. The AI proposes; plain code decides. This page is built from the code at the commit below, not from the plan.</p>
+<ul class="howto">
+<li><b>Boxes 1–3 · one task</b>Read the task, plan a team, run it step by step. Every AI call is logged.</li>
+<li><b>Boxes 4–9 · the learning loop</b>Watch practice scores, find the cause, propose one recipe edit, test it, keep it only if the Gate says so.</li>
+<li><b>Use the page</b>Click a box to open it. ⓘ shows the code, prompt and tests; ✎ asks a question or requests a change.</li>
+</ul>
 <div class="summary" id="summary">{summary}</div>
 <div class="legend">
 <span><i class="sw llm"></i>an AI writes text</span><span><i class="sw code"></i>plain code decides</span><span><i class="sw data"></i>a record passed along</span><span><i class="sw plain"></i>input / output</span>
@@ -1096,14 +1151,18 @@ def render(lite: bool = False) -> Path:
 </defs></svg>
 <div class="panel">{"".join(views_svg)}</div>
 <p class="notes" id="note"></p>
+<h2>What's new in v1.0</h2>
+<p class="sub">Decisions D90–D114, built after the first adaptation milestone was designed. Each opens the box that does it.</p>
+{new_html}
 <h2>Sample run timeline</h2>
 <p class="sub" id="tlmeta"></p>
-<p class="sub" id="tlgaps"></p>
+<div class="sub" id="tlgaps"></div>
 <div class="timeline"><table><thead><tr><th>#</th><th>step</th><th>helper</th><th>log line</th><th>tokens</th><th>result</th></tr></thead><tbody id="tlbody"></tbody></table></div>
-<h2>Box 3 gaps: the wires that were missing</h2>
-{gaps_html}
-<h2>What changed since the last build</h2>
-{changes_html}
+<h2>History</h2>
+<details class="sec"><summary>Box 3 gaps: the wires that were missing ({n_closed} of {len(A.get("gaps", []))} closed)</summary>
+{gaps_html}</details>
+<details class="sec"><summary>What changed since the last build ({len(changes) - 1} item{"" if len(changes) == 2 else "s"})</summary>
+{changes_html}</details>
 <h2>Box text upkeep</h2>
 <p class="sub">{text_log_html}</p>
 <h2>Unassigned code</h2>

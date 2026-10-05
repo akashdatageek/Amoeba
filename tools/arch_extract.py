@@ -914,7 +914,7 @@ BOXES: list[dict] = [
                "D102: the niche profile's model allowlist and verifier-independence setting feed the router; a model outside the profile is filtered out with reason profile."],
          proposes="Nothing: no AI takes part in the decision.",
          disposes="Plain code picks the model; no call is made when no model passes the filters (no_model).",
-         anchors=[]),
+         anchors=["amoeba/llm/router.py::ModelRouter"]),
     dict(id="niche", view="around", title="Niche profiles (D102)", kind="code", plan=None,
          sentence="One file per environment says which tools and models are allowed, the limits, what counts as done, "
                   "the domain's rules and words, and which domain checks run; plain code enforces it.",
