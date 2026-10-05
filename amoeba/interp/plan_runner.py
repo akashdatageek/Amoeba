@@ -19,6 +19,7 @@ from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.citecheck import mislabelled_citations
 from amoeba.interp.disputes import dispute_text, disputed_figures
+from amoeba.interp.replan_method import failed_method, failed_methods_text, method_change, replaces
 from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_values, numbers_in,
                                       strip_unverified)
 from amoeba.interp.freshness import stale_figure, time_sensitive
@@ -73,6 +74,10 @@ class PlanOptions:
     # disagreement makes the step `disputed`: one rework turn with both values, then partial + Limitations if it
     # stays. A PASS never overrides it. The CLI default is on; this library default keeps the earlier behaviour.
     disputes: str = "off"
+    # D108: on = a step a re-plan adds or rewrites for a failed step must change the method (a different tool, source
+    # type or a decomposed query, stated in the step); the observer is shown each failed step's method. The CLI
+    # default is on; this library default keeps the earlier behaviour.
+    replan_method: str = "off"
     max_replans: int = 2             # D63: observer calls per run
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
     domain_checks: tuple = ()        # D102: the niche profile's checks (amoeba/checks/<name>.py) after each step
@@ -1776,6 +1781,13 @@ class PlanRunner:
                               f"{self.opt.max_added_steps - self.added_steps} step(s) may still be added; "
                               f"{'no' if self.roles_added else 'one'} new role may still be added"),
                       next=str(self.max_num + 1))
+        failed = self.failed_steps() if self.opt.replan_method == "on" else {}
+        if failed:                                     # D108: what failed, so a new step can do it differently
+            user += ("\n\n# How the failed steps worked (plain code)\n" + failed_methods_text(failed) +
+                     "\nA step you add or rewrite for one of these must change the method, and its text must say how: "
+                     "a different tool, a different source type (a data file or table, an official source, an API, "
+                     "another named site) or one search per entity, year or series. A step that repeats the method is "
+                     "rejected.")
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "action_observer", "amoeba.box": "action_obs"}):
             resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
                                             agent_name="action_observer", max_tokens=PLAN_MAX_TOKENS, role="planner")
@@ -1911,6 +1923,7 @@ class PlanRunner:
             if kind == "REVISE_REMAINING":
                 change["drop"] = sorted(unrun - batch)
             change["added"] = added
+            errors += self.same_method(change["steps"], new_role)                 # D108
         elif kind == "REASSIGN_STEP":
             num, role = step_field(dec["steps"], "step"), (step_field(dec["steps"], "role", as_text=True) or "").strip()
             if num not in unrun:
@@ -1945,6 +1958,44 @@ class PlanRunner:
                              "role_added": new_role.name if new_role else None,
                              "requests": [q["name"] for q in requests]}
         return errors, change
+
+    # box: action_obs
+    def failed_steps(self) -> dict[int, dict]:
+        """D108: each finished step that failed (partial, incomplete, lacking a capability, or a verify step still
+        failing or disputed), with its method."""
+        out = {}
+        for n, a in sorted(self.artifacts.items()):
+            m = a["meta"]
+            if m["status"] in ("partial", "incomplete") or m.get("blocked") or m.get("verdict") in ("FAIL", "DISPUTED"):
+                held = {t for aid in self.steps[n].agent_ids for t in self.agents[aid].tools} if n in self.steps else set()
+                queries = [x["query"] for x in getattr(self.web, "sources", []) if n in x.get("steps", []) and x.get("query")]
+                out[n] = failed_method(m, held, list(dict.fromkeys(queries)))
+        return out
+
+    # box: action_obs
+    def same_method(self, steps: list[dict], new_role=None) -> list[str]:
+        """D108: an error for each proposed step that replaces a failed step without changing its method."""
+        if self.opt.replan_method != "on":
+            return []
+        failed = self.failed_steps()
+        errors = []
+        for st in steps:
+            n = replaces(st, failed)
+            if n is None:
+                continue
+            tools = {t for r in st["roles"] for a in self.agents.values() if a.name == r for t in a.tools}
+            if new_role is not None and new_role.name in st["roles"]:
+                tools |= set(getattr(new_role, "tools", []) or [])
+            how = method_change(st, failed[n], tools)
+            self.i.trace.event("replan_method", {"amoeba.step": st["number"], "amoeba.replaces": n,
+                                                 "amoeba.changes": how, "amoeba.failed_method": failed[n]})
+            if not how:
+                f = failed[n]
+                errors.append(f"step {st['number']} repeats the method of failed step {n} (tools "
+                              f"{', '.join(f['tools']) or 'none'}; sources {', '.join(f['sites'][:3]) or 'none'}): it "
+                              f"must name a different tool, a different source type or one search per entity, year "
+                              f"or series (D108)")
+        return errors
 
     def proposed_plan(self, change: dict, ids: dict[str, str]) -> list[PlanStep]:
         """The plan after `change` (steps sorted by number; a dropped step's dependants point at its dependencies)."""

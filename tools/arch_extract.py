@@ -548,7 +548,8 @@ BOXES: list[dict] = [
                "team too large, a loop, or a new step that depends on a step that has not run. New capability "
                "requests go through the normal toolbox step; a dropped requirement is listed as not met.",
                "At most 2 re-plans and 3 added steps per run; an unreadable or invalid reply counts as CONTINUE. "
-               "Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change."],
+               "Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change.",
+               "D108: a step a re-plan adds or rewrites for a failed step must state a different tool, source type, site or a split query, else the decision is rejected and logged; the observer is shown each failed step's tools, sources and queries."],
          proposes="One typed decision and its reason.",
          disposes="Plain code decides when to call, validates the decision, applies it and records every version.",
          prompts=["plan_replan"],

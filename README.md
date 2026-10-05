@@ -537,6 +537,10 @@ The helpers are also told to search one entity, year or series at a time and to 
 
 With `--web-tools` and `--local-tools on`, every page and data file the web tools read is saved in the run's workspace under `sources/`: data tables as CSV, pages as text. The files are read-only on the host and inside the sandbox, and `sources/index.json` lists each one with its [S#], url, title and fetch time. Analysts in the sandbox, which still has no network, can compute from the data itself, and steps with local tools are told the files are there. Writes into `sources/` are refused, reading and copying from it are allowed, and the files never count as files the team made. Turn it off with `--workspace-sources off`.
 
+## Re-plans that change the method (D108)
+
+With `--replan on`, the Action Observer may add or rewrite steps after a step fails. It is now shown how each failed step worked: the tools it used, the sites it read and its queries. A step it adds or rewrites for a failed step must change the method and say how in its text: a different tool, a different source type (a data file, an official source, an API, another site), or one search per entity, year or series. A step that repeats the method gets the whole decision rejected, and the rejection is logged with what was repeated. `--replan-method off` turns this off.
+
 ## Cost controls (D45–D48)
 
 ```bash

@@ -439,7 +439,7 @@ def cli_plan_options(args: argparse.Namespace):
                        max_summary_input_chars=args.max_summary_input_chars, self_refine=args.self_refine,
                        collab=args.collab, contract=args.step_contract, replan=args.replan,
                        verify_first=getattr(args, "verify_first", "off"), disputes=getattr(args, "disputes", "off"),
-                       **extra)
+                       replan_method=getattr(args, "replan_method", "off"), **extra)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -639,6 +639,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: a run whose answer has no content, or that never made a file the plan promised (with "
                         "--local-tools on), ends with error 'no_deliverable: …' and status no_deliverable; "
                         "result.json records `deliverables` (D105). The baselines are never checked")
+    p.add_argument("--replan-method", choices=["on", "off"], default="on",
+                   help="plan, with --replan on: a step a re-plan adds or rewrites for a failed step must change the "
+                        "method (a different tool, source type, or one search per entity/year/series, stated in the "
+                        "step); a re-plan that repeats it is rejected and logged; the observer is shown how each "
+                        "failed step worked (D108)")
     p.add_argument("--disputes", choices=["on", "off"], default="on",
                    help="plan, with --verify-first on: plain code compares the verifier's own result with the checked "
                         "outputs' figures by label (5%% tolerance); a disagreement earns the producers one rework turn "
