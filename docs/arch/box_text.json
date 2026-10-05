@@ -7555,7 +7555,7 @@
   ]
  },
  "localtools": {
-  "checked_at": "e25d2fb",
+  "checked_at": "130bcc2",
   "facts": {
    "anchors": [
     {
@@ -7637,12 +7637,13 @@
       "amoeba/config/prompts/__init__.py::resolve",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/localtools/gate.py::inside",
+      "amoeba/localtools/gate.py::readonly_root",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
      ],
-     "doc": "(reason, what matched) for a Bash command that must not run, or None.",
+     "doc": "(reason, what matched) for a Bash command that must not run, or None. readonly: in the sandbox, the config",
      "key": "amoeba/localtools/gate.py::screen_command",
-     "signature": "screen_command(command: str, workspace: Path) -> tuple[str, str] | None"
+     "signature": "screen_command(command: str, workspace: Path, readonly: dict | None=None) -> tuple[str, str] | None"
     },
     {
      "callees": [
@@ -7829,6 +7830,30 @@
     {
      "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/localtools/skills.py::skill_root_path",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D103: where a skill sits in the sandbox image (the `baked` clone is copied to `image_root`), or None when the",
+     "key": "amoeba/localtools/skills.py::sandbox_skill_path",
+     "signature": "sandbox_skill_path(entry: dict, image_root: str='/opt/skills', baked: str='anthropics_skills') -> Path | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D103: the folder of the root a skill entry was listed from. `root` is the root's label (the clone's folder",
+     "key": "amoeba/localtools/skills.py::skill_root_path",
+     "signature": "skill_root_path(entry: dict) -> Path | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/memory/recipes.py::RecipeStore.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -7896,7 +7921,7 @@
     [
      "decide",
      "if boxed",
-     "set rel = Path(entry['path']).resolve().relative_to(Path(entry['root']).resolve()) if Path(ent"
+     "set dest = sandbox_skill_path(entry)"
     ],
     [
      "decide",
@@ -8035,11 +8060,6 @@
     ],
     [
      "fallback",
-     "Path(entry['path']).resolve().relative_to(Path(entry['root']).resolve()) if Path(entry['path']).resolve().is_relative_to(Path(entry['root']).resolve()) else None",
-     "choose value"
-    ],
-    [
-     "fallback",
      "SANDBOX_WORKSPACE + raw[len(ws):] if boxed and raw.startswith(ws) else raw",
      "choose value"
     ],
@@ -8126,6 +8146,11 @@
     [
      "fallback",
      "except ValueError",
+     "return None"
+    ],
+    [
+     "fallback",
+     "except ValueError",
      "return True"
     ],
     [
@@ -8186,6 +8211,11 @@
     [
      "fallback",
      "real if real == ws or ws in real.parents else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "sandbox_config(self.setup.config) if boxed else None",
      "choose value"
     ],
     [
@@ -8265,6 +8295,11 @@
     ],
     [
      "filter",
+     "keep only if p.name == entry.get('root')",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if s['id'] == entry['id']",
      "drop the rest"
     ],
@@ -8335,6 +8370,11 @@
     ],
     [
      "reject",
+     "if readonly is not None and readonly_root(p, readonly)",
+     "skip (continue)"
+    ],
+    [
+     "reject",
      "if self.loop is None or self.session is None",
      "raise LocalServerError"
     ],
@@ -8362,6 +8402,21 @@
      "stop",
      "if data is None",
      "return None"
+    ],
+    [
+     "stop",
+     "if dest is None",
+     "return False"
+    ],
+    [
+     "stop",
+     "if entry.get('root') != baked or root is None",
+     "return None"
+    ],
+    [
+     "stop",
+     "if entry.get('root_path')",
+     "return Path(entry['root_path'])"
     ],
     [
      "stop",
@@ -8455,11 +8510,6 @@
     ],
     [
      "stop",
-     "if rel is None or 'anthropics_skills' not in str(entry['root'])",
-     "return False"
-    ],
-    [
-     "stop",
      "if self.calls >= int(self.lim['max_calls_per_run'])",
      "return self.refuse(tool, 'run_cap', f\"{self.lim['max_calls_per_run']} calls per run\", what)"
     ],
@@ -8531,8 +8581,8 @@
    "prompts": {},
    "title": "Local toolbox (OpenShell sandbox, D96)"
   },
-  "facts_hash": "d570a7534e2f2905",
-  "seed_hash": "b046f43989267180",
+  "facts_hash": "d90508d20b90292f",
+  "seed_hash": "f5ea01f1f47dd7e0",
   "sentence": "With --local-tools on, Claude Code's tools and skills run in a fresh OpenShell sandbox per run: no network, only the workspace writable.",
   "source": "hand",
   "what": [
@@ -8540,7 +8590,8 @@
    "The harness gate refuses first what it can see: network commands, paths outside the workspace, writes to MCP configs, hooks, settings, CLAUDE.md or skills (protected_config); what a command hides is stopped by the sandbox. Files are copied back to runs/<id>/workspace/ after each call.",
    "Limits: 300 s per command (D96a), 1 CPU, 1 GiB, one hour per run, 8,000 characters of output, 20 calls per step and 60 per run; a niche profile can set its own sandbox limits (D102).",
    "--local-tools-mode sandbox is the default; inprocess (the earlier host process) runs only when asked for and needs AMOEBA_SANDBOX=1. Every allow and deny decision goes to the trace and from there to events.jsonl (tool_decisions); a live test shows the agent cannot reach the OpenShell gateway API.",
-   "Skills are listed only from the kept anthropics/skills clone; an attached skill's SKILL.md goes on the helper's card. Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first (D61)."
+   "Skills are listed only from the kept anthropics/skills clone; an attached skill's SKILL.md goes on the helper's card. Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first (D61).",
+   "D103: in the sandbox a pool skill maps to /opt/skills/<name> (the entry's root is a label; its folder is root_path), and Bash may name /opt/skills read-only so the skill's scripts run; writing there is refused."
   ]
  },
  "loop": {
