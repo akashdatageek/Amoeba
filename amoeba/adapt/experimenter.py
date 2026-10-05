@@ -30,6 +30,8 @@ from pydantic import BaseModel, Field
 
 from amoeba.adapt.recipe import Edit, Recipe, adapt_config, apply_edit, write_store
 from amoeba.adapt.stream import Stream, StreamTask, dump_task_line
+from amoeba.config.proxy import refresh_proxy
+from amoeba.task.models import infra_error
 
 RULE_OPS = ("add_planner_rule", "remove_planner_rule")
 DRAFT_ROLES = ("interpreter", "planner", "agent_observer", "plan_observer")   # D98: a model preference for these
@@ -40,6 +42,13 @@ DRAFT_ROLES = ("interpreter", "planner", "agent_observer", "plan_observer")   # 
 def changes_draft(op: str, params: dict | None = None) -> bool:
     """Arm B needs its own draft: the edit changes what Box 1/2 read or which model drafts."""
     return op in RULE_OPS or (op == "prefer_model" and (params or {}).get("role") in DRAFT_ROLES)
+# box: exp_runners
+def infra_cfg() -> dict:
+    """D111: adapt.yaml `infra` — retries of a run that ended in an infrastructure error, and whether such runs are
+    left out of the pairs, the Monitor and the Gate's reliability rule."""
+    return {"retries": 2, "exclude": True, **(adapt_config().get("infra") or {})}
+
+
 CALIBRATION_SEED_OFFSET = 1000          # arm A′ of the noise-floor calibration uses seed k + this
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -76,8 +85,13 @@ class RunRecord(BaseModel):
     flags: dict = Field(default_factory=dict)       # D84b: honesty signals by kind (honesty_parts)
 
     def crashed(self) -> bool:
-        """An error that is not the team's doing (model service, cache) — the run is redone once."""
-        return not self.run_dir or str(self.error or "").startswith(("api:", "cache_miss", "runner:"))
+        """D111: an infrastructure error (model service, connection or proxy, cache, no result) — not the team's
+        doing; the run is redone up to adapt.yaml infra.retries times and never scored."""
+        return not self.run_dir or infra_error(self.error)
+
+    @property
+    def status(self) -> str:
+        return "infra_error" if self.crashed() else ("agent_error" if self.error else "ok")
 
 
 # box: experimenter
@@ -122,6 +136,7 @@ class ReplayResult(BaseModel):
     pairs: list[Pair] = Field(default_factory=list)
     arm_a_cache_hits: int = 0
     runs: int = 0
+    excluded: list[dict] = Field(default_factory=list)   # D111: (task, k) left out: an arm ended in an infra error
 
     def post(self) -> list[Pair]:
         return [p for p in self.pairs if p.phase == "post"]
@@ -147,7 +162,7 @@ def honesty_parts(run_dir: str | Path) -> dict:
         out["mislabelled_citations"] += len(s.get("mislabelled_citations") or [])
         out["claimed_files_missing"] += len(s.get("claimed_files_missing") or [])
         out["unverified_checks"] += 1 if s.get("unverified_check") else 0
-    out["error"] = 1 if r.get("error") else 0
+    out["error"] = 1 if r.get("error") and not infra_error(r.get("error")) else 0   # D111: agent errors only
     return out
 
 
@@ -216,8 +231,7 @@ def finished_run(out: Path) -> Path | None:
     """D73 resume: the newest run folder under `out` that has a result.json and did not crash."""
     runs = sorted((p for p in out.glob("*/result.json")), key=lambda p: p.stat().st_mtime) if out.exists() else []
     for p in reversed(runs):
-        err = str(json.loads(p.read_text(encoding="utf-8")).get("error") or "")
-        if not err.startswith(("api:", "cache_miss")):
+        if not infra_error(json.loads(p.read_text(encoding="utf-8")).get("error")):
             return p.parent
     return None
 
@@ -246,13 +260,17 @@ class InProcessRunner:
             if done is not None:
                 out.append(record_of(job, done))
                 continue
-            tools, _, _ = disable_tools(job.disabled_tools, self.tools())
-            saved = pick(load_saved_drafts(job.drafts_from), job.task.id, 0) if job.drafts_from else None
-            kw = {"draft_prompts": "d24", "plan_options": PlanOptions(), **self.run_kw}
-            r = run_one(job.task.as_task(), "plan", self.llm_for(job), Envelope.from_registry(tools), tools, job.out,
-                        seed=job.seed, saved_draft=saved, recipe=load_recipe(job.store, job.task.family),
-                        disabled_tools=job.disabled_tools, **kw)
-            out.append(record_of(job, job.out / r.run_id))
+            for attempt in range(1 + int(infra_cfg()["retries"])):      # D111: an infra error is run again
+                tools, _, _ = disable_tools(job.disabled_tools, self.tools())
+                saved = pick(load_saved_drafts(job.drafts_from), job.task.id, 0) if job.drafts_from else None
+                kw = {"draft_prompts": "d24", "plan_options": PlanOptions(), **self.run_kw}
+                r = run_one(job.task.as_task(), "plan", self.llm_for(job), Envelope.from_registry(tools), tools,
+                            job.out, seed=job.seed, saved_draft=saved, recipe=load_recipe(job.store, job.task.family),
+                            disabled_tools=job.disabled_tools, **kw)
+                rec = record_of(job, job.out / r.run_id)
+                if not rec.crashed():
+                    break
+            out.append(rec)
         return out
 
 
@@ -284,19 +302,25 @@ class SubprocessRunner:
         return cmd
 
     def _one(self, job: Job) -> RunRecord:
-        for attempt in (1, 2):
+        retries = int(infra_cfg()["retries"])
+        for attempt in range(1 + retries):                  # D111: an infra error is run again, at most `retries` times
             done = finished_run(job.out)
             if done is not None:
                 return record_of(job, done)
             job.out.mkdir(parents=True, exist_ok=True)
+            env = self.env if self.env is not None else os.environ.copy()
+            if refresh_proxy(env) is not None:                # D111: a run never starts on a proxy that moved
+                self.log(f"[proxy] {job.task.id} k{job.k}: the proxy moved; this run gets the new one")
             t0 = time.time()
             with open(job.out / "run_task.log", "a", encoding="utf-8") as fh:
-                rc = subprocess.run(self.command(job), cwd=ROOT, env=self.env or os.environ.copy(), stdout=fh,
+                rc = subprocess.run(self.command(job), cwd=ROOT, env=env, stdout=fh,
                                     stderr=subprocess.STDOUT).returncode
             runs = sorted(job.out.glob("*/result.json"), key=lambda p: p.stat().st_mtime)
             rec = record_of(job, runs[-1].parent if runs else None, None if runs else f"runner: rc={rc}")
             self.log(f"[{job.arm}] {job.task.id} k{job.k} score={rec.score} tokens={rec.tokens} "
-                     f"error={rec.error} {int(time.time() - t0)}s" + (" (re-run after a crash)" if attempt == 2 else ""))
+                     f"error={rec.error} {int(time.time() - t0)}s" + (f" (retry {attempt} of {retries} after an "
+                                                                   "infra error)" if attempt else "")
+                     + (" status=infra_error" if rec.crashed() else ""))
             if not rec.crashed():
                 break
         if self.on_done is not None:
@@ -394,6 +418,23 @@ def _pair(t: StreamTask, k: int, a: RunRecord, b: RunRecord, shared_draft: bool 
 
 
 # box: experimenter
+def _scored_pairs(tasks: list[StreamTask], repeats: int, a: dict, b: dict, shared_draft: bool = False) -> tuple:
+    """D111: the pairs to score, and the (task, k) left out because an arm still ended in an infra error after its
+    retries (adapt.yaml infra.exclude; off, they are paired as before, scored 0)."""
+    pairs, excluded = [], []
+    for t in tasks:
+        for k in range(repeats):
+            ra, rb = a[(t.id, k)], b[(t.id, k)]
+            bad = [(arm, r) for arm, r in (("A", ra), ("B", rb)) if r.crashed()]
+            if bad and infra_cfg()["exclude"]:
+                excluded.append({"task_id": t.id, "phase": t.phase, "k": k, "status": "infra_error",
+                                 "arms": {arm: r.error for arm, r in bad}})
+                continue
+            pairs.append(_pair(t, k, ra, rb, shared_draft))
+    return pairs, excluded
+
+
+# box: experimenter
 def _rel(p: str) -> str:
     try:
         return str(Path(p).resolve().relative_to(ROOT))
@@ -431,10 +472,10 @@ def replay(recipe_A: Recipe, recipe_B: Recipe, hypothesis_id: str, stream: Strea
                             drafts_from=Path(ra.run_dir) if same_draft and ra.run_dir else None,
                             disabled_tools=heldout_disabled(stream, t)))
     b = {(r.task_id, r.k): r for r in runner.run(jobs)}
+    pairs, excluded = _scored_pairs(tasks, repeats, a, b, same_draft)
     res = ReplayResult(hypothesis_id=hypothesis_id, family=recipe_A.family, recipe_from=recipe_A.version,
                        recipe_to=recipe_B.version, recipe_A_hash=recipe_A.hash(), recipe_B_hash=recipe_B.hash(),
-                       edit=edit, mode="same_draft" if same_draft else "own_draft",
-                       pairs=[_pair(t, k, a[(t.id, k)], b[(t.id, k)], same_draft) for t in tasks for k in range(repeats)],
+                       edit=edit, mode="same_draft" if same_draft else "own_draft", pairs=pairs, excluded=excluded,
                        arm_a_cache_hits=hits, runs=len(jobs) + (len(tasks) * repeats - hits))
     write_result(exp, res)
     return res
@@ -448,10 +489,10 @@ def calibrate(recipe_A: Recipe, stream: Stream, runner, root: str | Path, repeat
     tasks = stream.heldout(recipe_A.family, "post")
     a, hits = _arm_a(stream, recipe_A, root, tasks, repeats, runner)
     a2, hits2 = _arm_a(stream, recipe_A, root, tasks, repeats, runner, seed_offset=CALIBRATION_SEED_OFFSET, arm="A'")
+    pairs, excluded = _scored_pairs(tasks, repeats, a, a2)
     res = ReplayResult(kind="calibration", hypothesis_id=f"calibration-{recipe_A.family}-v{recipe_A.version}",
                        family=recipe_A.family, recipe_from=recipe_A.version, recipe_to=None,
-                       recipe_A_hash=recipe_A.hash(), mode="calibration",
-                       pairs=[_pair(t, k, a[(t.id, k)], a2[(t.id, k)]) for t in tasks for k in range(repeats)],
+                       recipe_A_hash=recipe_A.hash(), mode="calibration", pairs=pairs, excluded=excluded,
                        arm_a_cache_hits=hits + hits2, runs=2 * len(tasks) * repeats - hits - hits2)
     write_result(root / "experiments" / res.hypothesis_id, res)
     return res

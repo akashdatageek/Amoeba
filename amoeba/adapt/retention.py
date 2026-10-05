@@ -41,7 +41,8 @@ def retention_due(records, family: str, every: int) -> int | None:
 
 # box: retention
 def _mean_score(got: dict) -> float:
-    return round(mean(r.score or 0.0 for r in got.values()), 4) if got else 0.0
+    ok = [r for r in got.values() if not r.crashed()]           # D111: an infra error is never a score
+    return round(mean(r.score or 0.0 for r in ok), 4) if ok else 0.0
 
 
 # box: retention

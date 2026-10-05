@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 
 from amoeba.adapt.architect import MAX_PER_ALARM, log_unresolved, propose
 from amoeba.adapt.diagnoser import diagnose, diagnose_none
-from amoeba.adapt.experimenter import Job, experiment
+from amoeba.adapt.experimenter import Job, experiment, infra_cfg
 from amoeba.adapt.gate import alpha_for, cfg as gate_cfg, decide, decision_row, rollback_watch
 from amoeba.adapt.ledger import Ledger
 from amoeba.adapt.monitor import LoopState, PracticeRecord, monitor, practice_record
@@ -150,15 +150,23 @@ def run_loop(stream: Stream, runner, root: str | Path, llm_for: Callable[[str], 
         todo = [t for t in tasks if t.order not in done]
         for t, rec in zip(todo, runner.run(practice_jobs(todo, stream, store, root)) if todo else []):
             v = store.current_or_seed(t.family).version
-            pr = practice_record(t, rec.run_dir, v) if rec.run_dir else \
-                PracticeRecord(order=t.order, task_id=t.id, family=t.family, score=None, error=rec.error,
-                               recipe_version=v)
+            if rec.crashed() and infra_cfg()["exclude"]:      # D111: still infra after its retries — logged, not scored
+                pr = PracticeRecord(order=t.order, task_id=t.id, family=t.family, run_dir=rec.run_dir or "",
+                                    score=None, error=rec.error or "runner: no result", recipe_version=v,
+                                    status="infra_error")
+                ev.append("infra_error", {"order": t.order, "task_id": t.id, "error": pr.error},
+                          [rec.run_dir] if rec.run_dir else [], key=f"infra:practice:{t.order}")
+            else:
+                pr = practice_record(t, rec.run_dir, v) if rec.run_dir else \
+                    PracticeRecord(order=t.order, task_id=t.id, family=t.family, score=None, error=rec.error,
+                                   recipe_version=v)
             io.add(pr)
             done[t.order] = pr
             ev.append("practice_run", pr.model_dump(), [rec.run_dir] if rec.run_dir else [], key=f"practice:{t.order}")
             if rec.run_dir:
                 run_finished(ev, root, Path(rec.run_dir), shipper)
-            log(f"[practice] #{t.order} {t.id} v{v} score={pr.score} failed={pr.failed_items} error={pr.error}")
+            log(f"[practice] #{t.order} {t.id} v{v} score={pr.score} failed={pr.failed_items} error={pr.error}"
+                + (" status=infra_error (not scored)" if pr.status == "infra_error" else ""))
         if todo:
             ship()
 

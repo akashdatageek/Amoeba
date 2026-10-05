@@ -31,7 +31,7 @@ from amoeba.memory.context import load_context, standards_slots
 from amoeba.interp.trace import TracedLLM
 from amoeba.task.evaluate import rubric_score, score
 from amoeba.task.instantiate import instantiate
-from amoeba.task.models import RunResult, Task
+from amoeba.task.models import RunResult, Task, run_status
 from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
 from amoeba.interp.provenance import total as total_provenance
@@ -279,7 +279,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         replan=ep.replan if ep else {},
         interpretation=interpretation_of(interp, stated),
         pool=pool_summary, disabled_tools=list(disabled_tools) or None, recipe=recipe_rec, family=family_rec,
-        routing=llm.summary() if hasattr(llm, "summary") and hasattr(llm, "registry") else None, **local_out)
+        routing=llm.summary() if hasattr(llm, "summary") and hasattr(llm, "registry") else None,
+        status=run_status(error), **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
@@ -792,7 +793,7 @@ def main(argv: list[str] | None = None) -> int:
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
-              f"rounds={r.draft_rounds} consensus={r.consensus} error={r.error} answer={shown!r}")
+              f"rounds={r.draft_rounds} consensus={r.consensus} status={r.status} error={r.error} answer={shown!r}")
         print(f"    {describe(r.usage)}")                                                    # D47
     unmapped = sorted({n for r in results for n in r.unmapped_capabilities})
     if unmapped:   # D29: extend amoeba/capabilities/aliases.yaml with these

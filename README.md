@@ -499,6 +499,14 @@ what is allowed. Code enforces the rest: Box 3 refuses any tool outside the prof
 refuses any model outside it, and the domain checks earn a retry turn when they fail. Two profiles ship today:
 `general`, and `calc` (every final figure must be reproducible by calc from the task's numbers).
 
+## Infrastructure errors (D111)
+
+Every result.json records a `status`: `ok`, `agent_error`, or `infra_error`. An infra error is one that is not the team's doing: the model service still failing after the client's retries (a dropped connection, a timeout, a proxy that moved, 429 or 5xx), a replay-cache miss, or a run that left no result. A 400, 413 or 422 comes from what the team sent, so it stays the team's.
+
+An infra-error run is never a score. The Experimenter and the loop run it again, at most twice (`amoeba/config/adapt.yaml` `infra.retries`). If it still fails, it is left out of the pairs (listed in `experiment.json` under `excluded`), out of the Monitor's window and out of the Gate's reliability rule, which counts agent errors only. Each case is logged.
+
+If your HTTPS proxy can move (a cloud session restart does this), set `AMOEBA_PROXY_FILE` to a file that always holds the current proxy. On a dropped connection the client reads it and reconnects through the new proxy, and each new run starts with it.
+
 ## Cost controls (D45–D48)
 
 ```bash

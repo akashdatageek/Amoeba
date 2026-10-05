@@ -40,6 +40,7 @@ class PracticeRecord(BaseModel):
     declared: list[str] = Field(default_factory=list)        # D93: causes only the model's own words support
     recipe_version: int = 1
     error: str | None = None
+    status: str | None = None                                # D111: infra_error = not scored, not watched
 
     def signals(self) -> set[str]:
         return set(self.causes) | {f"feedback:{i}" for i in self.failed_items}
@@ -97,7 +98,8 @@ def _rate(recs: list[PracticeRecord], sig: str) -> float:
 def monitor(records: list[PracticeRecord], state: LoopState) -> Alarm | None:
     """Box 4 after the family's latest practice run. A score alarm wins over a cause alarm (both are reported)."""
     c = adapt_config()["monitor"]
-    recs = sorted((r for r in records if r.family == state.family), key=lambda r: r.order)
+    recs = sorted((r for r in records if r.family == state.family and r.status != "infra_error"),   # D111
+                  key=lambda r: r.order)
     W = int(c["window"])
     if len(recs) < W or recs[-1].order <= state.quiet_until:
         return None

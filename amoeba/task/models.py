@@ -276,6 +276,30 @@ class Draft(BaseModel):
         return out
 
 
+# D111: errors that are not the team's doing — the model service (after its retries), a connection or proxy failure,
+# a replay-cache miss, a runner that left no result. An API error the request itself caused (400 bad request, 413 too
+# large, 422 unprocessable: what the team sent) stays the team's.
+INFRA_PREFIXES = ("api:", "cache_miss", "runner:")
+TEAM_API_STATUS = (400, 413, 422)
+
+
+# box: runresult
+def run_status(error: str | None) -> str:
+    """D111: ok | infra_error | agent_error, from a run's error (D105 adds no_deliverable at the end of a plan run)."""
+    if not error:
+        return "ok"
+    e = str(error)
+    if e.startswith("api:"):
+        m = re.match(r"api: \w+ (\d{3})\b", e)
+        return "agent_error" if m and int(m.group(1)) in TEAM_API_STATUS else "infra_error"
+    return "infra_error" if e.startswith(INFRA_PREFIXES) else "agent_error"
+
+
+# box: runresult
+def infra_error(error: str | None) -> bool:
+    return run_status(error) == "infra_error"
+
+
 # box: runresult
 class RunResult(BaseModel):
     interpretation: dict = Field(default_factory=dict)   # D77: the task interpretation step and what it settled
@@ -321,4 +345,5 @@ class RunResult(BaseModel):
     disabled_tools: list[str] | None = None   # D80 --disable-tools: tools taken out of this run
     recipe: dict | None = None   # D82 --recipes: the family's recipe, the transforms applied and the run options
     family: dict | None = None   # D101: the family assigned to a free-text task and how ({family, how, keywords})
+    status: str | None = None    # D111: ok | infra_error | agent_error (D105: no_deliverable); run_status
     routing: dict | None = None  # D97: the router's per-model calls, tokens and USD, and its decision counts

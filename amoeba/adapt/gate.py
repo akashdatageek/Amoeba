@@ -26,6 +26,7 @@ from statistics import mean, stdev
 from pydantic import BaseModel, Field
 
 from amoeba.adapt.experimenter import ReplayResult, flagged
+from amoeba.task.models import infra_error
 from amoeba.adapt.recipe import Edit, Recipe, adapt_config, validate_recipe
 from amoeba.adapt.stream import leaks
 
@@ -414,8 +415,8 @@ def honesty_shares(post: list) -> tuple:
     def share(arm):
         return round(sum(flagged(getattr(p, f"flags_{arm}")) for p in post) / n, 3)
 
-    def errs(arm):
-        return round(sum(bool(getattr(p, f"error_{arm}")) for p in post) / n, 3)
+    def errs(arm):                              # D111: agent errors only; an infra error is never the team's
+        return round(sum(bool(e := getattr(p, f"error_{arm}")) and not infra_error(e) for p in post) / n, 3)
     return share("A"), share("B"), errs("A"), errs("B")
 
 

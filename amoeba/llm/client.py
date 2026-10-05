@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Callable
 
+from amoeba.config.proxy import refresh_proxy
+
 Messages = list[dict[str, str]]
 
 
@@ -73,6 +75,7 @@ class OpenAICompatibleClient(LLMClient):
 
         # D48: the SDK's own retries are off; rate limits are retried below, where each wait is recorded
         self._client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
+        self._connect = lambda: OpenAI(api_key=api_key, base_url=base_url, max_retries=0)   # D111: rebuilt on a new proxy
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -127,6 +130,9 @@ class OpenAICompatibleClient(LLMClient):
                 wait = after if after is not None else min(60.0, 2.0 * 2 ** len(retries))
                 retries.append({"status": status, "wait_s": wait, "attempt": len(retries) + 1,
                                 "retry_after": after, "error": lost})
+                if lost == "connection" and refresh_proxy() is not None:   # D111: the proxy moved; reconnect
+                    self._client = self._connect()
+                    retries[-1]["proxy_refreshed"] = True
                 self._sleep(wait)
                 self._last_call = time.monotonic()
         usage = getattr(resp, "usage", None)

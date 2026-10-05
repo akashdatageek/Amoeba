@@ -34,6 +34,11 @@ experiment:                   # D83: Box 7
               "--max-tokens-per-run", "400000", "--max-calls-per-run", "150"]
   option_defaults: {replan: "on", self_refine: "on-issues", collab: "critique"}
 
+infra:                        # D111: a run that ended in an infrastructure error (model service after its retries,
+                              # connection or proxy, cache miss, no result) is status infra_error, never a score
+  retries: 2                  # the Experimenter and the loop run it again at most this many times
+  exclude: true               # still infra after that: left out of the pairs, the Monitor and Gate rule 5b (logged)
+
 gate:                         # D84: Box 8, decision rules in order (spec §9.2); any failure rejects
   version: "v3"               # D84b: v1 = Stage A (rule 5 summed flags, errors included); v2 = rules 5 and 5b below;
                               # D91: v3 = rule 2 on per-task means, permutation test, fixed budget, no rule 3
