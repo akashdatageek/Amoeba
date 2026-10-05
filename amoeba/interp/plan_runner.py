@@ -18,7 +18,8 @@ from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.citecheck import mislabelled_citations
-from amoeba.interp.dates import dated_finding, undated_figures
+from amoeba.interp.dates import undated_figures
+from amoeba.task.deliverables import final_findings
 from amoeba.interp.disputes import disputed_figures, disputes_text, replace_figure, settle
 from amoeba.interp.replan_method import failed_method, failed_methods_text, method_change, replaces
 from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_values, numbers_in,
@@ -84,6 +85,10 @@ class PlanOptions:
     # period); missing → the refine turn, then listed in Limitations. The CLI default is on; this library default
     # keeps the earlier behaviour.
     dated: str = "off"
+    # D105 (amended): on = after the summariser, plain code checks each Box 2 requirement and each promised file
+    # against the FINAL answer and the workspace (with D110's dates: one final-answer requirement check); missing →
+    # the refine turn, then Limitations, and no_deliverable when a core deliverable is missing. CLI default on.
+    final_check: str = "off"
     # D104: on = the citation check (D74) leaves out calculation results shown on the line, powers and year ranges.
     # The CLI default is on; this library default keeps the earlier behaviour.
     cite_arithmetic: str = "off"
@@ -586,6 +591,7 @@ class PlanRunner:
         self.mislabelled: dict[int, list] = {}            # D74: step -> its mislabelled citations (latest version)
         self.disputes: dict[int, list] = {}               # D109: verify step -> its disagreements still open
         self.undated: list[dict] = []                     # D110: web-sourced figures of the answer without a date
+        self.final: dict = {}                             # D105 + D110: the final-answer requirement check
         self.max_num = max((number(s) for s in cfg.plan), default=0)
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
@@ -1018,9 +1024,9 @@ class PlanRunner:
         found = self.contract_check(contract, w, text) if contract else None                # D61 (G1, G2)
         produced = self.answer_gaps(n, text) if on and answer_step else None               # D61 (G5)
         items = (self.contract_findings(found) if found else []) + (self.answer_findings(produced) if produced else [])
-        dated = answer_step and self.opt.dated == "on"
-        if dated and (undated := undated_figures(text, self.web_ids())):          # D110: earns the refine turn
-            items = items + [dated_finding(undated)]
+        final = answer_step and (self.opt.final_check == "on" or self.opt.dated == "on")
+        if final and (missing := final_findings(self.final_answer_check(text))):  # D105 + D110: earns the refine turn
+            items = items + missing
         refine = self.refine(step, n, agents, inputs, extra, w, template, checks, prov, items)   # D42 / D50 / D61
         if refine:
             exact = computed_values(self.computed_results(w))
@@ -1042,8 +1048,14 @@ class PlanRunner:
                                           "amoeba.findings": len(refine["findings"]),
                                           **{f"amoeba.before.{k}": v for k, v in refine["before"].items()},
                                           **{f"amoeba.after.{k}": v for k, v in refine["after"].items()}})
-        if dated:                                       # D110: still undated after the refine turn → Limitations
-            self.undated = undated_figures(text, self.web_ids())
+        if final:                                       # still missing after the refine turn → Limitations
+            self.final = self.final_answer_check(text)
+            self.undated = self.final["undated"]
+            self.ep.final_check = self.final
+            self.i.trace.event("final_check", {"amoeba.step": n, "amoeba.unmet": self.final["unmet"],
+                                               "amoeba.files_missing": self.final["files_missing"],
+                                               "amoeba.undated": len(self.undated),
+                                               "amoeba.core_missing": self.final["core_missing"]})
             if self.undated:
                 self.i.trace.event("undated_figures", {"amoeba.step": n, "amoeba.count": len(self.undated),
                                                        "amoeba.figures": self.undated[:10]})
@@ -1211,6 +1223,18 @@ class PlanRunner:
             return []
         from amoeba.checks import run_checks
         return run_checks(["xlsx_formulas"], text, {"xlsx_files": books, "task": self.task.prompt, "step": n})
+
+    # box: plan_summary
+    def final_answer_check(self, text: str) -> dict:
+        """D105 + D110 (amended): the final answer against Box 2's requirements, the promised files against the
+        workspace, and the dates of its web-sourced figures."""
+        from amoeba.task.deliverables import final_check
+        texts = {**{f"step {number(s)} output": s.output for s in self.cfg.plan if s.output},
+                 **{f"requirement {k}": v for k, v in (self.cfg.requirements or {}).items()}}
+        made = [Path(f["path"]).name for f in self.files_of()] if self.local is not None else None
+        undated = undated_figures(text, self.web_ids()) if self.opt.dated == "on" else []
+        return final_check(text, self.cfg.requirements or {}, texts, made, undated,
+                           check_requirements=self.opt.final_check == "on")
 
     @staticmethod
     def computed_results(w: "_Work") -> list[str]:
@@ -1520,6 +1544,15 @@ class PlanRunner:
                     where = f"; it is in {', '.join(x['found_in'])}" if x["found_in"] else ""
                     lines.append(f"- Mislabelled citation: step {d} cites {x['source']} for {x['claim']!r}, which "
                                  f"{x['source']} does not contain{where} (added by plain code)")
+        for r in getattr(self, "final", {}).get("unmet", []):                    # D105: checked on the final answer
+            x = self.final["requirements"][r]
+            if not re.search(rf"\b{re.escape(r)}\b[^\n]*not met", section, re.I):
+                why = "marked BLOCKED" if x["status"] == "blocked" else \
+                    f"file not made: {', '.join(x['files_missing'])}" if x["files_missing"] else "the final answer does not cover it"
+                lines.append(f"- NOT MET: {r} — {x['text'][:160]} ({why}; checked by plain code on the final answer)")
+        for f in getattr(self, "final", {}).get("files_missing", []):
+            if f.lower() not in section:
+                lines.append(f"- MISSING FILE: {f} (promised by the plan, not in the workspace; checked by plain code)")
         if "undated" not in section:                                             # D110: no date after the refine
             for u in self.undated[:8]:
                 lines.append(f"- UNDATED: {u['figure']} [{', '.join(u['sources'])}] — the source's date (publication or "
@@ -2206,6 +2239,10 @@ class PlanRunner:
             out[r] = {"status": "met" if done else "partly" if cover else "not met", "steps": done or cover}
             if not cover:
                 out[r]["why"] = "no step that ran covers it"
+        for r, x in (getattr(self, "final", {}).get("requirements") or {}).items():   # D105: the final answer decides
+            if r in out:
+                out[r] = {**out[r], "steps_claim": out[r]["status"],
+                          "status": "met" if x["status"] == "met" else "not met", "final_answer": x["status"]}
         return out
 
     def replan_summary(self) -> dict:

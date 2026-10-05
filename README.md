@@ -515,11 +515,15 @@ Every disagreement goes to a resolver. This is one separate, fresh call whose on
 
 A settled value that differs from the worker's replaces the wrong one in the producer's output, so later steps and the answer use it. An unresolved figure keeps the step from PASS: the step is partial, the verdict is recorded as `DISPUTED`, and both values are listed in the answer's Limitations. Every dispute and resolution is logged. `--disputes off` turns this off; it needs `--verify-first on`.
 
-## Missing deliverables (D105)
+## Final-answer requirement check (D105 + D110)
 
-After a plan run, plain code checks what the team owes: an answer with real content, and every file the plan promised. A promised file is one that a step's output or a requirement names (`income_real.csv`) or asks for by kind (a CSV file, an Excel workbook, a PNG chart, a Word memo). Files are checked only with `--local-tools on`.
+After the summariser writes the answer, plain code checks the final answer, not what the steps claimed:
 
-If something is missing, the run ends with `error: "no_deliverable: …"` and `status: no_deliverable` instead of no error, and result.json lists what was promised and what is missing under `deliverables`. `--deliverable-check off` turns this off. The baselines are never checked.
+- each requirement from Box 2's list is covered (its key terms are in the answer, and no BLOCKED line is about it);
+- each file the plan promised is in the workspace (with `--local-tools on`);
+- every figure that cites a web source carries that source's date, on its line or in its source entry (D110).
+
+Anything missing gets the answer step one refine turn. What is still missing afterwards is listed in Limitations. The run ends with `status: no_deliverable` when a core deliverable is missing: no answer content, a promised file never made, or more than half of the requirements unmet. result.json's `requirement_status` is the result on the final answer. `--deliverable-check off` turns off the requirement and file part; `--dated-figures off` turns off the dates.
 
 ## Skills in the sandbox (D103)
 
@@ -542,10 +546,6 @@ With `--web-tools` and `--local-tools on`, every page and data file the web tool
 ## Re-plans that change the method (D108)
 
 With `--replan on`, the Action Observer may add or rewrite steps after a step fails. It is now shown how each failed step worked: the tools it used, the sites it read and its queries. A step it adds or rewrites for a failed step must change the method and say how in its text: a different tool, a different source type (a data file, an official source, an API, another site), or one search per entity, year or series. A step that repeats the method gets the whole decision rejected, and the rejection is logged with what was repeated. `--replan-method off` turns this off.
-
-## Dates on web figures (D110)
-
-Every figure in the final answer that cites a web source must carry that source's date: its publication date or the period its data covers. The date can sit on the figure's line or in the source's entry under Sources. Undated figures get the answer step one refine turn to add the dates. Any still undated afterwards are listed in the Limitations section by plain code. `--dated-figures off` turns this off.
 
 ## Citation check and arithmetic (D104)
 

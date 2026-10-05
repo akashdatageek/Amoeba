@@ -85,8 +85,10 @@ disagreement goes to a resolver, one fresh call that settles each figure by the 
 sandbox and writes value, evidence and verdict. Code checks the evidence; a settled value replaces the wrong one, and
 an unresolved one keeps the step from PASS and goes into the answer's Limitations (D109). The Action Observer may re-plan mid-run (D63); a step it
 adds for a failed one must change the method (a different tool, source type or a split query), else the re-plan is
-rejected (D108). The summariser writes the final answer. Every web-sourced figure in it must carry its source's date;
-undated ones earn a refine turn, then go into Limitations (D110).
+rejected (D108). The summariser writes the final answer. Then plain code runs one final-answer requirement check: each Box 2
+requirement against the final answer, each promised file against the workspace, and a date on every web-sourced
+figure. Missing items earn one refine turn; what is still missing goes into Limitations, and the run ends
+`no_deliverable` when a core deliverable is missing (D105 + D110).
 
 Research steps get help from plain code (D106): a packed search is split (one per place, year or quoted query), the
 top three results of each are read (official domains first), and data files a page links (.csv, .xlsx, .json) are
@@ -94,8 +96,8 @@ downloaded and parsed into tables. With local tools on, every page and table rea
 workspace's `sources/`, so analysts in the sandbox can compute from them (D107).
 
 At the end, plain code sets the run's `status` in result.json: `ok`, `agent_error`, `infra_error` (the model service
-or the network failed; never a score, D111) or `no_deliverable` (no answer content, or a file the plan promised was
-never made, D105).
+or the network failed; never a score, D111) or `no_deliverable` (a core deliverable missing from the final answer,
+D105). `requirement_status` records each requirement as checked on the final answer.
 
 **Who decides.** AI helpers act. Code runs the graph, runs every check, refuses tools outside the profile (logged as
 `niche_refused`), and records step status (done / partial / incomplete / blocked).

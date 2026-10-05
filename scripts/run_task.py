@@ -31,7 +31,7 @@ from amoeba.memory.context import load_context, standards_slots
 from amoeba.interp.trace import TracedLLM
 from amoeba.task.evaluate import rubric_score, score
 from amoeba.task.instantiate import instantiate
-from amoeba.task.deliverables import check_deliverables, no_deliverable_error
+from amoeba.task.deliverables import no_deliverable_of
 from amoeba.task.models import RunResult, Task, run_status
 from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
@@ -49,7 +49,7 @@ from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
-PHASE2_FIELDS = {"disabled_tools", "recipe", "routing", "deliverables"}           # left out of result.json when None (Phase 1 records unchanged)
+PHASE2_FIELDS = {"disabled_tools", "recipe", "routing", "deliverables", "requirement_status"}           # left out of result.json when None (Phase 1 records unchanged)
 
 
 # box: ov_leave, capreq, runresult
@@ -134,6 +134,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         trace.event("niche", {"amoeba.box": "niche", "amoeba.niche": prof.name, "amoeba.tools": prof.allowed_tools,
                               "amoeba.models": prof.allowed_models, "amoeba.checks": prof.checks,
                               "amoeba.done_when": prof.done_when})
+    if deliverable_check and topology == "plan":   # D105 + D110: the final-answer requirement check runs in Box 3
+        from dataclasses import replace as _replace
+        from amoeba.interp.plan_runner import PlanOptions
+        plan_options = _replace(plan_options or PlanOptions(), final_check="on")
     plan_options, recipe_turns, opts_applied, opts_cli = overlay_run_options(plan_options, recipe, cli_explicit)
     # --max-turns given on the command line wins over the recipe; a harness default (--option-defaults) yields to it
     max_turns = max_turns or recipe_turns or default_max_turns
@@ -263,12 +267,13 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     requested = requests + during
     (run_dir / "capability_requests.json").write_text(
         json.dumps([q.model_dump() for q in requested], indent=2, ensure_ascii=False), encoding="utf-8")
-    deliverables = None
-    if deliverable_check and topology == "plan" and error is None and cfg is not None:   # D105: what the team owes
-        texts = {**{f"step {s.index + 1} output": s.output for s in cfg.plan if s.output},
-                 **{f"requirement {k}": v for k, v in (cfg.requirements or {}).items()}}
-        deliverables = check_deliverables(answer, texts, local_out.get("files_created") if box is not None else None)
-        error = no_deliverable_error(deliverables)
+    deliverables = requirement_status = None
+    fc = getattr(ep, "final_check", None) if ep else None
+    if deliverable_check and topology == "plan" and fc:            # D105 + D110: the final-answer requirement check
+        deliverables = fc
+        requirement_status = {r: x["status"] for r, x in fc["requirements"].items()}
+        if error is None or error in ("partial", "incomplete"):
+            error = no_deliverable_of(fc) or error
     # D30: a task with a rubric and no single right answer is scored by the rubric fraction (Box 1, after the run)
     graded = rubric_score(answer, task.rubric) if task.rubric else None
     result = RunResult(
@@ -292,7 +297,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         interpretation=interpretation_of(interp, stated),
         pool=pool_summary, disabled_tools=list(disabled_tools) or None, recipe=recipe_rec, family=family_rec,
         routing=llm.summary() if hasattr(llm, "summary") and hasattr(llm, "registry") else None,
-        status=run_status(error), deliverables=deliverables, **local_out)
+        status=run_status(error), deliverables=deliverables, requirement_status=requirement_status, **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
@@ -441,6 +446,7 @@ def cli_plan_options(args: argparse.Namespace):
                        verify_first=getattr(args, "verify_first", "off"), disputes=getattr(args, "disputes", "off"),
                        replan_method=getattr(args, "replan_method", "off"), dated=getattr(args, "dated_figures", "off"),
                        cite_arithmetic=getattr(args, "cite_arithmetic", "off"),
+                       final_check=getattr(args, "deliverable_check", "off"),
                        xlsx_formulas=getattr(args, "xlsx_formulas", "off"), **extra)
 
 
