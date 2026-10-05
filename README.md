@@ -507,11 +507,13 @@ An infra-error run is never a score. The Experimenter and the loop run it again,
 
 If your HTTPS proxy can move (a cloud session restart does this), set `AMOEBA_PROXY_FILE` to a file that always holds the current proxy. On a dropped connection the client reads it and reconnects through the new proxy, and each new run starts with it.
 
-## Verifier disagreements (D109)
+## Verifier disagreements: the resolver (D109)
 
 A verify step first works out its own result without seeing the outputs it checks (D90). Plain code then pairs the figures of that blind result with the checked outputs' figures by their labels ("BEV purchase price", "electricity rate") and compares the values with the rubric's tolerance (5%).
 
-If a figure disagrees, the verify step is `disputed`. The producers get one rework turn that shows both values and where each came from, and the verifier checks again. If they still disagree, the step is partial, the verdict is recorded as `DISPUTED` even when the verifier wrote PASS, and both values are listed in the answer's Limitations. A figure the outputs never mention is not a disagreement. `--disputes off` turns this off; it needs `--verify-first on`.
+Every disagreement goes to a resolver. This is one separate, fresh call whose only job is to settle each disputed figure: by the source text the team was shown, by fetching the source again, by a calculation, or by re-running the code in the sandbox. For each figure it writes a value, its evidence (a quote from the source, or a command and its output) and a verdict. Plain code accepts a value only if the quote really is in the source and states the value, or the value is in the resolver's own tool output.
+
+A settled value that differs from the worker's replaces the wrong one in the producer's output, so later steps and the answer use it. An unresolved figure keeps the step from PASS: the step is partial, the verdict is recorded as `DISPUTED`, and both values are listed in the answer's Limitations. Every dispute and resolution is logged. `--disputes off` turns this off; it needs `--verify-first on`.
 
 ## Missing deliverables (D105)
 

@@ -243,6 +243,7 @@ class MockLLMClient(LLMClient):
         "plan_critic": "You are reviewing a teammate's draft for one step of a team plan",                 # D51
         "plan_worker": "You are carrying out one step of a team plan",                                     # D31
         "plan_verify_own": "You are checking steps of a team plan, and you first work out your own result",  # D90
+        "plan_resolve": "You settle disagreements between a team member and an independent check",           # D109
         "worker": "Based on prior agents' results and completed steps",
         "solver": "You are faced with the task",
         "critic": "Now the group is asking your opinion",

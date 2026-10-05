@@ -1,19 +1,25 @@
-"""D109 — the verifier's blind result against the worker's figures, by plain code.
+"""D109 (amended) — the disagreement resolver.
 
-A verify step first works out its own result without the outputs it checks (D90). Here plain code pairs the figures
-of that blind result with the figures of the checked outputs by their labels (the words before the number on its
-line, e.g. "BEV purchase price"), and compares the values with the rubric's tolerance (5% relative, or equal at the
-coarser precision written). A labelled figure of the blind result that the outputs state only with different values
-is a disagreement. Any disagreement makes the verify step `disputed`: the producers get one rework turn with both
-values shown; if they still disagree after it, the step is partial and both values go into the answer's Limitations.
-A PASS verdict never overrides a recorded disagreement. A figure the outputs do not state at all is not a
-disagreement (it stays in D90's `own_only`).
+A verify step first works out its own result without the outputs it checks (D90). Plain code pairs the figures of
+that blind result with the figures of the checked outputs by their labels (the words before the number on its line,
+e.g. "BEV purchase price") and compares the values with the rubric's tolerance (5% relative, or equal at the coarser
+precision written). A labelled figure the outputs state only with a different value is a disagreement.
+
+Every disagreement goes to the resolver: one separate, fresh call (plan_resolve.txt) whose only job is to settle each
+disputed figure against the source text the team was shown, a fresh fetch, a calculation, or a re-run in the sandbox.
+For each figure it writes a value, its evidence (a quote copied from the source, or a command and its output) and a
+verdict. Plain code disposes: a quote must be in the source text and state the value, or the value must be in the
+resolver's own tool output; otherwise the figure is unresolved. The value plain code accepts replaces the wrong one in
+the producer's output; an unresolved figure keeps the step from PASS, makes it partial and goes into Limitations.
+Every dispute and every resolution is logged. A figure the outputs do not state at all is not a disagreement (it stays
+in D90's `own_only`).
 """
 from __future__ import annotations
 
 import re
 
-from amoeba.interp.provenance import IDS, LIST_MARKER, NUM, TAG
+from amoeba.interp.citecheck import norm
+from amoeba.interp.provenance import IDS, LIST_MARKER, NUM, TAG, computed_values
 
 TOLERANCE = 0.05            # the rubric's default relative tolerance (RubricNumber.tolerance)
 MAX_DISPUTES = 10
@@ -95,10 +101,78 @@ def disputed_figures(own: str, outputs: dict[int, str], tolerance: float = TOLER
     return out[:MAX_DISPUTES]
 
 
+def _value(tok: str | None) -> tuple[float, int] | None:
+    m = NUM.search(tok or "")
+    if not m:
+        return None
+    bare = m.group(0).strip("$€£%").replace(",", "")
+    try:
+        return float(bare), len(bare.partition(".")[2])
+    except ValueError:
+        return None
+
+
 # box: step_check
-def dispute_text(disputes: list[dict]) -> str:
-    """The disagreements as rework issues: both values, where each comes from."""
-    return "\n".join(f"- DISPUTED {x['label']}: step {x['step']} says {x['worker']} (\"{x['worker_line']}\"); the "
-                     f"verifier's own result, worked out without your output, says {x['verifier']} "
-                     f"(\"{x['verifier_line']}\"). Recheck it with its source or a calculation, then either correct "
-                     f"it or show why your value is right." for x in disputes)
+def parse_resolution(text: str) -> dict[int, dict]:
+    """The resolver's blocks: figure number -> {value, evidence, verdict} (missing fields are empty)."""
+    out = {}
+    for m in re.finditer(r"(?ims)^\s*#*\s*figure\s+(\d+)\b(.*?)(?=^\s*#*\s*figure\s+\d+\b|\Z)", text or ""):
+        body = m.group(2)
+        field = lambda name: (re.search(rf"(?im)^\s*{name}\s*:\s*(.+)$", body) or [None, ""])[1].strip()
+        out[int(m.group(1))] = {"value": field("value"), "evidence": field("evidence"),
+                                "verdict": field("verdict").upper().split()[0] if field("verdict") else ""}
+    return out
+
+
+# box: step_check
+def settle(text: str, disputes: list[dict], sources: dict[str, str], tool_results: list[str]) -> list[dict]:
+    """Plain code's verdict on each disputed figure from the resolver's reply: worker (its value stands), verifier
+    (the check's value), corrected (a third value) or unresolved — only with evidence code can find."""
+    blocks, ran = parse_resolution(text), computed_values(tool_results)
+    out = []
+    for i, d in enumerate(disputes, 1):
+        r = blocks.get(i, {"value": "", "evidence": "", "verdict": ""})
+        got = _value(r["value"])
+        kind = None
+        if got is not None:
+            v, dv = got
+            for q in re.findall(r"[\"“]([^\"”]{4,400})[\"”]", r["evidence"]):
+                inside = [t for t in sources.values() if norm(q).strip(" .,;:") in norm(t)]
+                if inside and any(agree(v, dv, x, dx) for x, dx in filter(None, map(_value, NUM.findall(q)))):
+                    kind = "source"
+                    break
+            if kind is None and any(agree(v, dv, x, 6) for x in ran):
+                kind = "command"
+        verdict = "unresolved"
+        if kind is not None:
+            wv, cv = _value(d["worker"]), _value(d["verifier"])
+            verdict = "worker" if wv and agree(v, dv, *wv) else "verifier" if cv and agree(v, dv, *cv) else "corrected"
+        out.append({**{k: d[k] for k in ("label", "worker", "verifier", "step")},
+                    "value": r["value"][:60] if kind else None, "evidence": r["evidence"][:400],
+                    "evidence_kind": kind, "verdict": verdict, "verdict_model": r["verdict"] or None})
+    return out
+
+
+# box: step_check
+def disputes_text(disputes: list[dict], sources: dict[str, str]) -> str:
+    """What the resolver is shown: each disputed figure, both lines, and the source text behind them."""
+    blocks = []
+    for i, x in enumerate(disputes, 1):
+        ids = sorted(set(re.findall(r"S\d+", x["worker_line"] + " " + x["verifier_line"])), key=lambda s: int(s[1:]))
+        src = "\n".join(f"[{s}] {sources[s][:1500].strip()}" for s in ids if sources.get(s)) or \
+            "(no source text was cited for it: fetch it again, recompute it or re-run it)"
+        blocks.append(f"## Figure {i}: {x['label']}\nThe worker (step {x['step']}) wrote: {x['worker_line']}\n"
+                      f"The independent check wrote: {x['verifier_line']}\nSource text the team was shown:\n{src}")
+    return "\n\n".join(blocks)
+
+
+# box: step_check
+def replace_figure(text: str, line: str, old: str, new: str) -> tuple[str, bool]:
+    """The producer's output with `old` replaced by `new` on the line that starts like `line` (one place only)."""
+    key = line.strip()[:60]
+    out, done = [], False
+    for ln in (text or "").split("\n"):
+        if not done and key and ln.strip().startswith(key) and old in ln:
+            ln, done = ln.replace(old, new, 1), True
+        out.append(ln)
+    return "\n".join(out), done

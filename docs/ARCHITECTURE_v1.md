@@ -80,9 +80,10 @@ After every step, plain code checks the output:
 - for a step that made a workbook, that totals and derived cells are formulas (D113).
 
 A failed check earns one retry turn. A verify step first works out its own answer without seeing the outputs it
-checks, then compares (D90). Plain code pairs that blind answer's figures with the worker's by label; a disagreement
-earns the producers one rework turn with both values shown, and one still there makes the step partial and goes into
-the answer's Limitations, whatever the verdict says (D109). The Action Observer may re-plan mid-run (D63); a step it
+checks, then compares (D90). Plain code pairs that blind answer's figures with the worker's by label; every
+disagreement goes to a resolver, one fresh call that settles each figure by the source text or a re-run in the
+sandbox and writes value, evidence and verdict. Code checks the evidence; a settled value replaces the wrong one, and
+an unresolved one keeps the step from PASS and goes into the answer's Limitations (D109). The Action Observer may re-plan mid-run (D63); a step it
 adds for a failed one must change the method (a different tool, source type or a split query), else the re-plan is
 rejected (D108). The summariser writes the final answer. Every web-sourced figure in it must carry its source's date;
 undated ones earn a refine turn, then go into Limitations (D110).
