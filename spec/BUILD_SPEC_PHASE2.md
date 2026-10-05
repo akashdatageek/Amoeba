@@ -495,7 +495,7 @@ the report too.
 - LLM diagnoser tiers 1–2 and Who&When calibration: Phase 3 / M5.
 - A refusal safety suite and a human approval queue for risky edits: M4. Phase 2 has only V1–V5 plus the honesty
   veto.
-- Classifying a free-text task's family in Box 1: Phase 3. Stream tasks carry their family.
+- Classifying a free-text task's family in Box 1: done early, as D101 (§16.6). Stream tasks still carry their family.
 - Archive search across families and agent banks (reference spec §8): Phase 3.
 
 ---
@@ -581,6 +581,13 @@ then rerun with the frozen code.
 - `test_architect_d87.py`: invalid JSON is retried once; a disallowed edit, a repeat of a failed edit and a leaked
   held-out phrase are all refused.
 - `test_loop_d89.py`: a mock stream with a scripted shift reaches accept → recipe v2 → recovery, end to end.
+- D90–D114 (§16): `test_verify_first_d90.py`, `test_gate_v3_d91.py`, `test_infra_d111.py`, `test_disputes_d109.py`,
+  `test_deliverables_d105.py`, `test_dated_figures_d110.py`, `test_skills_sandbox_d103.py` (live part with the
+  gateway), `test_research_d106.py`, `test_workspace_sources_d107.py` (live part), `test_replan_method_d108.py`,
+  `test_cite_arithmetic_d104.py`, `test_bash_python_d112.py` (live part), `test_xlsx_formulas_d113.py`,
+  `test_run_options_d114.py`, and the D96–D102 files (`test_sandbox_d96.py`, `test_router_d97.py`,
+  `test_prefer_model_d98.py`, `test_memory_d99.py`, `test_retention_d100.py`, `test_family_d101.py`,
+  `test_niche_d102.py`).
 
 ---
 
@@ -594,3 +601,117 @@ then rerun with the frozen code.
 | Milestone total (2–3 hypotheses) | ~110 | ~5 h |
 
 This fits in Stage B. It is also why every box is first tested with the mock LLM and on small slices.
+
+---
+
+## 16. Final architecture and probe fixes (D90–D114)
+
+This section documents what was added after the first milestone design (§1–§15), in the order it was built. The
+§13 table has one row for each. The rule is the same throughout: the AI proposes, plain code decides. Every feature
+sits behind a flag; it is on by default for Amoeba's plan runner and off for the baselines (`flat`,
+`boss_reviewers`), which stay unchanged.
+
+### 16.1 Research review (D90–D95, Oct 3, 2026)
+
+- **D90, the verifier answers first.** A verify step first works out its own result from the checked steps' inputs
+  and its tools, in a fresh turn loop that never sees their outputs (`plan_verify_own.txt`). Only then are the outputs
+  shown. Both sides and plain code's figure comparison (`compare_figures`: matched, own_only) go into `step_N.json`.
+  Flag: `--verify-first`.
+- **D91, Gate v3.** §9.2. Rule 2 on per-task means, a permutation test at a fixed per-family hypothesis quota, no
+  prediction rule.
+- **D92, three task sets per family.** Practice tasks feed the loop. A gate set of 15 held-out tasks (plus the
+  pre-shift ones) feeds the Gate. An audit set is used only for the final report.
+- **D93, observed against declared signals.** The Diagnoser counts a cause only when plain code observed it (a tool
+  call, a check, a file). A cause only the model's own words support is kept apart as `declared`.
+- **D94, rubric content checks.** A required section passes only if its body names one of the task's own entities;
+  an empty heading fails.
+- **D95, evidence.** One append-only, hash-chained `events.jsonl`, written only by the harness. Finished runs are
+  key-scanned and shipped to the repository's orphan `evidence` branch (D95a). Agents never get git credentials.
+
+### 16.2 Final architecture (D96–D102, Oct 4)
+
+- **D96/D96a, sandbox.** Agent tools run in a fresh NVIDIA OpenShell sandbox per run: no network, Landlock, no
+  secrets, one CPU, 1 GiB, 300 s per command, one hour per run. The harness gate refuses what it can see first.
+  Sandbox mode is the default with `--local-tools on`.
+- **D97, model router.** A per-call router over a registry (Gemma 4 31B only for now): allowed and available models,
+  hard filters, choice, cooldowns, shared per-model rate buckets, USD per call.
+- **D98, `prefer_model`.** A routing preference as a recipe edit. Built and off (`--allow-model-edits`).
+- **D99, memory of three kinds.** Recipe lines carry provenance (written only by a Gate accept). User standards are
+  proposed by the loop (three runs or more, two families or more) and approved only by the user
+  (`scripts/approve_memory.py`).
+- **D100, recipe expiry.** A retention replay of the pre-shift gate tasks every 12 practice tasks raises a
+  `retention` alarm on a drop beyond noise. Pruning removes a recipe line when removing it loses nothing and saves
+  cost; a prune is a Gate decision outside the hypothesis quota.
+- **D101, task family.** Keyword rules first, then one routed classifier call checked against the list or "new". A
+  known family starts from its current recipe.
+- **D102, niche profiles.** `profiles/<niche>.yaml`: allowed tools and sandbox limits, models, domain rules, done
+  clauses, domain checks (`amoeba/checks/`), safety limits. `general` changes nothing.
+
+### 16.3 Probe fixes, batch 1: correctness (Oct 5)
+
+From the hard probe (`docs/eval/probe_hard/REPORT.md`, problems 1–11).
+
+- **D111, infrastructure errors.** `result.json` records `status`: `ok`, `agent_error`, `infra_error` or
+  `no_deliverable`. An infra error is the model service after its retries, a connection or proxy failure, a cache miss
+  or no result; a 400/413/422 is the team's. The Experimenter and the loop retry it, at most twice
+  (`adapt.yaml infra.retries`). Still infra, it is left out of the pairs (`experiment.json excluded`), the Monitor and
+  Gate rule 5b, which counts agent errors only. On a dropped connection the client re-reads the proxy from
+  `AMOEBA_PROXY_FILE` and reconnects; each new run starts with the fresh proxy.
+- **D109, the disagreement resolver** (amended, §16.5). Plain code compares the verifier's blind figures with the
+  worker's by label, at the rubric's tolerance. Each disagreement goes to one fresh resolver call that settles it by
+  the source text or a re-run. Code checks the evidence. A settled value replaces the wrong one; an unresolved one
+  keeps the step from PASS and goes into Limitations.
+- **D105, the final-answer requirement check** (amended together with D110, §16.5).
+- **D103, skills in the sandbox.** `attach_skill` treated the root label as a path, so every skill was refused. A
+  skill of the baked-in clone now maps to `/opt/skills/<path>`, and sandbox Bash may name that read-only root so the
+  skill's scripts run.
+
+### 16.4 Probe fixes, batch 2: capability (Oct 5)
+
+- **D106, research steps.** Plain code splits a packed web search (several quoted queries, places or years; at most
+  four). It reads the top three results of each, official domains first, and parses the data files (.csv, .xlsx,
+  .json) a read page links into tables with their own [S#]. The step note asks for one entity, year or series per
+  search. Flag: `--research`.
+- **D107, fetched data in the workspace.** Every page and table read is saved read-only under `sources/` in the
+  run's workspace and uploaded into the sandbox, with `sources/index.json` (source id, url, time). Writes there are
+  refused; the files never count as made. Flag: `--workspace-sources`.
+- **D108, re-plans change the method.** A step a re-plan adds or rewrites for a failed step must state a different
+  tool, source type, site or a split query; otherwise the decision is rejected and logged. The observer is shown how
+  each failed step worked. Flag: `--replan-method`.
+- **D110, dates on web figures** (part of the final-answer check, §16.5). Flag: `--dated-figures`.
+- **D104, citation check and arithmetic.** A calculation's result shown on the line, a power and a year range are
+  not claims of their own; the operands are still checked. Flag: `--cite-arithmetic`.
+- **D112, Python sent to Bash** runs with `python3` from a quoted heredoc; the gate still screens it
+  (`localtools.yaml bash_python`).
+- **D113, spreadsheet checks.** After a step that made a workbook, typed totals and typed derived cells fail the step
+  check with the cell names. Flag: `--xlsx-formulas`.
+
+### 16.5 Amendments of Oct 5, 2026 (review of two papers: VeriHarness and ScholarEvolve)
+
+1. **D109 is a disagreement resolver**, not a rework of the worker. When code finds a figure where the worker and the
+   blind verifier differ beyond the rubric's tolerance, one separate, fresh call (`plan_resolve.txt`) has only one
+   job: settle each disputed figure against the fetched source text, a fetch, a calculation or a re-run in the
+   sandbox. It records value, evidence (a quote or a command and its output) and verdict per figure. Plain code
+   accepts a value only when its quote is in the source and states it, or the value is in the resolver's own tool
+   output. A step with an unresolved difference is never PASS (it is partial; a PASS is recorded as `DISPUTED`). The
+   resolved value replaces the wrong one in the producer's output; unresolved ones go to Limitations. Every dispute
+   and resolution is logged (`disputed`, `dispute_resolution`).
+2. **D105 and D110 are one final-answer requirement check**; both D-numbers are kept. After the summariser, code
+   checks each requirement from Box 2's list (D24) against the FINAL answer, each promised file against the
+   workspace, and that every web figure carries its date. Missing items earn one refine turn. Then the run ends
+   `no_deliverable` when a core deliverable is missing (no answer content, a promised file never made, more than half
+   of the requirements unmet), or the items are listed in Limitations. `requirement_status` records the final-answer
+   result, not the steps' claims.
+3. **D114, context size as recipe run options.** `max_input_chars` (3,000–20,000) and `max_summary_input_chars`
+   (15,000–60,000) are whitelisted run options with ranges in `adapt.yaml`, so the loop can tune context size. The
+   Diagnoser allows them for the checks and feedback causes; the Gate tests them like any edit.
+
+**Not now (Paper 2).** These were considered and deferred:
+
+- a consensus challenger: later, as its own Gate-tested change, with code checks first (units, currency, period,
+  dates);
+- multiple runs per task;
+- a research-guided Architect;
+- combined edits (more than one edit per hypothesis);
+- episode memory.
+
