@@ -75,11 +75,26 @@ After every step, plain code checks the output:
 - format and inputs;
 - the step contract (did the helper use the tools it needed, D61);
 - provenance of figures and sources (D33, D66);
-- citations (D74);
-- the niche profile's domain checks (D102).
+- citations (D74), leaving out a calculation's result shown on the line, powers and year ranges (D104);
+- the niche profile's domain checks (D102);
+- for a step that made a workbook, that totals and derived cells are formulas (D113).
 
 A failed check earns one retry turn. A verify step first works out its own answer without seeing the outputs it
-checks, then compares (D90). The Action Observer may re-plan mid-run (D63). The summariser writes the final answer.
+checks, then compares (D90). Plain code pairs that blind answer's figures with the worker's by label; a disagreement
+earns the producers one rework turn with both values shown, and one still there makes the step partial and goes into
+the answer's Limitations, whatever the verdict says (D109). The Action Observer may re-plan mid-run (D63); a step it
+adds for a failed one must change the method (a different tool, source type or a split query), else the re-plan is
+rejected (D108). The summariser writes the final answer. Every web-sourced figure in it must carry its source's date;
+undated ones earn a refine turn, then go into Limitations (D110).
+
+Research steps get help from plain code (D106): a packed search is split (one per place, year or quoted query), the
+top three results of each are read (official domains first), and data files a page links (.csv, .xlsx, .json) are
+downloaded and parsed into tables. With local tools on, every page and table read is saved read-only under the
+workspace's `sources/`, so analysts in the sandbox can compute from them (D107).
+
+At the end, plain code sets the run's `status` in result.json: `ok`, `agent_error`, `infra_error` (the model service
+or the network failed; never a score, D111) or `no_deliverable` (no answer content, or a file the plan promised was
+never made, D105).
 
 **Who decides.** AI helpers act. Code runs the graph, runs every check, refuses tools outside the profile (logged as
 `niche_refused`), and records step status (done / partial / incomplete / blocked).
@@ -91,7 +106,9 @@ checks, then compares (D90). The Action Observer may re-plan mid-run (D63). The 
 
 **Flags.** `--topology plan`, `--step-contract on|off`, `--verify-first`, `--replan`, `--self-refine`, `--collab`,
 `--max-turns`, `--check-retry-turns`, `--web-tools`, `--pool`, `--local-tools on` (+ `--local-tools-mode`),
-`--disable-tools`, `--max-tokens-per-run`, `--max-calls-per-run`.
+`--disable-tools`, `--max-tokens-per-run`, `--max-calls-per-run`. Probe fixes, each `on|off` and on by default for
+the plan runner: `--disputes` (D109), `--deliverable-check` (D105), `--research` (D106), `--workspace-sources` (D107),
+`--replan-method` (D108), `--dated-figures` (D110), `--cite-arithmetic` (D104), `--xlsx-formulas` (D113).
 
 ## Box 4: Monitor
 
@@ -153,7 +170,12 @@ tasks).
 
 **Writes.** `experiments/<id>/` (`experiment.json`, `pairs.jsonl`, run folders).
 
-**Flags.** `scripts/run_experiment.py --repeats --parallel`; `adapt.yaml` `experiment:`.
+A run that ended in an infrastructure error (the model service after its retries, a connection or proxy failure, a
+cache miss, no result) is run again, at most twice; if it still fails, its pair is left out and listed under
+`excluded` in `experiment.json` (D111).
+
+**Flags.** `scripts/run_experiment.py --repeats --parallel`; `adapt.yaml` `experiment:` and `infra:` (retries,
+exclude).
 
 ## Box 8: Gate
 
@@ -163,7 +185,7 @@ tasks).
 2. the gain beats the noise floor, by a permutation test, within the family's fixed hypothesis quota;
 3. no held-out leak;
 4. the cost is justified, in USD when prices exist, else in tokens;
-5. no honesty or error regression.
+5. no honesty or error regression (errors counted are the team's own; an infrastructure error never counts, D111).
 
 It also judges prunes: a line is removed when removing it loses nothing beyond noise and saves cost. It runs the
 rollback watch after an accept.
@@ -282,12 +304,16 @@ a fresh NVIDIA OpenShell sandbox for each run:
 - no secrets;
 - one CPU, 1 GiB of memory, 300 s per command, one hour per run (a niche profile can change these).
 
+The skills the pool picks are read-only under `/opt/skills/<name>/` in the sandbox image; a helper reads them with
+`local:Read` and runs their scripts with `local:Bash` (D103). Fetched pages and data tables arrive read-only under
+`sources/` (D107). A Python program sent to `local:Bash` runs with `python3` (D112).
+
 Files are copied back to `runs/<id>/workspace/` after each call. The sandbox is destroyed at the end of the run. The
 harness gate refuses, before the sandbox even sees them:
 
 - network commands;
 - paths outside the workspace;
-- writes to MCP configs, hooks, settings and skills.
+- writes to MCP configs, hooks, settings, skills and the `sources/` inputs.
 
 **Who decides.** Code (the gate in `amoeba/localtools/gate.py`, the sandbox policy in
 `amoeba/config/localtools.yaml`). The policy lives outside the agent.
@@ -296,7 +322,10 @@ harness gate refuses, before the sandbox even sees them:
 (`tool_decisions`).
 
 **Flags.** `--local-tools on|off`; `--local-tools-mode sandbox|inprocess` (sandbox is the default; inprocess only on
-request, and only with `AMOEBA_SANDBOX=1`).
+request, and only with `AMOEBA_SANDBOX=1`); `localtools.yaml` `bash_python` (D112).
+
+On a dropped connection the model client reads the proxy fresh from the file `AMOEBA_PROXY_FILE` names, and
+reconnects if it moved (D111). Running on a persistent machine: `docs/RUNNING_ON_A_VM.md`.
 
 ## Evidence (D95)
 
