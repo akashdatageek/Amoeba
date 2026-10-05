@@ -137,3 +137,9 @@ class CachedProvider:
 
     def fetch(self, url: str) -> dict:
         return self._call({"op": "fetch", "url": url}, lambda: self.inner.fetch(url))
+
+    def fetch_data(self, url: str) -> dict:                 # D106: a parsed data file
+        return self._call({"op": "fetch_data", "url": url}, lambda: self.inner.fetch_data(url))
+
+    def page_links(self, url: str) -> list[str]:            # D106: a page's data-file links
+        return self._call({"op": "page_links", "url": url}, lambda: self.inner.page_links(url))

@@ -183,6 +183,13 @@ FRESH_NOTE = """
 This task asks for today's, the current or the latest value. Find the most recent official figure and write its date
 next to it ("as of <date>"). If the figure you found is dated before today, make one more search for a newer value
 before you use it, and say which date you settled on."""
+RESEARCH_NOTE = """
+
+Research (plain code helps here): search one entity, one year or period and one data series at a time — never pack
+several places, years or series into one web_search (plain code splits a packed query anyway). Each search also
+shows excerpts of its top results, official sources first, and the tables of any data files (.csv, .xlsx, .json)
+they link, each with its own [S#]. Prefer the official source and the data file over a news story or a snippet;
+when a figure rests only on a search snippet, say so."""
 LAST_TURN_NOTE = ("THIS IS YOUR LAST TURN. No more tool calls: choose Final Output and write your conclusion from what "
                   "you have found so far, with the [S#] of what supports each fact, and say plainly what you could not "
                   "confirm.")
@@ -939,6 +946,9 @@ class PlanRunner:
         if not summarising and time_sensitive(self.task.prompt) and any(set(WEB_TOOLS) & set(a.tools)
                                                                        for a in agents):
             extra += FRESH_NOTE                                                    # D67: the latest figure, dated
+        if not summarising and getattr(self.web, "research", False) and any(set(WEB_TOOLS) & set(a.tools)
+                                                                            for a in agents):
+            extra += RESEARCH_NOTE                                                 # D106: one entity per search
         if self.opt.replan == "on" and deps and not summarising:                  # D63: a missing input is a trigger
             extra += MISSING_INPUT_NOTE
         mine = None

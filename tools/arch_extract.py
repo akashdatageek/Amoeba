@@ -645,7 +645,8 @@ BOXES: list[dict] = [
                "page length and time are capped, and a failure comes back as an error line, never a crash.",
                "Pool tools (D56) are remote MCP servers registered as pool:<name> for the helper that asked; they "
                "run here too, with the same caps, [S#] source ids and error lines.",
-               "This is the single place any tool is ever run."],
+               "This is the single place any tool is ever run.",
+               "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#]."],
          proposes="A tool name and its input (from a helper).",
          disposes="Plain code checks the name and the arithmetic before anything runs.",
          anchors=["amoeba/tools/registry.py::ToolRegistry", "amoeba/tools/registry.py::calc",

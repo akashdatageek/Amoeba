@@ -559,9 +559,11 @@ def build_box3_tools(args: argparse.Namespace, tools: ToolRegistry) -> ToolRegis
     set (D46; replay then needs no Tavily key)."""
     if not args.web_tools:
         return tools
+    research = getattr(args, "research", "off") == "on" and args.topology == "plan"      # D106: plan runner only
     if args.llm_cache:
-        return web_registry(CachedProvider(TavilyProvider, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace))
-    return web_registry()
+        return web_registry(CachedProvider(TavilyProvider, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace),
+                            research=research)
+    return web_registry(research=research)
 
 
 # box: free_text
@@ -619,6 +621,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: a verify step first works out its own result from the checked steps' inputs and its "
                         "tools, without their outputs, in a fresh context; then it sees the outputs and compares. "
                         "Both are recorded in step_N.json (D90)")
+    p.add_argument("--research", choices=["on", "off"], default="on",
+                   help="plan, with --web-tools: plain code splits a packed web_search (several quoted queries, places "
+                        "or years) into one search each, reads the top 3 results of each (official domains first) and "
+                        "parses the data files (.csv/.xlsx/.json) a read page links; the helpers are told to search "
+                        "one entity, year or series at a time (D106). The baselines never get it")
     p.add_argument("--deliverable-check", choices=["on", "off"], default="on",
                    help="plan: a run whose answer has no content, or that never made a file the plan promised (with "
                         "--local-tools on), ends with error 'no_deliverable: …' and status no_deliverable; "

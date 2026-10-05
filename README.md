@@ -523,6 +523,16 @@ If something is missing, the run ends with `error: "no_deliverable: …"` and `s
 
 With `--local-tools on` the skills the pool picks (xlsx, docx, pdf, pptx …) now reach the helpers in the OpenShell sandbox. The sandbox image holds the skills clone read-only at `/opt/skills/<name>/`. A helper reads the skill there with `local:Read` and runs its scripts with `local:Bash`. Writing into `/opt/skills` is still refused. Before this fix every skill was refused in sandbox mode, so helpers fell back to plain openpyxl or python-docx.
 
+## Research steps (D106)
+
+With `--web-tools`, Amoeba's research steps get help from plain code (`--research on`, the default for the plan runner; the baselines never get it):
+
+- A packed search is split. Several quoted queries in one string, several places ("USA and Indiana") or several years become one search each, at most four.
+- Each search reads its top three results itself, official domains first (.gov, .edu, statistical agencies). The helper sees the lines that match its query, with the source's [S#].
+- When a page links a data file (.csv, .xlsx, .json), plain code downloads and parses it, and shows the header rows and the matching rows as a table with its own [S#]. A `fetch_url` of a data file is read the same way.
+
+The helpers are also told to search one entity, year or series at a time and to prefer the official source and the data file. Every page and data file read is cached with `--llm-cache`.
+
 ## Cost controls (D45–D48)
 
 ```bash
