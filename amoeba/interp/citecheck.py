@@ -16,6 +16,10 @@ after normalising: case, dashes, "a.m."/"AM", spaces and thousands separators; a
 source has it at more precision ($6.47 against 6.4709). A claim that is missing is a mislabelled citation; if another
 source has it, that source is named. A tag whose source text is unknown (a pool tool with no output, a hallucinated
 id) is not checked here — D33 already reports hallucinated ids.
+
+D104 (arithmetic=True): a number the line shows as the result of a calculation ("350 + 1,428.00 = 1,778.00 [S3]",
+"≈ 1.05 million"), the base and exponent of a power ("4¹⁰", "4^10"), and the years of a range ("2016–2019",
+"2016 … 2019") are not claims of their own: the operands of the calculation are still checked.
 """
 from __future__ import annotations
 
@@ -112,7 +116,25 @@ def _identifier_in(kind: str, d: str, text: str) -> bool:
     return re.search(rf"(?<![\d,.]){d}(?!\d|[,.]\d)", t) is not None
 
 
-def claims(segment: str, exempt: set[str], exact: list[float]) -> list[tuple[str, str]]:
+RESULT = re.compile(r"[=≈]\s*~?\s*[$€£]?(\d(?:[\d,]*\d)?(?:\.\d+)?)")
+POWER = re.compile(r"(?<![\w.])(\d+)\s*(?:\^\s*\(?(\d+)|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)")
+YEAR_RANGE = re.compile(r"\b((?:19|20)\d{2})\s*(?:-|–|—|…|\.\.\.?|to|through)\s*((?:19|20)\d{2})\b", re.I)
+
+
+# box: step_check
+def derived_tokens(body: str) -> set[str]:
+    """D104: the numbers of a stretch that are not claims of their own — calculation results, powers, year ranges."""
+    out = {m.group(1).replace(",", "") for m in RESULT.finditer(body)}
+    for m in POWER.finditer(body):
+        out.add(m.group(1))
+        if m.group(2):
+            out.add(m.group(2))
+    for m in YEAR_RANGE.finditer(body):
+        out.update({m.group(1), m.group(2)})
+    return out
+
+
+def claims(segment: str, exempt: set[str], exact: list[float], arithmetic: bool = False) -> list[tuple[str, str]]:
     """(kind, claim) pairs a code check can test in the words an [S#] tag backs."""
     body = URL.sub(" ", LIST_MARKER.sub("", segment))
     out = [("quote", q.strip()) for q in QUOTE.findall(body) if len(q.split()) >= 3 or len(q.strip()) >= 12]
@@ -122,10 +144,11 @@ def claims(segment: str, exempt: set[str], exact: list[float]) -> list[tuple[str
     out += [("time", t) for t in sorted(times)]
     rest = TIME.sub(" ", norm(QUOTE.sub(" ", body)))   # a quote's and a time's digits are not claims of their own
     rest = IDS.sub(" ", rest)
+    skip = derived_tokens(rest) if arithmetic else set()                      # D104
     for m in NUM.finditer(rest):
         tok = m.group(0)
         bare = tok.strip("$€£%").replace(",", "")
-        if bare in exempt or equals_computed(tok, exact):
+        if bare in exempt or equals_computed(tok, exact) or bare in skip:
             continue
         out.append(("number", tok))
     return out
@@ -145,7 +168,7 @@ def _has(kind: str, claim: str, text: str) -> bool:
 
 # box: step_check
 def mislabelled_citations(text: str, contents: dict[str, str], exempt: set[str] | None = None,
-                          exact: list[float] | None = None) -> list[dict]:
+                          exact: list[float] | None = None, arithmetic: bool = False) -> list[dict]:
     """D74: every checkable claim tagged [S#] whose source text does not contain it. `contents`: S# -> the text the
     team was shown for it; `exempt`: numbers given in the task; `exact`: values the step computed."""
     found, seen = [], set()
@@ -158,7 +181,7 @@ def mislabelled_citations(text: str, contents: dict[str, str], exempt: set[str] 
             segment, start = line[start:m.start()], m.end()
             if not known:
                 continue
-            for kind, claim in claims(segment, exempt, exact):
+            for kind, claim in claims(segment, exempt, exact, arithmetic):
                 if any(_has(kind, claim, contents[i]) for i in known) or (tuple(ids), claim) in seen:
                     continue
                 seen.add((tuple(ids), claim))

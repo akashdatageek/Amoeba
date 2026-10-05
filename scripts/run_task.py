@@ -440,7 +440,7 @@ def cli_plan_options(args: argparse.Namespace):
                        collab=args.collab, contract=args.step_contract, replan=args.replan,
                        verify_first=getattr(args, "verify_first", "off"), disputes=getattr(args, "disputes", "off"),
                        replan_method=getattr(args, "replan_method", "off"), dated=getattr(args, "dated_figures", "off"),
-                       **extra)
+                       cite_arithmetic=getattr(args, "cite_arithmetic", "off"), **extra)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -640,6 +640,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: a run whose answer has no content, or that never made a file the plan promised (with "
                         "--local-tools on), ends with error 'no_deliverable: …' and status no_deliverable; "
                         "result.json records `deliverables` (D105). The baselines are never checked")
+    p.add_argument("--cite-arithmetic", choices=["on", "off"], default="on",
+                   help="plan: the citation check (D74) leaves out a number the line shows as a calculation's result "
+                        "(after = or ≈), a power's base and exponent, and the years of a range; the operands are "
+                        "still checked (D104)")
     p.add_argument("--dated-figures", choices=["on", "off"], default="on",
                    help="plan: every web-sourced figure of the final answer must carry its source's date (on its line "
                         "or in the source's entry); undated ones earn the answer step a refine turn, and those still "

@@ -83,6 +83,9 @@ class PlanOptions:
     # period); missing → the refine turn, then listed in Limitations. The CLI default is on; this library default
     # keeps the earlier behaviour.
     dated: str = "off"
+    # D104: on = the citation check (D74) leaves out calculation results shown on the line, powers and year ranges.
+    # The CLI default is on; this library default keeps the earlier behaviour.
+    cite_arithmetic: str = "off"
     max_replans: int = 2             # D63: observer calls per run
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
     domain_checks: tuple = ()        # D102: the niche profile's checks (amoeba/checks/<name>.py) after each step
@@ -1070,7 +1073,8 @@ class PlanRunner:
             reason = "; ".join(x for x in (reason, "unverified check: PASS with no re-checking tool call on "
                                                    + self.checkable(n)) if x)
         mislabelled = mislabelled_citations(text, self.source_texts(), self.citation_exempt(),     # D74
-                                            computed_values(self.computed_results(w)))
+                                            computed_values(self.computed_results(w)),
+                                            arithmetic=self.opt.cite_arithmetic == "on")   # D104
         if mislabelled:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "mislabelled citation: " + "; ".join(

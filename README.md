@@ -545,6 +545,10 @@ With `--replan on`, the Action Observer may add or rewrite steps after a step fa
 
 Every figure in the final answer that cites a web source must carry that source's date: its publication date or the period its data covers. The date can sit on the figure's line or in the source's entry under Sources. Undated figures get the answer step one refine turn to add the dates. Any still undated afterwards are listed in the Limitations section by plain code. `--dated-figures off` turns this off.
 
+## Citation check and arithmetic (D104)
+
+The citation check (D74) no longer flags arithmetic. A number the line shows as a calculation's result (after `=` or `≈`), the base and exponent of a power, and the years of a range are not treated as claims about the cited source. The calculation's operands are still checked. `--cite-arithmetic off` restores the earlier check.
+
 ## Cost controls (D45–D48)
 
 ```bash
