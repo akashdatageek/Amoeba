@@ -107,7 +107,8 @@ class OpenShellBox:
 
     def pull(self, dest: Path) -> list[str]:
         """Copy /sandbox/workspace to `dest` (regular files and folders only; nothing outside dest)."""
-        r = self.exec(["bash", "-c", f"cd {SANDBOX_WORKSPACE} && tar -cf - --exclude=./skills . | base64 -w0"],
+        r = self.exec(["bash", "-c", f"cd {SANDBOX_WORKSPACE} && tar -cf - --exclude=./skills --exclude=./sources . "
+                                     f"| base64 -w0"],                          # D107: inputs are not copied back
                       timeout_s=60)
         if r.exit_code != 0:
             return []

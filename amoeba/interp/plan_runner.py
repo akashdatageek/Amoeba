@@ -190,6 +190,11 @@ several places, years or series into one web_search (plain code splits a packed 
 shows excerpts of its top results, official sources first, and the tables of any data files (.csv, .xlsx, .json)
 they link, each with its own [S#]. Prefer the official source and the data file over a news story or a snippet;
 when a figure rests only on a search snippet, say so."""
+SOURCES_NOTE = """
+
+Fetched data is in your workspace: every page and data file the web tools have read so far is saved read-only under
+sources/ (data tables as CSV, pages as text); sources/index.json lists each file with its [S#], url and date. Read
+and compute from these files with your local tools, and cite a figure from a file by that file's [S#]: {files}"""
 LAST_TURN_NOTE = ("THIS IS YOUR LAST TURN. No more tool calls: choose Final Output and write your conclusion from what "
                   "you have found so far, with the [S#] of what supports each fact, and say plainly what you could not "
                   "confirm.")
@@ -949,6 +954,9 @@ class PlanRunner:
         if not summarising and getattr(self.web, "research", False) and any(set(WEB_TOOLS) & set(a.tools)
                                                                             for a in agents):
             extra += RESEARCH_NOTE                                                 # D106: one entity per search
+        inputs_saved = getattr(self.local, "inputs", None) or []
+        if not summarising and inputs_saved and any(t.startswith("local:") for a in agents for t in a.tools):
+            extra += SOURCES_NOTE.format(files=", ".join(f"{x['file']} [{x['source']}]" for x in inputs_saved[-12:]))   # D107
         if self.opt.replan == "on" and deps and not summarising:                  # D63: a missing input is a trigger
             extra += MISSING_INPUT_NOTE
         mine = None

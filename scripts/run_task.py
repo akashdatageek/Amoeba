@@ -62,7 +62,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             context=None, disabled_tools=(), recipe: Recipe | None = None,
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
             default_max_turns: int | None = None, family_classify: bool = False,
-            recipe_source: tuple | None = None, niche=None, deliverable_check: bool = False) -> RunResult:
+            recipe_source: tuple | None = None, niche=None, deliverable_check: bool = False,
+            workspace_sources: bool = False) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -220,6 +221,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         if picks_only:                                                             # D70: the picks pre-pass
             answer, error = None, "picks_only"
         else:
+            web = getattr(tools, "web", None)
+            if workspace_sources and box is not None and web is not None and topology == "plan":   # D107
+                web.on_data = lambda rec, _b=box, _w=web: _b.save_source(rec, _w)
             ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
                              stock=restock, max_agents=envelope.max_agents, timezone=timezone).run(cfg, task, seed)
             answer, error = ep.answer, ep.error
@@ -626,6 +630,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "or years) into one search each, reads the top 3 results of each (official domains first) and "
                         "parses the data files (.csv/.xlsx/.json) a read page links; the helpers are told to search "
                         "one entity, year or series at a time (D106). The baselines never get it")
+    p.add_argument("--workspace-sources", choices=["on", "off"], default="on",
+                   help="plan, with --web-tools and --local-tools on: every page and data file the web tools read is "
+                        "saved read-only in the run's workspace under sources/ (tables as CSV, pages as text; "
+                        "sources/index.json gives each one's [S#], url and time), so analysts in the sandbox can compute "
+                        "from them (D107). The baselines never get it")
     p.add_argument("--deliverable-check", choices=["on", "off"], default="on",
                    help="plan: a run whose answer has no content, or that never made a file the plan promised (with "
                         "--local-tools on), ends with error 'no_deliverable: …' and status no_deliverable; "
@@ -815,7 +824,8 @@ def main(argv: list[str] | None = None) -> int:
                     recipe=load_family_recipe(task.family, args.recipes, args.recipes_from),   # D82, D88
                     family_classify=family_classify_on(args.family_classify, args.topology),     # D101
                     recipe_source=(args.recipes, args.recipes_from), niche=niche,
-                    deliverable_check=args.deliverable_check == "on" and args.topology == "plan")   # D105
+                    deliverable_check=args.deliverable_check == "on" and args.topology == "plan",   # D105
+                    workspace_sources=args.workspace_sources == "on" and args.topology == "plan")   # D107
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

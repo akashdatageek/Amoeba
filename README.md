@@ -533,6 +533,10 @@ With `--web-tools`, Amoeba's research steps get help from plain code (`--researc
 
 The helpers are also told to search one entity, year or series at a time and to prefer the official source and the data file. Every page and data file read is cached with `--llm-cache`.
 
+## Fetched data in the workspace (D107)
+
+With `--web-tools` and `--local-tools on`, every page and data file the web tools read is saved in the run's workspace under `sources/`: data tables as CSV, pages as text. The files are read-only on the host and inside the sandbox, and `sources/index.json` lists each one with its [S#], url, title and fetch time. Analysts in the sandbox, which still has no network, can compute from the data itself, and steps with local tools are told the files are there. Writes into `sources/` are refused, reading and copying from it are allowed, and the files never count as files the team made. Turn it off with `--workspace-sources off`.
+
 ## Cost controls (D45–D48)
 
 ```bash

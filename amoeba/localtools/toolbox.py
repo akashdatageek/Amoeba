@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 import time
@@ -36,6 +37,8 @@ from amoeba.localtools.server import StdioServer
 from amoeba.localtools.skills import card_text, copy_skill, list_skills, sandbox_skill_path
 from amoeba.pool.match import document_format, rank
 from amoeba.pool.mcp import SourceBook, data_block
+
+INPUTS = "sources"            # D107: the workspace folder of read-only input files (fetched pages and data tables)
 
 CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "localtools.yaml"
 
@@ -150,6 +153,7 @@ class LocalToolbox:
         self._seen = self._snapshot()
         self.skills: list[dict] = []                 # listed local skills
         self.skills_attached: list[dict] = []
+        self.inputs: list[dict] = []                 # D107: read-only input files in sources/ (fetched pages, tables)
         self.error: str | None = None
         self.book = None                             # D61 (G7): the run's [S#] list, set by stock_toolbox
         self.office: dict | None = None              # D71: office_check(), run when the xlsx skill is attached
@@ -442,7 +446,7 @@ class LocalToolbox:
         if self.workspace.is_dir():
             for f in self.workspace.rglob("*"):
                 rel = f.relative_to(self.workspace)
-                if f.is_file() and not f.is_symlink() and rel.parts[0] != "skills":
+                if f.is_file() and not f.is_symlink() and rel.parts[0] not in ("skills", INPUTS):   # D107: inputs
                     st = f.stat()
                     out[str(rel)] = (st.st_size, st.st_mtime_ns)
         return out
@@ -455,6 +459,62 @@ class LocalToolbox:
             self.files[p] = {"path": p, "size": now[p][0], "step": self.step}
         self._seen = now
         return changed
+
+    # box: localtools
+    def add_input(self, name: str, content: bytes) -> str:
+        """D107: a read-only input file in <workspace>/sources/ — on the host and, in sandbox mode, in the sandbox's
+        workspace (no network there: this is how fetched data reaches the analysts). Never counted as made."""
+        safe = re.sub(r"[^\w.-]+", "_", name).strip("._")[:120] or "source"
+        rel = f"{INPUTS}/{safe}"
+        p = self.workspace / INPUTS / safe
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if p.exists():
+            p.chmod(0o644)
+        p.write_bytes(content)
+        p.chmod(0o444)
+        if self.box is not None:
+            q = shlex.quote(f"{SANDBOX_WORKSPACE}/{rel}")
+            try:
+                r = self.box.exec(["bash", "-c", f"mkdir -p {SANDBOX_WORKSPACE}/{INPUTS} && rm -f {q} && cat > {q} "
+                                                 f"&& chmod 0444 {q}"], stdin=content, timeout_s=60)
+                if getattr(r, "exit_code", 0) != 0:
+                    raise RuntimeError(f"exit {r.exit_code}")
+            except Exception as e:                    # the host copy stays; the step is told what is missing
+                self.trace.event("input_upload_failed", {"amoeba.box": "localtools", "amoeba.file": rel,
+                                                         "amoeba.error": str(e)[:200]})
+        return rel
+
+    # box: localtools
+    def save_source(self, rec: dict, web=None) -> str | None:
+        """D107: one fetched page (text) or data file (its table as CSV) into sources/, and sources/index.json with
+        each file's source id, url, title, kind, rows and time (its provenance). The web source records its file."""
+        sid = rec.get("source", "S0")
+        if rec.get("kind") == "data":
+            import csv
+            import io
+            buf = io.StringIO()
+            csv.writer(buf).writerows((rec.get("table") or {}).get("rows") or [])
+            stem = re.sub(r"\.(csv|tsv|xlsx|xlsm|json)$", "", rec.get("url", "").rstrip("/").rsplit("/", 1)[-1].split("?")[0])
+            rel = self.add_input(f"{sid}_{stem or 'data'}.csv", buf.getvalue().encode("utf-8"))
+            rows = (rec.get("table") or {}).get("n_rows")
+        else:
+            slug = re.sub(r"[^\w]+", "_", rec.get("title") or "page").strip("_")[:40] or "page"
+            head = f"Source: {sid}\nURL: {rec.get('url', '')}\nTitle: {rec.get('title', '')}\n\n"
+            rel = self.add_input(f"{sid}_{slug}.txt", (head + (rec.get("text") or "")).encode("utf-8"))
+            rows = None
+        src = next((s for s in (web.sources if web is not None else []) if s["id"] == sid), None)
+        entry = {"source": sid, "file": rel, "kind": rec.get("kind"), "url": rec.get("url"), "rows": rows,
+                 "title": (src or {}).get("title") or rec.get("title"), "fetched_at": (src or {}).get("fetched_at"),
+                 "step": rec.get("step")}
+        self.inputs = [x for x in self.inputs if x["file"] != rel] + [entry]
+        self.add_input("index.json", json.dumps(self.inputs, indent=1, ensure_ascii=False).encode("utf-8"))
+        if src is not None:
+            src["workspace_file"] = rel
+            if rec.get("kind") == "page":             # what the analysts can read from the file counts as in S#
+                note_seen(src, (rec.get("text") or "")[:20000])
+        self.trace.event("workspace_source", {"amoeba.box": "localtools", "amoeba.source_id": sid, "amoeba.file": rel,
+                                              "amoeba.kind": rec.get("kind"), "amoeba.rows": rows})
+        return rel
 
     def has_file(self, name: str) -> bool:
         """A file the team says it made: the path in the workspace, or a file of that name anywhere in it."""

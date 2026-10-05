@@ -94,10 +94,13 @@ def in_workspace(command: str, workspace: Path) -> str:
 
 
 # ---- D96: protected configs and read-only roots ------------------------------------------------------------------------
-PROTECTED_PARTS = {".claude", ".mcp.json", "CLAUDE.md", "skills", "managed-settings.json", ".git"}
+PROTECTED_PARTS = {".claude", ".mcp.json", "CLAUDE.md", "skills", "managed-settings.json", ".git",
+                   "sources"}                         # D107: the read-only input files
 PROTECTED_COMMAND = re.compile(r"\.claude\b|\.mcp\.json|managed-settings|claude-code/|CLAUDE\.md"
-                               r"|>>?\s*[^\s|;&]*\bskills/"
-                               r"|\b(cp|mv|rm|tee|sed\s+-i|chmod|chown|ln|touch|truncate|install)\b[^|;&]*\bskills/", re.I)
+                               r"|>>?\s*[^\s|;&]*\b(?:skills|sources)/"
+                               r"|\b(mv|rm|tee|sed\s+-i|chmod|chown|ln|touch|truncate)\b[^|;&]*\b(?:skills|sources)/"
+                               r"|\b(cp|install)\b[^|;&]*\s[^\s|;&]*\b(?:skills|sources)/[^\s|;&]*\s*(?:$|[|;&])",   # D107: copying FROM is fine
+                               re.I)
 
 
 # box: localtools

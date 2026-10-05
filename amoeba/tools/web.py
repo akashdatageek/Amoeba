@@ -336,8 +336,8 @@ class WebTools:
                                   "amoeba.chars_passed": len(cut)})
         more = f", first {len(cut)} of {len(text)} characters" if len(text) > len(cut) else ""
         out = f"[{s['id']}] {s['title']} ({s['url']}), fetched {s['fetched_at']}{more}:\n{cut}"
+        self._page(s, text)                            # D107: the page's text to the workspace (when on)
         if self.research:                              # D106: the data files the page links
-            self._page(s, text)
             data = self._linked_data(text, s, s["title"])
             if data:
                 out += "\n\nData files this page links, read by plain code:\n" + "\n".join(data)
