@@ -12193,6 +12193,116 @@
    "If the retry still lacks it, drafting stops with an error (or the run ends with a parse error)."
   ]
  },
+ "stage_e": {
+  "checked_at": "8c49914",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+      "amoeba/llm/router.py::ModelRouter.call",
+      "amoeba/localtools/server.py::StdioServer.call",
+      "amoeba/localtools/toolbox.py::LocalToolbox.call",
+      "amoeba/pool/mcp.py::Connector.call",
+      "amoeba/pool/mcp.py::PoolTools.call",
+      "amoeba/pool/mcp.py::SdkConnector.call",
+      "scripts/stage_e.py::arm_command",
+      "scripts/stage_e.py::one_task_file",
+      "scripts/stage_e.py::run_dir_of"
+     ],
+     "doc": "",
+     "key": "scripts/stage_e.py::run_pairs",
+     "signature": "run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthrough: list[str], python: str=sys.executable) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/models.py::run_status",
+      "amoeba/task/saved_drafts.py::_load",
+      "scripts/stage_e_report.py::_final_metas",
+      "scripts/stage_e_report.py::_load",
+      "scripts/stage_e_report.py::_trace",
+      "scripts/stuck_report.py::_load",
+      "scripts/stuck_report.py::run_stuck"
+     ],
+     "doc": "One arm's run, measured.",
+     "key": "scripts/stage_e_report.py::run_record",
+     "signature": "run_record(row: dict) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "scripts/stage_e.py::arm_command",
+     "signature": "arm_command(arm: str, task_file: Path, seed: int, runs: Path, picks: Path, off_run: Path | None, passthrough: list[str], python: str=sys.executable) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "A tasks file holding only `task_id` (run_task runs every task of its --tasks file).",
+     "key": "scripts/stage_e.py::one_task_file",
+     "signature": "one_task_file(tasks: Path, task_id: str, out: Path) -> Path"
+    },
+    {
+     "callees": [],
+     "doc": "The one run folder an arm wrote (the newest with a result.json).",
+     "key": "scripts/stage_e.py::run_dir_of",
+     "signature": "run_dir_of(runs: Path) -> Path | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/stage_e_report.py::_sum",
+      "scripts/stage_e_report.py::run_record",
+      "scripts/stage_e_report.py::samples"
+     ],
+     "doc": "",
+     "key": "scripts/stage_e_report.py::report",
+     "signature": "report(folder: Path, seed: int=117) -> tuple[str, dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/saved_drafts.py::_load",
+      "scripts/stage_e_report.py::_load",
+      "scripts/stage_e_report.py::_trace",
+      "scripts/stuck_report.py::_load"
+     ],
+     "doc": "k recovered steps of the on arm picked at random (seeded), each with its trace lines and its output before",
+     "key": "scripts/stage_e_report.py::samples",
+     "signature": "samples(rows: list[dict], records: list[dict], k: int=3, seed: int=117) -> list[dict]"
+    }
+   ],
+   "checks": [],
+   "guards": [],
+   "kind": "code",
+   "numbers": [
+    "Episode.seed",
+    "report.seed",
+    "samples.k",
+    "samples.seed"
+   ],
+   "prompts": {},
+   "title": "Stage E: --adapt off vs on (pairs and report)"
+  },
+  "facts_hash": "788c6466bb370983",
+  "seed_hash": "e328f8cc4fb1e139",
+  "sentence": "Runs each task and seed with --adapt off, then on with the off run's draft and pool picks, and reports the two arms side by side.",
+  "source": "hand",
+  "what": [
+   "The on arm reuses the off run's plan.json (--drafts-from) and both share one --picks-file: the arms differ only in Box {samples.k}. A pair whose arm already has a result is not run again.",
+   "The report: outcome per run (done, done with limitation, stuck-stopped, failed), stuck steps by cause (the off arm read offline by the same watch), recovered steps by rung, work-arounds apart, rubric scores, billed tokens, the adaptation's tokens and $, wall time, searches, and what broke.",
+   "Three recovered steps per arm, picked at random with a fixed seed, are shown with their trace lines and their output before and after."
+  ]
+ },
  "step_check": {
   "checked_at": "982eebb",
   "facts": {
@@ -13160,7 +13270,7 @@
   ]
  },
  "stuck": {
-  "checked_at": "5d474b1",
+  "checked_at": "8c49914",
   "facts": {
    "anchors": [
     {
@@ -13290,6 +13400,7 @@
      "callees": [
       "scripts/eval_draft.py::parse_args",
       "scripts/run_task.py::parse_args",
+      "scripts/stage_e_report.py::report",
       "scripts/stuck_report.py::_row",
       "scripts/stuck_report.py::report"
      ],
@@ -13325,6 +13436,7 @@
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/saved_drafts.py::_load",
+      "scripts/stage_e_report.py::_load",
       "scripts/stuck_report.py::_load"
      ],
      "doc": "One record per step attempt of a stored run: {step, attempt, status, stuck, cause, signals, evidence,",
@@ -13341,10 +13453,11 @@
    "prompts": {},
    "title": "Stuck watch and diagnosis (D117 Stage B)"
   },
-  "facts_hash": "ec5639a8243a033f",
+  "facts_hash": "289984518411b6ef",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "a81f7db46b95d199",
   "sentence": "After each step attempt plain code marks a step that did not end done STUCK on any of six signals and names one cause.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Signals: a missing input (data an earlier step should have given, told from a missing tool by classify_lacked); the same tool error twice in a row (digits masked); checks still failing after the retry turn (unless the helpers ran out of turns); max turns; a capability or skill lacked or requested and unfilled; a file owed and no file change between attempts.",
    "Each signal names a cause; the first cause in the table order wins, with its allowed edits and at most eight evidence lines.",
