@@ -51,25 +51,30 @@ MAX_CARD_CHARS = 1500     # a new helper's prompt / description
 MAX_STEP_CHARS = 600      # a sub-step's text or do
 
 
+# box: proposer
 class _P(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# box: proposer
 class RoleRuleP(_P):
     role: str
     text: str
 
 
+# box: proposer
 class HelperP(_P):
     role: dict
     lead: bool = False
 
 
+# box: proposer
 class GrantP(_P):
     role: str
     tool: str
 
 
+# box: proposer
 class SubStep(_P):
     roles: list[str] = Field(min_length=1)
     text: str
@@ -78,14 +83,17 @@ class SubStep(_P):
     done_when: str = ""
 
 
+# box: proposer
 class SplitP(_P):
     steps: list[SubStep] = Field(min_length=2, max_length=3)
 
 
+# box: proposer
 class ReplanP(_P):
     plan: str
 
 
+# box: proposer
 class WorkAroundP(_P):
     capability: str
     method: str
