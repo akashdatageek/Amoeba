@@ -239,7 +239,8 @@ BOXES: list[dict] = [
                "in all three runners read it; an open question the Planner writes about one of these names is answered "
                "from it, not by its guess.",
                "After the run, when the reading was assumed, plain code makes the answer open with \"I read X as Y; if "
-               "you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing."],
+               "you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing.",
+               "D116: with --ask-assumed on (the CLI default) every reading that would be assumed, a tie included, is asked about before planning, one question each, least certain first; with nobody to ask the run stops with needs_clarification and writes clarification.json, and --clarify ENTITY=READING answers ahead of time; off keeps the behaviour above, and experiment runs pass off."],
          proposes="The entities, their readings, a reason and a confidence for each.",
          disposes="Plain code decides whether a reading is clear, whether to ask, and checks the answer's opening line.",
          prompts=["interpret"],

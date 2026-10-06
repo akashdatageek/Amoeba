@@ -25,7 +25,8 @@ from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, desc
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
-from amoeba.task.interpret import ask_one, classify_family, enforce_opening, opening_line, read_task, with_note
+from amoeba.task.interpret import (NeedsClarification, apply_clarify, ask_all, ask_one, classify_family,
+                                   enforce_opening, open_questions, opening_line, read_task, with_note)
 from amoeba.config.niche import add_done_clauses, environment_text, load_profile
 from amoeba.memory.context import load_context, standards_slots
 from amoeba.interp.trace import TracedLLM
@@ -63,7 +64,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
             default_max_turns: int | None = None, family_classify: bool = False,
             recipe_source: tuple | None = None, niche=None, deliverable_check: bool = False,
-            workspace_sources: bool = False) -> RunResult:
+            workspace_sources: bool = False, ask_assumed: str = "off", clarify: dict | None = None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -83,7 +84,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     ((--recipes, --recipes-from)); "new" starts empty.
     niche: D102 --niche — a NicheProfile (amoeba.config.niche); a neutral one (general) changes nothing. Otherwise
     (plan runner only): its Environment section in Box 1 and Box 2, its tool allowlist enforced in Box 3 (refusals
-    logged), its done clauses on the answer step and its domain checks after each step."""
+    logged), its done clauses on the answer step and its domain checks after each step.
+    ask_assumed: D116 — "on": every reading the interpretation step would assume (a tie included) is asked about
+    before planning, through `ask` or, without it, the terminal; when nobody can be asked the run stops with
+    error needs_clarification and writes clarification.json. clarify: D116 --clarify answers {entity: reading}."""
     if recipe is not None and topology != "plan":
         raise ValueError("recipes are for Amoeba's plan runner only; the baselines never get one (D82)")
     prof = niche if niche is not None and not niche.is_neutral() else None          # D102: general = None
@@ -177,7 +181,24 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                                    disabled=disabled_tools)
             if interpret:             # D77: what the task is about is settled before the Planner drafts
                 interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed, environment=env_text)
-                if interp["ambiguous"] and ask is not None:
+                if interp["ambiguous"] and clarify:              # D116: answers given with --clarify
+                    interp = apply_clarify(interp, clarify)
+                    if interp.get("clarified"):
+                        trace.event("interpretation_clarified", {"amoeba.answers": interp["clarified"]})
+                if interp["ambiguous"] and ask_assumed == "on":  # D116: never assume a reading; ask first
+                    asker = ask if ask is not None else (input if can_ask() else None)
+                    if asker is None:
+                        qs = open_questions(interp)
+                        (run_dir / "clarification.json").write_text(json.dumps(
+                            {"task_id": task.id, "questions": qs, "how": "answer with --clarify 'ENTITY=READING' "
+                             "(the words or the option number), one per entity"}, indent=2, ensure_ascii=False),
+                            encoding="utf-8")
+                        trace.event("clarification_needed", {"amoeba.box": "interpret", "amoeba.questions": qs})
+                        raise NeedsClarification(qs)
+                    interp = ask_all(interp, asker)
+                    trace.event("interpretation_questions", {"amoeba.box": "interpret",
+                                                             "amoeba.questions": interp.get("questions", [])})
+                elif interp["ambiguous"] and ask is not None:
                     interp = ask_one(interp, ask)
                     trace.event("interpretation_question", {"amoeba.question": interp["question"]})
             task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})
@@ -240,6 +261,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         failed = e
     except RunLimitReached as e:      # D47: a limit reached while drafting; what exists is saved below
         error = e.code
+    except NeedsClarification as e:   # D116: a reading would have been assumed and nobody could be asked
+        error = f"needs_clarification: {e}"
     except CacheMiss as e:            # D46: replay mode never falls back to a live call
         error = f"cache_miss: {e}"
         trace.event("cache_miss", {"error.type": str(e)[:300]})
@@ -326,6 +349,27 @@ def intake_text(d) -> str:
     return "\n".join(out)
 
 
+# box: interpret
+def can_ask() -> bool:
+    """D116: whether a person can answer at the terminal (stdin is one)."""
+    try:
+        return sys.stdin is not None and sys.stdin.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+# box: interpret
+def parse_clarify(items: list[str] | None) -> dict[str, str]:
+    """D116: --clarify 'ENTITY=READING' (repeatable) as {entity: reading}."""
+    out = {}
+    for it in items or []:
+        if "=" not in it:
+            raise ValueError(f"--clarify expects ENTITY=READING, got {it!r}")
+        k, v = it.split("=", 1)
+        out[k.strip().strip('"')] = v.strip()
+    return out
+
+
 # box: planner
 def ask_user(ask) -> str | None:
     """Wait for "continue" (None) or an edited assumption (returned). An empty line asks again; end of input is
@@ -343,13 +387,17 @@ def ask_user(ask) -> str | None:
 
 def interpretation_of(interp: dict | None, stated: dict) -> dict:
     """D77: the working interpretation for result.json: each entity's reading, how it was settled, the alternatives,
-    the question asked (if any) and what plain code added to the answer."""
+    the question asked (if any) and what plain code added to the answer. D116: every question asked, the --clarify
+    answers used, and the questions still open (pending: what a needs_clarification run asks the user)."""
     if not interp:
         return {}
     return {"working": [{k: w[k] for k in ("entity", "reading", "settled", "confidence", "alternatives")}
                         for w in interp.get("working", [])],
             "ambiguous": interp.get("ambiguous", []), "question": interp.get("question"),
-            "context": interp.get("context", {}), "opening_line": opening_line(interp), "added_by_code": stated}
+            "context": interp.get("context", {}), "opening_line": opening_line(interp), "added_by_code": stated,
+            **({"questions": interp["questions"]} if interp.get("questions") else {}),            # D116
+            **({"clarified": interp["clarified"]} if interp.get("clarified") else {}),
+            **({"pending": open_questions(interp)} if interp.get("ambiguous") else {})}
 
 
 def provenance_of(ep) -> dict:
@@ -712,6 +760,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="D77: read the task before planning — list the readings of its key names and terms; a clear "
                         "winner is used, otherwise --interactive asks one question and a non-interactive run states "
                         "its assumption in the answer")
+    p.add_argument("--ask-assumed", choices=["on", "off"], default="on",
+                   help="D116: on (default) = every reading the interpretation step would only assume (no reading "
+                        "leads the next by 0.3, a tie included) is asked about before planning; with no terminal "
+                        "the run stops with error needs_clarification and writes clarification.json. off = the "
+                        "D77 behaviour (the answer states the assumption); the experiment harness passes off")
+    p.add_argument("--clarify", action="append", default=None, metavar="ENTITY=READING",
+                   help="D116: answer an interpretation question ahead of time (the words or the option number); "
+                        "repeat for each entity")
     p.add_argument("--context", default=None, metavar="YAML",
                    help="D77: read-only user context (location, organisation, role) for the interpretation step")
     p.add_argument("--timezone", default=None, metavar="IANA",
@@ -852,12 +908,19 @@ def main(argv: list[str] | None = None) -> int:
                     family_classify=family_classify_on(args.family_classify, args.topology),     # D101
                     recipe_source=(args.recipes, args.recipes_from), niche=niche,
                     deliverable_check=args.deliverable_check == "on" and args.topology == "plan",   # D105
-                    workspace_sources=args.workspace_sources == "on" and args.topology == "plan")   # D107
+                    workspace_sources=args.workspace_sources == "on" and args.topology == "plan",   # D107
+                    ask_assumed=args.ask_assumed, clarify=parse_clarify(args.clarify))                  # D116
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
               f"rounds={r.draft_rounds} consensus={r.consensus} status={r.status} error={r.error} answer={shown!r}")
         print(f"    {describe(r.usage)}")                                                    # D47
+        if r.status == "needs_clarification":                                              # D116
+            q = (r.interpretation or {}).get("pending") or []
+            for x in q:
+                print(f'    ? What did you mean by "{x["entity"]}": ' + " | ".join(
+                    f"{i}. {o}" for i, o in enumerate(x["options"][:-1], 1)))
+            print("    answer and run again with --clarify 'ENTITY=READING' (see clarification.json in the run folder)")
     unmapped = sorted({n for r in results for n in r.unmapped_capabilities})
     if unmapped:   # D29: extend amoeba/capabilities/aliases.yaml with these
         print("unmapped capability names:", ", ".join(unmapped))

@@ -563,6 +563,22 @@ After a step that made a workbook (.xlsx), plain code checks that totals and der
 
 A recipe may now set `max_input_chars` (3,000–20,000 characters of one input a step is shown; default 6,000) and `max_summary_input_chars` (15,000–60,000 characters the summariser is shown; default 30,000) as run options. The ranges are in `amoeba/config/adapt.yaml`. The loop can propose them for the checks and feedback causes, and the Gate tests them like any other edit. A flag given on the command line still wins.
 
+## Ask before assuming (D116)
+
+When the interpretation step finds a name or term whose readings are close (no reading leads the next by 0.3,
+a tie included), Amoeba asks you before it plans, one multiple-choice question per term:
+
+    What did you mean by "P and W"?
+      1. Purdue University Northwest
+      2. University of Washington
+      3. other (type what you meant)
+
+This is on by default (`--ask-assumed on`). If nobody can answer (no terminal, e.g. a background run), the run stops
+before planning with status `needs_clarification` and writes the questions to `clarification.json` in the run
+folder; answer them and run again with `--clarify 'P and W=1'` (the words or the option number, one per term).
+`--ask-assumed off` keeps the earlier behaviour: the top reading is assumed and the answer opens by saying so.
+Experiment, loop and audit runs pass `off`, since nobody answers there.
+
 ## Cost controls (D45–D48)
 
 ```bash

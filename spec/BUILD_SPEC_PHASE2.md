@@ -547,6 +547,7 @@ the report too.
 | D112 | Python sent to local:Bash (```python block, or a first line that starts like Python) runs as `python3 - <<'AMOEBA_PY'`; logged; still screened by the gate (localtools.yaml `bash_python`, default true) | `amoeba/localtools/toolbox.py`, `amoeba/config/localtools.yaml` | v1 |
 | D113 | Spreadsheet checks: after a step that made an .xlsx, typed totals and typed derived cells (row/column sums, products of row cells) fail `domain_xlsx_formulas` with the cell names and earn the retry turn; task numbers are inputs (`--xlsx-formulas`, default on) | `amoeba/checks/xlsx_formulas.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 | D114 | `max_input_chars` (3000–20000) and `max_summary_input_chars` (15000–60000) whitelisted as recipe run options; the Diagnoser allows them for the checks / feedback causes; Gate-tested like any edit | `amoeba/config/adapt.yaml`, `amoeba/adapt/recipe.py`, `scripts/run_task.py` | v1 |
+| D116 | Ask the user about every reading the interpretation step would only assume (a tie included), before planning; no terminal → stop with `needs_clarification` + `clarification.json`; `--clarify ENTITY=READING`; `--ask-assumed off` = D77; experiments pass off | `amoeba/task/interpret.py`, `scripts/run_task.py`, `amoeba/task/models.py`, `amoeba/config/adapt.yaml` | v1 |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit
@@ -714,4 +715,13 @@ From the hard probe (`docs/eval/probe_hard/REPORT.md`, problems 1–11).
 - a research-guided Architect;
 - combined edits (more than one edit per hypothesis);
 - episode memory.
+
+### 16.6 User request of Oct 6, 2026
+
+**D116, ask before assuming.** When the interpretation step (D77) would only assume a reading (no reading leads the
+next by 0.3, a tie included), the user is asked first: every such entity, least certain first, one multiple-choice
+question each, through `--interactive` or the terminal. With nobody to ask, the run stops before Box 2 with
+`needs_clarification` and writes `clarification.json`; `--clarify ENTITY=READING` answers ahead of time. On by default
+from the CLI (`--ask-assumed on`); experiment, loop and audit runs pass `off` (no one answers there), so a paused
+M-P2 resumes with its configuration unchanged.
 

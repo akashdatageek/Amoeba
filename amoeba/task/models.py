@@ -286,12 +286,15 @@ TEAM_API_STATUS = (400, 413, 422)
 
 # box: runresult
 def run_status(error: str | None) -> str:
-    """D111: ok | infra_error | agent_error, from a run's error (D105 adds no_deliverable at the end of a plan run)."""
+    """D111: ok | infra_error | agent_error, from a run's error (D105 adds no_deliverable at the end of a plan run,
+    D116 needs_clarification when it stopped to ask)."""
     if not error:
         return "ok"
     e = str(error)
     if e.startswith("no_deliverable"):
         return "no_deliverable"
+    if e.startswith("needs_clarification"):                 # D116: stopped before planning to ask the user
+        return "needs_clarification"
     if e.startswith("api:"):
         m = re.match(r"api: \w+ (\d{3})\b", e)
         return "agent_error" if m and int(m.group(1)) in TEAM_API_STATUS else "infra_error"

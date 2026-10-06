@@ -97,6 +97,39 @@ def read_task(task_text: str, llm: TracedLLM, context: Mapping[str, str] | None 
 
 
 # box: interpret
+def options_of(interp: dict, w: dict) -> list[str]:
+    """The choices put to the user for one entity: its readings, most confident first, then "other"."""
+    e = next(x for x in interp["entities"] if x["entity"] == w["entity"])
+    return [r["reading"] for r in e["readings"]] + [OTHER]
+
+
+# box: interpret
+def settle(interp: dict, w: dict, options: list[str], reply: str) -> dict:
+    """Reads one reply (an option number or the user's own words) and, when it names a reading, makes it the entity's
+    working reading ("user"). A blank reply or "other" without words leaves the assumption as it was."""
+    reply = (reply or "").strip()
+    chosen = None
+    if reply.isdigit() and 1 <= int(reply) <= len(options) - 1:
+        chosen = options[int(reply) - 1]
+    elif reply and not (reply.isdigit() and int(reply) == len(options)):
+        chosen = reply
+    q = {"entity": w["entity"], "options": options, "reply": reply, "chosen": chosen}
+    if chosen:
+        w.update(reading=chosen, settled="user", alternatives=[])
+        interp["ambiguous"] = [a for a in interp["ambiguous"] if a != w["entity"]]
+    return q
+
+
+# box: interpret
+def _ask(w: dict, options: list[str], ask: Callable[[str], str]) -> str:
+    lines = [f'What did you mean by "{w["entity"]}"?'] + [f"  {i}. {o}" for i, o in enumerate(options, 1)]
+    try:
+        return ask("\n".join(lines) + f"\nChoose 1-{len(options)} (or type your meaning): ")
+    except EOFError:
+        return ""
+
+
+# box: interpret
 def ask_one(interp: dict, ask: Callable[[str], str]) -> dict:
     """--interactive: ONE multiple-choice question about the least certain ambiguous entity (its readings + other),
     before planning. The answer becomes that entity's working reading ("user"); any other ambiguous entity stays an
@@ -105,23 +138,56 @@ def ask_one(interp: dict, ask: Callable[[str], str]) -> dict:
         return interp
     rows = [w for w in interp["working"] if w["settled"] == "assumed"]
     w = min(rows, key=lambda x: x["lead"])
-    e = next(x for x in interp["entities"] if x["entity"] == w["entity"])
-    options = [r["reading"] for r in e["readings"]] + [OTHER]
-    lines = [f'What did you mean by "{w["entity"]}"?'] + [f"  {i}. {o}" for i, o in enumerate(options, 1)]
-    try:
-        reply = ask("\n".join(lines) + f"\nChoose 1-{len(options)} (or type your meaning): ").strip()
-    except EOFError:
-        reply = ""
-    chosen = None
-    if reply.isdigit() and 1 <= int(reply) <= len(options) - 1:
-        chosen = options[int(reply) - 1]
-    elif reply and not (reply.isdigit() and int(reply) == len(options)):
-        chosen = reply
-    interp["question"] = {"entity": w["entity"], "options": options, "reply": reply, "chosen": chosen}
-    if chosen:
-        w.update(reading=chosen, settled="user", alternatives=[])
-        interp["ambiguous"] = [a for a in interp["ambiguous"] if a != w["entity"]]
+    options = options_of(interp, w)
+    interp["question"] = settle(interp, w, options, _ask(w, options, ask))
     return interp
+
+
+# box: interpret
+def ask_all(interp: dict, ask: Callable[[str], str]) -> dict:
+    """D116: every entity whose reading would be assumed (no reading leads the next by DOMINANCE_GAP, a tie
+    included) is asked about before planning, least certain first, one multiple-choice question each. A blank
+    reply keeps that one assumption, which the answer then states (D77)."""
+    rows = sorted((w for w in interp["working"] if w["settled"] == "assumed"), key=lambda x: x["lead"])
+    asked = []
+    for w in rows:
+        options = options_of(interp, w)
+        asked.append(settle(interp, w, options, _ask(w, options, ask)))
+    if asked:
+        interp["question"], interp["questions"] = asked[0], asked
+    return interp
+
+
+# box: interpret
+def apply_clarify(interp: dict, answers: Mapping[str, str]) -> dict:
+    """D116 --clarify ENTITY=READING: answers given on the command line (an option number or words) settle those
+    entities as the user's choice, with no question; entity names match case-insensitively."""
+    given = {k.strip().strip('"').lower(): v for k, v in answers.items()}
+    done = []
+    for w in interp["working"]:
+        reply = given.get(w["entity"].lower())
+        if reply is not None and w["settled"] == "assumed":
+            done.append(settle(interp, w, options_of(interp, w), reply))
+    if done:
+        interp["clarified"] = done
+    return interp
+
+
+# box: interpret
+class NeedsClarification(Exception):
+    """D116: a reading would be assumed and nobody can be asked (no terminal, no --interactive); the run stops before
+    Box 2 instead of guessing. `questions` are what the user is asked to answer with --clarify."""
+
+    def __init__(self, questions: list[dict]):
+        self.questions = questions
+        super().__init__("; ".join(f'"{q["entity"]}": ' + " | ".join(q["options"][:-1]) for q in questions))
+
+
+# box: interpret
+def open_questions(interp: dict) -> list[dict]:
+    """D116: the questions a run that cannot ask leaves for the user, least certain first."""
+    rows = sorted((w for w in interp["working"] if w["settled"] == "assumed"), key=lambda x: x["lead"])
+    return [{"entity": w["entity"], "options": options_of(interp, w), "lead": w["lead"]} for w in rows]
 
 
 # box: interpret

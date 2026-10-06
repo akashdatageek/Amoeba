@@ -108,6 +108,12 @@ It looks for key shapes (`AIza…`, `tvly-…`, `sk-…`, `ghp_…`, private key
 
 Run every long job as a **systemd service**. tmux also works, but nothing restarts it after a crash or reboot.
 
+**Nobody answers questions in a service (D116).** `run_task` asks you about a name or term with close readings
+before it plans. Under systemd there is no terminal, so such a run stops with status `needs_clarification` and
+writes `clarification.json`. The experiment, loop and audit scripts already pass `--ask-assumed off`. For a
+benchmark or a single task run as a service, either answer ahead of time with `--clarify 'TERM=READING'` or pass
+`--ask-assumed off` (the answer then states its assumption).
+
 **The chain script**, `~/work/m2_chain.sh` (`chmod 700`). This is the command line the cloud session ran, with paths
 for the VM:
 
