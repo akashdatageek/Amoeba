@@ -35,6 +35,7 @@ def run_folders(roots: list[str]) -> list[tuple[str, Path]]:
     return out
 
 
+# box: stuck
 def _load(p: Path) -> dict | None:
     try:
         return json.loads(p.read_text(encoding="utf-8"))
@@ -101,6 +102,7 @@ def report(roots: list[str]) -> dict:
     return {"sets": sets, "total": total}
 
 
+# box: stuck
 def _row(name: str, s: dict) -> str:
     causes = ", ".join(f"{c} {n}" for c, n in s["causes"].most_common()) or "-"
     signals = ", ".join(f"{c} {n}" for c, n in s["signals"].most_common()) or "-"
@@ -111,6 +113,7 @@ def _row(name: str, s: dict) -> str:
                if s["not_done_no_signal"] else ""))
 
 
+# box: stuck
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("roots", nargs="+")
