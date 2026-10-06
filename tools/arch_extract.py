@@ -637,7 +637,8 @@ BOXES: list[dict] = [
                "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
                "It also lists the steps that answered BLOCKED and every capability request, and counts how many "
                "requests round 1 made and how many the checkers talked the planner out of.",
-               "D105 + D110: after the summariser, plain code checks each Box 2 requirement and each promised file against the final answer and the workspace (and the dates of web figures); missing → one refine turn, then Limitations, and no_deliverable when a core deliverable is missing; requirement_status records the final-answer result."],
+               "D105 + D110: after the summariser, plain code checks each Box 2 requirement and each promised file against the final answer and the workspace (and the dates of web figures); missing → one refine turn, then Limitations, and no_deliverable when a core deliverable is missing; requirement_status records the final-answer result.",
+               "D116: status needs_clarification when the run stopped before planning to ask the user about a reading it would otherwise have assumed; result.json then lists the open questions (interpretation.pending)."],
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,
