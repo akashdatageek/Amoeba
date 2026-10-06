@@ -2410,7 +2410,7 @@
   ]
  },
  "diag_edits": {
-  "checked_at": "53b1bb7",
+  "checked_at": "5d474b1",
   "facts": {
    "anchors": [],
    "checks": [],
@@ -2421,11 +2421,11 @@
    "title": "Cause → allowed edits (kept from D86)"
   },
   "facts_hash": "2067c6ee57aa5767",
-  "seed_hash": "47c8b411495b81ae",
+  "seed_hash": "f5d1941bdd34c3e3",
   "sentence": "Which edits may answer which cause, from adapt.yaml.",
   "source": "hand",
   "what": [
-   "capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback and honesty each have their own allowed edits; a tie between causes is broken by the table order.",
+   "missing_input, capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback and honesty each have their own allowed edits; a tie between causes is broken by the table order.",
    "prefer_model is offered only when model edits are on (D98) and never for feedback.",
    "D117: the step contract's causes become stuck signals; this table limits what a fix may change."
   ]
@@ -3314,7 +3314,7 @@
   ]
  },
  "fixes": {
-  "checked_at": "23495f6",
+  "checked_at": "5d474b1",
   "facts": {
    "anchors": [
     {
@@ -3368,6 +3368,21 @@
      "doc": "Apply one code fix to the live plan, re-run step n (and, for rerun_upstream, its upstream step first),",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.apply_fix",
      "signature": "apply_fix(self, n: int, wave: int, d: dict, fix: dict) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/fixes.py::_option",
+     "signature": "_option(kind: str, name: str, now: int, new: int, ranges: dict, n: int) -> dict | None"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/fixes.py::_specific",
+     "signature": "_specific(item: str) -> set[str]"
     },
     {
      "callees": [
@@ -3499,10 +3514,11 @@
    "prompts": {},
    "title": "Code fixes for a stuck step (D117 Stage C)"
   },
-  "facts_hash": "78eef95fa1629a7f",
+  "facts_hash": "e132a281c9ac9ad9",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "1fb809564e50141b",
   "sentence": "Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "missing_input: an upstream step that is done and holds the data is added to depends_on or passed in full; an upstream output without it is re-run once with the item in its done_when (the only redo of a completed step), then the stuck step.",
    "Rung 1: more turns (tool_error, max_turns), more retry turns then a larger input (checks).",
@@ -12754,7 +12770,7 @@
   ]
  },
  "stuck": {
-  "checked_at": "23495f6",
+  "checked_at": "5d474b1",
   "facts": {
    "anchors": [
     {
@@ -12796,6 +12812,12 @@
      "doc": "D117 Stage B: the stuck watch after one step attempt. A stuck step gets `meta[\"stuck\"]` (cause, signals,",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.watch",
      "signature": "watch(self, n: int, meta: dict, previous: dict | None, files_unchanged: bool | None) -> dict | None"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/stuck.py::_words",
+     "signature": "_words(text: str) -> set[str]"
     },
     {
      "callees": [
@@ -12929,13 +12951,12 @@
    "prompts": {},
    "title": "Stuck watch and diagnosis (D117 Stage B)"
   },
-  "facts_hash": "f12e900a71ceb5c3",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "e78826c1bcfc1d52",
-  "sentence": "After each step attempt plain code marks a step that did not end done STUCK on any of five signals and names one cause.",
-  "source": "model: kept",
+  "facts_hash": "ec5639a8243a033f",
+  "seed_hash": "a81f7db46b95d199",
+  "sentence": "After each step attempt plain code marks a step that did not end done STUCK on any of six signals and names one cause.",
+  "source": "hand",
   "what": [
-   "Signals: the same tool error twice in a row (digits masked); checks still failing after the retry turn; max turns; a capability or skill lacked or requested and unfilled; a file owed and no file change between attempts.",
+   "Signals: a missing input (data an earlier step should have given, told from a missing tool by classify_lacked); the same tool error twice in a row (digits masked); checks still failing after the retry turn (unless the helpers ran out of turns); max turns; a capability or skill lacked or requested and unfilled; a file owed and no file change between attempts.",
    "Each signal names a cause; the first cause in the table order wins, with its allowed edits and at most eight evidence lines.",
    "The event goes to the trace, step_N.json, result.json (stuck) and the run's hash-chained events.jsonl. --adapt on is the command-line default.",
    "scripts/stuck_report.py runs the same functions over stored run folders, offline."
