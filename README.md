@@ -428,9 +428,24 @@ turn, max turns reached, a capability or skill lacked or requested and unfilled,
 between attempts. A step that did not end `done` with a signal is STUCK; one cause is picked by the order of
 `diagnoser.causes` in `amoeba/config/adapt.yaml` (a new cause, `tool_error`, sits after `capability`). The event (step,
 cause, signals, allowed edits, evidence lines) goes to the trace, `step_N.json`, `result.json` (`stuck`) and the run's
-hash-chained `events.jsonl`. Nothing is fixed yet. The same code counts stored runs, offline:
+hash-chained `events.jsonl`. The same code counts stored runs, offline:
 
     python -m scripts.stuck_report eval --json stuck_counts.json
+
+**Stage C: code fixes (built, no AI).** A stuck step gets plain-code fixes, cheapest first, each one an edit the
+cause table allows; only the stuck step is re-run and re-checked, and it counts as recovered when it ends `done`:
+
+| Cause | Fixes, in order |
+|---|---|
+| missing_input (data an earlier step should have given; fixed before capability) | the upstream step is done and holds the data: add it to depends_on, or pass its output in full; else re-run that upstream step once with the item added to its done_when, then the stuck step |
+| tool_error, max_turns | three more turns |
+| checks | one more retry turn, then double the input limit when an input was shortened |
+| capability | attach the missing tool or skill: a registry tool is granted; otherwise the first vetted candidate of the pool shortlist not given before (plain code picks). With the pool and local tools off: skipped, "capability fix unavailable: pool off" |
+
+Limits (`adapt` in `amoeba/config/adapt.yaml`): 3 fixes per step, 8 per task, 200,000 tokens and $1 of fix attempts
+per task, never the same fix twice. When no fix recovers the step the task stops: the answer and
+`adapt_report.md` say what was stuck, the cause, each fix tried and why it failed; the run status is `stuck`.
+`result.json` `adaptation` lists every fix with its result and tokens. `--adapt off` turns the watch and the fixes off.
 
 ## Ask before assuming (D116)
 
@@ -554,7 +569,7 @@ amoeba/
   safety/envelope.py       allowed_tools per role, max_agents
   pool/                    D56: index (refresh), match, stock (pick, vet, attach), mcp (pool tools)
   localtools/              D59: claude mcp serve (server), gate, skills, claims, toolbox (--local-tools on)
-  adapt/                   D117: stuck watch (stuck), edit menu + V1–V6 (recipe), single-edit format (architect), event log (evidence)
+  adapt/                   D117: stuck watch (stuck), code fixes (fixes), edit menu + V1–V6 (recipe), single-edit format (architect), event log (evidence)
   cli.py                   D56: `amoeba pool refresh` / `python -m amoeba pool refresh`
 scripts/run_task.py        CLI
 scripts/list_models.py     D54: the models an endpoint offers (check a profile's names)

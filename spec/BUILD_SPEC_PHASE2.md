@@ -548,7 +548,7 @@ the report too.
 | D113 | Spreadsheet checks: after a step that made an .xlsx, typed totals and typed derived cells (row/column sums, products of row cells) fail `domain_xlsx_formulas` with the cell names and earn the retry turn; task numbers are inputs (`--xlsx-formulas`, default on) | `amoeba/checks/xlsx_formulas.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 | D114 | `max_input_chars` (3000–20000) and `max_summary_input_chars` (15000–60000) whitelisted as recipe run options; the Diagnoser allows them for the checks / feedback causes; Gate-tested like any edit | `amoeba/config/adapt.yaml`, `amoeba/adapt/recipe.py`, `scripts/run_task.py` | v1 |
 | D116 | Ask the user about every reading the interpretation step would only assume (a tie included), before planning; no terminal → stop with `needs_clarification` + `clarification.json`; `--clarify ENTITY=READING`; `--ask-assumed off` = D77; experiments pass off | `amoeba/task/interpret.py`, `scripts/run_task.py`, `amoeba/task/models.py`, `amoeba/config/adapt.yaml` | v1 |
-| D117 | The offline learning loop is removed; in-task adaptation replaces it (Stage A: removal; B: stuck watch; C: code fixes; D: fix-proposer agent; E: `--adapt` test). Kept: contract causes, cause → edit table, single-edit format + V1–V6, event log. Stage B built: five stuck signals, one diagnosed cause, logged (§17) | `amoeba/adapt/` (stuck, recipe, architect, evidence), `amoeba/config/adapt.yaml`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py`, `scripts/stuck_report.py` | v1 |
+| D117 | The offline learning loop is removed; in-task adaptation replaces it (Stage A: removal; B: stuck watch; C: code fixes; D: fix-proposer agent; E: `--adapt` test). Kept: contract causes, cause → edit table, single-edit format + V1–V6, event log. Stage B built: stuck signals, one diagnosed cause, logged; Stage C built: code fixes with limits and a stop report, new cause missing_input (§17) | `amoeba/adapt/` (stuck, fixes, recipe, architect, evidence), `amoeba/pool/stock.py`, `amoeba/config/adapt.yaml`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py`, `scripts/stuck_report.py` | v1 |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit
@@ -759,6 +759,40 @@ library default off) and writes `meta["stuck"]`, a `stuck` trace event, a `stuck
 (hash-chained) and `result.json` `stuck`. `scripts/stuck_report.py` applies the same functions to stored run folders
 (attempt before = `step_N.first.json`; unfilled requests from `capability_requests.json`). Counts over 618 stored
 runs: `docs/eval/d117_stage_b/STUCK_COUNTS.md`. Tests: tests/test_stuck_d117.py.
+
+*User changes to Stage C (Oct 6).* (1) A new cause `missing_input`, separate from capability: the step lacks data
+an earlier step should have given; mixed cases are fixed for it first, then re-checked for capability. (2) Its code
+fix: a. the upstream step is done and its output holds the data → add the dependency / pass the artifact, re-run only
+the stuck step; b. the upstream output lacks it → re-run that upstream step once with the missing item added to its
+done_when, then the stuck step — the only exception to "never redo completed steps", counted toward the per-step and
+per-task limits. (3) Rung 2 needs the pool reachable: with the pool and local tools off it is skipped and logged
+"capability fix unavailable: pool off". (4) Mislabelled citations stay out of the stuck signals.
+
+*As built (C).* `classify_lacked` (amoeba/adapt/stuck.py) tells a missing input from a capability: a tool word in the
+label → capability; a step, input, output, data or file named in the label, a step named in its explanation, another
+step's role, or ≥ 50% of an earlier step's planned output words → missing input, with the upstream step(s) named,
+else the role's, else the best-matching dependency. D63's "MISSING INPUT:" lines count too. `diagnoser.causes` is
+now missing_input, capability, tool_error, checks, max_turns, …; missing_input allows add_dependency, rerun_upstream
+and set_run_option:max_input_chars. Checks that fail because the helpers ran out of turns are max_turns, not checks.
+`amoeba/adapt/fixes.py` `candidates(d, n, ctx)` lists the fixes, cheapest first, each one an edit the table allows
+for the cause: missing_input → add_dependency (mode added, or passed_in_full when it is already a dependency: no cap
+on that input and a note naming the item) when the upstream step is done and holds ≥ 60% of the item's own words,
+rerun_upstream otherwise (once per upstream step per task); tool_error and max_turns → max_turns + 3; checks →
+check_retry_turns + 1, then max_input_chars × 2 when an input was shortened (all within `recipe.run_options`);
+capability → grant_tool (rung 2). `PlanRunner.fix_stuck` runs after each step of the wave loop with `--adapt on`:
+it applies the first candidate not tried before in the task (`fix_key`), keeps the replaced attempt as
+step_N.tryK.md/.json, re-runs only the stuck step (`run_step(…, fixing=…)`, recorded as `fix_of`) and re-checks it;
+success = the step ends done (its checks and contract pass). Rung 2 (`attach_missing`): a lacked tool the run's
+registry has is granted; anything else goes through the toolbox step (`stock_toolbox(…, code_pick=True,
+exclude=…)`): the first vetted candidate of the shortlist not given before, no AI pick. Limits (`adapt` in
+adapt.yaml): 3 fixes per step, 8 per task, 200,000 tokens and $1 (when the model has a price) of fix attempts per
+task, checked before each fix. When the step is still stuck and no fix is left, the task stops
+(`stop_when_exhausted`): the run's answer and `<run>/adapt_report.md` say what was stuck, the cause, the evidence,
+each fix tried with its tokens and why it failed, the rungs not tried, and the steps finished; the run status is
+`stuck`. Every fix, skip and stop is a trace event and a row in `<run>/events.jsonl`; `result.json` `adaptation`
+holds the fixes, recovered steps, tokens and cost. Fixes run only in the wave loop (not inside D34 rework or D39
+re-runs). Steps that used an upstream output before its re-run are not redone (listed as `left_on_old_output`).
+Re-count of stored runs with these rules: `docs/eval/d117_stage_b/STUCK_COUNTS.md`. Tests: tests/test_fixes_d117.py.
 
 **Stage C, code fixes (no AI), cheapest first.** (1) more turns, more retry turns or a larger input; (2) attach the
 missing tool or skill from the pool shortlist. Apply, re-run only the stuck step, re-check.

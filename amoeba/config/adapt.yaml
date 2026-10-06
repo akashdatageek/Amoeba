@@ -29,11 +29,14 @@ recipe:                       # D81: what a team recipe may hold (validate_recip
 
 diagnoser:                    # the cause -> allowed-edit table (kept from D86 by D117; edit it here)
   # tie order when two causes are found at once
-  # D117: tool_error (the same tool error twice in a row) is a stuck cause of its own, after capability
-  causes: [capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback, honesty]
+  # D117: tool_error (the same tool error twice in a row) is a stuck cause of its own, after capability;
+  # missing_input (data an earlier step should have given) comes first: a mixed step is fixed for it, then re-checked
+  causes: [missing_input, capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback,
+           honesty]
   # "set_run_option:<name>" allows that one run option only
   allowed_edits:
     capability: [grant_tool, add_planner_rule, "set_run_option:replan", prefer_model]
+    missing_input: [add_dependency, rerun_upstream, "set_run_option:max_input_chars"]            # D117 Stage C
     tool_error: [add_role_rule, grant_tool, "set_run_option:max_turns"]                       # D117
     checks: [add_verify_step, tighten_done_when, add_role_rule, "set_run_option:check_retry_turns", prefer_model,
              "set_run_option:max_input_chars"]                                                   # D114
@@ -44,6 +47,16 @@ diagnoser:                    # the cause -> allowed-edit table (kept from D86 b
                "set_run_option:max_summary_input_chars"]                                         # D114
     honesty: [add_verify_step, add_role_rule, tighten_done_when]
   max_evidence: 8             # evidence lines kept per diagnosis
+
+adapt:                        # D117 Stage C: in-task code fixes (--adapt on); all limits are enforced by plain code
+  max_fixes_per_step: 3       # fixes tried for one stuck step (a re-run of its upstream step counts as one)
+  max_fixes_per_task: 8       # fixes tried in one task
+  max_tokens_per_task: 200000 # tokens all fix attempts of one task may use (checked before each fix)
+  max_usd_per_task: 1.0       # the same in dollars, when the model has a price (amoeba/config/prices.yaml)
+  more_turns: 3               # rung 1: turns added by a "more turns" fix (capped by recipe.run_options.max_turns)
+  more_retry_turns: 1         # rung 1: retry turns added (capped by check_retry_turns)
+  input_factor: 2             # rung 1: a shortened input's limit is multiplied by this (capped by max_input_chars)
+  stop_when_exhausted: true   # every fix failed or none is left: the task stops with a report for the user
 
 evidence:                     # D95: the evidence log's off-container copy
   target: "github"            # github: the repository's orphan `evidence` branch; "none": no shipping

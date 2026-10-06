@@ -139,9 +139,35 @@ diagnosis in plain code; (C) code fixes, cheapest first; (D) a small fix-propose
 A step is STUCK when it did not end `done` and a signal holds. One cause is picked by the order of
 `diagnoser.causes`, with that cause's allowed edits and at most eight evidence lines. The event is written to
 `step_N.json` (`stuck`), the trace (`stuck`), `result.json` (`stuck`) and the run's hash-chained `events.jsonl`.
-Nothing is fixed yet. `scripts/stuck_report.py` runs the same functions over stored run folders.
+`scripts/stuck_report.py` runs the same functions over stored run folders.
 
-**Who decides.** Code. No AI in Stages A and B.
+A sixth cause, **missing_input** (Stage C), separates data an earlier step should have given from a missing tool:
+a lacked item with no tool word that names a step, an input, output, data or files, another step's role, or most of
+an earlier step's planned output (`classify_lacked`). It comes first in the table order, so a step that lacked both
+is fixed for the input, then re-checked. Checks that fail only because the helpers ran out of turns count as
+max_turns.
+
+**Stage C: code fixes (built).** `PlanRunner.fix_stuck` runs after each step of the wave loop. It asks
+`amoeba/adapt/fixes.py` for the fixes of the cause, cheapest first, keeps those the table allows and that were not
+tried in this task, applies the first, keeps the replaced attempt as `step_N.tryK.*`, re-runs only the stuck step
+and re-checks it (success: the step ends `done`):
+
+1. missing_input: an upstream step that is done and holds the item (60% of its own words) is added to depends_on,
+   or passed in full when it already is a dependency; otherwise that upstream step is re-run once with the item
+   added to its done_when, then the stuck step. That re-run is the only time a completed step is redone; steps that
+   used its old output stay as they are and are listed.
+2. Rung 1: more turns (tool_error, max_turns); more retry turns, then a larger input when one was shortened (checks).
+3. Rung 2 (capability): a lacked tool the registry has is granted; otherwise the toolbox step runs again for it
+   with `code_pick` — the first vetted candidate of the shortlist not given before, no AI pick. Without the pool and
+   local tools the rung is skipped: "capability fix unavailable: pool off".
+
+Limits (`adapt` in adapt.yaml): 3 fixes per step, 8 per task, a token cap (200,000) and a dollar cap ($1, when the
+model has a price) on the fix attempts, checked before each fix. When the step is still stuck and nothing is left,
+the task stops: `adapt_report.md` (also the run's answer) lists the stuck step, the cause, the evidence, each fix and
+why it failed, and the rungs not tried; the run status is `stuck`. Every fix is a trace event and an `events.jsonl`
+row; `result.json` `adaptation` sums them up.
+
+**Who decides.** Code. No AI in Stages A–C.
 
 ## Model router (D97)
 

@@ -99,8 +99,11 @@ BOXES: list[dict] = [
     dict(id="ov_adapt", view="overview", title="4 · Adapt within the task", kind="top", opens="adapt", plan=None,
          sentence="D117: the offline learning loop is gone; adaptation happens inside one task, when a Box 3 step gets stuck.",
          what=[
-               "Stage B (built): after each step attempt plain code looks for five stuck signals, marks the step "
-               "STUCK, diagnoses one cause and logs it; nothing is fixed yet.",
+               "Stage B (built): after each step attempt plain code looks for the stuck signals, marks the step "
+               "STUCK, diagnoses one cause and logs it.",
+               "Stage C (built): code fixes, cheapest first — pass a missing input or re-run its upstream step once, "
+               "more turns or retry turns or a larger input, attach the missing tool from the pool shortlist; within "
+               "limits; when none recovers the step the task stops with a report.",
                "Kept for the fixes: the cause → edit table, the single-edit format with V1–V6, and the hash-chained "
                "event log.",
                "Nothing carries over between tasks."],
@@ -799,6 +802,22 @@ BOXES: list[dict] = [
          disposes="Plain code marks the step and logs the diagnosis; no fix is made yet.",
          anchors=["amoeba/adapt/stuck.py::step_signals", "amoeba/adapt/stuck.py::diagnose",
                   "amoeba/interp/plan_runner.py::PlanRunner.watch"], guard_anchors=[]),
+    dict(id="fixes", view="adapt", title="Code fixes for a stuck step (D117 Stage C)", kind="code", plan=None,
+         sentence="Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
+         what=[
+               "missing_input: an upstream step that is done and holds the data is added to depends_on or passed in "
+               "full; an upstream output without it is re-run once with the item in its done_when (the only redo of "
+               "a completed step), then the stuck step.",
+               "Rung 1: more turns (tool_error, max_turns), more retry turns then a larger input (checks).",
+               "Rung 2: the missing tool or skill from the pool shortlist, first vetted candidate not given before "
+               "(no AI pick); with the pool and local tools off it is skipped: \"capability fix unavailable: pool off\".",
+               "Limits from adapt.yaml (adapt): three fixes per step, eight per task, a token "
+               "and dollar cap; a fix is never repeated. When none recovers the step the task stops: "
+               "adapt_report.md says what was stuck, the cause, each fix and why it failed."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code picks, applies and judges each fix (success: the step ends done).",
+         anchors=["amoeba/adapt/fixes.py::candidates", "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
+                  "amoeba/interp/plan_runner.py::PlanRunner.apply_fix"], guard_anchors=[]),
     dict(id="arch_check", view="adapt", title="Single-edit format and check (kept from D87)", kind="code", plan=None,
          sentence="One proposed change is one strict JSON object; plain code parses it and checks it is allowed, valid and new.",
          what=[

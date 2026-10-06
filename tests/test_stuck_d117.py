@@ -70,12 +70,12 @@ def test_the_live_watch_logs_a_stuck_step(task, envelope, trace, tools, tmp_path
     one = by[1]
     assert one["status"] == "partial" and one["stuck"]["cause"] == "capability"
     assert "lacked: web_search" in one["stuck"]["evidence"]
-    assert "stuck" not in by[3] or by[3]["status"] != "done"
+    assert 3 not in by                                   # Stage C: no pool, no fix, the task stopped at step 1
     [ev] = [e for e in trace.events("stuck") if e["amoeba.step"] == 1]
     assert ev["amoeba.cause"] == "capability" and "grant_tool" in ev["amoeba.allowed_edits"]
     rows = [json.loads(l) for l in (tmp_path / "events.jsonl").read_text().splitlines()]
-    assert {r["event"] for r in rows} == {"stuck"} and rows[0]["data"]["step"] == 1
-    assert len(rows) == len(ep.stuck) and verify(tmp_path)["ok"]
+    assert [r["event"] for r in rows] == ["stuck", "fix_skipped", "adapt_stop"] and rows[0]["data"]["step"] == 1
+    assert len(ep.stuck) == 1 and verify(tmp_path)["ok"]
     saved = json.loads((tmp_path / "artifacts" / "step_1.json").read_text())
     assert saved["stuck"]["cause"] == "capability"
 

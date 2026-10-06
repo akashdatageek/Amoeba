@@ -17,6 +17,7 @@ from collections import Counter
 from pathlib import Path
 
 from amoeba.adapt.stuck import diagnose, is_stuck, step_signals
+from amoeba.interp.plan_runner import missing_input_marks
 
 
 # box: stuck
@@ -51,6 +52,16 @@ def run_stuck(run: Path) -> list[dict]:
     if requests is None:
         requests = (_load(run / "result.json") or {}).get("requested_capabilities") or []
     unfilled = [q for q in requests if isinstance(q, dict) and q.get("status") == "unfilled"]
+    metas = {}
+    for p in (run / "artifacts").glob("step_*.json"):
+        if p.name[len("step_"):-len(".json")].isdigit() and isinstance(m := _load(p), dict):
+            metas[m.get("step")] = m
+    plan = {k: {"output": m.get("output_spec") or "", "roles": m.get("roles") or [], "status": m.get("status")}
+            for k, m in metas.items() if isinstance(k, int)}
+    res = _load(run / "result.json") or {}
+    pool = res.get("pool") if isinstance(res.get("pool"), dict) else {}
+    tools = {"pool": bool(pool) and pool.get("status") not in (None, "unavailable", "off"),
+             "local": "files_created" in res or bool(pool.get("local"))}
     out = []
     for p in sorted((run / "artifacts").glob("step_*.json"), key=lambda x: x.name):
         stem = p.name[:-len(".json")]
@@ -61,13 +72,17 @@ def run_stuck(run: Path) -> list[dict]:
         for i, (meta, previous) in enumerate(attempts, 1):
             if not isinstance(meta, dict):
                 continue
-            sig = step_signals(meta, previous=previous, unfilled=unfilled)
+            md = p.with_name(f"{stem}.first.md" if i == 1 and first else f"{stem}.md")
+            if "missing_inputs" not in meta and md.exists():
+                meta = {**meta, "missing_inputs": missing_input_marks(md.read_text(encoding="utf-8", errors="replace"))}
+            sig = step_signals(meta, previous=previous, unfilled=unfilled, plan=plan)
             stuck = is_stuck(meta, sig)
             d = diagnose(sig) if stuck else {"cause": None, "signals": [], "evidence": []}
             out.append({"step": meta.get("step"), "attempt": i, "status": meta.get("status"), "stuck": stuck,
                         "reason": meta.get("status_reason") or "",
                         "cause": d["cause"], "signals": d["signals"], "evidence": d["evidence"],
-                        "has_tool_calls": "tool_calls" in meta})
+                        "has_tool_calls": "tool_calls" in meta, "pool": tools["pool"], "local": tools["local"],
+                        "mixed": "missing_input" in d["signals"] and "capability_unfilled" in d["signals"]})
     return out
 
 

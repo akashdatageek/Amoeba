@@ -60,6 +60,32 @@ attempt, in the order of `diagnoser.causes` (capability, tool_error, checks, max
 - The loop practice runs (466 runs, small calc tasks) are 75% of the runs but only 87 stuck attempts; the hard tasks
   (probe_hard, rounds 1–4, bmv) carry most of the stuck steps.
 
+## Stage C re-count: missing input separated, split by pool and local tools
+
+Re-counted with the Stage C rules: a lacked item that is data an earlier step should have given (it names a step, an
+input, output, data or files, another step's role, or most of an earlier step's planned output, and no tool word) is
+the cause `missing_input`, ahead of `capability`; checks that fail because the helpers ran out of turns count as
+`max_turns`. Pool on = the run's toolbox step ran against the pool cache; local on = `--local-tools on`.
+
+| cause | pool on, local on | pool on, local off | pool off, local off | all |
+|---|---:|---:|---:|---:|
+| missing_input | 56 | 15 | 11 | 82 |
+| capability | 116 | 37 | 79 | 232 |
+| checks | 0 | 0 | 27 | 27 |
+| max_turns | 5 | 0 | 0 | 5 |
+| tool_error | 1 | 0 | 0 | 1 |
+| claimed_file_missing | 0 | 0 | 0 | 0 |
+| *(mixed: missing_input + capability)* | 37 | 12 | 11 | 60 |
+| **total stuck** | 178 | 52 | 117 | 347 |
+
+- The 314 capability attempts of Stage B split into 82 missing_input and 232 capability. 60 of the 82 also lacked a
+  capability: Stage C fixes the missing input first, then re-checks for capability.
+- 79 of the 232 capability attempts (34%) ran with the pool and local tools off: rung 2 cannot help them
+  ("capability fix unavailable: pool off"). 153 had the pool on.
+- Of Stage B's 314, 224 ran with the pool on and 90 with it off.
+- Known misreadings of the rule, from a spot check of the 153 distinct labels: "Star Count Chart" and
+  "metrics_report" (one attempt each) stay capability; "Open the generated file" (one) becomes a missing input.
+
 ## Run it again
 
     python -m scripts.stuck_report eval [more roots] --json stuck_counts.json

@@ -48,7 +48,7 @@ from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
-PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck"}           # left out of result.json when None (Phase 1 records unchanged)
+PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation"}           # left out of result.json when None (Phase 1 records unchanged)
 
 
 # box: ov_leave, capreq, runresult
@@ -199,8 +199,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical,
                                             "status": q.status, "reason": q.reason} for q in requests]
         dump_yaml(cfg, run_dir / "team.yaml")
-        restock = (lambda reqs, c, reg: stock_toolbox(reqs, c, reg, llm, trace, pool, seed, local=box, restock=True,
-                                                     picks=picks)) \
+        restock = (lambda reqs, c, reg, **kw: stock_toolbox(reqs, c, reg, llm, trace, pool, seed, local=box,
+                                                           restock=True, picks=None if kw else picks, **kw)) \
             if (pool is not None or box is not None) else None                   # D63: requests a re-plan makes
         if picks_only:                                                             # D70: the picks pre-pass
             answer, error = None, "picks_only"
@@ -279,6 +279,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         routing=llm.summary() if hasattr(llm, "summary") and hasattr(llm, "registry") else None,
         status=run_status(error), deliverables=deliverables, requirement_status=requirement_status,
         stuck=ep.stuck if ep and topology == "plan" and getattr(plan_options, "adapt", "off") == "on" else None,
+        adaptation=ep.adaptation if ep and topology == "plan" and getattr(plan_options, "adapt", "off") == "on"
+        else None,
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
@@ -679,10 +681,12 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "with both values shown, and one still there makes the step partial and goes into the "
                         "answer's Limitations; a PASS never overrides it (D109)")
     p.add_argument("--adapt", choices=["on", "off"], default="on",
-                   help="plan: in-task adaptation (D117). Stage B: after each step attempt plain code marks the step "
-                        "STUCK on a stuck signal (the same error twice, checks failing after the retry, max turns, an "
-                        "unfilled capability, no file change), diagnoses one cause and logs it to the trace, "
-                        "step_N.json, result.json and events.jsonl; no fix yet")
+                   help="plan: in-task adaptation (D117). After each step attempt plain code marks the step STUCK on "
+                        "a stuck signal (a missing input, the same error twice, checks failing after the retry, max "
+                        "turns, an unfilled capability, no file change), diagnoses one cause, then tries code fixes "
+                        "cheapest first (pass or re-run the upstream input, more turns, retry turns, a larger input, "
+                        "attach the missing tool from the pool shortlist) within the limits of adapt.yaml `adapt`; "
+                        "when none recovers the step the task stops with adapt_report.md")
     p.add_argument("--replan", choices=["on", "off"], default="off",
                    help="plan: the Action Observer (D63) — after a wave in which a step lacked a capability, a verify "
                         "step still failed, a step reported a missing input or the team got a tool the plan never "
