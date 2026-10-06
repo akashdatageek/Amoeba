@@ -6,6 +6,8 @@ import json
 
 from amoeba.adapt.evidence import verify
 from amoeba.adapt.stuck import diagnose, is_stuck, norm_error, owes_file, repeated_errors, step_signals
+import amoeba.interp.plan_runner as pr
+from amoeba.adapt.fixes import limits
 from amoeba.interp.plan_runner import PlanOptions
 from scripts.run_task import cli_plan_options, parse_args
 from scripts.stuck_report import report, run_stuck
@@ -64,7 +66,8 @@ def test_diagnose_picks_one_cause_in_the_table_order_with_its_allowed_edits():
                ["evidence"]) == 8
 
 
-def test_the_live_watch_logs_a_stuck_step(task, envelope, trace, tools, tmp_path):
+def test_the_live_watch_logs_a_stuck_step(task, envelope, trace, tools, tmp_path, monkeypatch):
+    monkeypatch.setattr(pr, "fix_limits", lambda: {**limits(), "stop_when_exhausted": True})
     llm, cfg, by, ep = run(task, envelope, trace, tools, worker(), tmp_path=tmp_path,
                            options=PlanOptions(contract="on", adapt="on"))
     one = by[1]

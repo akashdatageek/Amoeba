@@ -23,6 +23,12 @@ from tests.test_pool import CAP, SEARCH, cache, req, setup  # noqa: F401  (cache
 ON = PlanOptions(adapt="on")
 
 
+@pytest.fixture
+def stop_on(monkeypatch):
+    """The stop rule on, whatever adapt.yaml says (it is off until Stage D, by the user's decision)."""
+    monkeypatch.setattr(pr, "fix_limits", lambda: {**limits(), "stop_when_exhausted": True})
+
+
 def reply(action: str, text: str) -> str:
     return f"## Thought\nok\n\n## CurrentStep\nnow\n\n## Action\n{action}\n\n## ActionInput\n{text}"
 
@@ -83,6 +89,10 @@ def test_the_candidates_cheapest_first():
     assert g["params"] == {"items": ["fx_api"], "exclude": ["io.x/a"]} and g["rung"] == 2
     assert candidates({"cause": "claimed_file_missing", "allowed_edits": []}, 2, {})[0] == []
     assert fix_key(t) == fix_key(dict(t)) and limits()["max_fixes_per_step"] == 3
+
+
+def test_the_stop_rule_is_off_until_stage_d():
+    assert limits()["stop_when_exhausted"] is False
 
 
 def test_stuck_is_a_run_status():
@@ -202,7 +212,7 @@ def test_a_registry_tool_is_granted_without_the_pool_step(task, envelope, trace,
 
 
 def test_an_empty_shortlist_is_one_failed_fix_never_repeated_then_the_task_stops(task, envelope, trace, tools,
-                                                                                tmp_path):
+                                                                                tmp_path, stop_on):
     calls = []
 
     def script(messages, seed):
@@ -218,7 +228,7 @@ def test_an_empty_shortlist_is_one_failed_fix_never_repeated_then_the_task_stops
 
 # ---- pool off, limits, stop -----------------------------------------------------------------------------------------
 def test_with_the_pool_off_the_capability_rung_is_skipped_and_the_task_stops_with_a_report(task, envelope, trace,
-                                                                                          tools, tmp_path):
+                                                                                          tools, tmp_path, stop_on):
     def script(messages, seed):
         n = step_no(messages)
         return reply("Final Output", f"OUT-1\n{BODY}\nBLOCKED: currency_api — none") if n == "1" else good(n)

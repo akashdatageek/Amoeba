@@ -443,8 +443,10 @@ cause table allows; only the stuck step is re-run and re-checked, and it counts 
 | capability | attach the missing tool or skill: a registry tool is granted; otherwise the first vetted candidate of the pool shortlist not given before (plain code picks). With the pool and local tools off: skipped, "capability fix unavailable: pool off" |
 
 Limits (`adapt` in `amoeba/config/adapt.yaml`): 3 fixes per step, 8 per task, 200,000 tokens and $1 of fix attempts
-per task, never the same fix twice. When no fix recovers the step the task stops: the answer and
-`adapt_report.md` say what was stuck, the cause, each fix tried and why it failed; the run status is `stuck`.
+per task, never the same fix twice. With `stop_when_exhausted: true`, a step no fix recovers stops the task: the
+answer and `adapt_report.md` say what was stuck, the cause, each fix tried and why it failed; the run status is
+`stuck`. It is off until Stage D (the fix-proposer agent becomes the last rung before stopping): the run goes on as
+before and `result.json` `adaptation.stopped` names the step.
 `result.json` `adaptation` lists every fix with its result and tokens. `--adapt off` turns the watch and the fixes off.
 
 ## Ask before assuming (D116)

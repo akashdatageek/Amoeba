@@ -787,7 +787,7 @@ registry has is granted; anything else goes through the toolbox step (`stock_too
 exclude=…)`): the first vetted candidate of the shortlist not given before, no AI pick. Limits (`adapt` in
 adapt.yaml): 3 fixes per step, 8 per task, 200,000 tokens and $1 (when the model has a price) of fix attempts per
 task, checked before each fix. When the step is still stuck and no fix is left, the task stops
-(`stop_when_exhausted`): the run's answer and `<run>/adapt_report.md` say what was stuck, the cause, the evidence,
+(`stop_when_exhausted`; set to false by the user on Oct 6 until Stage D makes the fix proposer the last rung): the run's answer and `<run>/adapt_report.md` say what was stuck, the cause, the evidence,
 each fix tried with its tokens and why it failed, the rungs not tried, and the steps finished; the run status is
 `stuck`. Every fix, skip and stop is a trace event and a row in `<run>/events.jsonl`; `result.json` `adaptation`
 holds the fixes, recovered steps, tokens and cost. Fixes run only in the wave loop (not inside D34 rework or D39
