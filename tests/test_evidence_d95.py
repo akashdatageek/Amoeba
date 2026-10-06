@@ -9,10 +9,8 @@ import pytest
 
 from amoeba.adapt.evidence import (GENESIS, EvidenceLog, Shipper, key_scan, refuse_cloud_vars, run_env, sha256_text,
                                    verify)
-from amoeba.adapt.loop import run_loop
 from amoeba.llm.client import MockLLMClient
 from amoeba.localtools.gate import inside, screen_command
-from tests.test_loop_d89 import GOOD, Runs, stream
 
 
 def folder(tmp, name, text="result"):
@@ -57,31 +55,6 @@ def test_verify_evidence_script_exit_codes(tmp_path, capsys):
     assert main(["--root", str(tmp_path)]) == 1 and '"kind": "parse"' in capsys.readouterr().out
 
 
-def test_a_whole_loop_logs_every_event_and_queues_its_runs(tmp_path, gate_v2):
-    run_loop(stream(), Runs(), tmp_path, lambda hid: MockLLMClient(script={"architect": [GOOD]}), repeats=2,
-             parallel_until=8, log=lambda *_: None, secrets=["sk-not-a-real-key-123456789012345"])
-    rows = EvidenceLog(tmp_path).rows()
-    kinds = [r["event"] for r in rows]
-    assert kinds.count("practice_run") == 14
-    for k in ("alarm", "diagnosis", "architect", "hypothesis", "experiment", "decision", "kept"):
-        assert k in kinds, k
-    alarm = next(r for r in rows if r["event"] == "alarm")["data"]
-    assert {"window_scores", "reference_scores", "reference_mean", "reference_sd", "score_threshold"} <= \
-        set(alarm["inputs"])
-    arch = next(r for r in rows if r["event"] == "architect")["data"]
-    assert "You propose one change to a team recipe" in arch["prompt"] and arch["attempts"][0]["reply"] == GOOD
-    exp = next(r for r in rows if r["event"] == "experiment")
-    assert len(exp["manifests"]) > 2                                   # experiment.json, pairs.jsonl, run folders
-    assert verify(tmp_path)["ok"]
-    state = json.loads((tmp_path / "loop_state.json").read_text())
-    assert state["unshipped"] and all(u["error"] == "no bucket configured" for u in state["unshipped"])
-    assert {u["kind"] for u in state["unshipped"]} == {"run", "events"} and state["ship_blocked"] == []
-    n = len(rows)
-    run_loop(stream(), Runs(), tmp_path, lambda hid: MockLLMClient(script={"architect": [GOOD]}), repeats=2,
-             parallel_until=8, log=lambda *_: None)
-    assert len(EvidenceLog(tmp_path).rows()) == n                       # a resumed loop logs nothing again
-
-
 def test_the_shipper_scans_retries_and_keeps_what_failed(tmp_path):
     good, bad = folder(tmp_path, "practice/a/run"), folder(tmp_path, "practice/b/run", "key AIza" + "x" * 35)
     EvidenceLog(tmp_path).append("x", {})
@@ -115,18 +88,7 @@ def test_key_scan_finds_shapes_and_secret_values(tmp_path):
     assert key_scan(d, ["s3cr3t-value-long-enough"]) and not key_scan(d, ["another-secret-value"])
 
 
-def test_cloud_credentials_never_reach_a_run(tmp_path, monkeypatch):
-    from scripts.run_experiment import load_env
-    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/secret/sa.json")
-    monkeypatch.setenv("AMOEBA_GCS_BUCKET", "bucket")
-    keys = tmp_path / "keys.env"
-    keys.write_text("GEMINI_API_KEY=abc\n")
-    env = load_env([str(keys)])
-    assert "GOOGLE_APPLICATION_CREDENTIALS" not in env and "AMOEBA_GCS_BUCKET" not in env and env["GEMINI_API_KEY"]
-    gcs = tmp_path / "gcs.env"
-    gcs.write_text("AMOEBA_GCS_BUCKET=b\nGOOGLE_APPLICATION_CREDENTIALS=/x.json\n")
-    with pytest.raises(ValueError):
-        load_env([str(gcs)])
+def test_cloud_credentials_never_reach_a_run():
     assert run_env({"AWS_SECRET_ACCESS_KEY": "x", "PATH": "/bin"}) == {"PATH": "/bin"}
     with pytest.raises(ValueError):
         refuse_cloud_vars("f", {"CLOUDSDK_CONFIG": "x"})

@@ -1,7 +1,8 @@
 # Amoeba v1.0: architecture in plain language
 
-Amoeba drafts a team of AI helpers for each task, runs the team, and learns from practice which team "recipe" works
-for each kind of task. One rule holds throughout: **the AI proposes, plain code decides.**
+Amoeba drafts a team of AI helpers for each task and runs it step by step. Since D117 it adapts only within a single
+task, when a step gets stuck; nothing carries over between tasks (the offline learning loop is removed). One rule
+holds throughout: **the AI proposes, plain code decides.**
 
 Each part below covers four things:
 
@@ -21,10 +22,10 @@ The as-built page (`docs/arch/phase1.html`, generated from the code) shows every
 
 **What it does.** Box 1 reads the task before any planning:
 
-- **Family.** A free-text task gets a task family (D101), so it can start from that family's recipe.
+- **Family.** A free-text task gets a task family (D101); it is recorded only.
 - **Interpretation.** The key names and terms are listed with their possible readings (D77). Plain code then picks a
   working reading or marks one as an assumption. With `--interactive`, the user is asked one question instead.
-- **Standards.** The user's approved standards (D99) are shown here.
+- **Standards.** The standards in the user's context file are shown here.
 - **Environment.** So is the niche profile's Environment section (D102).
 
 **Who decides.**
@@ -44,25 +45,18 @@ An assumed reading is stated at the top of the answer, added by code.
 ## Box 2: Plan a new team
 
 **What it does.** A Planner drafts the team: roles, each role's tools, and a plan of steps with `depends_on` and
-`done_when`. Two Observers then check the roles and the plan, for up to a fixed number of rounds. After that, code
-applies the family's recipe:
+`done_when`. Two Observers then check the roles and the plan, for up to a fixed number of rounds. The niche profile's
+done clauses are added to the answer step.
 
-- planner rules ("lessons") go into the Planner's and Observers' prompts;
-- transforms are applied to the final draft (an added verify step, tighter done clauses, tools granted or revoked,
-  role rules);
-- run options are set.
+**Who decides.** AI drafts and reviews. Code validates the plan graph, applies the profile's clauses, and keeps the
+toolbox to the allowed tools.
 
-The niche profile's done clauses are added to the answer step.
+**Reads.** The task with its interpretation, the toolbox (only the tools the profile allows), the user's standards,
+the Environment section.
 
-**Who decides.** AI drafts and reviews. Code validates the plan graph, applies the recipe and the profile's clauses,
-and keeps the toolbox to the allowed tools.
+**Writes.** `plan.json`, `team.yaml`, `capability_requests.json`.
 
-**Reads.** The task with its interpretation, the toolbox (only the tools the profile allows), the recipe, the user's
-approved standards, the Environment section.
-
-**Writes.** `draft.json` (Box 2's own draft), `plan.json` (after transforms), `team.yaml`, `capability_requests.json`.
-
-**Flags.** `--draft-prompts d24`, `--quality-gate`, `--recipes` / `--recipes-from`, `--drafts-from` (reuse a saved
+**Flags.** `--draft-prompts d24`, `--quality-gate`, `--drafts-from` (reuse a saved
 draft), `--niche`.
 
 ## Box 3: The team runs the task
@@ -113,118 +107,25 @@ D105). `requirement_status` records each requirement as checked on the final ans
 the plan runner: `--disputes` (D109), `--deliverable-check` (D105), `--research` (D106), `--workspace-sources` (D107),
 `--replan-method` (D108), `--dated-figures` (D110), `--cite-arithmetic` (D104), `--xlsx-formulas` (D113).
 
-## Box 4: Monitor
+## Box 4: Adapt within the task (D117)
 
-**What it does.** Watches the practice runs of each family. It raises an alarm when a family's recent scores fall
-below its reference (a *score* alarm), or when one cause or failed rubric item rises (a *cause* alarm). Every 12
-practice tasks of a family, it also replays the old (pre-shift) gate tasks with the current recipe, and raises a
-*retention* alarm if they got worse beyond noise (D100).
+**What it does.** The offline learning loop of v1.0 (task streams, Experimenter, Gate, Monitor, Diagnoser, Architect,
+recipe store, retention replays, pruning, user-memory proposals, ledger) is removed. Adaptation now happens inside a
+single task: when a Box 3 step gets stuck, the planned team is changed from that run's own logs, results and errors, so
+the task can still finish. Nothing carries over between tasks. Built in stages: (A) the removal; (B) a stuck watch and
+diagnosis in plain code; (C) code fixes, cheapest first; (D) a small fix-proposer agent for when the code fixes fail;
+(E) a comparison with `--adapt on` and `off`.
 
-**Who decides.** Code (fixed window, reference and thresholds).
+**Kept for it.**
 
-**Reads.** Practice records (score and failed rubric item names only). For retention, the replay scores.
+- the step contract's causes (capability, checks, max_turns, unused_tool, claimed_file_missing), which become stuck
+  signals;
+- the cause → allowed-edit table (`amoeba/config/adapt.yaml`);
+- the single-edit JSON format and its checks (`amoeba/adapt/architect.py`) with the edit menu, the transforms and
+  V1–V6 (`amoeba/adapt/recipe.py`);
+- the hash-chained event log and the evidence branch (`amoeba/adapt/evidence.py`, below).
 
-**Writes.** `alarm` and `retention` events in `events.jsonl`; `retention.jsonl`; `loop_state.json`.
-
-**Flags.** `adapt.yaml` `monitor:`; `--retention-every N` (default 12, 0 = off).
-
-## Box 5: Diagnoser
-
-**What it does.** Turns an alarm into a cause, with evidence quoted from the run files. It also states which recipe
-edits may answer that cause (the cause → edit table). Only causes observed in the runs can be chosen; causes a model
-only claimed are reported separately (D93). A retention alarm is diagnosed from scores alone.
-
-**Who decides.** Code.
-
-**Reads.** The window's run folders (`step_<n>.json`, `result.json`).
-
-**Writes.** `diagnoses/o<order>-<family>.json`; `diagnosis` events.
-
-**Flags.** `--diagnoser tier0|none` (`none` = alarm only, every edit allowed; for the ablation).
-
-## Box 6: Architect
-
-**What it does.** Proposes one recipe edit for the diagnosis, from the allowed menu. The menu covers planner rules,
-transforms, run options (including the context size a step and the summariser are shown, D114), and (D98, off by default) a model preference. Each proposal comes with a rationale and a
-predicted gain.
-
-**Who decides.** AI proposes; code validates the edit against the menu and checks V1–V6, with one retry. This is the
-only AI call inside the adaptation loop.
-
-**Reads.** The diagnosis, the current recipe, the family's failed hypotheses, practice examples (never held-out
-tasks).
-
-**Writes.** `architect/<hypothesis>.json` and its trace; `hypothesis` rows in the ledger.
-
-**Flags.** `--allow-model-edits` (D98, off).
-
-## Box 7: Experimenter
-
-**What it does.** Measures a proposed edit. It replays the family's gate tasks with recipe A (current) and recipe B
-(current + edit), same seeds, several repeats. The same machinery runs:
-
-- the noise calibration (A against A);
-- the retention replays;
-- the prunes (recipe minus one line, D100).
-
-**Who decides.** Code (the runs themselves use the team, i.e. AI).
-
-**Reads.** The gate set (held-out tasks: never shown to Box 6), the arm-A cache.
-
-**Writes.** `experiments/<id>/` (`experiment.json`, `pairs.jsonl`, run folders).
-
-A run that ended in an infrastructure error (the model service after its retries, a connection or proxy failure, a
-cache miss, no result) is run again, at most twice; if it still fails, its pair is left out and listed under
-`excluded` in `experiment.json` (D111).
-
-**Flags.** `scripts/run_experiment.py --repeats --parallel`; `adapt.yaml` `experiment:` and `infra:` (retries,
-exclude).
-
-## Box 8: Gate
-
-**What it does.** Accepts or rejects an edit using fixed rules (Gate v3):
-
-1. the edit passes validation and the leakage screen;
-2. the gain beats the noise floor, by a permutation test, within the family's fixed hypothesis quota;
-3. no held-out leak;
-4. the cost is justified, in USD when prices exist, else in tokens;
-5. no honesty or error regression (errors counted are the team's own; an infrastructure error never counts, D111).
-
-It also judges prunes: a line is removed when removing it loses nothing beyond noise and saves cost. It runs the
-rollback watch after an accept.
-
-**Who decides.** Code.
-
-**Reads.** The experiment's pairs, the calibration, the ledger.
-
-**Writes.** `decision` rows in `ledger.jsonl` (prunes carry `prune: true`); `decision` and `prune` events.
-
-**Flags.** `adapt.yaml` `gate:` (version, alpha, cost ratio, dwell, cooldown); `--prune end|off`;
-`scripts/prune_recipe.py`; `--check` (the single pre-registered check).
-
-## Box 9: Memory (recipe store)
-
-**What it does.** Keeps each family's recipe versions. Only a Gate accept writes a new version, and a rollback
-reverts it. Every recipe line carries its provenance: the hypothesis that added it, the date, and the Gate row that
-accepted it (D99). A new stream can start from another stream's store.
-
-**Who decides.** Code; only the Gate writes.
-
-**Reads / writes.** `recipes/index.json`, `recipes/<family>/v<N>.yaml`, `recipes/experience.jsonl`.
-
-**Flags.** `--recipes`, `--recipes-from`.
-
-## The loop driver
-
-Runs the stream's practice tasks in order, each with its family's current recipe, and calls Boxes 4–9 in turn. At
-the end of a stream it prunes each recipe. Everything it does is saved to disk, so a crash resumes where it stopped.
-Code only.
-
-**Writes.** `summary.json` and `REPORT.md`.
-
-**Flags.** `scripts/run_loop.py --stream --parallel --parallel-until --repeats`.
-
----
+**Who decides.** Code. No AI in Stage A.
 
 ## Model router (D97)
 
@@ -243,7 +144,7 @@ The decision runs in a fixed order:
    not cooling down after a 429, not failing).
 2. **Hard filters, never relaxed.** Context window, features, sensitive data → local models only, cost within the
    run's USD cap, and verifier independence when set to `required`.
-3. **Choice.** The recipe's preference for the role, else the role's default, else the cheapest model of the role's
+3. **Choice.** A preference set for the role (D98, built, off), else the role's default, else the cheapest model of the role's
    size tier. Under `preferred`, the verifier gets a different model family when one exists; otherwise
    `verifier_same_family: no alternative` is logged.
 4. **No candidate.** The call fails as `no_model`, recorded like a missing capability.
@@ -262,18 +163,11 @@ tokens and USD per model.
 `--allowed-models`, `--max-usd-per-run`; `verifier_independence: required|preferred|off` in `models.yaml` or the
 niche profile.
 
-## Memory: three kinds (D99)
+## The user context file (D77, D99)
 
-| Kind | What | Written by | Read by |
-|---|---|---|---|
-| Recipe memory | the recipe store (Box 9), every line with provenance | the Gate only | Boxes 2–3 (recipe), Box 6 |
-| User memory | `standards:` in the user context file (`--context`) | the user only, via `scripts/approve_memory.py` (logged in `events.jsonl`) | Box 1, Box 2 |
-| Event memory | the evidence log `events.jsonl` (below) | the harness only, append-only | people and verification scripts; never fed raw into prompts |
-
-**Who decides.** For user memory, the loop may only **propose** a standard. It does so when the same feedback item
-fails in at least 3 practice runs across at least 2 families, and the proposal goes to `memory_proposals.jsonl`. The
-user approves it or not. Nothing an agent writes reaches any memory: the files sit outside every run's workspace, and
-the sandbox mounts none of them.
+`--context user.yaml` holds who is asking (location, organisation, role) and `standards:`, lasting preferences the
+user wrote. Box 1 and Box 2 read it. No run and no agent writes it; it sits outside every workspace and the sandbox
+mounts none of it. (D117 removed recipe memory and the loop's proposals of standards.)
 
 ## Niche profiles (D102)
 
@@ -332,7 +226,8 @@ reconnects if it moved (D111). Running on a persistent machine: `docs/RUNNING_ON
 
 ## Evidence (D95)
 
-**What it does.** Every loop event goes into one append-only `events.jsonl`, written only by the harness. Each row
+**What it does.** Events go into one append-only `events.jsonl`, written only by the harness (D117: for in-task
+adaptation, every stuck step, diagnosis and fix). Each row
 carries the SHA-256 of the row before it and of the run folders it names, so the log forms a hash chain. Finished
 runs are key-scanned. Runs and new rows are then shipped as normal, fast-forward commits to the GitHub `evidence`
 branch, at most one commit every 10 minutes. Each commit message carries the chain head. Agents never get git
@@ -340,7 +235,6 @@ credentials.
 
 **Who decides.** Code.
 
-**Reads / writes.** `eval/loop/<stream>/events.jsonl`; the `evidence` branch.
+**Reads / writes.** `events.jsonl`; the `evidence` branch.
 
-**Flags.** `--no-ship`; `python -m scripts.verify_evidence --stream <s>` (local copy) or `--branch evidence`
-(GitHub's history).
+**Flags.** `python -m scripts.verify_evidence` (local copy) or `--branch evidence` (GitHub's history).

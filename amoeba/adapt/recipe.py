@@ -1,12 +1,10 @@
-"""D81 — the team recipe, the edit menu and validation (Phase 2 spec §3).
+"""D81 — the edit menu, the transforms and validation (kept by D117).
 
-A recipe is data, one per task family. Code applies it at three fixed points that already exist in Phase 1 (D82):
-the planner rules go into the Box 2 prompts ("Lessons for this kind of task"), the transforms are applied by code to
-the final Draft before Box 3 builds the team, and the run options overlay the plan runner's settings. The seed recipe
-of every family is empty, and an empty recipe changes nothing (a Draft comes back byte-identical).
-
-One edit per hypothesis; each is a pure function Recipe -> Recipe (a new version whose parent is the old one).
-`validate_recipe` (V1–V5) is plain code; nothing here calls a model.
+D117 removed the offline learning loop, the recipe store and the recipe hook in Boxes 2-3: nothing carries over between
+tasks any more. What is kept is the typed edit menu (one edit is a pure function Recipe -> Recipe), the transforms
+that apply an edit to a Draft (add a verify step, tighten done_when, grant or revoke a tool, add a role rule) and the
+plain-code validation V1-V6 (`validate_recipe`). A Recipe here is only the container one task's edits are checked
+in; D117's in-task adaptation (Stages C-D) applies validated edits to the live plan of a single run.
 """
 from __future__ import annotations
 
@@ -37,7 +35,7 @@ def adapt_config() -> dict:
 @lru_cache(maxsize=2)
 def _adapt_config(model_edits: bool) -> dict:
     cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
-    if model_edits:                                       # D98: --allow-model-edits (run_loop, run_experiment)
+    if model_edits:                                       # D98: AMOEBA_ALLOW_MODEL_EDITS=1
         cfg["recipe"]["allow_model_edits"] = True
     return cfg
 
@@ -107,11 +105,6 @@ class Recipe(BaseModel):
 
     def hash(self) -> str:
         return hashlib.sha256(json.dumps(self.content(), sort_keys=True).encode()).hexdigest()[:12]
-
-
-# box: recipe
-def seed_recipe(family: str) -> Recipe:
-    return Recipe(family=family)
 
 
 # ---- the edit menu (§3.2) ------------------------------------------------------------------------------------------
@@ -515,85 +508,3 @@ def validate_recipe(recipe: Recipe, envelope=None, sample_draft: Draft | None = 
         except (ValidationError, ValueError, KeyError, IndexError) as e:
             out.append(Violation(rule="V5", detail=f"the transforms fail on the sample draft: {e}"[:300]))
     return out
-
-
-# ---- the hook in Boxes 2 and 3 (D82) -------------------------------------------------------------------------------
-LESSONS_HEAD = "\n\n# Lessons for this kind of task (from earlier tasks of the same kind)\n"
-LESSONS_TAIL = {"planner": "Follow each lesson in the plan, or say in Risks and Decisions why it does not apply.",
-                "agent_observer": "Check that the roles let the team follow each lesson.",
-                "plan_observer": "Check item: every lesson is followed by the plan, or the plan says why not; report "
-                                 "each lesson that is neither as a problem."}
-
-
-# box: recipe
-def lessons_text(recipe: Recipe | None) -> dict[str, str]:
-    """The d24 prompts' {lessons} slot for the Planner and both Observers; empty strings (prompts unchanged) when
-    the recipe has no planner rules."""
-    if recipe is None or not recipe.planner_rules:
-        return {}
-    body = "\n".join(f"- {r.id}: {r.text}" for r in recipe.planner_rules)
-    return {who: f"{LESSONS_HEAD}{body}\n{tail}" for who, tail in LESSONS_TAIL.items()}
-
-
-# box: recipe
-def load_recipe(store: str | Path, family: str) -> Recipe | None:
-    """The current recipe of a family from a recipe store (§10: <store>/index.json {family: {"current": N}} and
-    <store>/<family>/v<N>.yaml); None when the store has none for the family (the run is then a Phase 1 run)."""
-    root = Path(store)
-    index = root / "index.json"
-    if not index.exists():
-        return None
-    cur = (json.loads(index.read_text(encoding="utf-8")).get(family) or {}).get("current")
-    if cur is None:
-        return None
-    return Recipe.model_validate(yaml.safe_load((root / family / f"v{cur}.yaml").read_text(encoding="utf-8")))
-
-
-# box: recipe
-def write_store(store: str | Path, recipes: list[Recipe]) -> Path:
-    """A minimal store holding these recipes, each its family's current version (the Experimenter's per-arm stores;
-    the Gate's committed store with history is D88)."""
-    root = Path(store)
-    index = json.loads((root / "index.json").read_text(encoding="utf-8")) if (root / "index.json").exists() else {}
-    for r in recipes:
-        (root / r.family).mkdir(parents=True, exist_ok=True)
-        (root / r.family / f"v{r.version}.yaml").write_text(
-            yaml.safe_dump(r.model_dump(mode="json"), sort_keys=False, allow_unicode=True), encoding="utf-8")
-        entry = index.setdefault(r.family, {"current": r.version, "history": []})
-        entry["current"] = r.version
-        if r.version not in [h["version"] for h in entry["history"]]:
-            entry["history"].append({"version": r.version, "parent": r.parent_version,
-                                     "hypothesis_id": r.hypothesis_id})
-    root.mkdir(parents=True, exist_ok=True)
-    (root / "index.json").write_text(json.dumps(index, indent=2), encoding="utf-8")
-    return root
-
-
-PLAN_OPTION_NAMES = {"replan": "--replan", "self_refine": "--self-refine", "collab": "--collab",
-                     "check_retry_turns": "--check-retry-turns",
-                     "max_input_chars": "--max-input-chars",                      # D114: context size
-                     "max_summary_input_chars": "--max-summary-input-chars"}
-LIMIT_OPTION_NAMES = {"max_turns": "--max-turns"}
-
-
-# box: recipe
-def overlay_run_options(plan_options, recipe: Recipe | None, explicit: set[str] | frozenset = frozenset()):
-    """Box 3: the recipe's run options over the CLI's PlanOptions and Limits values. A CLI flag wins only when it
-    was set explicitly (ablations). Returns (plan_options, max_turns or None, applied, overridden_by_cli)."""
-    from dataclasses import replace
-    if recipe is None or not recipe.run_options:
-        return plan_options, None, {}, []
-    applied, overridden, changes, max_turns = {}, [], {}, None
-    for name, value in recipe.run_options.items():
-        flag = PLAN_OPTION_NAMES.get(name) or LIMIT_OPTION_NAMES.get(name)
-        if flag in explicit:
-            overridden.append(name)
-            continue
-        if name in PLAN_OPTION_NAMES:
-            changes[name] = value
-        elif name in LIMIT_OPTION_NAMES:
-            max_turns = int(value)
-        applied[name] = value
-    if changes and plan_options is not None:
-        plan_options = replace(plan_options, **changes)
-    return plan_options, max_turns, applied, overridden

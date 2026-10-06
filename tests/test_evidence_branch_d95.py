@@ -8,9 +8,7 @@ import subprocess
 from pathlib import Path
 
 from amoeba.adapt.evidence import EvidenceLog, GitShipper, chain_head, run_env, verify_branch
-from amoeba.adapt.loop import run_loop
 from amoeba.llm.client import MockLLMClient
-from tests.test_loop_d89 import GOOD, Runs, stream
 
 
 def git(cwd, *a):
@@ -143,19 +141,6 @@ def test_verify_branch_finds_a_rewritten_row(tmp_path):
     git(wt, "push", "-q", "origin", "HEAD:refs/heads/evidence")
     b = verify_branch(repo, "evidence", "m2")["first_break"]
     assert b["kind"] == "rewritten"
-
-
-def test_a_whole_loop_ships_to_the_branch(tmp_path, gate_v2):
-    bare, repo, root = setup(tmp_path)
-    sh = GitShipper(root, "fx", tmp_path / "wt", repo, clock=Clock(), batch_seconds=600)
-    run_loop(stream(), Runs(), root, lambda hid: MockLLMClient(script={"architect": [GOOD]}), repeats=2,
-             parallel_until=8, log=lambda *_: None, shipper=sh)
-    state = json.loads((root / "loop_state.json").read_text())
-    assert state["unshipped"] == [] and state["ship_state"]["rows_shipped"] == len(EvidenceLog(root).rows())
-    files = git(bare, "ls-tree", "-r", "--name-only", "evidence")
-    assert "eval/loop/m2/events.jsonl" in files and any("/experiments/" in f for f in files.splitlines())
-    res = verify_branch(repo, "evidence", "m2")
-    assert res["ok"] and res["heads"] >= 1, res
 
 
 def test_agents_get_no_git_credentials(monkeypatch):

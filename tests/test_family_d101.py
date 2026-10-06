@@ -1,10 +1,9 @@
 """D101 — the task family of a free-text task (offline, mock LLM): keyword rules first; only when no rule decides,
-one routed call (role family_classifier) choosing from the list or "new", checked by code; a known family starts from
-its current recipe (also through --recipes-from), "new" starts empty; result.json records the family and how it was
-chosen; the baselines and tasks that already have a family are untouched."""
+one routed call (role family_classifier) choosing from the list or "new", checked by code; result.json records the
+family and how it was chosen (D117: nothing else follows from it); the baselines and tasks that already have a family
+are untouched."""
 import json
 
-from amoeba.adapt.recipe import Edit, apply_edit, seed_recipe, write_store
 from amoeba.interp.plan_runner import PlanOptions
 from amoeba.interp.trace import TraceWriter, TracedLLM
 from amoeba.llm.client import MockLLMClient
@@ -13,7 +12,7 @@ from amoeba.task.interpret import classify_family, family_by_rule, load_families
 from amoeba.task.models import Task
 from amoeba.tools.registry import default_registry
 from scripts.run_task import family_classify_on, parse_args, run_one
-from tests.test_recipe_hook_d82 import RULE
+
 
 FAM = load_families()
 
@@ -67,26 +66,16 @@ def run(tmp_path, name, task, **kw):
     return m, r, json.loads((tmp_path / name / r.run_id / "result.json").read_text())
 
 
-def test_a_known_family_starts_from_its_recipe_and_result_json_records_it(tmp_path):
-    store = write_store(tmp_path / "recipes", [apply_edit(seed_recipe("calc"), Edit(op="add_planner_rule",
-                                                                                     params={"text": RULE}))])
+def test_the_family_is_recorded_and_changes_nothing_else(tmp_path):
+    """D117: no recipe follows from the family any more; it is recorded in result.json only."""
     task = Task(id="free-1", prompt="Compute 17 * 23 + 5.")
     assert task.family == "freeform"
-    m, r, res = run(tmp_path, "warm", task, family_classify=True, recipe_source=(None, str(store)))   # --recipes-from
-    assert res["family"]["family"] == "calc" and res["family"]["how"] == "rule"
-    assert res["family"]["recipe_version"] == 2 and res["recipe"]["version"] == 2
-    assert RULE in m.calls_of("planner")[0]["messages"][-1]["content"]                    # the warm start acted
-    _, _, off = run(tmp_path, "off", task, family_classify=False, recipe_source=(None, str(store)))
-    assert off.get("family") is None and off.get("recipe") is None
-
-
-def test_new_starts_empty_and_a_given_family_is_kept(tmp_path):
-    store = write_store(tmp_path / "recipes", [apply_edit(seed_recipe("calc"), Edit(op="add_planner_rule",
-                                                                                     params={"text": RULE}))])
-    m, r, res = run(tmp_path, "new", Task(id="free-2", prompt="Tell me a story about a dragon."),
-                    family_classify=True, recipe_source=(str(store), None))
-    assert res["family"]["family"] == "new" and res["family"]["how"] == "llm" and res.get("recipe") is None
-    assert len(m.calls_of("family_classifier")) == 1
-    _, _, given = run(tmp_path, "given", Task(id="g", prompt="Compute 2 + 2.", family="calc"), family_classify=True,
-                      recipe_source=(str(store), None))
+    m, r, res = run(tmp_path, "rule", task, family_classify=True)
+    assert res["family"]["family"] == "calc" and res["family"]["how"] == "rule" and "recipe_version" not in res["family"]
+    assert res.get("recipe") is None and "Lessons for this kind of task" not in m.calls_of("planner")[0]["messages"][-1]["content"]
+    _, _, off = run(tmp_path, "off", task, family_classify=False)
+    assert off.get("family") is None
+    m, r, res = run(tmp_path, "new", Task(id="free-2", prompt="Tell me a story about a dragon."), family_classify=True)
+    assert res["family"]["family"] == "new" and res["family"]["how"] == "llm" and len(m.calls_of("family_classifier")) == 1
+    _, _, given = run(tmp_path, "given", Task(id="g", prompt="Compute 2 + 2.", family="calc"), family_classify=True)
     assert given.get("family") is None                                                    # the source named it

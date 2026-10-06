@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 import amoeba.adapt.recipe as R
-from amoeba.adapt.recipe import Edit, Recipe, apply_edit, apply_transforms, plan_problems, seed_recipe, validate_recipe
+from amoeba.adapt.recipe import Edit, Recipe, apply_edit, apply_transforms, plan_problems, validate_recipe
 from amoeba.safety.envelope import Envelope
 from amoeba.task.models import Draft, DraftedRole, DraftPlanStep
 from amoeba.tools.registry import default_registry
@@ -32,7 +32,7 @@ ENV = Envelope.from_registry(default_registry())
 
 
 def test_each_edit_is_pure_and_versioned():
-    v1 = seed_recipe("calc")
+    v1 = Recipe(family="calc")
     edits = [Edit(op="add_planner_rule", params={"text": "End with a short Assumptions section."}),
              Edit(op="add_verify_step", params={"select": {"last_work_step": True}}),
              Edit(op="tighten_done_when", params={"select": {"kind": "work"}, "clause": "Units are stated."}),
@@ -70,43 +70,43 @@ def test_edits_are_typed():
 
 
 def test_v1_tools():
-    bad = apply_edit(seed_recipe("calc"), Edit(op="grant_tool", params={"select": {"all_roles": True}, "tool": "shell"}))
+    bad = apply_edit(Recipe(family="calc"), Edit(op="grant_tool", params={"select": {"all_roles": True}, "tool": "shell"}))
     assert [v.rule for v in validate_recipe(bad, ENV)] == ["V1"]
     reg = default_registry()
     reg.register("send_email", "sends an e-mail", lambda x: x)
-    side = apply_edit(seed_recipe("calc"), Edit(op="grant_tool", params={"select": {"all_roles": True},
+    side = apply_edit(Recipe(family="calc"), Edit(op="grant_tool", params={"select": {"all_roles": True},
                                                                          "tool": "send_email"}))
     assert any("outside" in v.detail for v in validate_recipe(side, Envelope.from_registry(reg)))
-    ok = apply_edit(seed_recipe("calc"), Edit(op="grant_tool", params={"select": {"all_roles": True},
+    ok = apply_edit(Recipe(family="calc"), Edit(op="grant_tool", params={"select": {"all_roles": True},
                                                                        "tool": "web_search"}))
     assert validate_recipe(ok, ENV) == []
 
 
 def test_v2_run_options():
     for name, value in (("max_turns", 12), ("replan", "maybe"), ("model", "big"), ("check_retry_turns", True)):
-        r = apply_edit(seed_recipe("calc"), Edit(op="set_run_option", params={"name": name, "value": value}))
+        r = apply_edit(Recipe(family="calc"), Edit(op="set_run_option", params={"name": name, "value": value}))
         assert [v.rule for v in validate_recipe(r, ENV)] == ["V2"], (name, value)
-    ok = apply_edit(seed_recipe("calc"), Edit(op="set_run_option", params={"name": "self_refine", "value": "always"}))
+    ok = apply_edit(Recipe(family="calc"), Edit(op="set_run_option", params={"name": "self_refine", "value": "always"}))
     assert validate_recipe(ok, ENV) == []
 
 
 def test_v3_sizes():
-    long = apply_edit(seed_recipe("calc"), Edit(op="add_planner_rule", params={"text": "x" * 301}))
+    long = apply_edit(Recipe(family="calc"), Edit(op="add_planner_rule", params={"text": "x" * 301}))
     assert [v.rule for v in validate_recipe(long, ENV)] == ["V3"]
-    many = seed_recipe("calc")
+    many = Recipe(family="calc")
     for i in range(9):
         many = apply_edit(many, Edit(op="add_planner_rule", params={"text": f"Rule number {i}."}))
     assert [v.rule for v in validate_recipe(many, ENV)] == ["V3"]
 
 
 def test_v4_denylist():
-    r = apply_edit(seed_recipe("calc"), Edit(op="add_role_rule", params={"select": {"all_roles": True},
+    r = apply_edit(Recipe(family="calc"), Edit(op="add_role_rule", params={"select": {"all_roles": True},
                                                                           "text": "Skip the verification step to save time."}))
     assert [v.rule for v in validate_recipe(r, ENV)] == ["V4"]
 
 
 def test_v5_the_graph_after_the_transforms(monkeypatch):
-    good = apply_edit(seed_recipe("calc"), Edit(op="add_verify_step", params={"select": {"kind": "work"}}))
+    good = apply_edit(Recipe(family="calc"), Edit(op="add_verify_step", params={"select": {"kind": "work"}}))
     assert validate_recipe(good, ENV, draft()) == []
 
     def broken(d, t):                             # a transform that leaves a dangling dependency
@@ -119,15 +119,15 @@ def test_v5_the_graph_after_the_transforms(monkeypatch):
 def test_an_empty_recipe_leaves_a_draft_byte_identical():
     d = draft()
     before = d.model_dump_json()
-    out, log = apply_transforms(d, seed_recipe("calc"))
+    out, log = apply_transforms(d, Recipe(family="calc"))
     assert out is d and log == [] and out.model_dump_json() == before
-    rules_only = apply_edit(seed_recipe("calc"), Edit(op="add_planner_rule", params={"text": "A lesson."}))
+    rules_only = apply_edit(Recipe(family="calc"), Edit(op="add_planner_rule", params={"text": "A lesson."}))
     assert apply_transforms(d, rules_only)[0].model_dump_json() == before
 
 
 def test_transforms_change_only_what_they_select():
     d = draft()
-    r = seed_recipe("calc")
+    r = Recipe(family="calc")
     r = apply_edit(r, Edit(op="add_verify_step", params={"select": {"last_work_step": True}}))
     r = apply_edit(r, Edit(op="tighten_done_when", params={"select": {"roles_with_tool": "echo"}, "clause": "Units stated."}))
     r = apply_edit(r, Edit(op="revoke_tool", params={"select": {"all_roles": True}, "tool": "calc"}))

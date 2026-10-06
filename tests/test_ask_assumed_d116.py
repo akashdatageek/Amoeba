@@ -9,7 +9,6 @@ import pytest
 import scripts.run_task as rt
 from amoeba.task.interpret import apply_clarify, ask_all, decide, open_questions, parse_entities
 from amoeba.task.models import Task, run_status
-from amoeba.adapt.experimenter import experiment_flags
 from scripts.run_task import parse_args, parse_clarify, run_one
 from tests.conftest import fx, mock
 
@@ -121,7 +120,7 @@ def test_a_blank_reply_keeps_the_assumption_and_the_answer_states_it():
     assert interp["working"][0]["settled"] == "user" and open_questions(interp) == []
 
 
-def test_flags_status_and_the_experiment_harness():
+def test_flags_and_status():
     a = parse_args(["--tasks", "x.jsonl", "--topology", "plan"])
     assert a.ask_assumed == "on" and a.clarify is None                        # on by default from the CLI
     b = parse_args(["--tasks", "x.jsonl", "--clarify", "A=1", "--clarify", "B=two words", "--ask-assumed", "off"])
@@ -129,5 +128,3 @@ def test_flags_status_and_the_experiment_harness():
     with pytest.raises(ValueError):
         parse_clarify(["no equals sign"])
     assert run_status("needs_clarification: x") == "needs_clarification"
-    flags = experiment_flags()                                                # nobody answers in an experiment
-    assert flags[flags.index("--ask-assumed") + 1] == "off"

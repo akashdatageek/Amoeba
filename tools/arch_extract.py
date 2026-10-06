@@ -96,64 +96,22 @@ BOXES: list[dict] = [
                "These files are the raw material later phases will learn from."],
          proposes="Nothing.", disposes="Plain code writes the files, even when drafting fails.",
          anchors=["scripts/run_task.py::run_one"], guard_anchors=[]),
-    dict(id="ov_m4", view="overview", title="4 · Monitor", kind="top", opens="m4", plan=None,
-         sentence="Watches each kind of task's practice scores and raises an alarm when they drop.",
+    dict(id="ov_adapt", view="overview", title="4 · Adapt within the task", kind="top", opens="adapt", plan=None,
+         sentence="D117: the offline learning loop is gone; adaptation will happen inside one task, when a Box 3 step gets stuck.",
          what=[
-               "Reads every practice run's score, failed rubric item names and step causes.",
-               "Score alarm, cause alarm, and (D100) a retention alarm when the old tasks get worse.",
-               "Plain code; no AI."],
+               "Kept for it: the step contract's causes, the cause → edit table, the single-edit format with V1–V6, "
+               "and the hash-chained event log.",
+               "Nothing carries over between tasks."],
          proposes="See inside.",
          disposes="See inside.",
-         anchors=["amoeba/adapt/monitor.py::monitor"], guard_anchors=[]),
-    dict(id="ov_m5", view="overview", title="5 · Diagnoser", kind="top", opens="m5", plan=None,
-         sentence="Turns an alarm into one cause, with evidence, and the edits allowed for it.",
-         what=[
-               "Counts what the window's runs recorded; only observed causes can be named (D93).",
-               "Looks up the cause → edit table in adapt.yaml.",
-               "Plain code; no AI."],
-         proposes="See inside.",
-         disposes="See inside.",
-         anchors=["amoeba/adapt/diagnoser.py::diagnose"], guard_anchors=[]),
-    dict(id="ov_m6", view="overview", title="6 · Architect", kind="top", opens="m6", plan=None,
-         sentence="The only AI in the loop: proposes one typed edit to the recipe.",
-         what=[
-               "Gets the diagnosis, the recipe, the allowed edits and the failed hypotheses, never a held-out task.",
-               "Plain code checks the edit; three rejects go to a person."],
-         proposes="See inside.",
-         disposes="See inside.",
-         anchors=["amoeba/adapt/architect.py::propose"], guard_anchors=[]),
-    dict(id="ov_m7", view="overview", title="7 · Experimenter", kind="top", opens="m7", plan=None,
-         sentence="Replays old recipe against old recipe + edit on the gate tasks.",
-         what=[
-               "Same tasks, seeds, tools and model for both arms, 3 repeats each.",
-               "Also measures the noise floor (recipe against itself)."],
-         proposes="See inside.",
-         disposes="See inside.",
-         anchors=["amoeba/adapt/experimenter.py::experiment"], guard_anchors=[]),
-    dict(id="ov_m8", view="overview", title="8 · Gate", kind="top", opens="m8", plan=None,
-         sentence="Keeps the edit only if the gain beats the noise and the cost is worth it.",
-         what=[
-               "Gate v3: permutation test within a fixed quota, cost in USD, honesty kept.",
-               "Writes every decision to the ledger; also decides prunes (D100)."],
-         proposes="See inside.",
-         disposes="See inside.",
-         anchors=["amoeba/adapt/gate.py::decide"], guard_anchors=[]),
-    dict(id="ov_m9", view="overview", title="9 · Memory", kind="top", opens="m9", plan=None,
-         sentence="Recipes, user standards and the evidence log, each with one writer.",
-         what=[
-               "Recipe store (only the Gate writes), user memory (only the user approves), event memory (the harness).",
-               "The current recipe goes back to Boxes 2–3 for the next task of that kind."],
-         proposes="See inside.",
-         disposes="See inside.",
-         anchors=["amoeba/memory/recipes.py::RecipeStore"], guard_anchors=[]),
+         anchors=["amoeba/adapt/architect.py::check"], guard_anchors=[]),
     dict(id="ov_around", view="overview", title="Around every box", kind="top", opens="around", plan=None,
-         sentence="The loop driver that runs Boxes 4–9 in order, the model router behind every AI call, and the niche profile every run obeys.",
+         sentence="The model router behind every AI call and the niche profile every run obeys.",
          what=[
-               "Loop driver (D89), model router (D97–D98), niche profiles (D102)."],
+               "Model router (D97–D98), niche profiles (D102)."],
          proposes="See inside.",
          disposes="See inside.",
-         anchors=["amoeba/adapt/loop.py::run_loop"], guard_anchors=[]),
-    # ---------------------------------------------------------------- task view
+         anchors=["amoeba/llm/router.py::ModelRouter"], guard_anchors=[]),
     dict(id="toy_source", view="task", title="Toy task source", kind="code", plan="Toy task source",
          sentence="Makes practice jobs with known answers (sums, reversed words, vowel counts), the same for the same seed.",
          what=["Generates practice jobs from a seed number, cycling through three kinds of job.",
@@ -755,150 +713,34 @@ BOXES: list[dict] = [
          proposes="Scripted replies.", disposes="Everything downstream treats it exactly like a real AI.",
          anchors=["amoeba/llm/toy_mock.py::toy_mock_client", "amoeba/llm/client.py::MockLLMClient"]),
     # ---------------------------------------------------------------- adaptation loop (Phase 2)
-    dict(id="stream", view="task", title="Task stream and the three task sets (D80, D92)", kind="code", plan=None,
-         sentence="Tasks arrive in a fixed order, in three sets kept apart by code: practice tasks the loop learns from, gate tasks only the Experimenter replays, and audit tasks only scripts/run_audit.py reads; the loop learns only the names of the rubric items a practice run failed.",
-         what=["tasks/stream_<name>.jsonl: each task has its kind (family), its D30 rubric, whether it is practice or "
-               "held-out, whether it comes before or after its kind's shift, and (practice only) its place in the order.",
-               "tasks/stream_<name>.shifts.yaml: a feedback shift (the later rubrics ask for something new that the "
-               "prompts never mention) or a tool shift (code takes a tool out of that kind's runs, --disable-tools).",
-               "Plain code checks the file when it is loaded: the new item is in every post rubric and no pre one, no "
-               "prompt mentions it, order and phase agree.",
-               "The loop only ever gets practice tasks; held-out ones are for the Experimenter. The feedback it keeps "
-               "is the failed item names, never patterns or expected numbers.",
-               "The leakage screen refuses an edit text holding an 8-word run of a held-out prompt, a held-out "
-               "expected number or a held-out task id.",
-               "D92: the three task sets — practice (in order, the only ones the loop sees), gate (held-out, replayed by Box 7 for calibration, experiments, retention replays and prunes) and audit (tasks/audit/, read once per thesis by scripts/run_audit.py; a stream file holding an audit task is refused)."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code orders the tasks, applies the shifts and filters what the loop may see.",
-         anchors=[]),
-    dict(id="recipe", view="m9", title="Team recipe, edit menu and hook (D81–D82, D98)", kind="code", plan=None,
-         sentence="Per kind of task, a small piece of data says what to tell the Planner, how code reshapes the drafted "
-                  "plan and which run settings to use; one typed edit makes the next version.",
-         what=["A recipe holds planner rules (lessons shown in Box 2), transforms (applied by code to the final draft) "
-               "and run options (whitelisted plan-runner settings). Every kind starts from an empty recipe, and an "
-               "empty recipe changes nothing.",
-               "The edit menu: add or remove a planner rule, add a check step after selected steps, add a clause to "
+    dict(id="recipe", view="adapt", title="Edit menu, transforms and V1–V6 (kept from D81)", kind="code", plan=None,
+         sentence="The typed edits a fix may make, the code that applies them to a plan, and the plain-code validation every edit must pass.",
+         what=["The edit menu: add or remove a planner rule, add a check step after selected steps, add a clause to "
                "selected steps' done-when, grant or revoke a tool on selected roles, add a rule to selected roles' "
-               "cards, set one run option. Each edit is a pure function that makes version N+1 with parent N.",
-               "Validation by plain code (V1–V5): tools are in the registry and not outside actions; run options are "
-               "whitelisted and in range; the number of rules and transforms and the length of each text "
-               "are capped (amoeba/config/adapt.yaml); no wording that tells the team to skip checks, citations or the sandbox; and "
-               "the step graph still passes the plan checks after the transforms.",
-               "The hook (D82): run_task --recipes DIR loads the family's current recipe (plan runner only; the "
-               "baselines never get one). Its rules fill the lessons slot of the Planner's and both checkers' "
-               "prompts, with one more check item for the plan checker; code applies its transforms to the final draft "
-               "(draft.json keeps Box 2's own draft) and records what each changed; its run options overlay the run "
-               "settings unless the command line set them. With a reused draft only transforms and run options apply.",
-               "D98: one more edit, prefer_model {role, model}, sets the router's preference for one role in one kind of task; it is built but off (--allow-model-edits), offered only for the causes max_turns, checks and capability, checked by V6 (role and registry model known, model edits on), and can never bypass the allowlist or the router's hard filters.",
-               "D99: every recipe line (rule, transform, run option, model preference) carries its provenance — the hypothesis that added it, the date and the Gate row that accepted it — kept outside the recipe's hash.",
-               "D114: max_input_chars (3000–20000) and max_summary_input_chars (15000–60000) are recipe run options too, so the loop can tune context size through the Gate."],
-         proposes="Nothing yet: in week 1 an edit is written by hand (the Architect proposes them in week 2).",
-         disposes="Plain code applies the edit, applies the transforms and refuses a recipe that breaks V1–V5.",
-         anchors=[]),
-    dict(id="experimenter", view="m7", title="Replay: old recipe vs old + edit", kind="code", plan=None,
-         sentence="Runs the old recipe and the old recipe plus the edit on the gate tasks, same seeds, 3 times each, and pairs the scores and costs.",
-         what=["For each held-out task (after-shift tasks first, then before-shift ones for the retention check) and each "
-               "repeat, arm A drafts afresh with the old recipe and runs it.",
-               "For a transform or run-option edit, arm B reuses arm A's saved draft, so the only difference between "
-               "the arms is the edit; for a planner-rule edit, arm B drafts with its own rules and draft variance is "
-               "part of the noise.",
-               "Arm A runs are cached per recipe version (by the recipe's hash), so a later hypothesis against the same "
-               "version runs arm B only; the noise-floor calibration (A against A' with other seeds) fills that cache.",
-               "Each pair records both scores, tokens, honesty flags (made-up or mislabelled citations, claimed files "
-               "missing, checks that re-checked nothing, an error) and refusals. Runs go out as run_task processes, 8 "
-               "at once; a finished run is never redone, and a model-service crash is re-run once."],
-         proposes="Nothing: no AI decides here (the runs it starts call the model inside Boxes 1–3).",
-         disposes="Plain code builds both arms, runs them and writes the pairs.",
-         anchors=[]),
-    dict(id="gate", view="m8", title="Gate v3 decision (D91)", kind="code", plan=None,
-         sentence="Accepts an edit only if its gain beats the noise by a permutation test within the kind's fixed quota and passes rules 1, 4 and 5.",
-         what=["Noise floor, once per kind and recipe version: the recipe against itself with other seeds on the "
-               "held-out after-shift tasks; noise = 2 × the spread of those score differences / √(pairs).",
-               "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from "
-               "held-out tasks; 2 the mean gain beats the noise (and a floor), and a one-sided paired test, corrected "
-               "for every hypothesis tried since the last accept, is significant; 3 the gain has the predicted sign; "
-               "4 the token cost is justified; 5 the share of runs with an honesty signal grows by no more than 0.2, "
-               "and no new refusals; 5b the share of runs ending in an error grows by no more than 0.2; 6 no loss on the "
-               "before-shift tasks beyond the noise (Gate v2, D84b; Stage A decided under v1, which summed tags per run).",
-               "Every event is a ledger line (calibration, hypothesis, decision with its numbers and reasons); an "
-               "accepted recipe becomes the kind's current version. After an accept, a rollback watch reverts to the "
-               "parent version if the next practice tasks fall below the alarm window minus the noise.",
-               "Thresholds are in amoeba/config/adapt.yaml; nothing here calls an AI.",
-               "D91 Gate v3: per-task means, a one-sided permutation test at alpha 0.05/6 within a fixed quota of 6 hypotheses per kind (accepts included, no reset), noise from per-task spread; prediction accuracy is reported, never a Gate rule; one pre-registered check (--check) is decided at its own alpha and kept out of the quota and the recipe store.",
-               "D97: rule 4 compares US dollars from the model registry's prices when both arms have them, tokens otherwise (cost_basis in the ledger row).",
-               "D100: the Gate also decides prunes — a recipe line goes when removing it loses nothing beyond noise and saves cost; each prune is a ledger row with prune: true that counts toward no quota."],
+               "cards, set one run option, prefer a model (built, off). Each edit is a pure function that makes "
+               "version N+1 with parent N.",
+               "Transforms apply an edit to a Draft: add a verify step, tighten done_when, grant or revoke a tool, add "
+               "a role rule; each returns what it changed.",
+               "Validation by plain code (V1–V6): tools are in the registry and not outside actions; run options are "
+               "whitelisted and in range (max_turns 3–8, check_retry_turns 1–3, input sizes); at most 8 rules and 8 "
+               "transforms of at most 300 characters (amoeba/config/adapt.yaml); no wording that tells the team to "
+               "skip checks, citations or the sandbox; the step graph still passes the plan checks; a model preference "
+               "names a known role and model.",
+               "D117: there is no recipe store and no recipe hook any more; nothing carries over between tasks. A "
+               "Recipe is only the container one task's edits are checked in."],
          proposes="Nothing: no AI works here.",
-         disposes="Plain code computes the noise floor, applies rules 1–6 and writes the ledger and the store.",
+         disposes="Plain code applies an edit, applies the transforms and refuses one that breaks V1–V6.",
          anchors=[]),
-    dict(id="monitor", view="m4", title="Score and cause alarms", kind="code", plan=None,
-         sentence="Raises an alarm when a kind's last few practice scores drop below normal, or when a cause or a missing rubric item suddenly rises.",
-         what=["After every practice run it reads the run's score, the names of the rubric items it failed and the "
-               "step causes recorded by the step contract. D111: a run that ended in an infra error is skipped.",
-               "Score alarm: the mean of the last three scores falls below the reference mean minus twice its spread "
-               "(at least 0.10); the reference is the kind's practice runs since its last accepted change, before the "
-               "window, and there must be at least four.",
-               "Cause alarm: a cause or a failed item is in at least half of the last three runs after at most a fifth "
-               "of the reference runs.",
-               "No alarm while the kind is in its dwell period after an accept or cooling down after a reject.",
-               "D100: every 12 practice tasks of a kind (--retention-every), the old pre-shift gate tasks are replayed with the current recipe against the starting one; a drop beyond noise raises a retention alarm at once (see Retention replay and pruning)."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code computes the window and the reference and decides whether to raise an alarm.",
-         anchors=[]),
-    dict(id="diagnoser", view="m5", title="Name the cause", kind="code", plan=None,
-         sentence="Names the cause that rose most in the alarm's window, with quoted evidence and practice examples.",
-         what=["It reads the window's run folders: step causes recorded by the step contract (with the step's kind, "
-               "roles and their tools), blocked capabilities, unused tools, missing files, unverified checks, made-up "
-               "or mislabelled citations and the names of the failed rubric items.",
-               "The cause is the one whose share of runs rose most from the reference runs to the window — a cause "
-               "that was always there does not explain an alarm — then the most frequent, then the table order.",
-               "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice "
-               "examples (never held-out tasks) go to the Architect with the evidence lines.",
-               "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation).",
-               "D93: only causes observed in the run files (tool calls, files, checks) can be named; causes that only the model's own words support are reported apart as declared (supporting evidence and declared shares), never as the cause.",
-               "D100: a retention alarm is diagnosed from scores alone (held-out tasks never reach a prompt), with the edits remove_planner_rule, add_planner_rule, tighten_done_when and add_role_rule."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code counts the records, names the cause and limits the edits.",
-         anchors=[]),
-    dict(id="architect", view="m6", title="Propose one edit (AI)", kind="llm", plan=None, ai="architect",
-         sentence="An AI reads the diagnosis, the current recipe and the changes already rejected, and proposes one "
-                  "typed change with a reason and a predicted gain; plain code checks it before anything is tested.",
-         what=["The only box of the loop that calls a model (Gemma). It sees the diagnosis, the recipe, the edits the "
-               "diagnosis allows with their exact parameter shapes, the kind's rejected changes with their results, "
-               "and up to two practice examples — never a held-out task.",
-               "It must reply with one JSON object: one edit, a short reason, a signed predicted change in score.",
-               "Plain code checks the reply: it parses strictly, the edit is allowed and valid, the new recipe passes "
-               "V1–V5, it repeats no rejected change, it holds no text, number or id from a held-out task, and the "
-               "prediction is between −1 and 1. A refused reply gets one retry with the problems shown.",
-               "At most three proposals per alarm; after that the alarm waits for a person in human_queue.jsonl."],
-         proposes="One typed edit, a rationale and a predicted change in score.",
-         disposes="Plain code checks the proposal; the Experimenter and the Gate decide whether it is kept.",
-         prompts=["architect"], anchors=[]),
-    dict(id="memory", view="m9", title="Recipe store with provenance (D88, D99)", kind="code", plan=None,
-         sentence="Keeps every recipe version of each kind, which one is current and why; only a Gate accept writes it.",
-         what=["A folder per stream: one YAML file per recipe version of each kind, an index naming the current version "
-               "with the full history (parent, the hypothesis that made it, when it was accepted or reverted), and an "
-               "experience log with one line per decided hypothesis.",
-               "A run reads the current recipe of its kind with --recipes; --recipes-from is a second, read-only store "
-               "used when the first has none (a warm start from another stream).",
-               "Only a Gate accept writes a version (a post-hoc decision never does); the rollback watch can send a kind "
-               "back to its parent version.",
-               "D99: every line of a recipe carries its provenance (hypothesis id, date, the Gate row and gate version that accepted it), stamped by the store when the accept commits it; lines from before D99 are marked so. The size caps (8 rules, 8 transforms) are unchanged."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code writes versions on the Gate's accept and reverts on the rollback watch.",
-         anchors=[]),
-    dict(id="evidence", view="m9", title="Event memory: evidence log (D95)", kind="code", plan=None,
-         sentence="Writes every loop event to one append-only, hash-chained log outside the agents' reach, with a "
-                  "fingerprint of every run folder it refers to, and queues finished runs for an off-container copy.",
-         what=["One events.jsonl per stream, written only by the harness: alarms with their inputs, diagnoses, every "
-               "Architect prompt and full reply, experiments, Gate decisions, reverts, human-queue entries and "
-               "finished practice runs.",
-               "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; "
+    dict(id="evidence", view="adapt", title="Event log and evidence branch (kept from D95)", kind="code", plan=None,
+         sentence="An append-only, hash-chained log written only by the harness, with a fingerprint of every run folder "
+                  "it names, and an off-container copy on the repository's evidence branch.",
+         what=["Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; "
                "scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
-               "A finished run is key-scanned and queued for the bucket copy; unshipped items are listed in "
-               "loop_state.json. Cloud credentials are removed from every run's environment.",
-               "D95a: finished runs that pass the key scan and the new events.jsonl rows are shipped as normal fast-forward commits to the repository's orphan `evidence` branch, at most one commit per 10 minutes plus a final one; each commit message carries the hash-chain head (Chain-Head) so scripts/verify_evidence.py --branch evidence can check the chain against GitHub's history. Shipping runs in the harness only; agents never get git credentials. The bucket uploader is kept but disabled.",
-               "D97–D100: routing decisions, local-tool decisions, memory proposals and approvals, retention replays and prunes are events in the same log.",
-               "D111: a practice run still failing on an infra error after its retries is logged as an infra_error event with its run folder, and left out of the scores."],
+               "Finished runs that pass the key scan are shipped as fast-forward commits to the orphan `evidence` "
+               "branch, at most one commit per 10 minutes plus a final one; each commit message carries the chain "
+               "head. Shipping runs in the harness only; agents never get git credentials or cloud credentials.",
+               "D117: the loop that wrote it is gone; the log is kept for in-task adaptation, where every stuck step, "
+               "diagnosis and fix will be a row."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes, chains and verifies the log.",
          anchors=[]),
@@ -931,170 +773,26 @@ BOXES: list[dict] = [
          proposes="Nothing: a person writes the profile.",
          disposes="Plain code applies the profile's allowlists, limits, done clauses and checks.",
          anchors=[]),
-    dict(id="user_memory", view="m9", title="User memory: proposals and approval (D99)", kind="code", plan=None,
-         sentence="The loop may only propose a lasting user standard; it enters the user's context file only when the "
-                  "user approves it, and Box 1 and Box 2 read approved standards only.",
-         what=["Three kinds of memory, one writer each: recipe memory (the Gate), user memory (the user) and event "
-               "memory (the harness's evidence log, never fed raw into prompts).",
-               "When the same failed rubric item appears in at least 3 practice runs across at least 2 kinds of task, "
-               "plain code writes one proposal to eval/loop/<stream>/memory_proposals.jsonl and a memory_proposal event.",
-               "scripts/approve_memory.py --id P<n> --context user.yaml is the only writer of an approved line: it adds "
-               "it under standards: with approved: and the proposal id, and logs memory_approval in events.jsonl.",
-               "A standard counts only when the user wrote it or approved it; approved standards reach Box 1's context "
-               "and the Planner's and Plan Observer's prompts (no standards: prompts unchanged). No agent can write any "
-               "memory file: they all sit outside the run workspace and the sandbox mounts none of them."],
-         proposes="Nothing: plain code proposes from counts; no AI works here.",
-         disposes="The user approves; plain code writes the approved line and logs it.",
-         anchors=[]),
-    dict(id="retention", view="m4", title="Retention replay (D100)", kind="code", plan=None,
-         sentence="Every 12 practice tasks the old gate tasks are replayed with the current recipe; a drop beyond noise is an alarm at once.",
-         what=[
-               "Every N practice tasks of a kind (--retention-every, default 12, 0 = off), the kind's pre-shift gate tasks are replayed with the current recipe and with the starting one, same seeds, through the arm-A cache.",
-               "A drop beyond the calibration noise raises a retention alarm at once, handled like any alarm; the Diagnoser gets scores only, never the held-out tasks.",
-               "Each replay is a row in retention.jsonl and a retention event; it is resumable by its event key.",
-               "D111: a replay run that ends in an infra error is never counted as a score."],
-         proposes="Nothing: no AI takes part; the runs themselves use the team.",
-         disposes="Plain code decides when to replay, raises the alarm and the Gate decides each prune.",
-         anchors=[]),
-    dict(id="mon_records", view="m4", title="Practice records", kind="data", plan=None,
-         sentence="What the loop keeps from each practice run: score, failed rubric item names, observed and declared causes.",
-         what=[
-               "One PracticeRecord per practice run (order, task, kind, score, failed items, causes, declared causes, recipe version).",
-               "The only rubric information the loop ever sees is the names of the failed items.",
-               "Each kind keeps its own reference window, reset after an accepted change.",
-               "D111: a practice run still in an infra error after its retries is kept with status infra_error and no score; the Monitor never sees it."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code builds the record from the run's result.json and step files.",
-         anchors=[]),
-    dict(id="diag_signals", view="m5", title="Observed and declared signals (D93)", kind="code", plan=None,
-         sentence="Reads the window's run folders and counts each cause, keeping what the files show apart from what the model only said.",
-         what=[
-               "Observed: tool calls, files, checks and verdicts in step_<n>.json and result.json.",
-               "Declared: causes only the model's own words support; reported as supporting evidence, never as the cause.",
-               "Each signal keeps its provenance (file and field)."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code counts the signals.",
-         anchors=[]),
-    dict(id="diag_edits", view="m5", title="Cause → edit table", kind="code", plan=None,
-         sentence="Says which recipe edits may answer the named cause, from adapt.yaml.",
-         what=[
-               "capability, checks, max_turns, unused_tool, claimed_file_missing, feedback, honesty and retention each have their own allowed edits.",
+    dict(id="diag_edits", view="adapt", title="Cause → allowed edits (kept from D86)", kind="data", plan=None,
+         sentence="Which edits may answer which cause, from adapt.yaml.",
+         what=["capability, checks, max_turns, unused_tool, claimed_file_missing, feedback and honesty each have "
+               "their own allowed edits; a tie between causes is broken by the table order.",
                "prefer_model is offered only when model edits are on (D98) and never for feedback.",
-               "--diagnoser none hands the Architect the alarm only, with every edit allowed (the ablation)."],
+               "D117: the step contract's causes become stuck signals; this table limits what a fix may change."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code looks the cause up in the table.",
          anchors=[]),
-    dict(id="arch_prompt", view="m6", title="Build the Architect's prompt", kind="code", plan=None,
-         sentence="Assembles the diagnosis, the current recipe, the allowed edits with their shapes, the failed hypotheses and up to two practice examples.",
+    dict(id="arch_check", view="adapt", title="Single-edit format and check (kept from D87)", kind="code", plan=None,
+         sentence="One proposed change is one strict JSON object; plain code parses it and checks it is allowed, valid and new.",
          what=[
-               "Never a held-out task: the prompt is screened for leaks before it is sent.",
-               "Each allowed edit is shown with its exact JSON shape."],
+               "The reply: exactly one JSON object with one typed edit, a short rationale (at most 400 characters) and "
+               "a predicted change between -1 and 1; any other key is refused.",
+               "Plain code checks that the edit is allowed for the cause (adapt.yaml), that the edited recipe passes "
+               "V1–V6, and that the same edit was not already tried.",
+               "D117: the loop's Architect, its prompt and its human queue are gone; D117's in-task fix proposer "
+               "reuses this format and these checks."],
          proposes="Nothing: no AI works here.",
-         disposes="Plain code writes the prompt.",
-         anchors=[]),
-    dict(id="arch_check", view="m6", title="Check the proposal", kind="code", plan=None,
-         sentence="Validates the proposed edit: allowed for this cause, well formed, not a repeat, and the new recipe passes V1–V6.",
-         what=[
-               "An invalid reply gets one retry with the reasons; a second failure is no hypothesis.",
-               "V1–V6: tools, run-option ranges, size caps, wording, step graph, model preference (D98)."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code accepts the edit for testing or rejects it.",
-         anchors=[]),
-    dict(id="arch_queue", view="m6", title="Human queue", kind="data", plan=None,
-         sentence="When three hypotheses for one alarm are rejected, the alarm and what was tried go to a person.",
-         what=[
-               "One row per unresolved alarm in human_queue.jsonl and an event in events.jsonl.",
-               "The kind then cools down before a new hypothesis."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code writes the row; a person decides.",
-         anchors=[]),
-    dict(id="exp_runners", view="m7", title="Runners", kind="code", plan=None,
-         sentence="Run the arms' jobs: in this process for tests, or as separate run_task processes (several at once) for real runs.",
-         what=[
-               "Each job has a task, an arm, a repeat, a seed, a recipe store and (same-draft edits) the draft to reuse.",
-               "A finished run folder is found again on resume and not rerun.",
-               "D111: a run that ended in an infra error (model service, connection or proxy, cache miss, no result) is run again at most twice; still infra, its (task, k) is left out of the pairs and listed in experiment.json under excluded. Each run starts with the current proxy."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code starts the runs and collects their records.",
-         anchors=[]),
-    dict(id="exp_cache", view="m7", title="Arm-A cache", kind="data", plan=None,
-         sentence="Runs of the old recipe on the gate tasks are kept by recipe hash and reused by every later hypothesis, calibration and replay.",
-         what=[
-               "Key: recipe content hash, task, repeat and seed.",
-               "A remove_tool shift is applied to the post-shift gate tasks."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code reads and writes the cache.",
-         anchors=[]),
-    dict(id="exp_calib", view="m7", title="Noise calibration", kind="code", plan=None,
-         sentence="Runs the recipe against itself with other seeds on the gate tasks to measure how much scores move by chance.",
-         what=[
-               "Once per kind and recipe version; per-task spread for Gate v3.",
-               "Both arms land in the arm-A cache."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code runs both arms and records the noise in the ledger.",
-         anchors=[]),
-    dict(id="exp_score", view="m7", title="Score, cost and honesty per run", kind="code", plan=None,
-         sentence="Reads each run's score, tokens, US dollars, honesty flags and refusals.",
-         what=[
-               "Honesty parts: hallucinated citations, untagged figures, unverified checks, claimed files missing.",
-               "A same-draft arm B counts arm A's drafting tokens too."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code reads result.json and the step files.",
-         anchors=[]),
-    dict(id="gate_stats", view="m8", title="Statistics", kind="code", plan=None,
-         sentence="Per-task means, the one-sided permutation test, the noise floor and the per-task spread.",
-         what=[
-               "Gate v3 uses the permutation test at alpha 0.05/6; earlier versions used a t-test or Wilcoxon signed-rank.",
-               "Pure functions over the paired scores; no randomness that is not seeded."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code computes the numbers.",
-         anchors=[]),
-    dict(id="gate_rules", view="m8", title="Rules 1, 4 and 5", kind="code", plan=None,
-         sentence="Validity and leakage (1), cost justified in US dollars or tokens (4), honesty and errors not worse (5).",
-         what=[
-               "Rule 4 uses US dollars when both arms have prices, tokens otherwise (cost_basis).",
-               "Rule 5 compares the share of runs with an honesty signal and the share that ended in an error.",
-               "D111: rule 5b counts agent errors only; an infra error is never the team's."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code applies each rule and records its reason.",
-         anchors=[]),
-    dict(id="ledger", view="m8", title="Ledger", kind="data", plan=None,
-         sentence="One append-only row per calibration, hypothesis, decision, revert and unresolved alarm: the source of the adaptation tables.",
-         what=[
-               "Counts hypotheses per kind for the quota (prunes and the pre-registered check excluded).",
-               "Failed hypotheses are shown to the Architect so it does not repeat them."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code appends the rows.",
-         anchors=[]),
-    dict(id="gate_rollback", view="m8", title="Rollback watch", kind="code", plan=None,
-         sentence="After an accept, watches the next practice tasks of the kind and reverts if scores fall below the alarm level minus noise.",
-         what=[
-               "A revert sends the kind back to the parent recipe version and is a ledger row."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code decides keep or revert.",
-         anchors=[]),
-    dict(id="prune", view="m8", title="Pruning (D100)", kind="code", plan=None,
-         sentence="At the end of a stream, each recipe line is removed in turn and dropped if that loses nothing beyond noise and saves cost.",
-         what=[
-               "Rules, transforms, run options and model preferences are each tried; scripts/prune_recipe.py does the same on demand.",
-               "Each prune is a ledger decision with prune: true, outside the hypothesis quota."],
-         proposes="Nothing: no AI works here.",
-         disposes="The Gate decides each prune by plain-code rules.",
-         anchors=[]),
-    dict(id="loop", view="around", title="Loop driver (D89)", kind="code", plan=None,
-         sentence="Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes "
-                  "it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
-         what=["Calibrates the noise floor first, then runs every practice task with its kind's current recipe (shifts "
-               "apply: the later rubrics ask for more, a removed tool is taken out). Tasks before the shift may run in "
-               "one batch; later ones run one at a time, because each can trigger a change.",
-               "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then "
-               "up to three Architect proposals, each measured by the Experimenter and decided by the Gate; an accept "
-               "goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a "
-               "cool-down.",
-               "Everything it does is on disk — practice runs, experiments, ledger, recipes, proposals, diagnoses, "
-               "state — so a crash resumes where it stopped, and it writes summary.json and a plain report."],
-         proposes="Nothing itself; the Architect inside it proposes.",
-         disposes="Plain code orders the runs and calls every box in turn.",
+         disposes="Plain code accepts or refuses the edit.",
          anchors=[]),
 ]
 
@@ -2153,11 +1851,7 @@ def data_types(F: Facts) -> dict:
             "_Msg": "amoeba/interp/runtime.py::_Msg", "ChatResponse": "amoeba/llm/client.py::ChatResponse",
             "CapabilityRequest": "amoeba/task/models.py::CapabilityRequest",
             "DraftRound": "amoeba/task/models.py::DraftRound",
-            "StreamTask": "amoeba/adapt/stream.py::StreamTask", "PracticeRecord": "amoeba/adapt/monitor.py::PracticeRecord",
-            "Alarm": "amoeba/adapt/monitor.py::Alarm", "Diagnosis": "amoeba/adapt/diagnoser.py::Diagnosis",
-            "Hypothesis": "amoeba/adapt/gate.py::Hypothesis", "RunRecord": "amoeba/adapt/experimenter.py::RunRecord",
-            "Pair": "amoeba/adapt/experimenter.py::Pair", "ReplayResult": "amoeba/adapt/experimenter.py::ReplayResult",
-            "Decision": "amoeba/adapt/gate.py::Decision", "Recipe": "amoeba/adapt/recipe.py::Recipe"}
+            "Edit": "amoeba/adapt/recipe.py::Edit", "Recipe": "amoeba/adapt/recipe.py::Recipe"}
     return {k: class_record(F, v) for k, v in keys.items() if v in F.defs}
 
 

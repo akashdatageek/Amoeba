@@ -38,8 +38,6 @@ from amoeba.task.source import ToyTaskSource
 from amoeba.tools.registry import ToolRegistry, default_registry
 from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
-from amoeba.adapt.recipe import Recipe, apply_transforms, lessons_text, overlay_run_options
-from amoeba.memory.recipes import load_family_recipe
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
@@ -50,7 +48,7 @@ from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
-PHASE2_FIELDS = {"disabled_tools", "recipe", "routing", "deliverables", "requirement_status"}           # left out of result.json when None (Phase 1 records unchanged)
+PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status"}           # left out of result.json when None (Phase 1 records unchanged)
 
 
 # box: ov_leave, capreq, runresult
@@ -60,10 +58,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
             local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
             picks_only: bool = False, timezone: str | None = None, interpret: bool = False,
-            context=None, disabled_tools=(), recipe: Recipe | None = None,
+            context=None, disabled_tools=(),
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
             default_max_turns: int | None = None, family_classify: bool = False,
-            recipe_source: tuple | None = None, niche=None, deliverable_check: bool = False,
+            niche=None, deliverable_check: bool = False,
             workspace_sources: bool = False, ask_assumed: str = "off", clarify: dict | None = None) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
@@ -75,21 +73,14 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     (--context, amoeba.memory.context.load_context) it reads.
     disabled_tools: D80 --disable-tools — already taken out of `tools`, `pool` and `local` by the caller
     (disable_tools); recorded, and left out of the toolbox Box 2 is shown.
-    recipe: D82 --recipes — the task family's team recipe (plan runner only; the baselines never get one): its
-    planner rules fill the d24 prompts' {lessons} slot, its transforms are applied by code to the final draft, its
-    run options overlay plan_options and the helpers' max_turns unless the CLI set them (cli_explicit: the flags
-    given on the command line). With a saved draft only the transforms and run options apply.
     family_classify: D101 — a free-text task (family "freeform") gets a family from Box 1 (keyword rules, else one
-    routed family_classifier call); a known family then starts from its current recipe in recipe_source
-    ((--recipes, --recipes-from)); "new" starts empty.
+    routed family_classifier call); it is recorded only (D117 removed the recipes it used to select).
     niche: D102 --niche — a NicheProfile (amoeba.config.niche); a neutral one (general) changes nothing. Otherwise
     (plan runner only): its Environment section in Box 1 and Box 2, its tool allowlist enforced in Box 3 (refusals
     logged), its done clauses on the answer step and its domain checks after each step.
     ask_assumed: D116 — "on": every reading the interpretation step would assume (a tie included) is asked about
     before planning, through `ask` or, without it, the terminal; when nobody can be asked the run stops with
     error needs_clarification and writes clarification.json. clarify: D116 --clarify answers {entity: reading}."""
-    if recipe is not None and topology != "plan":
-        raise ValueError("recipes are for Amoeba's plan runner only; the baselines never get one (D82)")
     prof = niche if niche is not None and not niche.is_neutral() else None          # D102: general = None
     if prof is not None and topology != "plan":
         raise ValueError("niche profiles are for Amoeba's plan runner only; the baselines stay as they are (D102)")
@@ -100,8 +91,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
     if hasattr(llm, "begin_run"):  # D97: the router's account for this run (data class, recipe preferences)
-        llm.begin_run(data_class="sensitive" if "sensitive" in (task.tags or []) else "normal",
-                      recipe_prefs=getattr(recipe, "model_prefs", None) if recipe is not None else None)
+        llm.begin_run(data_class="sensitive" if "sensitive" in (task.tags or []) else "normal", recipe_prefs=None)
     t0 = time.perf_counter()
     family_rec = None
     if family_classify and topology == "plan" and task.family == "freeform":      # D101: Box 1 names the family
@@ -110,14 +100,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                                     "amoeba.family_how": family_rec["how"]})
         if family_rec["family"] != "new":
             task = task.model_copy(update={"family": family_rec["family"]})
-            if recipe is None and recipe_source:
-                recipe = load_family_recipe(task.family, *recipe_source)
-                if recipe is not None and hasattr(llm, "recipe_prefs"):
-                    llm.recipe_prefs = dict(recipe.model_prefs)
-        family_rec["recipe_version"] = recipe.version if recipe is not None else None
     if disabled_tools:
         trace.event("tools_disabled", {"amoeba.box": "stream", "amoeba.tools": list(disabled_tools)})
-    lessons = lessons_text(recipe) if saved_draft is None else {}               # D82: Box 2's {lessons} slot
+    lessons: dict[str, str] = {}                                                # Box 2's {lessons} slot
     if saved_draft is None and topology == "plan" and (context or {}).get("standards"):   # D99: approved standards
         lessons = dict(lessons)
         for who, text in standards_slots(context).items():
@@ -142,25 +127,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         from dataclasses import replace as _replace
         from amoeba.interp.plan_runner import PlanOptions
         plan_options = _replace(plan_options or PlanOptions(), final_check="on")
-    plan_options, recipe_turns, opts_applied, opts_cli = overlay_run_options(plan_options, recipe, cli_explicit)
-    # --max-turns given on the command line wins over the recipe; a harness default (--option-defaults) yields to it
-    max_turns = max_turns or recipe_turns or default_max_turns
-    recipe_rec: dict | None = None
-    if recipe is not None:
-        recipe_rec = {"family": recipe.family, "version": recipe.version, "hash": recipe.hash(),
-                      "rules": [r.model_dump() for r in recipe.planner_rules],
-                      "rules_applied": bool(recipe.planner_rules) and saved_draft is None and draft_prompts == "d24",
-                      "transforms_applied": [], "run_options": opts_applied, "run_options_overridden_by_cli": opts_cli}
-        if recipe.planner_rules and saved_draft is not None:
-            recipe_rec["rules_note"] = "saved draft reused (D45): planner rules need a fresh draft and were not applied"
-        elif recipe.planner_rules and draft_prompts != "d24":
-            recipe_rec["rules_note"] = "planner rules are shown by the d24 prompts only"
-        trace.event("recipe_loaded", {"amoeba.box": "recipe", "amoeba.recipe.family": recipe.family,
-                                      "amoeba.recipe.version": recipe.version, "amoeba.recipe.hash": recipe.hash(),
-                                      "amoeba.recipe.rules": len(recipe.planner_rules),
-                                      "amoeba.recipe.transforms": len(recipe.transforms),
-                                      "amoeba.recipe.run_options": opts_applied})
-    box2_draft = None
+    max_turns = max_turns or default_max_turns          # --max-turns, else a harness default (--option-defaults)
     draft = ep = failed = clarification = None
     answer = error = None
     team_id = ""
@@ -216,19 +183,11 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                                        quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
                                        toolbox=toolbox, interpretation=interp, lessons=lessons)
         task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})    # D77: Box 3 reads it too
-        if recipe is not None and recipe.transforms:     # D82: Box 2 → 3, code applies the recipe's transforms
-            box2_draft = draft
-            draft, applied = apply_transforms(draft, recipe)
-            draft = draft.model_copy(update={"recipe_applied": {"family": recipe.family, "version": recipe.version,
-                                                                "transforms": applied}})
-            recipe_rec["transforms_applied"] = applied
-            trace.event("recipe_applied", {"amoeba.box": "recipe", "amoeba.recipe.version": recipe.version,
-                                           "amoeba.recipe.transforms_applied": applied})
         if prof is not None and prof.done_when:           # D102: what "done" means here, on the answer step(s)
             draft, done_steps = add_done_clauses(draft, prof)
             trace.event("niche_done_when", {"amoeba.box": "niche", "amoeba.steps": done_steps})
         cfg = instantiate(draft, topology, task, envelope)
-        if max_turns is not None:                         # --max-turns, else a recipe's max_turns run option (D82)
+        if max_turns is not None:                         # --max-turns (or a harness default)
             for a in cfg.agents.values():
                 a.limits.max_turns = max_turns
         team_id = cfg.team_id
@@ -276,8 +235,6 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         saved = draft.model_dump(mode="json") if draft else \
             {"error": error, "rounds": [r.model_dump(mode="json") for r in (failed.rounds if failed else [])]}
         (run_dir / "plan.json").write_text(json.dumps(saved, indent=2, ensure_ascii=False), encoding="utf-8")
-        if box2_draft is not None:    # D82: the draft as Box 2 made it, before the transforms (what D45 reuses)
-            (run_dir / "draft.json").write_text(box2_draft.model_dump_json(indent=2), encoding="utf-8")
         if box is not None:           # D59: the server is closed and the workspace copied, whatever happened
             local_out = box.finish()
             trace.event("local_summary", {"amoeba.box": "localtools", **{f"amoeba.local.{k}": v for k, v in local_out.items()}})
@@ -318,7 +275,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         clarification=clarification, profile=getattr(llm, "profile", None), models=models_of(llm, trace),
         replan=ep.replan if ep else {},
         interpretation=interpretation_of(interp, stated),
-        pool=pool_summary, disabled_tools=list(disabled_tools) or None, recipe=recipe_rec, family=family_rec,
+        pool=pool_summary, disabled_tools=list(disabled_tools) or None, family=family_rec,
         routing=llm.summary() if hasattr(llm, "summary") and hasattr(llm, "registry") else None,
         status=run_status(error), deliverables=deliverables, requirement_status=requirement_status, **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
@@ -462,7 +419,7 @@ def quality_gate_on(choice: str | bool, topology: str, drafts_from: str | None =
     return choice == "on"
 
 
-# box: stream
+# box: tools
 def disable_tools(names, tools: ToolRegistry, pool: PoolSetup | None = None, local: LocalSetup | None = None):
     """D80 --disable-tools a,b: one run without these tools — out of the registry (and so the envelope Box 2 is
     shown), out of the pool (by id or name) and, for local:<Name>, out of the local tools' allow list."""
@@ -482,7 +439,7 @@ INT_OPTIONS = ("check_retry_turns", "max_turns", "max_input_chars", "max_summary
 
 
 def explicit_flags(argv: list[str]) -> frozenset:
-    """D82: the option flags given on the command line (a recipe's run option yields to these)."""
+    """The option flags given on the command line (they win over --option-defaults)."""
     return frozenset(a.split("=", 1)[0] for a in argv if a.startswith("--"))
 
 
@@ -779,22 +736,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "runner only")
     p.add_argument("--family-classify", choices=["auto", "on", "off"], default="auto",
                    help="D101: give a free-text task (family freeform) a task family in Box 1 (keyword rules, else one "
-                        "routed call) so it starts from that family's recipe; auto = on for the plan runner, off for "
-                        "the baselines")
-    p.add_argument("--recipes", default=None, metavar="DIR",
-                   help="D82: a Phase 2 recipe store (index.json, <family>/v<N>.yaml); the current recipe of the "
-                        "task's family is applied — planner rules to Box 2, transforms to the draft, run options to "
-                        "Box 3. Plan runner only; without it, or with no recipe for the family, nothing changes")
-    p.add_argument("--recipes-from", default=None, metavar="DIR",
-                   help="D88: a second, read-only recipe store used when --recipes has no recipe for the family (a "
-                        "warm start from another stream's store)")
+                        "routed call); recorded in result.json; auto = on for the plan runner, off for the baselines")
     p.add_argument("--check-retry-turns", type=int, default=None,
-                   help="plan: turns a failed-check retry gets (D42; default 2). Set here, it wins over a recipe")
+                   help="plan: turns a failed-check retry gets (D42; default 2)")
     p.add_argument("--max-turns", type=int, default=None,
-                   help="turns per step for every helper (default 5). Set here, it wins over a recipe")
+                   help="turns per step for every helper (default 5)")
     p.add_argument("--option-defaults", default="", metavar="K=V,...",
-                   help="D83: harness defaults for the options a recipe may set (replan, self_refine, collab, "
-                        "check_retry_turns, max_turns), e.g. replan=on; unlike a flag they yield to a recipe")
+                   help="harness defaults for replan, self_refine, collab, check_retry_turns, max_turns and the input "
+                        "sizes, e.g. replan=on; a flag given on the command line wins")
     p.add_argument("--disable-tools", default="", metavar="A,B",
                    help="D80: take these tools out of the registry, the pool and the local tools for this run (e.g. "
                         "calc,local:Bash); used by remove_tool shifts")
@@ -814,10 +763,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         p.error("give a prompt, --toy or --tasks")
     if args.interactive and args.drafts_from:
         p.error("--interactive reviews a fresh draft; it cannot be combined with --drafts-from")
-    if (args.recipes or args.recipes_from) and args.topology != "plan":
-        p.error("--recipes is for --topology plan only; the baselines never get recipes (D82)")
     args.explicit = explicit_flags(argv if argv is not None else sys.argv[1:])
-    for kv in filter(None, args.option_defaults.split(",")):            # D83: defaults that yield to a recipe
+    for kv in filter(None, args.option_defaults.split(",")):            # harness defaults; an explicit flag wins
         k, _, v = kv.partition("=")
         k = k.strip().replace("-", "_")
         if k not in OPTION_FLAGS:
@@ -904,9 +851,8 @@ def main(argv: list[str] | None = None) -> int:
                     disabled_tools=disabled, cli_explicit=args.explicit,
                     max_turns=args.max_turns if "--max-turns" in args.explicit else None,
                     default_max_turns=None if "--max-turns" in args.explicit else args.max_turns,
-                    recipe=load_family_recipe(task.family, args.recipes, args.recipes_from),   # D82, D88
                     family_classify=family_classify_on(args.family_classify, args.topology),     # D101
-                    recipe_source=(args.recipes, args.recipes_from), niche=niche,
+                    niche=niche,
                     deliverable_check=args.deliverable_check == "on" and args.topology == "plan",   # D105
                     workspace_sources=args.workspace_sources == "on" and args.topology == "plan",   # D107
                     ask_assumed=args.ask_assumed, clarify=parse_clarify(args.clarify))                  # D116

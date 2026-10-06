@@ -261,20 +261,3 @@ def test_a_plan_step_without_a_model_is_blocked_not_crashed(task, envelope, trac
     assert ep.steps and all("no_model" in (s.get("blocked") or []) or s.get("answer_step") for s in ep.steps)
     assert any("no_model" in (s.get("blocked") or []) for s in ep.steps)
 
-
-def test_rule_4_uses_usd_when_both_arms_have_prices():
-    from amoeba.adapt.experimenter import Pair, ReplayResult
-    from amoeba.adapt.gate import decide
-    from amoeba.adapt.recipe import apply_edit, seed_recipe
-    from tests.test_gate_d84 import ENV, hyp
-
-    def res(usd_a, usd_b):
-        pairs = [Pair(task_id=f"t{i}", phase="post", k=0, seed=0, score_A=0.5, score_B=0.9, tokens_A=1000,
-                      tokens_B=1000, honesty_A=0, honesty_B=0, usd_A=usd_a, usd_B=usd_b) for i in range(15)]
-        return ReplayResult(hypothesis_id="h", family="calc", recipe_from=1, recipe_to=2, recipe_A_hash="a",
-                            mode="own_draft", pairs=pairs)
-    a = seed_recipe("calc")
-    d = decide(a, apply_edit(a, hyp().edit), hyp(), res(0.01, 0.05), 0.0, 1, [], ENV, version="v3", hypothesis_index=1)
-    assert d.cost_basis == "usd" and d.cost_ratio == 5.0 and any(r.startswith("4 cost not justified: USD") for r in d.reasons)
-    d = decide(a, apply_edit(a, hyp().edit), hyp(), res(0.0, 0.0), 0.0, 1, [], ENV, version="v3", hypothesis_index=1)
-    assert d.cost_basis == "tokens" and d.cost_ratio == 1.0

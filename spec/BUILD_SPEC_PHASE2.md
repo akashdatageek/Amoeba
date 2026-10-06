@@ -548,6 +548,7 @@ the report too.
 | D113 | Spreadsheet checks: after a step that made an .xlsx, typed totals and typed derived cells (row/column sums, products of row cells) fail `domain_xlsx_formulas` with the cell names and earn the retry turn; task numbers are inputs (`--xlsx-formulas`, default on) | `amoeba/checks/xlsx_formulas.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 | D114 | `max_input_chars` (3000–20000) and `max_summary_input_chars` (15000–60000) whitelisted as recipe run options; the Diagnoser allows them for the checks / feedback causes; Gate-tested like any edit | `amoeba/config/adapt.yaml`, `amoeba/adapt/recipe.py`, `scripts/run_task.py` | v1 |
 | D116 | Ask the user about every reading the interpretation step would only assume (a tie included), before planning; no terminal → stop with `needs_clarification` + `clarification.json`; `--clarify ENTITY=READING`; `--ask-assumed off` = D77; experiments pass off | `amoeba/task/interpret.py`, `scripts/run_task.py`, `amoeba/task/models.py`, `amoeba/config/adapt.yaml` | v1 |
+| D117 | The offline learning loop is removed; in-task adaptation replaces it (Stage A: removal; B: stuck watch; C: code fixes; D: fix-proposer agent; E: `--adapt` test). Kept: contract causes, cause → edit table, single-edit format + V1–V6, event log | `amoeba/adapt/` (recipe, architect, evidence), `amoeba/config/adapt.yaml`, `scripts/run_task.py` | v1 |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit
@@ -724,4 +725,39 @@ question each, through `--interactive` or the terminal. With nobody to ask, the 
 `needs_clarification` and writes `clarification.json`; `--clarify ENTITY=READING` answers ahead of time. On by default
 from the CLI (`--ask-assumed on`); experiment, loop and audit runs pass `off` (no one answers there), so a paused
 M-P2 resumes with its configuration unchanged.
+
+## 17. Change of direction: in-task adaptation (D117, Oct 6, 2026)
+
+**Goal.** Drop the offline learning loop (§§3–11 above are history). Adaptation now happens inside a single task: when
+a Box 3 step gets stuck, plain code (and, only when code fixes fail, a small fix-proposer agent) changes the planned
+team using that run's own logs, results and errors, so the task can still finish. Nothing carries over between tasks.
+
+**Stage A, removal (done).** Removed: task streams, Experimenter, Gate statistics, calibration, retention replay,
+pruning, recipe memory (`memory/recipes.py`, `--recipes`, `--recipes-from`), user-memory proposals
+(`approve_memory.py`), the human queue, the ledger, the Monitor, the loop's Diagnoser, the Architect's proposal loop,
+`run_loop` and `run_experiment`. Kept and reused: the step-contract causes (stuck signals), the cause → allowed-edit
+table in `adapt.yaml`, the Architect's single-edit JSON format and V1–V6 validation, the hash-chained event log and
+the evidence branch.
+
+**Stage B, watch and diagnose (code only).** After each Box 3 step attempt, plain code marks the step STUCK when the
+same error appears twice in a row, checks still fail after the retries, max turns was reached, a requested capability
+or skill is unfilled, or no output file changed between attempts. Diagnosis picks one cause with the kept table. Every
+stuck event (step, cause, evidence lines) goes to the event log. Counts per cause from existing runs are reported
+before Stage C.
+
+**Stage C, code fixes (no AI), cheapest first.** (1) more turns, more retry turns or a larger input; (2) attach the
+missing tool or skill from the pool shortlist. Apply, re-run only the stuck step, re-check.
+
+**Stage D, fix-proposer agent.** Used only when the code fixes fail. It sees the stuck step, its logs and errors, the
+current team, the edits allowed for the cause and the fixes already tried in this task, and returns exactly one JSON
+edit: add_role_rule | add_helper_role | grant_tool | split_step | replan_remaining. Code validates it (V1–V6, allowed
+for the cause, not a repeat), applies it to the live plan and re-runs the step. Success = the step contract passes
+(done_when + checks); no rubric.
+
+**Limits (code-enforced, configurable).** At most 3 fixes per step and a cap per task; a token/dollar cap for
+adaptation per task; completed steps are never redone; a failed fix is never repeated; when all fail, the task stops
+with a report for the user (what was stuck, the cause, each fix tried, why each failed).
+
+**Stage E, test.** `--adapt on|off` (default on); the same tasks with it off and on (H1–H3 and tasks that failed
+before): tasks finished, stuck steps recovered, extra tokens and cost per task.
 

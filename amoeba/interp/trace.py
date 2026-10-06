@@ -45,7 +45,7 @@ EVENT_BOX = {
     "plan_version": "action_obs", "requirement_status": "action_obs",
 }
 BOX2_BOX = {"planner": "planner", "agent_observer": "agent_obs", "plan_observer": "plan_obs",
-            "interpreter": "interpret", "architect": "architect"}   # D77, D87
+            "interpreter": "interpret", "architect": "arch_check"}   # D77, D87 (D117: the in-task fix proposer)
 
 
 # box: trace
