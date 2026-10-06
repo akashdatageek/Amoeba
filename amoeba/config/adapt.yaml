@@ -35,14 +35,18 @@ diagnoser:                    # the cause -> allowed-edit table (kept from D86 b
            honesty]
   # "set_run_option:<name>" allows that one run option only
   allowed_edits:
-    capability: [grant_tool, add_planner_rule, "set_run_option:replan", prefer_model]
-    missing_input: [add_dependency, rerun_upstream, "set_run_option:max_input_chars"]            # D117 Stage C
-    tool_error: [add_role_rule, grant_tool, "set_run_option:max_turns"]                       # D117
+    capability: [grant_tool, add_planner_rule, "set_run_option:replan", prefer_model, add_helper_role, work_around,
+                 split_step, replan_remaining]
+    # D117 Stage D adds the fix proposer's edits (add_role_rule, add_helper_role, grant_tool, split_step,
+    # replan_remaining, work_around); code fixes come first, the proposer only after them
+    missing_input: [add_dependency, rerun_upstream, "set_run_option:max_input_chars", add_role_rule, split_step,
+                    replan_remaining]                                                            # D117 C + D
+    tool_error: [add_role_rule, grant_tool, "set_run_option:max_turns", add_helper_role, replan_remaining]   # D117
     checks: [add_verify_step, tighten_done_when, add_role_rule, "set_run_option:check_retry_turns", prefer_model,
-             "set_run_option:max_input_chars"]                                                   # D114
-    max_turns: [add_planner_rule, "set_run_option:max_turns", prefer_model]
+             "set_run_option:max_input_chars", split_step, add_helper_role]                      # D114, D117
+    max_turns: [add_planner_rule, "set_run_option:max_turns", prefer_model, split_step, add_role_rule]
     unused_tool: [revoke_tool, add_role_rule]
-    claimed_file_missing: [add_role_rule, add_verify_step]
+    claimed_file_missing: [add_role_rule, add_verify_step, grant_tool, split_step]
     feedback: [add_planner_rule, tighten_done_when, add_role_rule, "set_run_option:max_input_chars",
                "set_run_option:max_summary_input_chars"]                                         # D114
     honesty: [add_verify_step, add_role_rule, tighten_done_when]
@@ -56,7 +60,7 @@ adapt:                        # D117 Stage C: in-task code fixes (--adapt on); a
   more_turns: 3               # rung 1: turns added by a "more turns" fix (capped by recipe.run_options.max_turns)
   more_retry_turns: 1         # rung 1: retry turns added (capped by check_retry_turns)
   input_factor: 2             # rung 1: a shortened input's limit is multiplied by this (capped by max_input_chars)
-  stop_when_exhausted: false  # D117 C (user, Oct 6): off until Stage D; on = every fix failed or none is left → the task stops with a report
+  stop_when_exhausted: true   # D117 D: the code fixes, then the fix proposer; none recovers the step → the task stops with a report
 
 evidence:                     # D95: the evidence log's off-container copy
   target: "github"            # github: the repository's orphan `evidence` branch; "none": no shipping

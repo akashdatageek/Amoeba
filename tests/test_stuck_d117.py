@@ -60,14 +60,15 @@ def test_diagnose_picks_one_cause_in_the_table_order_with_its_allowed_edits():
     assert d["cause"] == "capability" and d["signals"] == ["repeated_error", "max_turns", "capability_unfilled"]
     assert "grant_tool" in d["allowed_edits"] and "prefer_model" not in d["allowed_edits"]   # model edits are off
     t = diagnose(step_signals(meta(tool_calls=m["tool_calls"])))
-    assert t["cause"] == "tool_error" and t["allowed_edits"] == ["add_role_rule", "grant_tool",
-                                                                 "set_run_option:max_turns"]
+    assert t["cause"] == "tool_error" and t["allowed_edits"][:3] == ["add_role_rule", "grant_tool",
+                                                                     "set_run_option:max_turns"]
     assert len(diagnose(step_signals(meta(checks=[{"name": f"c{i}", "pass": False} for i in range(20)])))
                ["evidence"]) == 8
 
 
 def test_the_live_watch_logs_a_stuck_step(task, envelope, trace, tools, tmp_path, monkeypatch):
     monkeypatch.setattr(pr, "fix_limits", lambda: {**limits(), "stop_when_exhausted": True})
+    monkeypatch.setattr(pr.PlanRunner, "propose_fix", lambda self, n, w, d: "none")   # Stage D is tested apart
     llm, cfg, by, ep = run(task, envelope, trace, tools, worker(), tmp_path=tmp_path,
                            options=PlanOptions(contract="on", adapt="on"))
     one = by[1]

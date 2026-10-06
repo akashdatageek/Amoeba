@@ -685,8 +685,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "a stuck signal (a missing input, the same error twice, checks failing after the retry, max "
                         "turns, an unfilled capability, no file change), diagnoses one cause, then tries code fixes "
                         "cheapest first (pass or re-run the upstream input, more turns, retry turns, a larger input, "
-                        "attach the missing tool from the pool shortlist) within the limits of adapt.yaml `adapt`; "
-                        "when none recovers the step the task stops with adapt_report.md")
+                        "attach the missing tool from the pool shortlist), then one fix-proposer edit, within the "
+                        "limits of adapt.yaml `adapt`; when none recovers the step the task stops with adapt_report.md")
     p.add_argument("--replan", choices=["on", "off"], default="off",
                    help="plan: the Action Observer (D63) — after a wave in which a step lacked a capability, a verify "
                         "step still failed, a step reported a missing input or the team got a tool the plan never "

@@ -102,8 +102,10 @@ BOXES: list[dict] = [
                "Stage B (built): after each step attempt plain code looks for the stuck signals, marks the step "
                "STUCK, diagnoses one cause and logs it.",
                "Stage C (built): code fixes, cheapest first — pass a missing input or re-run its upstream step once, "
-               "more turns or retry turns or a larger input, attach the missing tool from the pool shortlist; within "
-               "limits; when none recovers the step the task stops with a report.",
+               "more turns or retry turns or a larger input, attach the missing tool from the pool shortlist.",
+               "Stage D (built): when the code fixes are used up or not allowed, the fix proposer (one AI call) "
+               "proposes one edit; plain code checks and applies it. Within limits; when nothing recovers the step "
+               "the task stops with a report.",
                "Kept for the fixes: the cause → edit table, the single-edit format with V1–V6, and the hash-chained "
                "event log.",
                "Nothing carries over between tasks."],
@@ -819,6 +821,26 @@ BOXES: list[dict] = [
          disposes="Plain code picks, applies and judges each fix (success: the step ends done).",
          anchors=["amoeba/adapt/fixes.py::candidates", "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
                   "amoeba/interp/plan_runner.py::PlanRunner.apply_fix"], guard_anchors=[]),
+    dict(id="proposer", view="adapt", title="Fix proposer (D117 Stage D)", kind="ai", plan=None,
+         sentence="The last rung: one AI call proposes one edit for the stuck step; plain code checks it, applies it to the live plan and re-runs the step.",
+         what=[
+               "Called only when the code fixes for the step are used up or not allowed (including \"capability fix "
+               "unavailable: pool off\").",
+               "It sees the task, the step's card and done_when, the cause and evidence, the last attempt's errors and "
+               "checks (trimmed), the team (one line per role), the tools and skills of this run, the edits the cause "
+               "allows and the fixes already tried.",
+               "It returns one JSON edit with a short reason: add_role_rule, add_helper_role (the Planner's role "
+               "card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the "
+               "Planner's plan format, for the part not done) or work_around (capability only; stated under "
+               "Limitations).",
+               "Plain code checks: allowed for the cause, schema, V1 tools, V3 sizes, V4 wording, V5 team size and "
+               "step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second failure is no "
+               "fix. The adaptation limits apply; success is the step ending done."],
+         proposes="One edit with a reason (fix_proposer prompt).",
+         disposes="Plain code refuses, or applies the edit and judges the step by its checks and contract.",
+         prompts=["fix_proposer"],
+         anchors=["amoeba/adapt/proposer.py::fix_problems", "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
+                  "amoeba/interp/plan_runner.py::PlanRunner._d_live"], guard_anchors=[]),
     dict(id="arch_check", view="adapt", title="Single-edit format and check (kept from D87)", kind="code", plan=None,
          sentence="One proposed change is one strict JSON object; plain code parses it and checks it is allowed, valid and new.",
          what=[
@@ -826,8 +848,8 @@ BOXES: list[dict] = [
                "a predicted change between -1 and 1; any other key is refused.",
                "Plain code checks that the edit is allowed for the cause (adapt.yaml), that the edited recipe passes "
                "V1–V6, and that the same edit was not already tried.",
-               "D117: the loop's Architect, its prompt and its human queue are gone; D117's in-task fix proposer "
-               "reuses this format and these checks."],
+               "D117: the loop's Architect, its prompt and its human queue are gone; the in-task fix proposer "
+               "(Stage D) follows the same contract with its own edit menu (amoeba/adapt/proposer.py)."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code accepts or refuses the edit.",
          anchors=[]),

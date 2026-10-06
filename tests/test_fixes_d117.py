@@ -37,8 +37,11 @@ def good(n):
     return reply("Final Output", f"OUT-{n}\n{BODY}")
 
 
-def run(task, envelope, trace, tools, script, tmp_path=None, stock=None, setup_cfg=None):
-    llm, cfg = plan_team(task, envelope, trace, plan_worker=script)
+NO_EDIT = "I cannot see a fix."          # a reply with no JSON edit: the proposer gives no fix (twice: no fix)
+
+
+def run(task, envelope, trace, tools, script, tmp_path=None, stock=None, setup_cfg=None, proposer=(NO_EDIT,)):
+    llm, cfg = plan_team(task, envelope, trace, plan_worker=script, fix_proposer=list(proposer))
     if setup_cfg:
         setup_cfg(cfg)
     ep = Interpreter(llm, tools, trace, run_dir=tmp_path, plan_options=ON, stock=stock).run(cfg, task, seed=0)
@@ -63,7 +66,7 @@ def test_a_lacked_item_is_a_missing_input_or_a_capability():
          "blocked": ["Step 1 Data", "pdf_reader"]}
     d = diagnose(step_signals(m, plan=plan))
     assert d["cause"] == "missing_input" and d["upstream"] == [1] and "capability_unfilled" in d["signals"]
-    assert d["allowed_edits"] == ["add_dependency", "rerun_upstream", "set_run_option:max_input_chars"]
+    assert d["allowed_edits"][:3] == ["add_dependency", "rerun_upstream", "set_run_option:max_input_chars"]
 
 
 def test_the_candidates_cheapest_first():
@@ -91,8 +94,8 @@ def test_the_candidates_cheapest_first():
     assert fix_key(t) == fix_key(dict(t)) and limits()["max_fixes_per_step"] == 3
 
 
-def test_the_stop_rule_is_off_until_stage_d():
-    assert limits()["stop_when_exhausted"] is False
+def test_the_stop_rule_is_on_again_with_stage_d():
+    assert limits()["stop_when_exhausted"] is True
 
 
 def test_stuck_is_a_run_status():
@@ -219,8 +222,9 @@ def test_an_empty_shortlist_is_one_failed_fix_never_repeated_then_the_task_stops
         n = step_no(messages)
         return reply("Final Output", f"OUT-1\n{BODY}\nBLOCKED: currency_api — none") if n == "1" else good(n)
     llm, cfg, ep = run(task, envelope, trace, tools, script, tmp_path, stock=fake_stock(calls, attach=False))
-    [f] = ep.adaptation["fixes"]
+    f, d = ep.adaptation["fixes"]
     assert f["result"].startswith("failed: the pool shortlist had nothing") and len(calls) == 1
+    assert d["kind"] == "fix_proposer" and d["result"].startswith("failed: fix proposer: no valid edit in two replies")
     assert ep.error.startswith("stuck: step 1 (capability)") and run_status(ep.error) == "stuck"
     report = (tmp_path / "adapt_report.md").read_text()
     assert "**Cause:** capability" in report and "grant_tool" in report and "failed: the pool shortlist" in report
@@ -233,8 +237,10 @@ def test_with_the_pool_off_the_capability_rung_is_skipped_and_the_task_stops_wit
         n = step_no(messages)
         return reply("Final Output", f"OUT-1\n{BODY}\nBLOCKED: currency_api — none") if n == "1" else good(n)
     llm, cfg, ep = run(task, envelope, trace, tools, script, tmp_path)
-    assert ep.adaptation["fixes"] == [] and ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}]
-    assert ep.error == f"stuck: step 1 (capability) — {POOL_OFF}"
+    [d] = ep.adaptation["fixes"]                       # the code rung is skipped; the proposer gives no fix
+    assert d["rung"] == "D" and len(llm.calls_of("fix_proposer")) == 2          # one retry on an invalid reply
+    assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}]
+    assert ep.error.startswith(f"stuck: step 1 (capability) — {POOL_OFF}; fix proposer: no valid edit")
     assert ep.answer.startswith("# The task stopped: a step stayed stuck") and POOL_OFF in ep.answer
     assert {step_no(c["messages"]) for c in llm.calls_of("plan_worker")} == {"1"}    # nothing after it ran
     assert (tmp_path / "adapt_report.md").read_text() == ep.answer

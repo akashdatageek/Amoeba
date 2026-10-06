@@ -167,7 +167,30 @@ the task stops: `adapt_report.md` (also the run's answer) lists the stuck step, 
 why it failed, and the rungs not tried; the run status is `stuck`. Every fix is a trace event and an `events.jsonl`
 row; `result.json` `adaptation` sums them up.
 
-**Who decides.** Code. No AI in Stages A–C.
+**Stage D: the fix proposer (built).** When `candidates` has nothing left for the step (used up, not allowed, or
+"capability fix unavailable: pool off"), `PlanRunner.propose_fix` makes one AI call (`fix_proposer.txt`). Its
+input is kept small: the task, the step's card and done_when, the cause and evidence lines, the last attempt's
+errors and check results (trimmed), the team (role names and one line each), the tools and skills available in this
+run, the edits allowed for the cause and the fixes already tried in this task. It returns exactly one JSON edit with
+a short reason (`amoeba/adapt/proposer.py`):
+
+| Edit | Params | Applied as |
+|---|---|---|
+| add_role_rule | role, text | a constraint on the role's card; the step re-runs |
+| add_helper_role | role card (the Planner's schema), lead | a new helper on the step (first with lead); the step re-runs |
+| grant_tool | role, tool (of this run) | the tool joins the role; the step re-runs |
+| split_step | 2–3 sub-steps (roles, text, do, output, done_when) | the step becomes a chain; waiting steps wait for its end (D63 apply) |
+| replan_remaining | the Planner's plan text | the part not done is replaced (D63 validate and apply) |
+| work_around | capability, method, done_when, limitation | narrower done_when and a note; the limitation goes to the answer |
+
+Plain code checks it: allowed for the cause; the schema; V1 (tools of this run, no outside action, not paid); V3
+sizes; V4 wording; V5 team size and step graph; done steps untouched; not a repeat. One retry with the refusal; a
+second invalid reply is no fix. The limits apply to the proposer too (each call is a fix; its tokens count). Success
+is the step ending done; for a split or re-plan, every replacement step ending done. The answer's Limitations get a
+line for each work-around and for each step that used an upstream output from before its re-run; `adapt_report.md`
+is written for every run with a stuck step. With `stop_when_exhausted` (on), a step nothing recovers stops the task.
+
+**Who decides.** Code, except Stage D's fix proposer, which proposes one edit that code checks and applies.
 
 ## Model router (D97)
 

@@ -443,10 +443,28 @@ cause table allows; only the stuck step is re-run and re-checked, and it counts 
 | capability | attach the missing tool or skill: a registry tool is granted; otherwise the first vetted candidate of the pool shortlist not given before (plain code picks). With the pool and local tools off: skipped, "capability fix unavailable: pool off" |
 
 Limits (`adapt` in `amoeba/config/adapt.yaml`): 3 fixes per step, 8 per task, 200,000 tokens and $1 of fix attempts
-per task, never the same fix twice. With `stop_when_exhausted: true`, a step no fix recovers stops the task: the
+per task, never the same fix twice.
+
+**Stage D: the fix proposer (built).** When the code fixes for a stuck step are used up or not allowed (the pool
+off included), one AI call proposes one edit, with a short reason. It sees only the task, the step's card and
+done_when, the cause and evidence, the last attempt's errors and checks (trimmed), the team (a line per role), the
+tools and skills of this run, the edits the cause allows and the fixes already tried:
+
+| Edit | What plain code does with it |
+|---|---|
+| add_role_rule | adds one rule to a role card of the step, re-runs the step |
+| add_helper_role | adds a helper (the Planner's role card; tools of this run only) to the step, re-runs it |
+| grant_tool | gives a tool available in this run to a role of the step, re-runs it |
+| split_step | replaces the step with 2–3 sub-steps; steps that waited for it wait for the last one |
+| replan_remaining | replaces the part not done (the Planner's plan format; done steps never change) |
+| work_around | capability only: another method or a narrower done_when, stated in the answer's Limitations |
+
+Plain code refuses an edit that is not allowed for the cause, breaks the schema, names a tool the run does not have,
+fails V1–V6 or the step graph, touches a done step or repeats a fix; it asks once more, and a second invalid reply
+means no fix. With `stop_when_exhausted: true` (on again with Stage D), a step nothing recovers stops the task: the
 answer and `adapt_report.md` say what was stuck, the cause, each fix tried and why it failed; the run status is
-`stuck`. It is off until Stage D (the fix-proposer agent becomes the last rung before stopping): the run goes on as
-before and `result.json` `adaptation.stopped` names the step.
+`stuck`. Every run with a stuck step gets `adapt_report.md`, and the answer's Limitations list each work-around and
+each step that used an upstream output from before that step was re-run.
 `result.json` `adaptation` lists every fix with its result and tokens. `--adapt off` turns the watch and the fixes off.
 
 ## Ask before assuming (D116)
@@ -571,7 +589,7 @@ amoeba/
   safety/envelope.py       allowed_tools per role, max_agents
   pool/                    D56: index (refresh), match, stock (pick, vet, attach), mcp (pool tools)
   localtools/              D59: claude mcp serve (server), gate, skills, claims, toolbox (--local-tools on)
-  adapt/                   D117: stuck watch (stuck), code fixes (fixes), edit menu + V1–V6 (recipe), single-edit format (architect), event log (evidence)
+  adapt/                   D117: stuck watch (stuck), code fixes (fixes), fix proposer (proposer), edit menu + V1–V6 (recipe), single-edit format (architect), event log (evidence)
   cli.py                   D56: `amoeba pool refresh` / `python -m amoeba pool refresh`
 scripts/run_task.py        CLI
 scripts/list_models.py     D54: the models an endpoint offers (check a profile's names)

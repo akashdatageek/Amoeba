@@ -548,7 +548,7 @@ the report too.
 | D113 | Spreadsheet checks: after a step that made an .xlsx, typed totals and typed derived cells (row/column sums, products of row cells) fail `domain_xlsx_formulas` with the cell names and earn the retry turn; task numbers are inputs (`--xlsx-formulas`, default on) | `amoeba/checks/xlsx_formulas.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 | D114 | `max_input_chars` (3000–20000) and `max_summary_input_chars` (15000–60000) whitelisted as recipe run options; the Diagnoser allows them for the checks / feedback causes; Gate-tested like any edit | `amoeba/config/adapt.yaml`, `amoeba/adapt/recipe.py`, `scripts/run_task.py` | v1 |
 | D116 | Ask the user about every reading the interpretation step would only assume (a tie included), before planning; no terminal → stop with `needs_clarification` + `clarification.json`; `--clarify ENTITY=READING`; `--ask-assumed off` = D77; experiments pass off | `amoeba/task/interpret.py`, `scripts/run_task.py`, `amoeba/task/models.py`, `amoeba/config/adapt.yaml` | v1 |
-| D117 | The offline learning loop is removed; in-task adaptation replaces it (Stage A: removal; B: stuck watch; C: code fixes; D: fix-proposer agent; E: `--adapt` test). Kept: contract causes, cause → edit table, single-edit format + V1–V6, event log. Stage B built: stuck signals, one diagnosed cause, logged; Stage C built: code fixes with limits and a stop report, new cause missing_input (§17) | `amoeba/adapt/` (stuck, fixes, recipe, architect, evidence), `amoeba/pool/stock.py`, `amoeba/config/adapt.yaml`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py`, `scripts/stuck_report.py` | v1 |
+| D117 | The offline learning loop is removed; in-task adaptation replaces it (Stage A: removal; B: stuck watch; C: code fixes; D: fix-proposer agent; E: `--adapt` test). Kept: contract causes, cause → edit table, single-edit format + V1–V6, event log. Stage B built: stuck signals, one diagnosed cause, logged; Stage C built: code fixes with limits and a stop report, new cause missing_input; Stage D built: the fix proposer as the last rung (§17) | `amoeba/adapt/` (stuck, fixes, proposer, recipe, architect, evidence), `amoeba/config/prompts/fix_proposer.txt`, `amoeba/pool/stock.py`, `amoeba/config/adapt.yaml`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py`, `scripts/stuck_report.py` | v1 |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit
@@ -793,6 +793,46 @@ each fix tried with its tokens and why it failed, the rungs not tried, and the s
 holds the fixes, recovered steps, tokens and cost. Fixes run only in the wave loop (not inside D34 rework or D39
 re-runs). Steps that used an upstream output before its re-run are not redone (listed as `left_on_old_output`).
 Re-count of stored runs with these rules: `docs/eval/d117_stage_b/STUCK_COUNTS.md`. Tests: tests/test_fixes_d117.py.
+
+*User changes to Stage D (Oct 6).* `stop_when_exhausted` was set to false after Stage C and turned back on with
+Stage D, so the fix proposer is the last rung before stopping. The proposer is called only after the code fixes for
+the step are used up or not allowed ("capability fix unavailable: pool off" included). Its input is kept small; its
+output is exactly one JSON edit with a short reason: add_role_rule, add_helper_role (the Planner's role-card schema),
+grant_tool (only tools available in this run), split_step (2–3 sub-steps, a valid step graph), replan_remaining
+(replacement steps for the part not done, the Planner's plan format) or work_around (capability only: another
+method or a narrower done_when, stated in the final answer under Limitations). Code checks: allowed for the cause,
+schema, V1–V6, the plan graph, never redo done steps, not a repeat; one retry on an invalid reply, a second failure
+is no fix; all limits apply. After Stage D the final report and the answer list the steps that used an upstream
+output from before a case-b re-run.
+
+*As built (D).* `amoeba/adapt/proposer.py`: `FixReply` (strict: `edit` {op, params} and `reason` ≤ 300 characters),
+one params model per op, `parse_fix`, `fix_problems` — allowed for the cause, work_around for capability only, V3
+(a rule, goal or done_when ≤ 300 characters, a role prompt ≤ 1,500, a sub-step's text ≤ 600), V4 (the denylist),
+V1 (a granted tool or a new helper's tool is in this run's registry, acts nowhere outside, is not paid), the role is
+one of the stuck step's, not a repeat (`FixEdit.key`). V2 and V6 have no edit in this menu. Prompt:
+`amoeba/config/prompts/fix_proposer.txt` (ours). `PlanRunner.propose_fix` is the rung after `candidates` is empty:
+it calls the proposer (agent `fix_proposer`, router role planner, 2,048 reply tokens) with the task (≤ 1,500
+characters), the step's card (text, roles, depends_on, do, output, done_when), the cause and evidence, the last
+attempt (status, turns, lacked, the last five failed tool calls and up to ten checks, each trimmed to 150
+characters), the team (one line per role), the run's tools and skills, the allowed edits (only the proposer's ops,
+with their shapes) and the fixes tried in the task; on an invalid reply it asks once more with plain code's
+refusal. `_d_live` adds the live checks: a new helper's card is complete, its name new, the team within
+`max_agents` (V5); a split names roles on the team, keeps the summariser last when the stuck step writes the answer,
+stays within D63's added-step cap and leaves a usable graph; a re-plan goes through D63's `validate_decision` with
+the stuck step reopened (done steps cannot change, the answer step cannot be dropped, the graph must be usable).
+Applying: a rule joins the role's constraints (its card); a tool joins its tools; a helper joins the step (first
+with `lead`); a work-around narrows done_when and tells the helpers to write "NOT NEEDED: <capability> — worked
+around"; these re-run the step and succeed when it ends done. A split or a re-plan goes through D63's
+`apply_decision` (plan.vN.json): the stuck attempt is kept as step_N.tryK and reopened, the wave loop recomputes the
+waves, and the fix counts as recovered when every replacement step ends done. The proposer's tokens count toward the
+adaptation caps, and each call toward the fixes per step and per task. The answer's Limitations (plain code) gets
+"WORKED AROUND: …" for each accepted work-around and "OLD INPUT: step k used step u's output from before step u was
+re-run …" for each step left on an old upstream output; `adapt_report.md` is written for every run with a stuck step
+(each step, its fixes and results, rungs not tried, work-arounds, old-input steps, tokens) and is the answer when
+the task stops. The cause table now lists the proposer's edits per cause (capability: add_helper_role, work_around,
+split_step, replan_remaining with grant_tool; missing_input: add_role_rule, split_step, replan_remaining; tool_error:
+add_helper_role, replan_remaining; checks: split_step, add_helper_role; max_turns: split_step, add_role_rule;
+claimed_file_missing: grant_tool, split_step). Tests: tests/test_proposer_d117.py (15, mock LLM).
 
 **Stage C, code fixes (no AI), cheapest first.** (1) more turns, more retry turns or a larger input; (2) attach the
 missing tool or skill from the pool shortlist. Apply, re-run only the stuck step, re-check.

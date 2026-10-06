@@ -16,6 +16,7 @@ from pathlib import Path
 
 from amoeba.adapt.evidence import EvidenceLog
 from amoeba.adapt.fixes import POOL_OFF, candidates, fix_key, limits as fix_limits
+from amoeba.adapt.proposer import D_OPS, allowed_text as proposer_allowed, fix_problems, parse_fix
 from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, step_signals
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
@@ -35,6 +36,8 @@ from amoeba.llm.router import NoModelAvailable
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.localtools.claims import claimed_files
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text, full_action_input
+from pydantic import ValidationError
+
 from amoeba.task.models import CapabilityRequest, DraftedRole, Episode, Task
 from amoeba.task.parsers import MissingSections, parse_json_objects, parse_plan_d24, parse_sections
 from amoeba.task.quality import VERIFY_WORDS
@@ -613,6 +616,8 @@ class PlanRunner:
         self.attached_ids: dict[int, list] = {}           # step -> pool ids a grant gave it
         self.adapt_tokens, self.adapt_spans = 0, []       # what the fix attempts used
         self.exhausted: dict | None = None                # the stuck step no fix recovered (the task stops)
+        self.proposer_gave_up: dict[int, str] = {}        # D117 Stage D: step -> why the fix proposer gave no fix
+        self.workarounds: list[dict] = []                 # D117 Stage D: accepted work-arounds (for Limitations)
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
     # box: step_check
@@ -848,13 +853,18 @@ class PlanRunner:
             deps = dependencies(self.cfg.plan)
             for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
                 self.run_step(self.steps[n], w, deps[n])
-                if self.opt.adapt == "on" and self.fix_stuck(n, w):              # D117 Stage C: no fix recovered it
+                fixed = self.fix_stuck(n, w) if self.opt.adapt == "on" else None   # D117 Stages C–D
+                if fixed == "stop":                                                 # no fix recovered it
                     return self.stop_report(n)
+                if fixed == "replanned":                  # D117 Stage D: the plan changed; recompute the waves
+                    break
             if replan:
                 self.action_observer(w)
         ws = waves(self.cfg.plan)
         if self.opt.adapt == "on":
             self.ep.adaptation = self.adapt_summary()
+            if self.stuck:                                    # D117 Stage D: the report, also when nothing stopped
+                self.write_adapt_report()
         if replan:
             self.ep.replan = self.replan_summary()
         self.ep.figure_ledger = self.ledger
@@ -1603,6 +1613,7 @@ class PlanRunner:
                     lines.append(f"- DISPUTED: {x['label']} — step {x['step']} gives {x['worker']}; the check in step "
                                  f"{d}, worked out independently, gives {x['verifier']}. Neither a source quote nor a "
                                  f"re-run settled it (added by plain code)")
+        lines += [x for x in self.adapt_limitations() if x.split(":")[0][2:] not in section.upper()]   # D117 D
         stale = None
         if time_sensitive(self.task.prompt):                                     # D67: possibly not the latest
             stale = stale_figure([a["text"] for a in self.artifacts.values()] + [text or ""],
@@ -1751,13 +1762,15 @@ class PlanRunner:
 
     # ---- D117 Stage C: code fixes for a stuck step ------------------------------------------------------------
     # box: fixes
-    def fix_stuck(self, n: int, wave: int) -> bool:
+    def fix_stuck(self, n: int, wave: int) -> str | None:
         """D117 Stage C: while step n is stuck, try the next code fix for its cause (cheapest first, allowed by the
-        table, never one already tried, within the limits), re-run only step n and re-check it. True when the step
-        is still stuck and no fix is left: the task stops (stop_when_exhausted)."""
+        table, never one already tried, within the limits), re-run only step n and re-check it. Stage D: when the code
+        fixes are used up or not allowed, the fix proposer is the last rung. "stop" when the step is still stuck and
+        nothing is left (stop_when_exhausted); "replanned" when an accepted edit changed the plan (its steps run
+        next); None otherwise."""
         d = self.artifacts[n]["meta"].get("stuck")
         if not d:
-            return False
+            return None
         lim, why = fix_limits(), ""
         while d:
             usd = self.adapt_usd()
@@ -1778,10 +1791,17 @@ class PlanRunner:
                     self.i.trace.event("fix_skipped", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.why": note})
                     self.log_event("fix_skipped", {"step": n, "cause": d["cause"], "why": note})
             fix = next((f for f in cands if fix_key(f) not in self.fix_keys), None)
-            if fix is None:
-                why = "; ".join(notes) or f"no code fix left for {d['cause']}"
-                break
-            self.apply_fix(n, wave, d, fix)
+            if fix is None:                               # Stage D: the fix proposer is the last rung
+                done = self.propose_fix(n, wave, d) if n not in self.proposer_gave_up else "none"
+                if done == "replanned":
+                    self.ep.adaptation = self.adapt_summary()
+                    return "replanned"
+                if done == "none":
+                    parts = list(notes) or [f"no code fix left for {d['cause']}"]
+                    why = "; ".join(parts + ([self.proposer_gave_up[n]] if n in self.proposer_gave_up else []))
+                    break
+            else:
+                self.apply_fix(n, wave, d, fix)
             meta = self.artifacts[n]["meta"]
             if meta["status"] == "done":
                 break
@@ -1789,11 +1809,11 @@ class PlanRunner:
         meta = self.artifacts[n]["meta"]
         self.ep.adaptation = self.adapt_summary()
         if meta["status"] == "done" or not meta.get("stuck"):
-            return False
+            return None
         self.exhausted = {"step": n, "cause": meta["stuck"]["cause"], "why": why,
                           "evidence": meta["stuck"]["evidence"]}
         self.ep.adaptation = self.adapt_summary()
-        return bool(lim["stop_when_exhausted"])
+        return "stop" if lim["stop_when_exhausted"] else None
 
     # box: fixes
     def fix_ctx(self, n: int) -> dict:
@@ -1925,11 +1945,19 @@ class PlanRunner:
 
     # box: fixes
     def adapt_summary(self) -> dict:
+        for f in self.fixes:                      # D117 Stage D: a plan change is judged by the steps it made
+            if f.get("replaced_by") and f["result"].startswith("applied"):
+                st = {k: (self.artifacts.get(k) or {}).get("meta", {}).get("status") for k in f["replaced_by"]}
+                if all(v is not None for v in st.values()):
+                    f["result"] = "recovered" if all(v == "done" for v in st.values()) else \
+                        "failed: replacement step(s) not done: " + ", ".join(f"{k} {v}" for k, v in st.items()
+                                                                                  if v != "done")
         recovered = sorted({f["step"] for f in self.fixes if f["result"] == "recovered"})
         return {"fixes": self.fixes, "recovered_steps": recovered,
                 "stuck_steps": sorted({s["step"] for s in self.stuck}), "tokens": self.adapt_tokens,
                 "cost_usd": self.adapt_usd(), "skipped": [{"step": s, "why": w} for s, w in sorted(self.fix_notes)],
-                "stopped": self.exhausted}
+                "stopped": self.exhausted, "workarounds": self.workarounds,
+                "left_on_old_output": self.left_on_old_output()}
 
     # box: fixes
     def log_event(self, event: str, data: dict) -> None:
@@ -1937,35 +1965,272 @@ class PlanRunner:
             EvidenceLog(self.run_dir).append(event, data)
 
     # box: fixes
+    def adapt_report(self, stopped: int | None = None) -> str:
+        """The adaptation report: each stuck step, its cause and evidence, each fix tried (code or fix proposer) and
+        why it failed, the rungs not tried, the work-arounds and the steps built on an upstream output from before
+        its re-run. With `stopped`, it opens with the step that stopped the task."""
+        x = self.exhausted or {}
+        lines = []
+        if stopped is not None:
+            title = re.sub(r"^\s*\[.*?\]\s*:\s*", "", self.steps[stopped].text).strip()[:300] \
+                if stopped in self.steps else ""
+            lines += ["# The task stopped: a step stayed stuck", "", f"**Stuck step:** {stopped} — {title}",
+                      f"**Cause:** {x.get('cause')}", "", "**Evidence:**", *[f"- {e}" for e in x.get("evidence", [])],
+                      "", f"**Why it stopped:** {x.get('why') or 'no fix recovered the step'}", ""]
+        else:
+            lines += ["# Adaptation report", ""]
+        for k in sorted({s["step"] for s in self.stuck} | {f["step"] for f in self.fixes}):
+            tried = [f for f in self.fixes if f["step"] == k]
+            causes = list(dict.fromkeys(s["cause"] for s in self.stuck if s["step"] == k))
+            lines += [f"## Step {k} — cause {', '.join(causes) or '?'}", "", "**Fixes tried:**"]
+            lines += [f"{i}. {f['kind']} (rung {f['rung']}, on step {f['target']}"
+                      f"{', ' + json.dumps(f['params'], default=str)[:300] if f.get('params') else ''})"
+                      f"{' — ' + f['reason'] if f.get('reason') else ''}: {f['result']} — {f.get('tokens', 0):,} tokens"
+                      for i, f in enumerate(tried, 1)] or ["- none"]
+            skipped = sorted(w for s, w in self.fix_notes if s == k)
+            if skipped:
+                lines += ["", "**Not tried:**", *[f"- {w}" for w in skipped]]
+            lines.append("")
+        if self.workarounds:
+            lines += ["**Work-arounds (in the answer's Limitations):**",
+                      *[f"- step {w['step']}: no {w['capability']}; {w['method'][:160]}. {w['limitation'][:200]}"
+                        for w in self.workarounds], ""]
+        old = self.left_on_old_output()
+        lines += ["**Steps built on an upstream output from before its re-run:**",
+                  *([f"- step {o['step']} used step {o['upstream']}'s earlier output (not redone)" for o in old]
+                    or ["- none"]), ""]
+        lines.append(f"Adaptation used {self.adapt_tokens:,} tokens"
+                     + (f" (${self.adapt_usd():.4f})" if self.adapt_usd() else "") + ".")
+        if stopped is not None:
+            lines += ["", "**Steps finished before it:** " + (", ".join(str(k) for k, a in sorted(self.artifacts.items())
+                                                                    if a["meta"]["status"] == "done") or "none"),
+                      "", "Nothing after this step was run."]
+        return "\n".join(lines) + "\n"
+
+    # box: fixes
+    def write_adapt_report(self, stopped: int | None = None) -> str:
+        text = self.adapt_report(stopped)
+        if self.run_dir is not None:
+            self.run_dir.mkdir(parents=True, exist_ok=True)
+            (self.run_dir / "adapt_report.md").write_text(text, encoding="utf-8")
+        return text
+
+    # box: fixes
     def stop_report(self, n: int) -> tuple[str, str]:
         """All fixes failed (or none was left): the task stops. The report says what was stuck, the cause, each fix
         tried and why it failed; it is the run's answer and <run>/adapt_report.md."""
         x = self.exhausted or {}
-        title = re.sub(r"^\s*\[.*?\]\s*:\s*", "", self.steps[n].text).strip()[:300]
-        tried = [f for f in self.fixes if f["step"] == n or f.get("params", {}).get("then") == n]
-        lines = ["# The task stopped: a step stayed stuck", "",
-                 f"**Stuck step:** {n} — {title}",
-                 f"**Cause:** {x.get('cause')}", "", "**Evidence:**"] + [f"- {e}" for e in x.get("evidence", [])] + \
-                ["", "**Fixes tried:**"]
-        lines += [f"{i}. {f['kind']} (rung {f['rung']}, on step {f['target']}"
-                  f"{', ' + json.dumps(f['params'], default=str) if f.get('params') else ''}): {f['result']}"
-                  f" — {f.get('tokens', 0):,} tokens" for i, f in enumerate(tried, 1)] or ["- none"]
-        skipped = sorted(w for s, w in self.fix_notes if s == n)
-        if skipped:
-            lines += ["", "**Not tried:**"] + [f"- {w}" for w in skipped]
-        lines += ["", f"**Why it stopped:** {x.get('why') or 'no code fix recovered the step'}",
-                  "", "**Steps finished before it:** " + (", ".join(str(k) for k, a in sorted(self.artifacts.items())
-                                                              if a["meta"]["status"] == "done") or "none"),
-                  "", "Nothing after this step was run. Stage D (the fix-proposer agent) is not built yet."]
-        text = "\n".join(lines) + "\n"
-        if self.run_dir is not None:
-            self.run_dir.mkdir(parents=True, exist_ok=True)
-            (self.run_dir / "adapt_report.md").write_text(text, encoding="utf-8")
+        tried = [f for f in self.fixes if f["step"] == n]
+        text = self.write_adapt_report(stopped=n)
         self.i.trace.event("adapt_stop", {"amoeba.step": n, "amoeba.cause": x.get("cause"), "amoeba.why": x.get("why"),
                                           "amoeba.fixes": len(tried)})
         self.log_event("adapt_stop", {"step": n, "cause": x.get("cause"), "why": x.get("why"), "fixes": len(tried)})
         self.ep.adaptation = self.adapt_summary()
         return text, f"stuck: step {n} ({x.get('cause')}) — {x.get('why') or 'no fix recovered it'}"
+
+    # ---- D117 Stage D: the fix proposer ------------------------------------------------------------------------
+    # box: proposer
+    def propose_fix(self, n: int, wave: int, d: dict) -> str:
+        """The last rung for a stuck step: one fix-proposer call (one retry on an invalid reply), plain code's checks,
+        then the edit is applied. "applied" (step n was re-run), "replanned" (the plan changed; its steps run next)
+        or "none" (no edit allowed, or no valid reply twice: recorded in proposer_gave_up)."""
+        allowed = [a for a in d.get("allowed_edits") or [] if a in D_OPS]
+        if not allowed:
+            self.proposer_gave_up[n] = f"fix proposer: no edit allowed for {d['cause']}"
+            return "none"
+        t0, s0 = self.i.trace.total_tokens, len(self.i.trace.spans("chat"))
+        tools = self.i.tools.descriptions() if hasattr(self.i.tools, "descriptions") else {}
+        roles = [self.agents[a].name for a in self.steps[n].agent_ids]
+        refused, reply, change, replies = None, None, None, []
+        for attempt in (1, 2):
+            raw = self._proposer_call(n, d, allowed, refused)
+            try:
+                reply = parse_fix(raw)
+                problems = fix_problems(reply, d["cause"], allowed, tools, self.fix_keys, roles)
+                if not problems:
+                    problems, change = self._d_live(reply, n)
+            except (ValueError, ValidationError) as e:
+                reply, problems = None, [f"unreadable reply: {e}"[:400]]
+            replies.append({"attempt": attempt, "op": reply.edit.op if reply else None, "problems": problems})
+            self.i.trace.event("proposer_reply", {"amoeba.step": n, "amoeba.attempt": attempt,
+                                                  "amoeba.op": reply.edit.op if reply else None,
+                                                  "amoeba.problems": problems[:6]})
+            if not problems:
+                break
+            refused, reply = problems, None
+        rec = {"step": n, "try": sum(f["step"] == n for f in self.fixes) + 1, "cause": d["cause"],
+               "kind": reply.edit.op if reply else "fix_proposer", "rung": "D", "target": n,
+               "params": reply.edit.params if reply else {}, "reason": reply.reason if reply else "",
+               "evidence": d["evidence"][:4], "proposer": replies}
+        if reply is None:
+            why = "fix proposer: no valid edit in two replies (" + "; ".join(refused or [])[:300] + ")"
+            self.proposer_gave_up[n] = why
+            rec.update(status_after=self.artifacts[n]["meta"]["status"], result=f"failed: {why}")
+            self._fix_done(rec, t0, s0)
+            return "none"
+        self.fix_keys.add(reply.edit.key())
+        self.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.fix": reply.edit.op,
+                                       "amoeba.rung": "D", "amoeba.target": n,
+                                       "amoeba.params": json.dumps(reply.edit.params, default=str)[:2000]})
+        op, p, note = reply.edit.op, reply.edit.params, ""
+        if op in ("split_step", "replan_remaining"):
+            self.artifacts.pop(n)                          # the stuck attempt is reopened; its files are kept
+            self.keep_try(n)
+            self.apply_decision({"reason": reply.reason}, change)
+            rec.update(replaced_by=sorted(s["number"] for s in change["steps"]),
+                       dropped=change["drop"], result="applied: the plan changed; judged when its steps have run")
+            self._fix_done(rec, t0, s0)
+            return "replanned"
+        writers = [self.agents[a] for a in self.steps[n].agent_ids]
+        if op == "add_role_rule":
+            a = next(x for x in writers if x.name == p["role"])
+            a.constraints = [*a.constraints, p["text"]]
+        elif op == "grant_tool":
+            a = next(x for x in writers if x.name == p["role"])
+            a.tools = [*a.tools, p["tool"]]
+            a.missing_tools = [t for t in a.missing_tools if t != p["tool"]]
+        elif op == "add_helper_role":
+            aid, _ = self.add_agent(change["role"])
+            ids = self.steps[n].agent_ids
+            self.steps[n].agent_ids = [aid, *ids] if p.get("lead") else [*ids, aid]
+            rec["helper"] = change["role"].name
+        elif op == "work_around":
+            if p["done_when"].strip():
+                self.steps[n].done_when = p["done_when"].strip()
+            note = WORKAROUND_NOTE.format(cap=p["capability"], method=p["method"],
+                                          done_when=self.steps[n].done_when or "as written")
+        self.keep_try(n)
+        self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n],
+                      fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note})
+        m = self.artifacts[n]["meta"]
+        rec["status_after"] = m["status"]
+        rec["result"] = "recovered" if m["status"] == "done" else \
+            f"failed: still stuck ({m['stuck']['cause']}: {'; '.join(m['stuck']['evidence'][:2])[:200]})" \
+            if m.get("stuck") else f"failed: not stuck but {m['status']} ({m['status_reason'][:160]})"
+        if op == "work_around" and m["status"] == "done":
+            self.workarounds.append({"step": n, **p})
+        self._fix_done(rec, t0, s0)
+        return "applied"
+
+    # box: proposer
+    def _d_live(self, reply, n: int) -> tuple[list[str], dict | None]:
+        """The checks on the live plan: a new helper's card is complete, its name new and the team within its size;
+        a split or a re-plan keeps done steps as they are, names roles on the team and leaves a usable step graph
+        (V5). Returns the problems and what to apply."""
+        op, p = reply.edit.op, reply.edit.params
+        if op == "add_helper_role":
+            r = DraftedRole.model_validate(p["role"])
+            errors = [f"incomplete role card: no {k}" for k in ("name", "goal", "outputs", "success_criteria")
+                      if not getattr(r, k)] + ([] if (r.prompt or r.description) else ["incomplete role card: no prompt"])
+            if r.name in {a.name for a in self.agents.values()}:
+                errors.append(f"role {r.name!r} already exists")
+            if len(self.agents) + 1 > getattr(self.i, "max_agents", 5):
+                errors.append(f"V5: the team would have {len(self.agents) + 1} roles (at most "
+                              f"{getattr(self.i, 'max_agents', 5)})")
+            return errors, {"role": r}
+        if op not in ("split_step", "replan_remaining"):
+            return [], {}
+        if not any(s.depends_on for s in self.cfg.plan):       # a chain plan: write its order out first
+            for s, ds in zip(self.cfg.plan, [dependencies(self.cfg.plan)[number(x)] for x in self.cfg.plan]):
+                s.depends_on = list(ds)
+        stash = self.artifacts.pop(n)                          # the stuck step counts as not done while checking
+        try:
+            if op == "replan_remaining":
+                errors, change = self.validate_decision({"decision": "REVISE_REMAINING", "steps": p["plan"],
+                                                         "role": "", "requests": "", "reason": reply.reason,
+                                                         "unmet": ""})
+                return errors, change
+            return self._split_change(n, p["steps"])
+        finally:
+            self.artifacts[n] = stash
+
+    # box: proposer
+    def _split_change(self, n: int, subs: list[dict]) -> tuple[list[str], dict]:
+        ids = {a.name: a.agent_id for a in self.agents.values()}
+        errors = [f"sub-step {i} names unknown role(s) {[r for r in s['roles'] if r not in ids]}"
+                  for i, s in enumerate(subs, 1) if any(r not in ids for r in s["roles"])]
+        step = self.steps[n]
+        nums = [n] + [self.max_num + i for i in range(1, len(subs))]
+        deps = dependencies(self.cfg.plan)
+        waiting = [k for k in deps if n in deps[k] and k not in self.artifacts]
+        steps = [{"number": num, "roles": s["roles"], "text": f"[{', '.join(s['roles'])}]: {s['text']}",
+                  "fields": {"kind": "work", "covers": list(step.covers),
+                             "depends_on": list(deps.get(n, [])) if i == 0 else [nums[i - 1]],
+                             "do": s["do"], "output": s["output"], "done_when": s["done_when"]}}
+                 for i, (num, s) in enumerate(zip(nums, subs))]
+        if n == self.answer_n:
+            summ = {a.name for a in self.agents.values() if a.is_summariser}
+            if not summ & set(subs[-1]["roles"]):
+                errors.append("the stuck step writes the final answer: its last sub-step must be the summariser's")
+        added = len(subs) - 1
+        if self.added_steps + added > self.opt.max_added_steps:
+            errors.append(f"V5: {added} new step(s) would pass the cap of {self.opt.max_added_steps} added steps per "
+                          f"run ({self.added_steps} added so far)")
+        change = {"kind": "SPLIT", "new_role": None, "requests": [], "steps": steps, "drop": [], "reassign": None,
+                  "feeds": {nums[-1]: waiting}, "added": added,
+                  "summary": {"steps_added": nums[1:], "steps_rewritten": [n], "steps_dropped": [], "reassigned": None,
+                              "role_added": None, "requests": [], "split_of": n}}
+        if not errors:
+            try:
+                waves(self.proposed_plan(change, ids))
+            except PlanGraphError as e:
+                errors.append(f"V5: the new plan is unusable: {e}")
+        return errors, change
+
+    # box: proposer
+    def _proposer_call(self, n: int, d: dict, allowed: list[str], refused: list[str] | None) -> str:
+        """The proposer's input, kept small: the task, the step's card, the diagnosis, the last attempt's errors and
+        checks (trimmed), the team (one line per role), the tools and skills of this run, the allowed edits and the
+        fixes already tried in this task."""
+        step, m = self.steps[n], self.artifacts[n]["meta"]
+        roles = [self.agents[a].name for a in step.agent_ids]
+        card = "\n".join(x for x in (re.sub(r"^\s*\[.*?\]\s*:\s*", "", step.text).strip(), f"roles: {', '.join(roles)}",
+                                     f"depends_on: {', '.join(map(str, dependencies(self.cfg.plan).get(n, []))) or 'none'}",
+                                     f"do: {step.do}" if step.do else "", f"output: {step.output}" if step.output else "",
+                                     f"done_when: {step.done_when or 'none written'}") if x)
+        checks = [f"- check {c['name']}: {'pass' if c['pass'] else 'FAIL'} {('— ' + c.get('detail', '')[:150]) if not c['pass'] else ''}"
+                  for c in m.get("checks") or []][:10]
+        errors = [f"- {c.get('agent', '?')} {c.get('tool')}: {str(c.get('result') or '')[:150]}"
+                  for c in m.get("tool_calls") or [] if not c.get("ok", True)][-5:]
+        attempt = "\n".join([f"status: {m['status']} ({m['status_reason'][:300]})", f"turns used: {m.get('turns')}",
+                             *(["lacked: " + ", ".join(m["blocked"])] if m.get("blocked") else []),
+                             *(["failed tool calls:"] + errors if errors else []), *(["checks:"] + checks if checks else [])])
+        team = "\n".join(f"- {a.name}: {(a.description or a.goal or '').strip()[:120]}" for a in self.agents.values())
+        skills = sorted({p["name"] for a in self.agents.values() for p in a.pool if p["kind"] == "skill"}
+                        | {s.get("name", "") for s in (getattr(self.local, "skills", None) or [])[:20]} - {""})
+        tools = ", ".join(sorted(self.i.tools.names())) if hasattr(self.i.tools, "names") else "none"
+        tried = "\n".join(f"- {f['kind']} on step {f['target']} {json.dumps(f.get('params', {}), default=str)[:200]}: "
+                          f"{f['result'][:160]}" for f in self.fixes) or "None yet."
+        user = render(PROMPT.fix_proposer, task=self.task.prompt[:1500], step=str(n), card=card, cause=d["cause"],
+                      evidence="\n".join(f"- {e}" for e in d["evidence"]), attempt=attempt, team=team,
+                      tools=f"tools: {tools}\nskills: {', '.join(skills) or 'none'}",
+                      allowed=proposer_allowed(allowed, self.max_num + 1), tried=tried)
+        if refused:
+            user += ("\n\n# Your previous reply was refused by plain code\n" + "\n".join(f"- {x}" for x in refused)
+                     + "\nReply again with one valid edit.")
+        with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "fix_proposer", "amoeba.box": "proposer"}):
+            resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
+                                            agent_name="fix_proposer", max_tokens=2048, role="planner")
+        self.ep.total_tokens += resp.input_tokens + resp.output_tokens
+        self.ep.n_llm_calls += 1
+        return resp.content or ""
+
+    # box: proposer
+    def left_on_old_output(self) -> list[dict]:
+        """Steps that used an upstream output from before its case-b re-run (Stage C rerun_upstream): they were not
+        redone. Listed in the final answer's Limitations and in the adaptation report."""
+        return [{"step": k, "upstream": f["target"]} for f in self.fixes if f["kind"] == "rerun_upstream"
+                for k in f.get("left_on_old_output", [])]
+
+    # box: proposer
+    def adapt_limitations(self) -> list[str]:
+        out = [f"- WORKED AROUND: step {w['step']} had no {w['capability']}; it used {w['method'][:160]}"
+               + (f" and was judged against a narrower done_when ({w['done_when'][:160]})" if w["done_when"] else "")
+               + f". {w['limitation'][:240]} (added by plain code)" for w in self.workarounds]
+        out += [f"- OLD INPUT: step {x['step']} used step {x['upstream']}'s output from before step {x['upstream']} was "
+                f"re-run for a missing input; it was not redone, so it may not match step {x['upstream']}'s final "
+                f"output (added by plain code)" for x in self.left_on_old_output()]
+        return out
 
     # box: artifacts
     def _save(self, n: int, wave: int, text: str, meta: dict, prov: dict) -> None:
@@ -2429,18 +2694,7 @@ class PlanRunner:
         ids = {a.name: a.agent_id for a in self.agents.values()}
         if change["new_role"] is not None:
             r = change["new_role"]
-            known = set(self.i.tools.names()) if hasattr(self.i.tools, "names") else set()
-            have, lack = [t for t in r.tools if t in known], [t for t in r.tools if t not in known]
-            template = next(iter(self.agents.values()))
-            aid = str(uuid4())
-            agent = template.model_copy(deep=True, update={
-                "agent_id": aid, "name": r.name, "tools": have, "missing_tools": lack, "is_summariser": False,
-                "goal": r.goal, "skills": list(r.skills), "outputs": list(r.outputs),
-                "success_criteria": list(r.success_criteria), "constraints": list(r.constraints),
-                "role_prompt": r.prompt or r.description, "description": r.description or r.prompt,
-                "suggestions": r.suggestions, "pool": [], "created_by": "drafter"})
-            self.agents[aid] = agent
-            self.cfg.agents[aid] = agent.model_copy(deep=True)
+            aid, lack = self.add_agent(r)
             ids[r.name] = aid
             self.roles_added += 1
             change["requests"] += [{"name": t, "kind": "tool", "for_role": r.name,
@@ -2463,6 +2717,24 @@ class PlanRunner:
                     if not any(r in s.covers for s in self.cfg.plan):
                         self.unmet.setdefault(r, f"step {n} was dropped by a re-plan: {dec['reason'][:160]}")
             self.save_plan_version(change["summary"])
+
+    # box: action_obs, proposer
+    def add_agent(self, r: DraftedRole) -> tuple[str, list[str]]:
+        """A new helper from a role card (D63's ADD_ROLE, D117's add_helper_role): its id and the tools it named
+        that the run does not have."""
+        known = set(self.i.tools.names()) if hasattr(self.i.tools, "names") else set()
+        have, lack = [t for t in r.tools if t in known], [t for t in r.tools if t not in known]
+        template = next(iter(self.agents.values()))
+        aid = str(uuid4())
+        agent = template.model_copy(deep=True, update={
+            "agent_id": aid, "name": r.name, "tools": have, "missing_tools": lack, "is_summariser": False,
+            "goal": r.goal, "skills": list(r.skills), "outputs": list(r.outputs),
+            "success_criteria": list(r.success_criteria), "constraints": list(r.constraints),
+            "role_prompt": r.prompt or r.description, "description": r.description or r.prompt,
+            "suggestions": r.suggestions, "pool": [], "created_by": "drafter"})
+        self.agents[aid] = agent
+        self.cfg.agents[aid] = agent.model_copy(deep=True)
+        return aid, lack
 
     def restock(self, requests: list) -> None:
         """D63: new capability requests go through the normal toolbox step (pool and local tools), mid-run."""
@@ -2542,6 +2814,9 @@ class PlanRunner:
                 "requirements": status}
 
 
+WORKAROUND_NOTE = """Plain code re-runs this step with a work-around: this run has no {cap}. Finish the step without it,
+using this method: {method}. The step is judged against: {done_when}. Write "NOT NEEDED: {cap} — worked around: <how>"
+and say in your output what the work-around does not cover; plain code states it in the final answer's Limitations."""
 FIX_INPUT_NOTE = """Plain code re-runs this step because it lacked an input: {items}. Step {step}'s output is now among your
 inputs in full; the data is there. Use it."""
 FIX_UPSTREAM_NOTE = """Plain code re-runs this step because a later step (step {step}) lacked data it should have got from

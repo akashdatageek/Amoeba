@@ -233,6 +233,7 @@ class MockLLMClient(LLMClient):
         "family_classifier": "You sort a task into one of a fixed list of task families",                  # D101
         "architect": "You propose one change to a team recipe",                                          # D87
         "replanner": "You are the Action Observer of a team",                                            # D63
+        "fix_proposer": "You propose one fix for a stuck step of a team plan",                         # D117 D
         "planner": ("You are a manager and expert prompt engineer",
                     "delivery lead with 15+ years of experience running cross-functional projects"),        # D24
         "agent_observer": ("identifying issues in role design",
