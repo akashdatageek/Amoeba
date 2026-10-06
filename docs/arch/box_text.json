@@ -2409,7 +2409,7 @@
   ]
  },
  "diag_edits": {
-  "checked_at": "4dbf020",
+  "checked_at": "53b1bb7",
   "facts": {
    "anchors": [],
    "checks": [],
@@ -2420,11 +2420,11 @@
    "title": "Cause → allowed edits (kept from D86)"
   },
   "facts_hash": "2067c6ee57aa5767",
-  "seed_hash": "200c7ec076aa6620",
+  "seed_hash": "47c8b411495b81ae",
   "sentence": "Which edits may answer which cause, from adapt.yaml.",
   "source": "hand",
   "what": [
-   "capability, checks, max_turns, unused_tool, claimed_file_missing, feedback and honesty each have their own allowed edits; a tie between causes is broken by the table order.",
+   "capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback and honesty each have their own allowed edits; a tie between causes is broken by the table order.",
    "prefer_model is offered only when model edits are on (D98) and never for feedback.",
    "D117: the step contract's causes become stuck signals; this table limits what a fix may change."
   ]
@@ -6153,7 +6153,7 @@
   ]
  },
  "ov_adapt": {
-  "checked_at": "4dbf020",
+  "checked_at": "53b1bb7",
   "facts": {
    "anchors": [
     {
@@ -6181,11 +6181,12 @@
    "title": "4 · Adapt within the task"
   },
   "facts_hash": "ebb94e95d349145a",
-  "seed_hash": "7895ee865aa4fe24",
-  "sentence": "D117: the offline learning loop is gone; adaptation will happen inside one task, when a Box 3 step gets stuck.",
+  "seed_hash": "719ebc85439a825c",
+  "sentence": "D117: the offline learning loop is gone; adaptation happens inside one task, when a Box 3 step gets stuck.",
   "source": "hand",
   "what": [
-   "Kept for it: the step contract's causes, the cause → edit table, the single-edit format with V1–V6, and the hash-chained event log.",
+   "Stage B (built): after each step attempt plain code looks for five stuck signals, marks the step STUCK, diagnoses one cause and logs it; nothing is fixed yet.",
+   "Kept for the fixes: the cause → edit table, the single-edit format with V1–V6, and the hash-chained event log.",
    "Nothing carries over between tasks."
   ]
  },
@@ -6935,11 +6936,12 @@
   ]
  },
  "plan_step": {
-  "checked_at": "96a9a03",
+  "checked_at": "53b1bb7",
   "facts": {
    "anchors": [
     {
      "callees": [
+      "amoeba/adapt/stuck.py::file_sig",
       "amoeba/capabilities/__init__.py::normalise",
       "amoeba/interp/citecheck.py::mislabelled_citations",
       "amoeba/interp/disputes.py::disputed_figures",
@@ -6978,6 +6980,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
       "amoeba/interp/plan_runner.py::PlanRunner.upstream",
       "amoeba/interp/plan_runner.py::PlanRunner.verifier_tools",
+      "amoeba/interp/plan_runner.py::PlanRunner.watch",
       "amoeba/interp/plan_runner.py::PlanRunner.web_ids",
       "amoeba/interp/plan_runner.py::PlanRunner.xlsx_checks",
       "amoeba/interp/plan_runner.py::_Work",
@@ -6994,11 +6997,13 @@
       "amoeba/interp/provenance.py::strip_unverified",
       "amoeba/interp/shorten.py::shorten",
       "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/claims.py::claimed_files",
       "amoeba/localtools/toolbox.py::LocalToolbox.begin_step",
       "amoeba/localtools/toolbox.py::LocalToolbox.has_file",
       "amoeba/pool/mcp.py::PoolTools.begin_step",
       "amoeba/pool/mcp.py::SourceBook.begin_step",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/deliverables.py::final_findings",
       "amoeba/task/evaluate.py::normalise",
       "amoeba/tools/web.py::WebTools.begin_step"
@@ -7534,6 +7539,11 @@
     ],
     [
      "fallback",
+     "file_sig(self.files_of(n)) == files_before if refine else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "found['not_needed'] if found else []",
      "choose value"
     ],
@@ -7815,7 +7825,7 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "25076c4b3aeca703",
+  "facts_hash": "b6195af6b3bb535c",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
@@ -10696,7 +10706,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "96a9a03",
+  "checked_at": "53b1bb7",
   "facts": {
    "anchors": [
     {
@@ -10870,6 +10880,10 @@
       [
        "requirement_status",
        "dict | None"
+      ],
+      [
+       "stuck",
+       "list[dict] | None"
       ],
       [
        "status",
@@ -11069,11 +11083,11 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "5cdc93d694e291b9",
+  "facts_hash": "009264de3d22e52e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "799521bb44484d71",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
@@ -12511,6 +12525,152 @@
    "D109 (resolver): plain code pairs the verifier's blind figures with the worker's by label (5% tolerance); one fresh resolver call settles each disagreement by source text or a re-run, plain code checks its evidence, a settled value replaces the wrong one, and an unresolved one keeps the step from PASS and goes into Limitations.",
    "D110 (part of D105's final-answer check): every web-sourced figure of the final answer must carry its source's date (line or source entry); undated ones share the refine turn, and those still undated are listed in Limitations.",
    "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked."
+  ]
+ },
+ "stuck": {
+  "checked_at": "53b1bb7",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/stuck.py::file_sig",
+      "amoeba/adapt/stuck.py::owes_file",
+      "amoeba/adapt/stuck.py::repeated_errors",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The stuck signals of one step attempt. `previous`: the meta of the attempt before (a reworked or re-run step);",
+     "key": "amoeba/adapt/stuck.py::step_signals",
+     "signature": "step_signals(meta: dict, previous: dict | None=None, unfilled: list[dict] | None=None, files_unchanged: bool | None=None) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "One cause for a stuck step: the first cause in `diagnoser.causes` that a signal names; its allowed edits",
+     "key": "amoeba/adapt/stuck.py::diagnose",
+     "signature": "diagnose(signals: list[dict], config: dict | None=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog",
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/stuck.py::diagnose",
+      "amoeba/adapt/stuck.py::is_stuck",
+      "amoeba/adapt/stuck.py::step_signals",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D117 Stage B: the stuck watch after one step attempt. A stuck step gets `meta[\"stuck\"]` (cause, signals,",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.watch",
+     "signature": "watch(self, n: int, meta: dict, previous: dict | None, files_unchanged: bool | None) -> dict | None"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/stuck.py::file_sig",
+     "signature": "file_sig(files: list[dict] | None) -> tuple"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "Stuck: the step did not end done and at least one signal holds (a step that recovered is not stuck).",
+     "key": "amoeba/adapt/stuck.py::is_stuck",
+     "signature": "is_stuck(meta: dict, signals: list[dict]) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub"
+     ],
+     "doc": "An error as compared for \"the same error twice\": its first 160 characters, lower case, digits masked,",
+     "key": "amoeba/adapt/stuck.py::norm_error",
+     "signature": "norm_error(text: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "Why the step owes a file it does not have: claimed but missing, a file type in its output line and none made,",
+     "key": "amoeba/adapt/stuck.py::owes_file",
+     "signature": "owes_file(meta: dict) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/stuck.py::norm_error",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "Evidence lines for each run of two failed calls in a row with the same tool and the same error.",
+     "key": "amoeba/adapt/stuck.py::repeated_errors",
+     "signature": "repeated_errors(calls: list[dict]) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "scripts/stuck_report.py::run_folders",
+      "scripts/stuck_report.py::run_stuck"
+     ],
+     "doc": "Counts per run set and in total.",
+     "key": "scripts/stuck_report.py::report",
+     "signature": "report(roots: list[str]) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append"
+     ],
+     "doc": "(run set, run folder) for every run folder under the roots once: a symlinked copy, or the same run path in a",
+     "key": "scripts/stuck_report.py::run_folders",
+     "signature": "run_folders(roots: list[str]) -> list[tuple[str, Path]]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/stuck.py::diagnose",
+      "amoeba/adapt/stuck.py::is_stuck",
+      "amoeba/adapt/stuck.py::step_signals",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/saved_drafts.py::_load",
+      "scripts/stuck_report.py::_load"
+     ],
+     "doc": "One record per step attempt of a stored run: {step, attempt, status, stuck, cause, signals, evidence,",
+     "key": "scripts/stuck_report.py::run_stuck",
+     "signature": "run_stuck(run: Path) -> list[dict]"
+    }
+   ],
+   "checks": [],
+   "guards": [],
+   "kind": "code",
+   "numbers": [
+    "MAX_EVIDENCE"
+   ],
+   "prompts": {},
+   "title": "Stuck watch and diagnosis (D117 Stage B)"
+  },
+  "facts_hash": "374c51be5ceecbba",
+  "seed_hash": "e78826c1bcfc1d52",
+  "sentence": "After each step attempt plain code marks a step that did not end done STUCK on any of five signals and names one cause.",
+  "source": "hand",
+  "what": [
+   "Signals: the same tool error twice in a row (digits masked); checks still failing after the retry turn; max turns; a capability or skill lacked or requested and unfilled; a file owed and no file change between attempts.",
+   "Each signal names a cause; the first cause in the table order wins, with its allowed edits and at most eight evidence lines.",
+   "The event goes to the trace, step_N.json, result.json (stuck) and the run's hash-chained events.jsonl. --adapt on is the command-line default.",
+   "scripts/stuck_report.py runs the same functions over stored run folders, offline."
   ]
  },
  "task_record": {
