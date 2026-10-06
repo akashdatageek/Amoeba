@@ -1,6 +1,6 @@
 {
  "action_obs": {
-  "checked_at": "23495f6",
+  "checked_at": "982eebb",
   "facts": {
    "anchors": [
     {
@@ -59,6 +59,7 @@
     {
      "callees": [
       "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
+      "amoeba/interp/plan_runner.py::PlanRunner.add_agent",
       "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
       "amoeba/interp/plan_runner.py::PlanRunner.restock",
       "amoeba/interp/plan_runner.py::PlanRunner.save_plan_version",
@@ -66,8 +67,7 @@
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
-      "amoeba/task/models.py::CapabilityRequest",
-      "amoeba/tools/registry.py::ToolRegistry.names"
+      "amoeba/task/models.py::CapabilityRequest"
      ],
      "doc": "D63: an accepted decision takes effect: the new role joins the team, capability requests go through the",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.apply_decision",
@@ -95,6 +95,14 @@
      "doc": "D63: the observer's reply → {decision, reason, steps, role, unmet, requests, readable}. A reply without a known",
      "key": "amoeba/interp/plan_runner.py::parse_decision",
      "signature": "parse_decision(raw: str) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/tools/registry.py::ToolRegistry.names"
+     ],
+     "doc": "A new helper from a role card (D63's ADD_ROLE, D117's add_helper_role): its id and the tools it named",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.add_agent",
+     "signature": "add_agent(self, r: DraftedRole) -> tuple[str, list[str]]"
     },
     {
      "callees": [
@@ -728,14 +736,14 @@
    },
    "title": "Action Observer (re-plan)"
   },
-  "facts_hash": "5ed887b06d7d0344",
+  "facts_hash": "9d94436973b7427c",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "5a16ab76cff4278f",
   "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code validates the change.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, or a tool the plan did not know about. No trigger, no call.",
-   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available and the budget left, and returns one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE. Each requirement is marked as met if its covering step is done and no check fails.",
+   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available and the budget left, and returns one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE. Each requirement is marked as met if its covering step is done and no check fails; ADD_ROLE triggers the creation of a new helper with its assigned tools.",
    "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met, and finished steps are tracked by their claim status.",
    "At most {PlanOptions.max_replans} re-plans and {PlanOptions.max_added_steps} added steps per run; an unreadable or invalid reply counts as CONTINUE. Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change.",
    "D108: a step a re-plan adds or rewrites for a failed step must state a different tool, source type, site or a split query, else the decision is rejected and logged; the observer is shown each failed step's tools, sources and queries."
@@ -816,7 +824,7 @@
   ]
  },
  "arch_check": {
-  "checked_at": "4dbf020",
+  "checked_at": "982eebb",
   "facts": {
    "anchors": [
     {
@@ -877,6 +885,7 @@
      "callees": [
       "amoeba/adapt/architect.py::_allowed_ok",
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/proposer.py::FixEdit.key",
       "amoeba/adapt/recipe.py::Edit.key",
       "amoeba/adapt/recipe.py::apply_edit",
       "amoeba/adapt/recipe.py::validate_recipe",
@@ -968,14 +977,14 @@
    "prompts": {},
    "title": "Single-edit format and check (kept from D87)"
   },
-  "facts_hash": "9b4d91165ce25180",
-  "seed_hash": "27647e5df93a6f41",
+  "facts_hash": "32b644b3b8e14968",
+  "seed_hash": "4c8cd27ec9649425",
   "sentence": "One proposed change is one strict JSON object; plain code parses it and checks it is allowed, valid and new.",
   "source": "hand",
   "what": [
    "The reply: exactly one JSON object with one typed edit, a short rationale (at most 400 characters) and a predicted change between -1 and 1; any other key is refused.",
    "Plain code checks that the edit is allowed for the cause (adapt.yaml), that the edited recipe passes V1–V6, and that the same edit was not already tried.",
-   "D117: the loop's Architect, its prompt and its human queue are gone; D117's in-task fix proposer reuses this format and these checks."
+   "D117: the loop's Architect, its prompt and its human queue are gone; the in-task fix proposer (Stage D) follows the same contract with its own edit menu (amoeba/adapt/proposer.py)."
   ]
  },
  "artifacts": {
@@ -1214,7 +1223,7 @@
   ]
  },
  "checks": {
-  "checked_at": "96a9a03",
+  "checked_at": "982eebb",
   "facts": {
    "anchors": [
     {
@@ -1283,6 +1292,7 @@
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/proposer.py::FixEdit.key",
       "amoeba/adapt/recipe.py::Edit.key",
       "amoeba/llm/cache.py::CachedLLM.key",
       "amoeba/llm/cache.py::CachedProvider.search",
@@ -1773,7 +1783,7 @@
    "prompts": {},
    "title": "Plain-code checks on the final draft"
   },
-  "facts_hash": "50adff538680ffb5",
+  "facts_hash": "cd351337eb4b3e7b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "77d490c5eaf21975",
   "sentence": "Throws out broken or nameless helper entries, records tools we lack instead of dropping them, flags the summariser, and drops steps that name nobody.",
@@ -3516,9 +3526,11 @@
   },
   "facts_hash": "e132a281c9ac9ad9",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "b26a3fbb66b1de2d",
   "seed_hash": "1fb809564e50141b",
   "sentence": "Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
   "source": "hand (model: still true)",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "missing_input: an upstream step that is done and holds the data is added to depends_on or passed in full; an upstream output without it is re-run once with the item in its done_when (the only redo of a completed step), then the stuck step.",
    "Rung 1: more turns (tool_error, max_turns), more retry turns then a larger input (checks).",
@@ -6367,13 +6379,14 @@
   ]
  },
  "ov_adapt": {
-  "checked_at": "23495f6",
+  "checked_at": "982eebb",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/architect.py::_allowed_ok",
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/proposer.py::FixEdit.key",
       "amoeba/adapt/recipe.py::Edit.key",
       "amoeba/adapt/recipe.py::apply_edit",
       "amoeba/adapt/recipe.py::validate_recipe",
@@ -6394,13 +6407,14 @@
    "prompts": {},
    "title": "4 · Adapt within the task"
   },
-  "facts_hash": "ebb94e95d349145a",
-  "seed_hash": "71eed4155bf1b8d1",
+  "facts_hash": "a804c77fb21226b5",
+  "seed_hash": "301450c9405a0214",
   "sentence": "D117: the offline learning loop is gone; adaptation happens inside one task, when a Box 3 step gets stuck.",
   "source": "hand",
   "what": [
    "Stage B (built): after each step attempt plain code looks for the stuck signals, marks the step STUCK, diagnoses one cause and logs it.",
-   "Stage C (built): code fixes, cheapest first — pass a missing input or re-run its upstream step once, more turns or retry turns or a larger input, attach the missing tool from the pool shortlist; within limits; when none recovers the step the task stops with a report.",
+   "Stage C (built): code fixes, cheapest first — pass a missing input or re-run its upstream step once, more turns or retry turns or a larger input, attach the missing tool from the pool shortlist.",
+   "Stage D (built): when the code fixes are used up or not allowed, the fix proposer (one AI call) proposes one edit; plain code checks and applies it. Within limits; when nothing recovers the step the task stops with a report.",
    "Kept for the fixes: the cause → edit table, the single-edit format with V1–V6, and the hash-chained event log.",
    "Nothing carries over between tasks."
   ]
@@ -6662,7 +6676,7 @@
   ]
  },
  "ov_run": {
-  "checked_at": "23495f6",
+  "checked_at": "982eebb",
   "facts": {
    "anchors": [
     {
@@ -6747,6 +6761,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
       "amoeba/interp/plan_runner.py::PlanRunner.save_plan_version",
       "amoeba/interp/plan_runner.py::PlanRunner.stop_report",
+      "amoeba/interp/plan_runner.py::PlanRunner.write_adapt_report",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -6787,11 +6802,11 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "a0007d69d1905387",
+  "facts_hash": "22d67fbdfb619a07",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
-  "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call is logged.",
-  "source": "model: kept",
+  "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call and adaptation report is logged.",
+  "source": "model: rewritten",
   "what": [
    "The team runs in one of three shapes chosen when you start the run, never by an AI.",
    "Over the step graph (plan): each step sees only the job and the outputs of the steps it depends on, code checks each step's output, and a summariser only assembles.",
@@ -6879,7 +6894,7 @@
   ]
  },
  "plan_graph": {
-  "checked_at": "96a9a03",
+  "checked_at": "982eebb",
   "facts": {
    "anchors": [
     {
@@ -6914,12 +6929,16 @@
       "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
       "amoeba/interp/plan_runner.py::PlanRunner._max_turns",
       "amoeba/interp/plan_runner.py::PlanRunner.action_observer",
+      "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
+      "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
       "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
       "amoeba/interp/plan_runner.py::PlanRunner.plan_items",
       "amoeba/interp/plan_runner.py::PlanRunner.replan_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
       "amoeba/interp/plan_runner.py::PlanRunner.save_plan_version",
+      "amoeba/interp/plan_runner.py::PlanRunner.stop_report",
+      "amoeba/interp/plan_runner.py::PlanRunner.write_adapt_report",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -6960,6 +6979,11 @@
      "set self.known = self.plan_items()"
     ],
     [
+     "decide",
+     "if self.opt.adapt == 'on'",
+     "set self.ep.adaptation = self.adapt_summary()"
+    ],
+    [
      "fallback",
      "None if status == 'done' else status",
      "choose value"
@@ -6967,6 +6991,11 @@
     [
      "fallback",
      "[nums[i - 1]] if i else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.fix_stuck(n, w) if self.opt.adapt == 'on' else None",
      "choose value"
     ],
     [
@@ -7021,6 +7050,16 @@
     ],
     [
      "stop",
+     "if fixed == 'replanned'",
+     "stop (break)"
+    ],
+    [
+     "stop",
+     "if fixed == 'stop'",
+     "return self.stop_report(n)"
+    ],
+    [
+     "stop",
      "if nums is None",
      "stop (break)"
     ],
@@ -7037,13 +7076,11 @@
    "prompts": {},
    "title": "Step graph (depends_on)"
   },
-  "facts_hash": "a1da6e9104ee4671",
+  "facts_hash": "20d09806e22dbb6b",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "a6569b8127b4b64d",
   "seed_hash": "15b138f4913a332f",
   "sentence": "Builds the order of work from each step's 'depends on' line and rejects a plan that loops.",
   "source": "model: kept",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Reads which earlier steps each step depends on; a plan with no such lines runs as a simple chain.",
    "A dependency on a step the planner wrote but Box 2 dropped is pointed at that step's own dependencies, and the change is logged.",
@@ -8077,7 +8114,7 @@
   ]
  },
  "plan_summary": {
-  "checked_at": "96a9a03",
+  "checked_at": "982eebb",
   "facts": {
    "anchors": [
     {
@@ -8110,6 +8147,7 @@
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/freshness.py::stale_figure",
       "amoeba/interp/freshness.py::time_sensitive",
+      "amoeba/interp/plan_runner.py::PlanRunner.adapt_limitations",
       "amoeba/interp/plan_runner.py::PlanRunner.blocked_capabilities",
       "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations.named",
       "amoeba/interp/plan_runner.py::PlanRunner.unused_items",
@@ -8480,6 +8518,11 @@
      "drop the rest"
     ],
     [
+     "filter",
+     "keep only if x.split(':')[0][2:] not in section.upper()",
+     "drop the rest"
+    ],
+    [
      "loop cap",
      "for i in range(len(lines) - 1, head[-1] if head else -1, -1)",
      "loop ends"
@@ -8542,7 +8585,7 @@
    },
    "title": "Summariser assembles"
   },
-  "facts_hash": "992edbacf72428b9",
+  "facts_hash": "ba9a0a8d4600ebb5",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "f8491f65001402a8",
   "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
@@ -8551,8 +8594,8 @@
    "Sees every step's latest output with its status, missing capabilities, verdict, figure counts, the deliverables the plan committed to, and where each figure was found (never the scoring rubric).",
    "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under Limitations when there are any.",
    "Code counts any number it adds, lists the answer's untagged and unverified figures, appends a line for any missing capability it left out, and logs these actions.",
-   "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code under 'Files made', and Limitations also name undeclared missing capabilities, attached items left unused, and audit logs.",
-   "Each input is shortened to {PlanOptions.max_input_chars} characters and all of them to {PlanOptions.max_summary_input_chars}; since D64 the head, the tail and every line with a result (a count, a total, an '=' line, the last lines of program output) are kept, with a mark for what was left out. When several final steps have no summariser step, code puts their outputs together under headings, logging the assembly.",
+   "D61: it is told which files each step made. Files and source-cited figures the answer leaves out earn one refine turn; files still unnamed are listed by code, and Limitations also name undeclared missing capabilities, attached items left unused, and audit logs.",
+   "Each input is shortened to {PlanOptions.max_input_chars} characters and all of them to {PlanOptions.max_summary_input_chars}; since D64 the head, the tail and every line with a result (a count, a total, an '=' line, the last lines of program output) are kept, with a mark for what was left out. When several final steps have no summariser step, code puts their outputs together under headings, filtering out lines that repeat section headers, and logs the assembly.",
    "D67: for a task that asks for today's, the current or the latest value, a figure whose as-of date is more than {MAX_AGE_DAYS} days old adds 'possibly not the latest' to Limitations; it also notes where the figure was found."
   ]
  },
@@ -8950,6 +8993,213 @@
    "Tools: the official MCP Registry, the latest version of each server (remote, repository, version, whether a key is needed).",
    "Skills: SKILL.md files from a shallow git clone of github.com/anthropics/skills (only the repository named in pool.yaml), with whether the skill ships scripts and the length of its text; the skill folders are kept whole under repos/ for the local toolbox (D59).",
    "Sources are listed in amoeba/config/pool.yaml, one line each; the cache is data/pool/."
+  ]
+ },
+ "proposer": {
+  "checked_at": "982eebb",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/proposer.py::FixEdit.key",
+      "amoeba/adapt/proposer.py::FixEdit.texts",
+      "amoeba/adapt/recipe.py::Edit.key",
+      "amoeba/adapt/recipe.py::Edit.texts",
+      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/llm/cache.py::CachedLLM.key",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/pool/stock.py::SharedPicks.key",
+      "amoeba/pool/stock.py::side_effect"
+     ],
+     "doc": "The checks that need no live plan. tools: name → description of the tools available in this run; tried: the",
+     "key": "amoeba/adapt/proposer.py::fix_problems",
+     "signature": "fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[str, str], tried: set[str], roles_of_step: list[str]) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/proposer.py::FixEdit.key",
+      "amoeba/adapt/proposer.py::fix_problems",
+      "amoeba/adapt/proposer.py::parse_fix",
+      "amoeba/adapt/recipe.py::Edit.key",
+      "amoeba/interp/plan_runner.py::PlanRunner._d_live",
+      "amoeba/interp/plan_runner.py::PlanRunner._fix_done",
+      "amoeba/interp/plan_runner.py::PlanRunner._proposer_call",
+      "amoeba/interp/plan_runner.py::PlanRunner.add_agent",
+      "amoeba/interp/plan_runner.py::PlanRunner.apply_decision",
+      "amoeba/interp/plan_runner.py::PlanRunner.keep_try",
+      "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.spans",
+      "amoeba/llm/cache.py::CachedLLM.key",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/pool/stock.py::SharedPicks.key",
+      "amoeba/tools/registry.py::ToolRegistry.descriptions"
+     ],
+     "doc": "The last rung for a stuck step: one fix-proposer call (one retry on an invalid reply), plain code's checks,",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
+     "signature": "propose_fix(self, n: int, wave: int, d: dict) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/interp/plan_runner.py::PlanRunner._split_change",
+      "amoeba/interp/plan_runner.py::PlanRunner.validate_decision",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/interp/plan_runner.py::number"
+     ],
+     "doc": "The checks on the live plan: a new helper's card is complete, its name new and the team within its size;",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._d_live",
+     "signature": "_d_live(self, reply, n: int) -> tuple[list[str], dict | None]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "op",
+       "Literal['add_role_rule', 'add_helper_role', 'grant_tool', 'split_step', 'replan_remaining', 'work_around']"
+      ],
+      [
+       "params",
+       "dict"
+      ]
+     ],
+     "key": "amoeba/adapt/proposer.py::FixEdit",
+     "methods": [
+      "key(self) -> str",
+      "texts(self) -> list[tuple[str, str, int]]"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "The reply, parsed strictly: exactly these keys.",
+     "fields": [
+      [
+       "edit",
+       "FixEdit"
+      ],
+      [
+       "reason",
+       "str"
+      ]
+     ],
+     "key": "amoeba/adapt/proposer.py::FixReply",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/proposer.py::allowed_text",
+     "signature": "allowed_text(allowed: list[str], next_step: int) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "The first JSON object of the reply (a code fence around it is allowed).",
+     "key": "amoeba/adapt/proposer.py::parse_fix",
+     "signature": "parse_fix(text: str) -> FixReply"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/cache.py::CachedLLM.chat_messages",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/client.py::LLMClient.chat_messages",
+      "amoeba/llm/client.py::MockLLMClient.chat_messages",
+      "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
+      "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/llm/router.py::ModelRouter.chat_messages",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/registry.py::ToolRegistry.names",
+      "scripts/eval_draft.py::Recording.chat_messages"
+     ],
+     "doc": "The proposer's input, kept small: the task, the step's card, the diagnosis, the last attempt's errors and",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._proposer_call",
+     "signature": "_proposer_call(self, n: int, d: dict, allowed: list[str], refused: list[str] | None) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/interp/plan_runner.py::waves",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._split_change",
+     "signature": "_split_change(self, n: int, subs: list[dict]) -> tuple[list[str], dict]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.left_on_old_output"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.adapt_limitations",
+     "signature": "adapt_limitations(self) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/tools/registry.py::ToolRegistry.names"
+     ],
+     "doc": "A new helper from a role card (D63's ADD_ROLE, D117's add_helper_role): its id and the tools it named",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.add_agent",
+     "signature": "add_agent(self, r: DraftedRole) -> tuple[str, list[str]]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "Steps that used an upstream output from before its case-b re-run (Stage C rerun_upstream): they were not",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.left_on_old_output",
+     "signature": "left_on_old_output(self) -> list[dict]"
+    }
+   ],
+   "checks": [],
+   "guards": [],
+   "kind": "ai",
+   "numbers": [
+    "AgentResult.input_tokens",
+    "AgentResult.output_tokens",
+    "AgentSpec.max_tokens",
+    "ChatResponse.input_tokens",
+    "ChatResponse.output_tokens",
+    "Episode.n_llm_calls",
+    "Episode.seed",
+    "Episode.total_tokens",
+    "MAX_CARD_CHARS",
+    "MAX_STEP_CHARS",
+    "PlanOptions.max_added_steps"
+   ],
+   "prompts": {
+    "fix_proposer": "7afb243de801"
+   },
+   "title": "Fix proposer (D117 Stage D)"
+  },
+  "facts_hash": "0bfecc06146e7daf",
+  "seed_hash": "0c74695eec05dc18",
+  "sentence": "The last rung: one AI call proposes one edit for the stuck step; plain code checks it, applies it to the live plan and re-runs the step.",
+  "source": "hand",
+  "what": [
+   "Called only when the code fixes for the step are used up or not allowed (including \"capability fix unavailable: pool off\").",
+   "It sees the task, the step's card and done_when, the cause and evidence, the last attempt's errors and checks (trimmed), the team (one line per role), the tools and skills of this run, the edits the cause allows and the fixes already tried.",
+   "It returns one JSON edit with a short reason: add_role_rule, add_helper_role (the Planner's role card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the Planner's plan format, for the part not done) or work_around (capability only; stated under Limitations).",
+   "Plain code checks: allowed for the cause, schema, V1 tools, V3 sizes, V4 wording, V5 team size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second failure is no fix. The adaptation limits apply; success is the step ending done."
   ]
  },
  "provenance": {
@@ -11805,7 +12055,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "23495f6",
+  "checked_at": "982eebb",
   "facts": {
    "anchors": [
     {
@@ -12066,6 +12316,7 @@
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/proposer.py::FixEdit.key.norm",
       "amoeba/interp/citecheck.py::norm",
       "amoeba/interp/disputes.py::_value",
       "amoeba/interp/disputes.py::agree",
@@ -12749,7 +13000,7 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "2845fdaea084e5d4",
+  "facts_hash": "edae26c2cc439e3e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "6f0a328d9f2e4908",
   "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
