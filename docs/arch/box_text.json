@@ -15901,7 +15901,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "497b4fe",
+  "checked_at": "ed4f16c",
   "facts": {
    "anchors": [
     {
@@ -16133,9 +16133,13 @@
       "amoeba/task/evaluate.py::rubric_score",
       "amoeba/task/evaluate.py::score",
       "amoeba/task/instantiate.py::instantiate",
+      "amoeba/task/interpret.py::NeedsClarification",
+      "amoeba/task/interpret.py::apply_clarify",
+      "amoeba/task/interpret.py::ask_all",
       "amoeba/task/interpret.py::ask_one",
       "amoeba/task/interpret.py::classify_family",
       "amoeba/task/interpret.py::enforce_opening",
+      "amoeba/task/interpret.py::open_questions",
       "amoeba/task/interpret.py::opening_line",
       "amoeba/task/interpret.py::read_task",
       "amoeba/task/interpret.py::with_note",
@@ -16145,6 +16149,7 @@
       "scripts/run_experiment.py::summary",
       "scripts/run_task.py::ask_user",
       "scripts/run_task.py::blocked_of",
+      "scripts/run_task.py::can_ask",
       "scripts/run_task.py::intake_text",
       "scripts/run_task.py::interpretation_of",
       "scripts/run_task.py::models_of",
@@ -16153,7 +16158,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, recipe_source: tuple | None=None, niche=None, deliverable_check: bool=False, workspace_sources: bool=False) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, recipe_source: tuple | None=None, niche=None, deliverable_check: bool=False, workspace_sources: bool=False, ask_assumed: str='off', clarify: dict | None=None) -> RunResult"
     },
     {
      "callees": [
@@ -16262,7 +16267,7 @@
     },
     {
      "callees": [],
-     "doc": "D111: ok | infra_error | agent_error, from a run's error (D105 adds no_deliverable at the end of a plan run).",
+     "doc": "D111: ok | infra_error | agent_error, from a run's error (D105 adds no_deliverable at the end of a plan run,",
      "key": "amoeba/task/models.py::run_status",
      "signature": "run_status(error: str | None) -> str"
     }
@@ -16296,17 +16301,16 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "06783e2ca2fc8a81",
-  "rejected_hash": "f8248d3dc30d4aa7",
-  "seed_hash": "90c6edb0abd747fc",
+  "facts_hash": "f8248d3dc30d4aa7",
+  "seed_hash": "799521bb44484d71",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
    "It also lists the steps that answered BLOCKED and every capability request, and counts how many requests round 1 made and how many the checkers talked the planner out of.",
-   "D105 + D110: after the summariser, plain code checks each Box 2 requirement and each promised file against the final answer and the workspace (and the dates of web figures); missing → one refine turn, then Limitations, and no_deliverable when a core deliverable is missing; requirement_status records the final-answer result."
+   "D105 + D110: after the summariser, plain code checks each Box 2 requirement and each promised file against the final answer and the workspace (and the dates of web figures); missing → one refine turn, then Limitations, and no_deliverable when a core deliverable is missing; requirement_status records the final-answer result.",
+   "D116: status needs_clarification when the run stopped before planning to ask the user about a reading it would otherwise have assumed; result.json then lists the open questions (interpretation.pending)."
   ]
  },
  "scoring": {
