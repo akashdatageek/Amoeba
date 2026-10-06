@@ -831,8 +831,9 @@ BOXES: list[dict] = [
                "allows and the fixes already tried.",
                "It returns one JSON edit with a short reason: add_role_rule, add_helper_role (the Planner's role "
                "card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the "
-               "Planner's plan format, for the part not done) or work_around (capability only; stated under "
-               "Limitations).",
+               "Planner's plan format, for the part not done) or work_around (capability only, after a grant_tool or "
+               "add_helper_role was tried for the step; stated under Limitations; counted as finished with "
+               "limitation, never recovered). At most two added helpers per task.",
                "Plain code checks: allowed for the cause, schema, V1 tools, V3 sizes, V4 wording, V5 team size and "
                "step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second failure is no "
                "fix. The adaptation limits apply; success is the step ending done."],

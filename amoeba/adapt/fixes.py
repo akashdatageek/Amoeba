@@ -28,7 +28,7 @@ GENERIC = {"step", "steps", "data", "input", "inputs", "output", "outputs", "mis
 POOL_OFF = "capability fix unavailable: pool off"
 LIMIT_DEFAULTS = {"max_fixes_per_step": 3, "max_fixes_per_task": 8, "max_tokens_per_task": 200000,
                   "max_usd_per_task": 1.0, "more_turns": 3, "more_retry_turns": 1, "input_factor": 2,
-                  "stop_when_exhausted": True}
+                  "stop_when_exhausted": True, "max_added_helpers": 2}
 
 
 # box: fixes

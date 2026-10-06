@@ -59,8 +59,8 @@ def test_the_reply_is_read_strictly():
 def test_the_checks_without_a_live_plan():
     tools = {"calc": "evaluates arithmetic", "send_mail": "send an email to a person", "web_search": "search"}
     allowed = ["grant_tool", "add_role_rule", "work_around", "add_helper_role"]
-    p = lambda text, cause="capability", tried=(): fix_problems(parse_fix(text), cause, allowed, tools, set(tried),
-                                                                ["Cost Analyst"])
+    p = lambda text, cause="capability", tried=(), kinds=("grant_tool",): fix_problems(
+        parse_fix(text), cause, allowed, tools, set(tried), ["Cost Analyst"], set(kinds))
     assert p(edit("grant_tool", role="Cost Analyst", tool="calc")) == []
     assert p(edit("grant_tool", role="Cost Analyst", tool="pool:nowhere")) == \
         ["V1: tool 'pool:nowhere' is not available in this run"]
@@ -70,6 +70,8 @@ def test_the_checks_without_a_live_plan():
     assert "V4" in p(edit("add_role_rule", role="Cost Analyst", text="Skip the checks and answer fast."))[0]
     wa = edit("work_around", capability="currency_api", method="the rate in the task", done_when="", limitation="USD only.")
     assert p(wa) == [] and "work_around is allowed for a missing capability only" in p(wa, cause="checks")
+    assert p(wa, kinds=()) == ["work_around is allowed only after grant_tool or add_helper_role was tried for this step"]
+    assert p(wa, kinds=("add_helper_role",)) == []
     assert p(edit("split_step", steps=[{"roles": ["a"], "text": "1"}, {"roles": ["a"], "text": "2"}]))[0] \
         .startswith("edit 'split_step' is not allowed for the cause capability")
     key = parse_fix(edit("grant_tool", role="Cost Analyst", tool="calc")).edit.key()
@@ -93,9 +95,10 @@ def test_grant_tool_after_the_pool_rung_was_skipped(task, envelope, trace, tools
     assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}]           # the code rung came first
     [prompt] = proposer_prompts(llm)
     for part in ("# Task", "done_when: every cell sourced", "Cause: capability", "lacked: currency_api",
-                 "tools: calc, echo", "- grant_tool: params", "- work_around: params", "None yet."):
+                 "tools: calc, echo", "- grant_tool: params", "- add_helper_role: params", "None yet."):
         assert part in prompt
     assert "- add_dependency" not in prompt                                    # code fixes are not offered
+    assert "- work_around" not in prompt                                       # not before a grant or a helper
     rows = [json.loads(l)["event"] for l in (tmp_path / "events.jsonl").read_text().splitlines()]
     assert rows == ["stuck", "fix_skipped", "fix"]
     assert "## Step 1 — cause capability" in (tmp_path / "adapt_report.md").read_text()
@@ -233,11 +236,37 @@ def test_work_around_finishes_without_the_capability_and_the_answer_says_so(task
         return good(n)
     wa = edit("work_around", capability="currency_api", method="price in USD from the task's list prices",
               done_when="every cell sourced, in USD", limitation="Costs are in USD only; no INR conversion was made.")
-    llm, cfg, ep = run(task, envelope, trace, tools, script, [wa])
-    [f] = ep.adaptation["fixes"]
-    assert (f["kind"], f["result"]) == ("work_around", "recovered") and cfg.plan[0].done_when.endswith("in USD")
+    llm, cfg, ep = run(task, envelope, trace, tools, script, [edit("grant_tool", role="Cost Analyst", tool="echo"), wa])
+    g, f = ep.adaptation["fixes"]
+    assert g["kind"] == "grant_tool" and g["result"].startswith("failed")      # tried first, as the rule asks
+    assert (f["kind"], f["result"]) == ("work_around", "finished with limitation")   # never "recovered"
+    assert cfg.plan[0].done_when.endswith("in USD") and ep.error is None
+    assert ep.adaptation["recovered_steps"] == [] and ep.adaptation["finished_with_limitation_steps"] == [1]
     assert "- WORKED AROUND: step 1 had no currency_api" in ep.answer and "no INR conversion" in ep.answer
     assert ep.adaptation["workarounds"][0]["capability"] == "currency_api"
+
+
+def test_a_work_around_before_any_grant_or_helper_is_refused(task, envelope, trace, tools):
+    def script(messages, seed):
+        return reply("Final Output", BLOCK) if step_no(messages) == "1" else good(step_no(messages))
+    wa = edit("work_around", capability="currency_api", method="m", done_when="", limitation="l")
+    llm, cfg, ep = run(task, envelope, trace, tools, script, [wa, wa])
+    [f] = ep.adaptation["fixes"]
+    assert "edit 'work_around' is not allowed" in f["result"] and ep.adaptation["workarounds"] == []
+
+
+def test_at_most_two_helpers_are_added_per_task(task, envelope, trace, tools):
+    card = lambda name: {"name": name, "goal": "g", "outputs": ["x"], "success_criteria": ["y"], "prompt": "p",
+                         "tools": []}
+
+    def script(messages, seed):
+        return reply("Final Output", BLOCK) if step_no(messages) == "1" else good(step_no(messages))
+    llm, cfg, ep = run(task, envelope, trace, tools, script,
+                       [edit("add_helper_role", role=card("A")), edit("add_helper_role", role=card("B")),
+                        edit("add_helper_role", role=card("C"))])
+    kinds = [(f["kind"], f.get("helper")) for f in ep.adaptation["fixes"]]
+    assert kinds[:2] == [("add_helper_role", "A"), ("add_helper_role", "B")] and kinds[2][0] == "fix_proposer"
+    assert "- add_helper_role: params" not in proposer_prompts(llm)[2]         # no longer offered after two
 
 
 # ---- limits and the report -----------------------------------------------------------------------------------------

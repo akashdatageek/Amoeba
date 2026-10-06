@@ -177,11 +177,11 @@ a short reason (`amoeba/adapt/proposer.py`):
 | Edit | Params | Applied as |
 |---|---|---|
 | add_role_rule | role, text | a constraint on the role's card; the step re-runs |
-| add_helper_role | role card (the Planner's schema), lead | a new helper on the step (first with lead); the step re-runs |
+| add_helper_role | role card (the Planner's schema), lead | a new helper on the step (first with lead); the step re-runs; at most 2 per task |
 | grant_tool | role, tool (of this run) | the tool joins the role; the step re-runs |
 | split_step | 2–3 sub-steps (roles, text, do, output, done_when) | the step becomes a chain; waiting steps wait for its end (D63 apply) |
 | replan_remaining | the Planner's plan text | the part not done is replaced (D63 validate and apply) |
-| work_around | capability, method, done_when, limitation | narrower done_when and a note; the limitation goes to the answer |
+| work_around | capability, method, done_when, limitation | only after a grant_tool or add_helper_role was tried for the step; narrower done_when and a note; the limitation goes to the answer; reported as "finished with limitation" |
 
 Plain code checks it: allowed for the cause; the schema; V1 (tools of this run, no outside action, not paid); V3
 sizes; V4 wording; V5 team size and step graph; done steps untouched; not a repeat. One retry with the refusal; a

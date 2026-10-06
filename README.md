@@ -453,11 +453,11 @@ tools and skills of this run, the edits the cause allows and the fixes already t
 | Edit | What plain code does with it |
 |---|---|
 | add_role_rule | adds one rule to a role card of the step, re-runs the step |
-| add_helper_role | adds a helper (the Planner's role card; tools of this run only) to the step, re-runs it |
+| add_helper_role | adds a helper (the Planner's role card; tools of this run only) to the step, re-runs it; at most 2 per task |
 | grant_tool | gives a tool available in this run to a role of the step, re-runs it |
 | split_step | replaces the step with 2–3 sub-steps; steps that waited for it wait for the last one |
 | replan_remaining | replaces the part not done (the Planner's plan format; done steps never change) |
-| work_around | capability only: another method or a narrower done_when, stated in the answer's Limitations |
+| work_around | capability only, and only after a grant_tool or add_helper_role was tried for the step: another method or a narrower done_when, stated in the answer's Limitations; the step counts as "finished with limitation", never as recovered |
 
 Plain code refuses an edit that is not allowed for the cause, breaks the schema, names a tool the run does not have,
 fails V1–V6 or the step graph, touches a done step or repeats a fix; it asks once more, and a second invalid reply

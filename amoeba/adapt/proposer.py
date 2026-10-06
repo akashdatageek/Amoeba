@@ -12,7 +12,8 @@ The fix proposer is a small agent called only when the code fixes for a stuck st
                     done yet (the stuck step and the steps not run)
   work_around       {"capability", "method", "done_when", "limitation"}: finish without the missing capability by
                     another method or a narrower done_when, stated in the final answer under Limitations
-                    (capability only)
+                    (capability only, and only after a grant_tool or add_helper_role was tried for the step; a step
+                    it finishes is reported as "finished with limitation", never as recovered)
 
 `parse_fix` reads the reply strictly; `fix_problems` makes the checks that need no live plan: the edit is allowed for
 the cause, its texts pass V3 (sizes) and V4 (no wording that skips checks), its tools pass V1 (available in this run,
@@ -44,9 +45,12 @@ SHAPES = {"add_role_rule": '{"role": "<a role of the stuck step>", "text": "<one
           "replan_remaining": '{"plan": "<the replacement steps, in the Planner\'s Execution Plan format: '
                               '\\"N. [Role]: title\\" lines with covers / depends_on / do / output / done_when; '
                               'number a rewritten step with its own number and new steps from ${next}>"}',
-          "work_around": '{"capability": "<the missing capability>", "method": "<the other method>", '
+          "work_around": '(the step finishes without the missing capability, by another method or against a narrower '
+                         'done_when; the limitation sentence goes in the final answer under Limitations, so say plainly '
+                         'what is not covered) {"capability": "<the missing capability>", "method": "<the other method>", '
                          '"done_when": "<the narrower done_when, or empty to keep it>", '
                          '"limitation": "<one sentence for the final answer\'s Limitations>"}'}
+WORKAROUND_AFTER = ("grant_tool", "add_helper_role")   # user (Oct 6): a work-around only after one of these failed
 MAX_CARD_CHARS = 1500     # a new helper's prompt / description
 MAX_STEP_CHARS = 600      # a sub-step's text or do
 
@@ -179,9 +183,10 @@ def allowed_text(allowed: list[str], next_step: int) -> str:
 
 # box: proposer
 def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[str, str], tried: set[str],
-                 roles_of_step: list[str]) -> list[str]:
+                 roles_of_step: list[str], tried_kinds: set[str] = frozenset()) -> list[str]:
     """The checks that need no live plan. tools: name → description of the tools available in this run; tried: the
-    keys of the fixes already tried in this task; roles_of_step: the stuck step's role names."""
+    keys of the fixes already tried in this task; roles_of_step: the stuck step's role names; tried_kinds: the kinds of
+    the fixes already tried for this step (work_around needs a grant_tool or add_helper_role among them)."""
     from amoeba.pool.stock import side_effect
     cfg = adapt_config()["recipe"]
     e, p, out = reply.edit, reply.edit.params, []
@@ -189,6 +194,8 @@ def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[st
         out.append(f"edit {e.op!r} is not allowed for the cause {cause}; allowed: {[a for a in allowed if a in D_OPS]}")
     if e.op == "work_around" and cause != "capability":
         out.append("work_around is allowed for a missing capability only")
+    if e.op == "work_around" and not set(tried_kinds) & set(WORKAROUND_AFTER):
+        out.append("work_around is allowed only after grant_tool or add_helper_role was tried for this step")
     for where, text, lim in e.texts():
         if len(text) > lim:
             out.append(f"V3: {where}: {len(text)} characters > {lim}")

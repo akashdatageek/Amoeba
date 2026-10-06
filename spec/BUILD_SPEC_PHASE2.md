@@ -834,6 +834,12 @@ split_step, replan_remaining with grant_tool; missing_input: add_role_rule, spli
 add_helper_role, replan_remaining; checks: split_step, add_helper_role; max_turns: split_step, add_role_rule;
 claimed_file_missing: grant_tool, split_step). Tests: tests/test_proposer_d117.py (15, mock LLM).
 
+*User changes before Stage E (Oct 6).* (1) work_around is allowed only after a grant_tool or an add_helper_role was
+tried for that step (code rung 2 or the proposer): until then it is not offered and is refused if proposed. A step it
+finishes is reported as "finished with limitation" (`adaptation.finished_with_limitation_steps`), never as
+recovered. (2) The proposer adds at most two helpers per task (`adapt.max_added_helpers: 2`); after that
+add_helper_role is not offered and is refused. Tests: tests/test_proposer_d117.py (17).
+
 **Stage C, code fixes (no AI), cheapest first.** (1) more turns, more retry turns or a larger input; (2) attach the
 missing tool or skill from the pool shortlist. Apply, re-run only the stuck step, re-check.
 

@@ -16,7 +16,8 @@ from pathlib import Path
 
 from amoeba.adapt.evidence import EvidenceLog
 from amoeba.adapt.fixes import POOL_OFF, candidates, fix_key, limits as fix_limits
-from amoeba.adapt.proposer import D_OPS, allowed_text as proposer_allowed, fix_problems, parse_fix
+from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
+                                   parse_fix)
 from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, step_signals
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
@@ -618,6 +619,7 @@ class PlanRunner:
         self.exhausted: dict | None = None                # the stuck step no fix recovered (the task stops)
         self.proposer_gave_up: dict[int, str] = {}        # D117 Stage D: step -> why the fix proposer gave no fix
         self.workarounds: list[dict] = []                 # D117 Stage D: accepted work-arounds (for Limitations)
+        self.helpers_added = 0                            # D117 Stage D: helpers the fix proposer added (capped)
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
     # box: step_check
@@ -1953,7 +1955,8 @@ class PlanRunner:
                         "failed: replacement step(s) not done: " + ", ".join(f"{k} {v}" for k, v in st.items()
                                                                                   if v != "done")
         recovered = sorted({f["step"] for f in self.fixes if f["result"] == "recovered"})
-        return {"fixes": self.fixes, "recovered_steps": recovered,
+        limited = sorted({f["step"] for f in self.fixes if f["result"] == "finished with limitation"})
+        return {"fixes": self.fixes, "recovered_steps": recovered, "finished_with_limitation_steps": limited,
                 "stuck_steps": sorted({s["step"] for s in self.stuck}), "tokens": self.adapt_tokens,
                 "cost_usd": self.adapt_usd(), "skipped": [{"step": s, "why": w} for s, w in sorted(self.fix_notes)],
                 "stopped": self.exhausted, "workarounds": self.workarounds,
@@ -2034,7 +2037,10 @@ class PlanRunner:
         """The last rung for a stuck step: one fix-proposer call (one retry on an invalid reply), plain code's checks,
         then the edit is applied. "applied" (step n was re-run), "replanned" (the plan changed; its steps run next)
         or "none" (no edit allowed, or no valid reply twice: recorded in proposer_gave_up)."""
-        allowed = [a for a in d.get("allowed_edits") or [] if a in D_OPS]
+        tried_here = {f["kind"] for f in self.fixes if f["step"] == n}
+        allowed = [a for a in d.get("allowed_edits") or [] if a in D_OPS
+                   and not (a == "work_around" and not tried_here & set(WORKAROUND_AFTER))     # user rule (Oct 6)
+                   and not (a == "add_helper_role" and self.helpers_added >= int(fix_limits()["max_added_helpers"]))]
         if not allowed:
             self.proposer_gave_up[n] = f"fix proposer: no edit allowed for {d['cause']}"
             return "none"
@@ -2046,7 +2052,7 @@ class PlanRunner:
             raw = self._proposer_call(n, d, allowed, refused)
             try:
                 reply = parse_fix(raw)
-                problems = fix_problems(reply, d["cause"], allowed, tools, self.fix_keys, roles)
+                problems = fix_problems(reply, d["cause"], allowed, tools, self.fix_keys, roles, tried_here)
                 if not problems:
                     problems, change = self._d_live(reply, n)
             except (ValueError, ValidationError) as e:
@@ -2094,6 +2100,7 @@ class PlanRunner:
             ids = self.steps[n].agent_ids
             self.steps[n].agent_ids = [aid, *ids] if p.get("lead") else [*ids, aid]
             rec["helper"] = change["role"].name
+            self.helpers_added += 1
         elif op == "work_around":
             if p["done_when"].strip():
                 self.steps[n].done_when = p["done_when"].strip()
@@ -2104,7 +2111,8 @@ class PlanRunner:
                       fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note})
         m = self.artifacts[n]["meta"]
         rec["status_after"] = m["status"]
-        rec["result"] = "recovered" if m["status"] == "done" else \
+        done = "finished with limitation" if op == "work_around" else "recovered"   # never "recovered" (user)
+        rec["result"] = done if m["status"] == "done" else \
             f"failed: still stuck ({m['stuck']['cause']}: {'; '.join(m['stuck']['evidence'][:2])[:200]})" \
             if m.get("stuck") else f"failed: not stuck but {m['status']} ({m['status_reason'][:160]})"
         if op == "work_around" and m["status"] == "done":
@@ -2124,6 +2132,9 @@ class PlanRunner:
                       if not getattr(r, k)] + ([] if (r.prompt or r.description) else ["incomplete role card: no prompt"])
             if r.name in {a.name for a in self.agents.values()}:
                 errors.append(f"role {r.name!r} already exists")
+            cap = int(fix_limits()["max_added_helpers"])
+            if self.helpers_added >= cap:
+                errors.append(f"limit: {cap} added helpers per task")
             if len(self.agents) + 1 > getattr(self.i, "max_agents", 5):
                 errors.append(f"V5: the team would have {len(self.agents) + 1} roles (at most "
                               f"{getattr(self.i, 'max_agents', 5)})")
