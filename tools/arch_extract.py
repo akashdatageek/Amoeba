@@ -780,19 +780,20 @@ BOXES: list[dict] = [
          anchors=[]),
     dict(id="diag_edits", view="adapt", title="Cause → allowed edits (kept from D86)", kind="data", plan=None,
          sentence="Which edits may answer which cause, from adapt.yaml.",
-         what=["capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback and honesty "
-               "each have their own allowed edits; a tie between causes is broken by the table order.",
+         what=["missing_input, capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback "
+               "and honesty each have their own allowed edits; a tie between causes is broken by the table order.",
                "prefer_model is offered only when model edits are on (D98) and never for feedback.",
                "D117: the step contract's causes become stuck signals; this table limits what a fix may change."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code looks the cause up in the table.",
          anchors=[]),
     dict(id="stuck", view="adapt", title="Stuck watch and diagnosis (D117 Stage B)", kind="code", plan=None,
-         sentence="After each step attempt plain code marks a step that did not end done STUCK on any of five signals and names one cause.",
+         sentence="After each step attempt plain code marks a step that did not end done STUCK on any of six signals and names one cause.",
          what=[
-               "Signals: the same tool error twice in a row (digits masked); checks still failing after the retry "
-               "turn; max turns; a capability or skill lacked or requested and unfilled; a file owed and no file "
-               "change between attempts.",
+               "Signals: a missing input (data an earlier step should have given, told from a missing tool by "
+               "classify_lacked); the same tool error twice in a row (digits masked); checks still failing after the "
+               "retry turn (unless the helpers ran out of turns); max turns; a capability or skill lacked or "
+               "requested and unfilled; a file owed and no file change between attempts.",
                "Each signal names a cause; the first cause in the table order wins, with its allowed edits and at "
                "most eight evidence lines.",
                "The event goes to the trace, step_N.json, result.json (stuck) and the run's hash-chained "

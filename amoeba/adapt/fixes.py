@@ -43,6 +43,7 @@ def fix_key(fix: dict) -> str:
     return json.dumps([fix["kind"], fix.get("target"), fix.get("params", {})], sort_keys=True)
 
 
+# box: fixes
 def _specific(item: str) -> set[str]:
     label = (item or "").partition(" — ")[0]
     return {w for w in re.findall(r"[a-z][a-z0-9]+", label.lower().replace("_", " ")) if w not in GENERIC
@@ -62,6 +63,7 @@ def holds(item: str, text: str) -> bool:
     return len(words & have) / len(words) >= 0.6
 
 
+# box: fixes
 def _option(kind: str, name: str, now: int, new: int, ranges: dict, n: int) -> dict | None:
     r = ranges.get(name) or {}
     new = min(new, int(r.get("max", new)))

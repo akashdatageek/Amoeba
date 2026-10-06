@@ -78,6 +78,7 @@ def owes_file(meta: dict) -> list[str]:
     return why
 
 
+# box: stuck
 def _words(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z][a-z0-9]+", (text or "").lower().replace("_", " ")) if w not in STOP}
 
