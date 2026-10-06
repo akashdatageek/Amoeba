@@ -1256,7 +1256,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "497b4fe",
+  "checked_at": "bc85c38",
   "facts": {
    "anchors": [
     {
@@ -1385,9 +1385,13 @@
       "amoeba/task/evaluate.py::rubric_score",
       "amoeba/task/evaluate.py::score",
       "amoeba/task/instantiate.py::instantiate",
+      "amoeba/task/interpret.py::NeedsClarification",
+      "amoeba/task/interpret.py::apply_clarify",
+      "amoeba/task/interpret.py::ask_all",
       "amoeba/task/interpret.py::ask_one",
       "amoeba/task/interpret.py::classify_family",
       "amoeba/task/interpret.py::enforce_opening",
+      "amoeba/task/interpret.py::open_questions",
       "amoeba/task/interpret.py::opening_line",
       "amoeba/task/interpret.py::read_task",
       "amoeba/task/interpret.py::with_note",
@@ -1397,6 +1401,7 @@
       "scripts/run_experiment.py::summary",
       "scripts/run_task.py::ask_user",
       "scripts/run_task.py::blocked_of",
+      "scripts/run_task.py::can_ask",
       "scripts/run_task.py::intake_text",
       "scripts/run_task.py::interpretation_of",
       "scripts/run_task.py::models_of",
@@ -1405,7 +1410,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, recipe_source: tuple | None=None, niche=None, deliverable_check: bool=False, workspace_sources: bool=False) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, recipe_source: tuple | None=None, niche=None, deliverable_check: bool=False, workspace_sources: bool=False, ask_assumed: str='off', clarify: dict | None=None) -> RunResult"
     }
    ],
    "checks": [],
@@ -1431,7 +1436,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "3d5e7ee1f22d8dd5",
+  "facts_hash": "8d8a95fb88966062",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -5128,7 +5133,7 @@
   ]
  },
  "free_text": {
-  "checked_at": "d7ea735",
+  "checked_at": "bc85c38",
   "facts": {
    "anchors": [
     {
@@ -5167,6 +5172,7 @@
       "scripts/run_task.py::family_classify_on",
       "scripts/run_task.py::niche_tools",
       "scripts/run_task.py::parse_args",
+      "scripts/run_task.py::parse_clarify",
       "scripts/run_task.py::quality_gate_on",
       "scripts/run_task.py::run_one"
      ],
@@ -5211,6 +5217,11 @@
      "decide",
      "if not niche.is_neutral()",
      "set tools, local = niche_tools(niche, tools, local)"
+    ],
+    [
+     "decide",
+     "if r.status == 'needs_clarification'",
+     "set q = (r.interpretation or {}).get('pending') or []"
     ],
     [
      "decide",
@@ -5324,14 +5335,14 @@
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "a2188c3a55dc0eca",
+  "facts_hash": "09c23338c4b384ad",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
-   "When you give a sentence instead of asking for practice jobs, it becomes a single job.",
-   "It has no known answer, so its score stays empty.",
+   "When you give a sentence instead of asking for practice jobs, it becomes a single job that may ask you for further clarification.",
+   "It has no known answer, so its score stays empty, and it may require multiple steps to resolve.",
    "Everything else runs exactly as for a practice job."
   ]
  },
@@ -7023,7 +7034,7 @@
   ]
  },
  "interpret": {
-  "checked_at": "06dbc12",
+  "checked_at": "bc85c38",
   "facts": {
    "anchors": [
     {
@@ -7058,7 +7069,12 @@
      "signature": "decide(entities: list[dict], gap: float=DOMINANCE_GAP) -> dict"
     },
     {
-     "callees": [],
+     "callees": [
+      "amoeba/interp/disputes.py::settle",
+      "amoeba/task/interpret.py::_ask",
+      "amoeba/task/interpret.py::options_of",
+      "amoeba/task/interpret.py::settle"
+     ],
      "doc": "--interactive: ONE multiple-choice question about the least certain ambiguous entity (its readings + other),",
      "key": "amoeba/task/interpret.py::ask_one",
      "signature": "ask_one(interp: dict, ask: Callable[[str], str]) -> dict"
@@ -7138,6 +7154,53 @@
      "signature": "standards_slots(ctx: Mapping | None) -> dict[str, str]"
     },
     {
+     "callees": [],
+     "doc": "D116: a reading would be assumed and nobody can be asked (no terminal, no --interactive); the run stops before",
+     "fields": [],
+     "key": "amoeba/task/interpret.py::NeedsClarification",
+     "methods": [
+      "__init__(self, questions: list[dict])"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/task/interpret.py::_ask",
+     "signature": "_ask(w: dict, options: list[str], ask: Callable[[str], str]) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/experimenter.py::ArmACache.get",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/interp/disputes.py::settle",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/memory/recipes.py::RecipeStore.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/interpret.py::options_of",
+      "amoeba/task/interpret.py::settle",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D116 --clarify ENTITY=READING: answers given on the command line (an option number or words) settle those",
+     "key": "amoeba/task/interpret.py::apply_clarify",
+     "signature": "apply_clarify(interp: dict, answers: Mapping[str, str]) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/ledger.py::Ledger.append",
+      "amoeba/interp/disputes.py::settle",
+      "amoeba/task/interpret.py::_ask",
+      "amoeba/task/interpret.py::options_of",
+      "amoeba/task/interpret.py::settle",
+      "scripts/run_audit.py::AuditLog.append"
+     ],
+     "doc": "D116: every entity whose reading would be assumed (no reading leads the next by DOMINANCE_GAP, a tie",
+     "key": "amoeba/task/interpret.py::ask_all",
+     "signature": "ask_all(interp: dict, ask: Callable[[str], str]) -> dict"
+    },
+    {
      "callees": [
       "amoeba/adapt/experimenter.py::ArmACache.get",
       "amoeba/llm/cache.py::_Store.get",
@@ -7200,6 +7263,14 @@
     },
     {
      "callees": [
+      "amoeba/task/interpret.py::options_of"
+     ],
+     "doc": "D116: the questions a run that cannot ask leaves for the user, least certain first.",
+     "key": "amoeba/task/interpret.py::open_questions",
+     "signature": "open_questions(interp: dict) -> list[dict]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/ledger.py::Ledger.append",
       "amoeba/task/interpret.py::assumed",
@@ -7208,6 +7279,12 @@
      "doc": "The sentence the answer must open with when the subject was assumed: \"I read X as Y; if you meant Z, …\".",
      "key": "amoeba/task/interpret.py::opening_line",
      "signature": "opening_line(interp: dict | None) -> str | None"
+    },
+    {
+     "callees": [],
+     "doc": "The choices put to the user for one entity: its readings, most confident first, then \"other\".",
+     "key": "amoeba/task/interpret.py::options_of",
+     "signature": "options_of(interp: dict, w: dict) -> list[str]"
     },
     {
      "callees": [
@@ -7226,6 +7303,12 @@
      "doc": "The Entities section as [{entity, readings: [{reading, why, confidence}]}], readings sorted by confidence.",
      "key": "amoeba/task/interpret.py::parse_entities",
      "signature": "parse_entities(raw: str) -> list[dict]"
+    },
+    {
+     "callees": [],
+     "doc": "Reads one reply (an option number or the user's own words) and, when it names a reading, makes it the entity's",
+     "key": "amoeba/task/interpret.py::settle",
+     "signature": "settle(interp: dict, w: dict, options: list[str], reply: str) -> dict"
     },
     {
      "callees": [
@@ -7252,9 +7335,21 @@
     },
     {
      "callees": [],
+     "doc": "D116: whether a person can answer at the terminal (stdin is one).",
+     "key": "scripts/run_task.py::can_ask",
+     "signature": "can_ask() -> bool"
+    },
+    {
+     "callees": [],
      "doc": "D101: on for Amoeba's plan runner by default; the baselines keep their behaviour unless asked.",
      "key": "scripts/run_task.py::family_classify_on",
      "signature": "family_classify_on(flag: str, topology: str) -> bool"
+    },
+    {
+     "callees": [],
+     "doc": "D116: --clarify 'ENTITY=READING' (repeatable) as {entity: reading}.",
+     "key": "scripts/run_task.py::parse_clarify",
+     "signature": "parse_clarify(items: list[str] | None) -> dict[str, str]"
     }
    ],
    "checks": [],
@@ -7290,9 +7385,24 @@
      "add {'entity': str(it['entity']).strip(), 'readings': readings}"
     ],
     [
+     "correct",
+     "if reply is not None and w['settled'] == 'assumed'",
+     "add settle(interp, w, options_of(interp, w), reply)"
+    ],
+    [
+     "decide",
+     "if asked",
+     "set interp['question'], interp['questions'] = (asked[0], asked)"
+    ],
+    [
      "decide",
      "if chosen",
      "set interp['ambiguous'] = [a for a in interp['ambiguous'] if a != w['entity']]"
+    ],
+    [
+     "decide",
+     "if done",
+     "set interp['clarified'] = done"
     ],
     [
      "decide",
@@ -7361,6 +7471,11 @@
     ],
     [
      "fallback",
+     "except (AttributeError, ValueError)",
+     "return False"
+    ],
+    [
+     "fallback",
      "except (TypeError, ValueError)",
      "set conf = 0.0"
     ],
@@ -7372,7 +7487,7 @@
     [
      "fallback",
      "except EOFError",
-     "set reply = ''"
+     "return ''"
     ],
     [
      "fallback",
@@ -7461,6 +7576,11 @@
     ],
     [
      "reject",
+     "if '=' not in it",
+     "raise ValueError"
+    ],
+    [
+     "reject",
      "if not isinstance(data, dict)",
      "raise ValueError"
     ],
@@ -7534,16 +7654,16 @@
    },
    "title": "Task interpretation and family (D77, D101)"
   },
-  "facts_hash": "f2462ca7c6d7f9c1",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "4d5f47795f6babb8",
-  "sentence": "Before the Planner drafts, an AI classifies the task family and interprets ambiguous terms; plain code decides the winner or asks the user.",
-  "source": "model: rewritten",
+  "facts_hash": "a48f2d364a84dc7e",
+  "seed_hash": "77c35c2d711f1be2",
+  "sentence": "Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a clear winner, asks the user one question, or makes the answer state its assumption.",
+  "source": "hand",
   "what": [
-   "First, plain rules attempt to classify the task family; if they fail, one call reads the task, user context, and environment settings to classify the family and list key entities or terms that could be read more than one way, each with a reason and confidence.",
-   "Plain code: a reading whose confidence beats the next by {DOMINANCE_GAP} or more (or the only one) is the working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question (the readings + other); without it the top reading is an assumption.",
+   "One call reads the task (and the read-only user context from --context: location, organisation, role) and lists the key entities and terms that could be read more than one way — names, abbreviations, acronyms, likely voice-input errors such as \"P and W\" for \"PNW\" — each reading with a one-line reason and a confidence.",
+   "Plain code: a reading whose confidence beats the next by {DOMINANCE_GAP} or more (DOMINANCE_GAP) (or the only one) is the working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question (the readings + other); without it the top reading is an assumption.",
    "The working interpretation is added to the task text, so the Planner, both checkers and every helper in all three runners read it; an open question the Planner writes about one of these names is answered from it, not by its guess.",
-   "After the run, when the reading was assumed, plain code makes the answer open with \"I read X as Y; if you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing."
+   "After the run, when the reading was assumed, plain code makes the answer open with \"I read X as Y; if you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing.",
+   "D116: with --ask-assumed on (the CLI default) every reading that would be assumed, a tie included, is asked about before planning, one question each, least certain first; with nobody to ask the run stops with needs_clarification and writes clarification.json, and --clarify ENTITY=READING answers ahead of time; off keeps the behaviour above, and experiment runs pass off."
   ]
  },
  "interpreter": {
@@ -10449,7 +10569,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "497b4fe",
+  "checked_at": "bc85c38",
   "facts": {
    "anchors": [
     {
@@ -10496,9 +10616,13 @@
       "amoeba/task/evaluate.py::rubric_score",
       "amoeba/task/evaluate.py::score",
       "amoeba/task/instantiate.py::instantiate",
+      "amoeba/task/interpret.py::NeedsClarification",
+      "amoeba/task/interpret.py::apply_clarify",
+      "amoeba/task/interpret.py::ask_all",
       "amoeba/task/interpret.py::ask_one",
       "amoeba/task/interpret.py::classify_family",
       "amoeba/task/interpret.py::enforce_opening",
+      "amoeba/task/interpret.py::open_questions",
       "amoeba/task/interpret.py::opening_line",
       "amoeba/task/interpret.py::read_task",
       "amoeba/task/interpret.py::with_note",
@@ -10508,6 +10632,7 @@
       "scripts/run_experiment.py::summary",
       "scripts/run_task.py::ask_user",
       "scripts/run_task.py::blocked_of",
+      "scripts/run_task.py::can_ask",
       "scripts/run_task.py::intake_text",
       "scripts/run_task.py::interpretation_of",
       "scripts/run_task.py::models_of",
@@ -10516,7 +10641,7 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, recipe_source: tuple | None=None, niche=None, deliverable_check: bool=False, workspace_sources: bool=False) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), recipe: Recipe | None=None, cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, recipe_source: tuple | None=None, niche=None, deliverable_check: bool=False, workspace_sources: bool=False, ask_assumed: str='off', clarify: dict | None=None) -> RunResult"
     }
    ],
    "checks": [
@@ -10547,14 +10672,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "617dcc346ac8e8b7",
+  "facts_hash": "f5029cdad706046b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves twenty-six files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, the niche profile, the deliverable status, the workspace sources, and the run status.",
+  "sentence": "Every run saves twenty-eight files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version, the team configuration version, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, and the assumed answers.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, the niche profile, the deliverable status, the workspace sources, and the run status.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the recipe version ({Recipe.version}), the team configuration version ({TeamConfig.version}), the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the recipe source, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, and the assumed answers.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -16172,9 +16297,11 @@
    "title": "RunResult"
   },
   "facts_hash": "06783e2ca2fc8a81",
+  "rejected_hash": "f8248d3dc30d4aa7",
   "seed_hash": "90c6edb0abd747fc",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
@@ -16653,7 +16780,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "497b4fe",
+  "checked_at": "bc85c38",
   "facts": {
    "anchors": [
     {
@@ -17059,6 +17186,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.source_texts",
       "amoeba/interp/plan_runner.py::_Work",
       "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/task/interpret.py::settle",
       "scripts/run_audit.py::AuditLog.append"
      ],
      "doc": "D109 (amended): one fresh call (the verify step's first helper, plan_resolve.txt) settles each disputed",
@@ -17677,10 +17805,11 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "4cd3669d6c714765",
+  "facts_hash": "987929001157b951",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "6f0a328d9f2e4908",
   "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
