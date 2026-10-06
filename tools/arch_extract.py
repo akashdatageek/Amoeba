@@ -842,6 +842,19 @@ BOXES: list[dict] = [
          prompts=["fix_proposer"],
          anchors=["amoeba/adapt/proposer.py::fix_problems", "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
                   "amoeba/interp/plan_runner.py::PlanRunner._d_live"], guard_anchors=[]),
+    dict(id="stage_e", view="adapt", title="Stage E: --adapt off vs on (pairs and report)", kind="code", plan=None,
+         sentence="Runs each task and seed with --adapt off, then on with the off run's draft and pool picks, and reports the two arms side by side.",
+         what=[
+               "The on arm reuses the off run's plan.json (--drafts-from) and both share one --picks-file: the arms "
+               "differ only in Box 3. A pair whose arm already has a result is not run again.",
+               "The report: outcome per run (done, done with limitation, stuck-stopped, failed), stuck steps by cause "
+               "(the off arm read offline by the same watch), recovered steps by rung, work-arounds apart, rubric "
+               "scores, billed tokens, the adaptation's tokens and $, wall time, searches, and what broke.",
+               "Three recovered steps per arm, picked at random with a fixed seed, are shown with their trace lines and "
+               "their output before and after."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code runs the pairs and counts.",
+         anchors=["scripts/stage_e.py::run_pairs", "scripts/stage_e_report.py::run_record"], guard_anchors=[]),
     dict(id="arch_check", view="adapt", title="Single-edit format and check (kept from D87)", kind="code", plan=None,
          sentence="One proposed change is one strict JSON object; plain code parses it and checks it is allowed, valid and new.",
          what=[

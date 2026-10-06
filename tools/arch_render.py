@@ -32,7 +32,7 @@ VIEWS = {
     "run": {"h": 1320, "label": "3 · Team runs the task", "heading": "INSIDE BOX 3 · TEAM RUNS THE TASK",
             "note": "Three runners, chosen when the run starts: flat and boss + reviewers are the AutoAgents / AgentVerse "
                     "baselines; plan runs the step graph (ours, D31–D36). All write the same log and result record."},
-    "adapt": {"h": 640, "label": "4 · Adapt within the task", "heading": "INSIDE BOX 4 · ADAPT WITHIN THE TASK (D117)",
+    "adapt": {"h": 780, "label": "4 · Adapt within the task", "heading": "INSIDE BOX 4 · ADAPT WITHIN THE TASK (D117)",
               "note": "D117 removed the offline learning loop. Stage B watches each step for stuck signals and names one cause; Stage C tries code fixes, cheapest first; Stage D asks the fix proposer for one checked edit; the task stops with a report when nothing works."},
     "around": {"h": 210, "label": "Around every box", "heading": "AROUND EVERY BOX",
                "note": "The model router picks the model for every AI call; the niche profile sets what every run may use."},
@@ -44,6 +44,7 @@ L = {  # id: (x, y, w, h)
     "ov_around": (30, 620, 1130, 104),
     "diag_edits": (30, 70, 350, 170), "arch_check": (420, 70, 330, 170), "recipe": (790, 70, 370, 200),
     "evidence": (30, 280, 720, 130), "stuck": (790, 290, 370, 130), "fixes": (30, 460, 700, 150), "proposer": (770, 460, 390, 150),
+    "stage_e": (30, 650, 1130, 100),
     "router": (30, 70, 550, 110), "niche": (610, 70, 550, 110),
     "toy_source": (30, 60, 240, 130), "free_text": (30, 210, 240, 100), "task_record": (370, 105, 230, 120),
     "handoff": (670, 115, 210, 100), "scoring": (930, 95, 230, 140),
