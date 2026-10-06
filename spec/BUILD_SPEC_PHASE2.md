@@ -548,7 +548,7 @@ the report too.
 | D113 | Spreadsheet checks: after a step that made an .xlsx, typed totals and typed derived cells (row/column sums, products of row cells) fail `domain_xlsx_formulas` with the cell names and earn the retry turn; task numbers are inputs (`--xlsx-formulas`, default on) | `amoeba/checks/xlsx_formulas.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 | D114 | `max_input_chars` (3000–20000) and `max_summary_input_chars` (15000–60000) whitelisted as recipe run options; the Diagnoser allows them for the checks / feedback causes; Gate-tested like any edit | `amoeba/config/adapt.yaml`, `amoeba/adapt/recipe.py`, `scripts/run_task.py` | v1 |
 | D116 | Ask the user about every reading the interpretation step would only assume (a tie included), before planning; no terminal → stop with `needs_clarification` + `clarification.json`; `--clarify ENTITY=READING`; `--ask-assumed off` = D77; experiments pass off | `amoeba/task/interpret.py`, `scripts/run_task.py`, `amoeba/task/models.py`, `amoeba/config/adapt.yaml` | v1 |
-| D117 | The offline learning loop is removed; in-task adaptation replaces it (Stage A: removal; B: stuck watch; C: code fixes; D: fix-proposer agent; E: `--adapt` test). Kept: contract causes, cause → edit table, single-edit format + V1–V6, event log | `amoeba/adapt/` (recipe, architect, evidence), `amoeba/config/adapt.yaml`, `scripts/run_task.py` | v1 |
+| D117 | The offline learning loop is removed; in-task adaptation replaces it (Stage A: removal; B: stuck watch; C: code fixes; D: fix-proposer agent; E: `--adapt` test). Kept: contract causes, cause → edit table, single-edit format + V1–V6, event log. Stage B built: five stuck signals, one diagnosed cause, logged (§17) | `amoeba/adapt/` (stuck, recipe, architect, evidence), `amoeba/config/adapt.yaml`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py`, `scripts/stuck_report.py` | v1 |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit
@@ -744,6 +744,21 @@ same error appears twice in a row, checks still fail after the retries, max turn
 or skill is unfilled, or no output file changed between attempts. Diagnosis picks one cause with the kept table. Every
 stuck event (step, cause, evidence lines) goes to the event log. Counts per cause from existing runs are reported
 before Stage C.
+
+*As built (B).* `amoeba/adapt/stuck.py`: `step_signals(meta, previous, unfilled, files_unchanged)` returns the
+signals of one attempt — `repeated_error` (two failed tool calls in a row with the same tool and the same error once
+digits are masked) → cause `tool_error` (new, after `capability` in `diagnoser.causes`; allowed edits add_role_rule,
+grant_tool, set_run_option:max_turns); `checks_after_retry` → `checks`; `max_turns` → `max_turns`;
+`capability_unfilled` (a BLOCKED or undeclared capability, or an unfilled request for one of the step's roles) →
+`capability`; `no_file_change` (the step owes a file — claimed but missing, a file type in its output line and none
+made, a failed spreadsheet check — and its files did not change across the refine turn or between two attempts) →
+`claimed_file_missing`. `is_stuck`: the step did not end `done` and a signal holds. `diagnose`: the first cause in the
+table order, its allowed edits (prefer_model only with model edits on), at most eight evidence lines. The plan runner
+calls it after each attempt (`PlanRunner.watch`) when `PlanOptions.adapt == "on"` (`--adapt`, CLI default on;
+library default off) and writes `meta["stuck"]`, a `stuck` trace event, a `stuck` row in `<run>/events.jsonl`
+(hash-chained) and `result.json` `stuck`. `scripts/stuck_report.py` applies the same functions to stored run folders
+(attempt before = `step_N.first.json`; unfilled requests from `capability_requests.json`). Counts over 618 stored
+runs: `docs/eval/d117_stage_b/STUCK_COUNTS.md`. Tests: tests/test_stuck_d117.py.
 
 **Stage C, code fixes (no AI), cheapest first.** (1) more turns, more retry turns or a larger input; (2) attach the
 missing tool or skill from the pool shortlist. Apply, re-run only the stuck step, re-check.

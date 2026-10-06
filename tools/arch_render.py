@@ -33,7 +33,7 @@ VIEWS = {
             "note": "Three runners, chosen when the run starts: flat and boss + reviewers are the AutoAgents / AgentVerse "
                     "baselines; plan runs the step graph (ours, D31–D36). All write the same log and result record."},
     "adapt": {"h": 430, "label": "4 · Adapt within the task", "heading": "INSIDE BOX 4 · ADAPT WITHIN THE TASK (D117)",
-              "note": "D117 removed the offline learning loop. Kept for in-task adaptation: the cause → edit table, the single-edit format with V1–V6, and the event log."},
+              "note": "D117 removed the offline learning loop. Stage B watches each step for stuck signals and names one cause; kept for the fixes: the cause → edit table, the single-edit format with V1–V6, and the event log."},
     "around": {"h": 210, "label": "Around every box", "heading": "AROUND EVERY BOX",
                "note": "The model router picks the model for every AI call; the niche profile sets what every run may use."},
 }
@@ -43,7 +43,7 @@ L = {  # id: (x, y, w, h)
     "ov_adapt": (30, 410, 1130, 170),
     "ov_around": (30, 620, 1130, 104),
     "diag_edits": (30, 70, 350, 170), "arch_check": (420, 70, 330, 170), "recipe": (790, 70, 370, 200),
-    "evidence": (30, 280, 720, 130),
+    "evidence": (30, 280, 720, 130), "stuck": (790, 290, 370, 130),
     "router": (30, 70, 550, 110), "niche": (610, 70, 550, 110),
     "toy_source": (30, 60, 240, 130), "free_text": (30, 210, 240, 100), "task_record": (370, 105, 230, 120),
     "handoff": (670, 115, 210, 100), "scoring": (930, 95, 230, 140),
@@ -82,6 +82,7 @@ EDGES = [  # (view, from, to, path, label, data key, label x, label y)
     ("overview", "ov_leave", "ov_adapt", "M115 341 V410", "run logs, results, errors", "RunResult", 205, 370),
     ("adapt", "diag_edits", "arch_check", "M380 155 H420", "", "Edit", 0, 0),
     ("adapt", "recipe", "arch_check", "M790 155 H750", "", "Recipe", 0, 0),
+    ("adapt", "stuck", "evidence", "M790 355 H750", "", "Episode", 0, 0),
     ("task", "toy_source", "task_record", "M270 125 H320 V150 H370", "has an answer", "Task", 276, 117),
     ("task", "free_text", "task_record", "M270 260 H320 V185 H370", "no answer", "FreeTask", 276, 280),
     ("task", "task_record", "handoff", "M600 165 H670", "Task", "Task", 622, 157),

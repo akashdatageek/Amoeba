@@ -97,10 +97,12 @@ BOXES: list[dict] = [
          proposes="Nothing.", disposes="Plain code writes the files, even when drafting fails.",
          anchors=["scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="ov_adapt", view="overview", title="4 · Adapt within the task", kind="top", opens="adapt", plan=None,
-         sentence="D117: the offline learning loop is gone; adaptation will happen inside one task, when a Box 3 step gets stuck.",
+         sentence="D117: the offline learning loop is gone; adaptation happens inside one task, when a Box 3 step gets stuck.",
          what=[
-               "Kept for it: the step contract's causes, the cause → edit table, the single-edit format with V1–V6, "
-               "and the hash-chained event log.",
+               "Stage B (built): after each step attempt plain code looks for five stuck signals, marks the step "
+               "STUCK, diagnoses one cause and logs it; nothing is fixed yet.",
+               "Kept for the fixes: the cause → edit table, the single-edit format with V1–V6, and the hash-chained "
+               "event log.",
                "Nothing carries over between tasks."],
          proposes="See inside.",
          disposes="See inside.",
@@ -775,13 +777,28 @@ BOXES: list[dict] = [
          anchors=[]),
     dict(id="diag_edits", view="adapt", title="Cause → allowed edits (kept from D86)", kind="data", plan=None,
          sentence="Which edits may answer which cause, from adapt.yaml.",
-         what=["capability, checks, max_turns, unused_tool, claimed_file_missing, feedback and honesty each have "
-               "their own allowed edits; a tie between causes is broken by the table order.",
+         what=["capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback and honesty "
+               "each have their own allowed edits; a tie between causes is broken by the table order.",
                "prefer_model is offered only when model edits are on (D98) and never for feedback.",
                "D117: the step contract's causes become stuck signals; this table limits what a fix may change."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code looks the cause up in the table.",
          anchors=[]),
+    dict(id="stuck", view="adapt", title="Stuck watch and diagnosis (D117 Stage B)", kind="code", plan=None,
+         sentence="After each step attempt plain code marks a step that did not end done STUCK on any of five signals and names one cause.",
+         what=[
+               "Signals: the same tool error twice in a row (digits masked); checks still failing after the retry "
+               "turn; max turns; a capability or skill lacked or requested and unfilled; a file owed and no file "
+               "change between attempts.",
+               "Each signal names a cause; the first cause in the table order wins, with its allowed edits and at "
+               "most eight evidence lines.",
+               "The event goes to the trace, step_N.json, result.json (stuck) and the run's hash-chained "
+               "events.jsonl. --adapt on is the command-line default.",
+               "scripts/stuck_report.py runs the same functions over stored run folders, offline."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code marks the step and logs the diagnosis; no fix is made yet.",
+         anchors=["amoeba/adapt/stuck.py::step_signals", "amoeba/adapt/stuck.py::diagnose",
+                  "amoeba/interp/plan_runner.py::PlanRunner.watch"], guard_anchors=[]),
     dict(id="arch_check", view="adapt", title="Single-edit format and check (kept from D87)", kind="code", plan=None,
          sentence="One proposed change is one strict JSON object; plain code parses it and checks it is allowed, valid and new.",
          what=[

@@ -48,7 +48,7 @@ from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
-PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status"}           # left out of result.json when None (Phase 1 records unchanged)
+PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck"}           # left out of result.json when None (Phase 1 records unchanged)
 
 
 # box: ov_leave, capreq, runresult
@@ -277,7 +277,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         interpretation=interpretation_of(interp, stated),
         pool=pool_summary, disabled_tools=list(disabled_tools) or None, family=family_rec,
         routing=llm.summary() if hasattr(llm, "summary") and hasattr(llm, "registry") else None,
-        status=run_status(error), deliverables=deliverables, requirement_status=requirement_status, **local_out)
+        status=run_status(error), deliverables=deliverables, requirement_status=requirement_status,
+        stuck=ep.stuck if ep and topology == "plan" and getattr(plan_options, "adapt", "off") == "on" else None,
+        **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
@@ -454,7 +456,7 @@ def cli_plan_options(args: argparse.Namespace):
                        replan_method=getattr(args, "replan_method", "off"), dated=getattr(args, "dated_figures", "off"),
                        cite_arithmetic=getattr(args, "cite_arithmetic", "off"),
                        final_check=getattr(args, "deliverable_check", "off"),
-                       xlsx_formulas=getattr(args, "xlsx_formulas", "off"), **extra)
+                       xlsx_formulas=getattr(args, "xlsx_formulas", "off"), adapt=getattr(args, "adapt", "off"), **extra)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -676,6 +678,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "outputs' figures by label (5%% tolerance); a disagreement earns the producers one rework turn "
                         "with both values shown, and one still there makes the step partial and goes into the "
                         "answer's Limitations; a PASS never overrides it (D109)")
+    p.add_argument("--adapt", choices=["on", "off"], default="on",
+                   help="plan: in-task adaptation (D117). Stage B: after each step attempt plain code marks the step "
+                        "STUCK on a stuck signal (the same error twice, checks failing after the retry, max turns, an "
+                        "unfilled capability, no file change), diagnoses one cause and logs it to the trace, "
+                        "step_N.json, result.json and events.jsonl; no fix yet")
     p.add_argument("--replan", choices=["on", "off"], default="off",
                    help="plan: the Action Observer (D63) — after a wave in which a step lacked a capability, a verify "
                         "step still failed, a step reported a missing input or the team got a tool the plan never "

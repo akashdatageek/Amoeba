@@ -100,6 +100,7 @@ class Episode(BaseModel):
     figure_ledger: dict[str, dict] = Field(default_factory=dict)        # D43: figure -> first status and step
     replan: dict = Field(default_factory=dict)   # D63 --replan on: observer calls, decisions, requirement status
     final_check: dict = Field(default_factory=dict)   # D105 + D110: the final-answer requirement check
+    stuck: list[dict] = Field(default_factory=list)   # D117 --adapt on: every stuck step event (cause, evidence)
 
 
 class Answer(BaseModel):
@@ -353,5 +354,6 @@ class RunResult(BaseModel):
     family: dict | None = None   # D101: the family assigned to a free-text task and how ({family, how, keywords})
     deliverables: dict | None = None   # D105 (plan, --deliverable-check on): answer content and promised files
     requirement_status: dict | None = None   # D105 (amended): each Box 2 requirement as checked on the FINAL answer
+    stuck: list[dict] | None = None   # D117 --adapt on: each stuck step event (cause, signals, evidence)
     status: str | None = None    # D111: ok | infra_error | agent_error (D105: no_deliverable); run_status
     routing: dict | None = None  # D97: the router's per-model calls, tokens and USD, and its decision counts

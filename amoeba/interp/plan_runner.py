@@ -14,6 +14,8 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 
+from amoeba.adapt.evidence import EvidenceLog
+from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, step_signals
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
@@ -96,6 +98,11 @@ class PlanOptions:
     # not typed numbers (amoeba/checks/xlsx_formulas.py); a typed one fails the check. The CLI default is on; this
     # library default keeps the earlier behaviour.
     xlsx_formulas: str = "off"
+    # D117 Stage B: on = after each step attempt plain code looks for the stuck signals (amoeba/adapt/stuck.py); a
+    # step that did not end done with a signal is STUCK: one cause is diagnosed from adapt.yaml, the event goes to the
+    # trace, step_N.json and the run's hash-chained events.jsonl. Nothing is fixed yet. The CLI default is on; this
+    # library default keeps the earlier behaviour.
+    adapt: str = "off"
     max_replans: int = 2             # D63: observer calls per run
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
     domain_checks: tuple = ()        # D102: the niche profile's checks (amoeba/checks/<name>.py) after each step
@@ -593,6 +600,7 @@ class PlanRunner:
         self.undated: list[dict] = []                     # D110: web-sourced figures of the answer without a date
         self.final: dict = {}                             # D105 + D110: the final-answer requirement check
         self.max_num = max((number(s) for s in cfg.plan), default=0)
+        self.stuck: list[dict] = []                       # D117: every stuck event of this run, in order
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
     # box: step_check
@@ -948,6 +956,7 @@ class PlanRunner:
     def run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None = None,
                  reverify: dict | None = None, rerun: dict | None = None) -> dict:
         n = number(step)
+        previous = (self.artifacts.get(n) or {}).get("meta")                     # D117: the attempt before, if any
         agents = [self.agents[a] for a in step.agent_ids]
         summarising = self.is_summary_step(step)                                  # D35
         verifier = self.is_verification(step) and not summarising
@@ -1027,6 +1036,7 @@ class PlanRunner:
         final = answer_step and (self.opt.final_check == "on" or self.opt.dated == "on")
         if final and (missing := final_findings(self.final_answer_check(text))):  # D105 + D110: earns the refine turn
             items = items + missing
+        files_before = file_sig(self.files_of(n))                                  # D117: across the refine turn
         refine = self.refine(step, n, agents, inputs, extra, w, template, checks, prov, items)   # D42 / D50 / D61
         if refine:
             exact = computed_values(self.computed_results(w))
@@ -1190,6 +1200,8 @@ class PlanRunner:
                                               "cited_figures_left_out": [g["figure"] for g in produced["figures"]]})
         if self.opt.domain_checks:                    # D102: the run's calc results, for later domain checks
             meta["computed"] = self.computed_results(w)
+        if self.opt.adapt == "on":                    # D117 Stage B: watch and diagnose, no fix yet
+            self.watch(n, meta, previous, file_sig(self.files_of(n)) == files_before if refine else None)
         self._save(n, wave, text, meta, prov)
         if verifier and meta["verdict"] == "FAIL" and not reverify:
             reworked = self.rework_producers(n, deps, meta["issues"])
@@ -1683,6 +1695,28 @@ class PlanRunner:
             return next(iter(written.values()), "") or w.last_message
         return "\n\n".join(f"### {a.name}\n{written[a.agent_id]}" for a in agents
                            if a.agent_id in written) or w.last_message
+
+    # box: stuck
+    def watch(self, n: int, meta: dict, previous: dict | None, files_unchanged: bool | None) -> dict | None:
+        """D117 Stage B: the stuck watch after one step attempt. A stuck step gets `meta["stuck"]` (cause, signals,
+        allowed edits, evidence lines), a `stuck` trace event and a row in the run's hash-chained events.jsonl."""
+        roles = set(meta.get("roles") or [])
+        unfilled = [q for q in self.cfg.meta.get("capability_requests", []) if q.get("status") == "unfilled"]
+        unfilled += [{**q.model_dump(), "status": "unfilled", "reason": "raised_during_run"}
+                     for q in self.ep.requested_capabilities if q.for_role in roles and self.pool is not None]
+        signals = step_signals(meta, previous=previous, unfilled=unfilled, files_unchanged=files_unchanged)
+        if not is_stuck(meta, signals):
+            return None
+        d = {"step": n, "attempt": len([s for s in self.stuck if s["step"] == n]) + 1, **diagnose(signals)}
+        meta["stuck"] = d
+        self.stuck.append(d)
+        self.ep.stuck = list(self.stuck)
+        self.i.trace.event("stuck", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.signals": d["signals"],
+                                     "amoeba.allowed_edits": d["allowed_edits"], "amoeba.evidence": d["evidence"]})
+        if self.run_dir is not None:
+            EvidenceLog(self.run_dir).append("stuck", {k: d[k] for k in ("step", "attempt", "cause", "signals",
+                                                                        "evidence")})
+        return d
 
     # box: artifacts
     def _save(self, n: int, wave: int, text: str, meta: dict, prov: dict) -> None:

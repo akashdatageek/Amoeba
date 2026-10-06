@@ -125,7 +125,23 @@ diagnosis in plain code; (C) code fixes, cheapest first; (D) a small fix-propose
   V1–V6 (`amoeba/adapt/recipe.py`);
 - the hash-chained event log and the evidence branch (`amoeba/adapt/evidence.py`, below).
 
-**Who decides.** Code. No AI in Stage A.
+**Stage B: the stuck watch (built).** After each step attempt, with `--adapt on` (the command-line default),
+`PlanRunner.watch` reads what the step recorded and looks for five signals (`amoeba/adapt/stuck.py`):
+
+| Signal | When | Cause |
+|---|---|---|
+| repeated_error | two failed tool calls in a row, same tool, same error once digits are masked | tool_error |
+| checks_after_retry | a check still fails at the end of the step (after its retry turn) | checks |
+| max_turns | the helpers ran out of turns before a Final Output | max_turns |
+| capability_unfilled | a capability was BLOCKED or not declared, or a request for one of the step's roles stayed unfilled | capability |
+| no_file_change | the step owes a file and its files did not change across the refine turn or between attempts | claimed_file_missing |
+
+A step is STUCK when it did not end `done` and a signal holds. One cause is picked by the order of
+`diagnoser.causes`, with that cause's allowed edits and at most eight evidence lines. The event is written to
+`step_N.json` (`stuck`), the trace (`stuck`), `result.json` (`stuck`) and the run's hash-chained `events.jsonl`.
+Nothing is fixed yet. `scripts/stuck_report.py` runs the same functions over stored run folders.
+
+**Who decides.** Code. No AI in Stages A and B.
 
 ## Model router (D97)
 

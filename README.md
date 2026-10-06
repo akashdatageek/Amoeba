@@ -420,7 +420,17 @@ run's own logs, results and errors so the task can still finish. Nothing carries
 Kept for it: the step contract's causes (they become stuck signals), the cause → allowed-edit table
 (`amoeba/config/adapt.yaml`), the single-edit JSON format with the V1–V6 checks (`amoeba/adapt/architect.py`,
 `amoeba/adapt/recipe.py`) and the hash-chained event log with its evidence branch (`amoeba/adapt/evidence.py`).
-The stuck watch, code fixes and the fix-proposer agent come in the next stages.
+The code fixes and the fix-proposer agent come in the next stages.
+
+**Stage B: the stuck watch (built).** With `--adapt on` (the default from the command line) plain code looks at every
+plan step attempt for five stuck signals: the same tool error twice in a row, checks still failing after the retry
+turn, max turns reached, a capability or skill lacked or requested and unfilled, and a file owed with no file change
+between attempts. A step that did not end `done` with a signal is STUCK; one cause is picked by the order of
+`diagnoser.causes` in `amoeba/config/adapt.yaml` (a new cause, `tool_error`, sits after `capability`). The event (step,
+cause, signals, allowed edits, evidence lines) goes to the trace, `step_N.json`, `result.json` (`stuck`) and the run's
+hash-chained `events.jsonl`. Nothing is fixed yet. The same code counts stored runs, offline:
+
+    python -m scripts.stuck_report eval --json stuck_counts.json
 
 ## Ask before assuming (D116)
 
@@ -544,7 +554,7 @@ amoeba/
   safety/envelope.py       allowed_tools per role, max_agents
   pool/                    D56: index (refresh), match, stock (pick, vet, attach), mcp (pool tools)
   localtools/              D59: claude mcp serve (server), gate, skills, claims, toolbox (--local-tools on)
-  adapt/                   D117: edit menu + V1–V6 (recipe), single-edit format (architect), event log (evidence)
+  adapt/                   D117: stuck watch (stuck), edit menu + V1–V6 (recipe), single-edit format (architect), event log (evidence)
   cli.py                   D56: `amoeba pool refresh` / `python -m amoeba pool refresh`
 scripts/run_task.py        CLI
 scripts/list_models.py     D54: the models an endpoint offers (check a profile's names)
