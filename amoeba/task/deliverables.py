@@ -18,14 +18,15 @@ A promised file is one a step's `output` or a Box 2 requirement names (`income.c
 file", "an Excel workbook", "a PNG chart", "a Word memo"). A named file counts as made when the workspace holds a file
 of that name, or else one of the same kind; a kind counts when the workspace holds a file of that kind. Files are
 checked only with local tools on (without them no file can be made). The answer has content when, without headings,
-BLOCKED lines and the plain-code Limitations section, it keeps at least MIN_ANSWER_CHARS characters.
+BLOCKED lines and the plain-code Limitations section, it keeps at least MIN_ANSWER_CHARS characters (one: a bare value
+such as "734" is an answer when the task asks only for a value).
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-MIN_ANSWER_CHARS = 80
+MIN_ANSWER_CHARS = 1           # was 80: it marked a correct one-word answer no_deliverable
 KINDS = {"csv": {"csv", "tsv"}, "xlsx": {"xlsx", "xlsm", "xls", "ods"}, "png": {"png", "jpg", "jpeg", "svg"},
          "docx": {"docx", "doc", "odt"}, "pdf": {"pdf"}, "pptx": {"pptx", "odp"}, "json": {"json"},
          "html": {"html", "htm"}}

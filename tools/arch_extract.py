@@ -698,7 +698,7 @@ BOXES: list[dict] = [
                "Temperature is set once for the connection, not per helper.",
                "Every call from every box goes through here, wrapped so it is logged.",
                "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
-               "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error or no_deliverable."],
+               "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error, no_deliverable or needs_clarification."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
@@ -746,7 +746,7 @@ BOXES: list[dict] = [
          anchors=[]),
     dict(id="router", view="around", title="Model router (D97–D98)", kind="code", plan=None,
          sentence="Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters "
-                  "that are never relaxed, then the recipe's or the role's preference or the cheapest of the right size.",
+                  "that are never relaxed, then a preference set for the role (D98, built, off), the role's default or the cheapest of the right size.",
          what=["Every call states its role, step, size, needed features and data class; the router keeps the models "
                "that are allowed (niche profile, --allowed-models) and available (key present, not cooling down, not "
                "failing), drops those whose context, features, privacy, budget or verifier-independence rule fails, "
@@ -755,7 +755,7 @@ BOXES: list[dict] = [
                "a 429 cools a model down and the next one of the same size is used (with one model: wait).",
                "Every decision — candidates, what was filtered and why, the choice, fallbacks and waits — is logged; "
                "result.json gets calls, tokens and US dollars per model. A new model is a registry entry only.",
-               "D98: a recipe's prefer_model edit (built, off) fills the router's per-role preference; it is used only when that model is still a candidate after every filter, and a verifier preference for the checked work's family is logged as verifier_same_family: recipe preference.",
+               "D98: a prefer_model edit (built, off) fills the router's per-role preference; it is used only when that model is still a candidate after every filter, and a verifier preference for the checked work's family is logged as verifier_same_family: recipe preference.",
                "D102: the niche profile's model allowlist and verifier-independence setting feed the router; a model outside the profile is filtered out with reason profile."],
          proposes="Nothing: no AI takes part in the decision.",
          disposes="Plain code picks the model; no call is made when no model passes the filters (no_model).",

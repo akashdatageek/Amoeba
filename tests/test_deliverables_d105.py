@@ -140,3 +140,11 @@ def test_the_requirement_status_is_the_final_answer_result_not_the_steps_claims(
     req = res["replan"]["requirements"]
     assert req["R1"]["status"] == "not met" and req["R1"]["steps_claim"] == "met" and req["R1"]["final_answer"] == "missing"
     assert req["R2"]["status"] == "met"
+
+
+def test_a_bare_value_is_an_answer():
+    """A task that asks only for a value gets a bare value; that is content, not no_deliverable (was 80 characters)."""
+    from amoeba.task.deliverables import answer_content, final_check
+    assert answer_content("734") == 3
+    assert final_check("734", {}, {}, None)["core_missing"] == []
+    assert final_check("## Limitations\n- BLOCKED: web_search", {}, {}, None)["core_missing"] == ["no answer content"]
