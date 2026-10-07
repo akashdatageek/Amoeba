@@ -817,8 +817,10 @@ BOXES: list[dict] = [
                "Rung 1: more turns (tool_error, max_turns), more retry turns then a larger input (checks).",
                "Rung 2: the missing tool or skill from the pool shortlist, first vetted candidate not given before "
                "(no AI pick); with the pool and local tools off it is skipped: \"capability fix unavailable: pool off\".",
-               "Limits from adapt.yaml (adapt): three fixes per step, eight per task, a token "
-               "and dollar cap; a fix is never repeated. When none recovers the step the task stops: "
+               "When no code fix is left for the step (used up, not allowed for the cause, or skipped), the fix "
+               "proposer (Stage D) is the next and last rung.",
+               "Limits from adapt.yaml (adapt): three fixes per step and eight per task, the proposer's included, a "
+               "token and dollar cap; a fix is never repeated. When nothing recovers the step the task stops: "
                "adapt_report.md says what was stuck, the cause, each fix and why it failed."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code picks, applies and judges each fix (success: the step ends done).",
