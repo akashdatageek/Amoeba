@@ -1,11 +1,11 @@
 {
  "generated_by": "tools/arch_extract.py",
- "generated_at": "2026-10-06 20:39 UTC",
+ "generated_at": "2026-10-06 20:52 UTC",
  "repo": {
-  "commit": "140688f15aa21a56a9e9b4381dd46a9bf25c914f",
-  "short": "140688f",
+  "commit": "8c499144bc4c2f894cec0df76e44bc5c51dd5c94",
+  "short": "8c49914",
   "branch": "v1-dev",
-  "commit_date": "2026-10-06T20:37:54+00:00",
+  "commit_date": "2026-10-06T20:51:15+00:00",
   "dirty": false,
   "dirty_scope": "amoeba/ scripts/ tests/ spec/"
  },
@@ -693,6 +693,21 @@
    "imports": [
     "amoeba.interp.trace",
     "amoeba.tools.web"
+   ],
+   "kind": "script"
+  },
+  {
+   "path": "scripts/stage_e.py",
+   "doc": "D117 Stage E — the pair runner: the same task and seed with --adapt off, then --adapt on.",
+   "imports": [],
+   "kind": "script"
+  },
+  {
+   "path": "scripts/stage_e_report.py",
+   "doc": "D117 Stage E — the report of a pair-runner folder (scripts/stage_e.py): --adapt off vs on, per run and per arm.",
+   "imports": [
+    "amoeba.task.models",
+    "scripts.stuck_report"
    ],
    "kind": "script"
   },
@@ -10525,7 +10540,8 @@
     "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
     "amoeba/interp/trace.py::TracedLLM.chat_messages",
     "amoeba/localtools/toolbox.py::LocalToolbox.call",
-    "amoeba/pool/mcp.py::PoolTools.call"
+    "amoeba/pool/mcp.py::PoolTools.call",
+    "scripts/stage_e.py::run_pairs"
    ],
    "callees": [
     "amoeba/config/prompts/__init__.py::render",
@@ -13047,7 +13063,8 @@
    "doc": "D111: ok | infra_error | agent_error, from a run's error (D105 adds no_deliverable at the end of a plan run,",
    "callers": [
     "amoeba/task/models.py::infra_error",
-    "scripts/run_task.py::run_one"
+    "scripts/run_task.py::run_one",
+    "scripts/stage_e_report.py::run_record"
    ],
    "callees": []
   },
@@ -13749,6 +13766,8 @@
     "scripts/list_models.py::main",
     "scripts/run_task.py::main",
     "scripts/run_task.py::parse_args",
+    "scripts/stage_e.py::main",
+    "scripts/stage_e_report.py::main",
     "scripts/stuck_report.py::main",
     "scripts/verify_evidence.py::main"
    ],
@@ -13874,6 +13893,146 @@
    ]
   },
   {
+   "key": "scripts/stage_e.py::arm_command",
+   "kind": "function",
+   "name": "arm_command",
+   "path": "scripts/stage_e.py",
+   "line": 46,
+   "end_line": 52,
+   "signature": "arm_command(arm: str, task_file: Path, seed: int, runs: Path, picks: Path, off_run: Path | None, passthrough: list[str], python: str=sys.executable) -> list[str]",
+   "doc": "",
+   "callers": [
+    "scripts/stage_e.py::run_pairs"
+   ],
+   "callees": []
+  },
+  {
+   "key": "scripts/stage_e.py::one_task_file",
+   "kind": "function",
+   "name": "one_task_file",
+   "path": "scripts/stage_e.py",
+   "line": 26,
+   "end_line": 35,
+   "signature": "one_task_file(tasks: Path, task_id: str, out: Path) -> Path",
+   "doc": "A tasks file holding only `task_id` (run_task runs every task of its --tasks file).",
+   "callers": [
+    "scripts/stage_e.py::run_pairs"
+   ],
+   "callees": [
+    "amoeba/llm/cache.py::_Store.get",
+    "amoeba/pool/stock.py::SharedPicks.get"
+   ]
+  },
+  {
+   "key": "scripts/stage_e.py::run_dir_of",
+   "kind": "function",
+   "name": "run_dir_of",
+   "path": "scripts/stage_e.py",
+   "line": 39,
+   "end_line": 42,
+   "signature": "run_dir_of(runs: Path) -> Path | None",
+   "doc": "The one run folder an arm wrote (the newest with a result.json).",
+   "callers": [
+    "scripts/stage_e.py::run_pairs"
+   ],
+   "callees": []
+  },
+  {
+   "key": "scripts/stage_e.py::run_pairs",
+   "kind": "function",
+   "name": "run_pairs",
+   "path": "scripts/stage_e.py",
+   "line": 56,
+   "end_line": 90,
+   "signature": "run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthrough: list[str], python: str=sys.executable) -> list[dict]",
+   "doc": "",
+   "callers": [
+    "scripts/stage_e.py::main"
+   ],
+   "callees": [
+    "amoeba/adapt/evidence.py::EvidenceLog.append",
+    "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+    "amoeba/llm/router.py::ModelRouter.call",
+    "amoeba/localtools/server.py::StdioServer.call",
+    "amoeba/localtools/toolbox.py::LocalToolbox.call",
+    "amoeba/pool/mcp.py::Connector.call",
+    "amoeba/pool/mcp.py::PoolTools.call",
+    "amoeba/pool/mcp.py::SdkConnector.call",
+    "scripts/stage_e.py::arm_command",
+    "scripts/stage_e.py::one_task_file",
+    "scripts/stage_e.py::run_dir_of"
+   ]
+  },
+  {
+   "key": "scripts/stage_e_report.py::report",
+   "kind": "function",
+   "name": "report",
+   "path": "scripts/stage_e_report.py",
+   "line": 152,
+   "end_line": 185,
+   "signature": "report(folder: Path, seed: int=117) -> tuple[str, dict]",
+   "doc": "",
+   "callers": [
+    "scripts/stage_e_report.py::main",
+    "scripts/stuck_report.py::main"
+   ],
+   "callees": [
+    "amoeba/adapt/evidence.py::EvidenceLog.append",
+    "amoeba/llm/cache.py::_Store.get",
+    "amoeba/pool/stock.py::SharedPicks.get",
+    "scripts/stage_e_report.py::_sum",
+    "scripts/stage_e_report.py::run_record",
+    "scripts/stage_e_report.py::samples"
+   ]
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "kind": "function",
+   "name": "run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 58,
+   "end_line": 115,
+   "signature": "run_record(row: dict) -> dict",
+   "doc": "One arm's run, measured.",
+   "callers": [
+    "scripts/stage_e_report.py::report"
+   ],
+   "callees": [
+    "amoeba/adapt/evidence.py::EvidenceLog.append",
+    "amoeba/llm/cache.py::_Store.get",
+    "amoeba/pool/stock.py::SharedPicks.get",
+    "amoeba/task/models.py::run_status",
+    "amoeba/task/saved_drafts.py::_load",
+    "scripts/stage_e_report.py::_final_metas",
+    "scripts/stage_e_report.py::_load",
+    "scripts/stage_e_report.py::_trace",
+    "scripts/stuck_report.py::_load",
+    "scripts/stuck_report.py::run_stuck"
+   ]
+  },
+  {
+   "key": "scripts/stage_e_report.py::samples",
+   "kind": "function",
+   "name": "samples",
+   "path": "scripts/stage_e_report.py",
+   "line": 119,
+   "end_line": 137,
+   "signature": "samples(rows: list[dict], records: list[dict], k: int=3, seed: int=117) -> list[dict]",
+   "doc": "k recovered steps of the on arm picked at random (seeded), each with its trace lines and its output before",
+   "callers": [
+    "scripts/stage_e_report.py::report"
+   ],
+   "callees": [
+    "amoeba/adapt/evidence.py::EvidenceLog.append",
+    "amoeba/llm/cache.py::_Store.get",
+    "amoeba/pool/stock.py::SharedPicks.get",
+    "amoeba/task/saved_drafts.py::_load",
+    "scripts/stage_e_report.py::_load",
+    "scripts/stage_e_report.py::_trace",
+    "scripts/stuck_report.py::_load"
+   ]
+  },
+  {
    "key": "scripts/stuck_report.py::_load",
    "kind": "function",
    "name": "_load",
@@ -13884,6 +14043,9 @@
    "doc": "",
    "callers": [
     "amoeba/task/saved_drafts.py::load_saved_drafts",
+    "scripts/stage_e_report.py::_final_metas",
+    "scripts/stage_e_report.py::run_record",
+    "scripts/stage_e_report.py::samples",
     "scripts/stuck_report.py::run_stuck"
    ],
    "callees": []
@@ -13915,6 +14077,7 @@
    "callees": [
     "scripts/eval_draft.py::parse_args",
     "scripts/run_task.py::parse_args",
+    "scripts/stage_e_report.py::report",
     "scripts/stuck_report.py::_row",
     "scripts/stuck_report.py::report"
    ]
@@ -13929,6 +14092,7 @@
    "signature": "report(roots: list[str]) -> dict",
    "doc": "Counts per run set and in total.",
    "callers": [
+    "scripts/stage_e_report.py::main",
     "scripts/stuck_report.py::main"
    ],
    "callees": [
@@ -13963,6 +14127,7 @@
    "signature": "run_stuck(run: Path) -> list[dict]",
    "doc": "One record per step attempt of a stored run: {step, attempt, status, stuck, cause, signals, evidence,",
    "callers": [
+    "scripts/stage_e_report.py::run_record",
     "scripts/stuck_report.py::report"
    ],
    "callees": [
@@ -13974,6 +14139,7 @@
     "amoeba/llm/cache.py::_Store.get",
     "amoeba/pool/stock.py::SharedPicks.get",
     "amoeba/task/saved_drafts.py::_load",
+    "scripts/stage_e_report.py::_load",
     "scripts/stuck_report.py::_load"
    ]
   },
@@ -15097,7 +15263,7 @@
    "name": "GENERIC",
    "path": "amoeba/adapt/fixes.py",
    "line": 26,
-   "value": "{'the', 'missing', 'step', 'earlier', 'from', 'files', 'provided', 'outputs', 'inputs', 'upstream', 'input', 'data', 'steps', 'output', 'result', 'results', 'previous', 'of', 'and', 'raw', 'for', 'file'}"
+   "value": "{'outputs', 'input', 'steps', 'provided', 'inputs', 'file', 'from', 'results', 'data', 'for', 'result', 'step', 'of', 'and', 'earlier', 'the', 'raw', 'files', 'previous', 'missing', 'upstream', 'output'}"
   },
   {
    "name": "POOL_OFF",
@@ -15239,7 +15405,7 @@
    "name": "STOP",
    "path": "amoeba/adapt/stuck.py",
    "line": 36,
-   "value": "{'the', 'this', 'in', 'a', 'as', 'an', 'one', 'from', 'by', 'two', 'per', 'that', 'or', 'list', 'of', 'and', 'to', 'three', 'its', 'their', 'with', 'each', 'all', 'for', 'on'}"
+   "value": "{'a', 'per', 'in', 'an', 'two', 'their', 'three', 'from', 'this', 'by', 'for', 'as', 'all', 'list', 'of', 'to', 'and', 'on', 'one', 'the', 'each', 'its', 'or', 'with', 'that'}"
   },
   {
    "name": "FILE_KINDS",
@@ -15482,7 +15648,7 @@
    "name": "STOP",
    "path": "amoeba/interp/disputes.py",
    "line": 26,
-   "value": "{'which', 'as', 'out', 'miles', 'by', 'figure', 'are', 'gives', 'found', 'estimated', 'new', 'month', 'dollars', 'of', 'show', 'my', 'our', 'has', 'should', 'it', 'got', 'yr', 'on', 'mi', 'shows', 'months', 'the', 'this', 'an', 'own', 'year', 'estimate', 'amount', 'dollar', 'says', 'result', 'x', 's', 'given', 'est', 'finds', 'to', 'and', 'usd', 'around', 'than', 'be', 'its', 'number', 'with', 'for', 'say', 'value', 'vs', 'g', 'years', 'equal', 'steps', 'we', 'is', 'will', 'give', 'have', 'equals', 'about', 'mile', 'find', 'step', 'in', 'a', 'would', 'kwh', 'from', 'per', 'come', 'approximately', 'that', 'us', 'approx', 'gets', 'results', 'or', 'e', 'comes', 'was', 'get', 'roughly', 'i', 'each', 'were', 'at'}"
+   "value": "{'mi', 'per', 'in', 'amount', 'around', 'this', 'months', 'should', 'result', 'of', 'estimated', 'and', 'be', 'show', 'give', 'says', 'e', 'approximately', 'it', 'about', 'or', 'new', 'steps', 'our', 'year', 'an', 'g', 'are', 'estimate', 'say', 'find', 'finds', 'as', 'number', 'yr', 'was', 'were', 'has', 'step', 'given', 'my', 'we', 'usd', 'the', 'got', 'its', 'mile', 'x', 'out', 'vs', 'at', 'approx', 'is', 'equals', 'results', 'gets', 'by', 'for', 'i', 'miles', 'will', 'years', 'dollars', 'roughly', 'that', 'a', 'come', 'comes', 'get', 'found', 'would', 'have', 'own', 'us', 'from', 'month', 'est', 'gives', 'dollar', 'which', 'to', 'shows', 's', 'on', 'figure', 'value', 'each', 'than', 'kwh', 'with', 'equal'}"
   },
   {
    "name": "MAX_AGE_DAYS",
@@ -15772,7 +15938,7 @@
    "name": "STOP",
    "path": "amoeba/interp/replan_method.py",
    "line": 28,
-   "value": "{'from', 'by', 'the', 'with', 'in', 'step', 'of', 'a', 'each', 'and', 'an', 'to', 'for', 'data', 'all', 'on'}"
+   "value": "{'a', 'from', 'all', 'the', 'step', 'data', 'of', 'to', 'each', 'in', 'by', 'for', 'an', 'and', 'with', 'on'}"
   },
   {
    "name": "WORKER_SECTIONS",
@@ -16036,7 +16202,7 @@
    "name": "PROFILE_KEYS",
    "path": "amoeba/llm/profiles.py",
    "line": 20,
-   "value": "{'reasoning_effort', 'roles', 'max_tokens', 'merge_system', 'model', 'base_url', 'api_key_env'}"
+   "value": "{'base_url', 'merge_system', 'reasoning_effort', 'roles', 'api_key_env', 'max_tokens', 'model'}"
   },
   {
    "name": "ROLE_KEYS",
@@ -16189,7 +16355,7 @@
    "name": "PROTECTED_PARTS",
    "path": "amoeba/localtools/gate.py",
    "line": 97,
-   "value": "{'managed-settings.json', 'sources', 'CLAUDE.md', '.claude', '.mcp.json', '.git', 'skills'}"
+   "value": "{'sources', '.claude', '.git', '.mcp.json', 'managed-settings.json', 'CLAUDE.md', 'skills'}"
   },
   {
    "name": "PROTECTED_COMMAND",
@@ -16262,7 +16428,7 @@
    "name": "READ_TOOLS",
    "path": "amoeba/localtools/toolbox.py",
    "line": 63,
-   "value": "{'Grep', 'Glob', 'Read'}"
+   "value": "{'Read', 'Grep', 'Glob'}"
   },
   {
    "name": "PLAIN_ARG",
@@ -16458,11 +16624,11 @@
    "line": 30,
    "value": {
     "csv": "{'tsv', 'csv'}",
-    "xlsx": "{'xls', 'xlsm', 'ods', 'xlsx'}",
-    "png": "{'svg', 'png', 'jpeg', 'jpg'}",
+    "xlsx": "{'xlsm', 'xls', 'ods', 'xlsx'}",
+    "png": "{'jpg', 'jpeg', 'svg', 'png'}",
     "docx": "{'doc', 'docx', 'odt'}",
     "pdf": "{'pdf'}",
-    "pptx": "{'odp', 'pptx'}",
+    "pptx": "{'pptx', 'odp'}",
     "json": "{'json'}",
     "html": "{'htm', 'html'}"
    }
@@ -16496,7 +16662,7 @@
    "name": "GENERIC",
    "path": "amoeba/task/deliverables.py",
    "line": 96,
-   "value": "{'plus', 'about', 'report', 'also', 'state', 'section', 'this', 'write', 'which', 'where', 'includes', 'what', 'from', 'every', 'include', 'final', 'must', 'provides', 'those', 'when', 'short', 'using', 'that', 'based', 'including', 'clear', 'user', 'provide', 'list', 'into', 'been', 'show', 'will', 'give', 'answer', 'these', 'should', 'their', 'task', 'summary', 'with', 'brief', 'each', 'have', 'shows'}"
+   "value": "{'into', 'report', 'also', 'been', 'includes', 'state', 'have', 'their', 'summary', 'from', 'this', 'these', 'based', 'must', 'brief', 'section', 'write', 'should', 'plus', 'those', 'short', 'using', 'list', 'which', 'final', 'including', 'shows', 'every', 'where', 'provide', 'clear', 'when', 'include', 'give', 'will', 'each', 'answer', 'provides', 'user', 'what', 'about', 'task', 'with', 'that', 'show'}"
   },
   {
    "name": "PLANNER_SECTIONS",
@@ -17020,7 +17186,7 @@
    "name": "STOP",
    "path": "amoeba/tools/research.py",
    "line": 48,
-   "value": "{'table', 'annual', 'about', 'the', 'nominal', 'from', 'year', 'average', 'years', 'data', 'official', 'real', 'and', 'over', 'tables', 'with', 'site', 'each', 'for'}"
+   "value": "{'official', 'year', 'nominal', 'from', 'data', 'annual', 'for', 'site', 'tables', 'real', 'average', 'and', 'the', 'each', 'years', 'table', 'about', 'with', 'over'}"
   },
   {
    "name": "WEB_TOOLS",
@@ -17091,13 +17257,13 @@
    "name": "LOCAL_FIELDS",
    "path": "scripts/run_task.py",
    "line": 50,
-   "value": "{'skills_attached', 'local_refusals', 'files_created', 'local_tool_calls'}"
+   "value": "{'local_tool_calls', 'local_refusals', 'skills_attached', 'files_created'}"
   },
   {
    "name": "PHASE2_FIELDS",
    "path": "scripts/run_task.py",
    "line": 51,
-   "value": "{'disabled_tools', 'stuck', 'deliverables', 'requirement_status', 'routing', 'adaptation'}"
+   "value": "{'routing', 'adaptation', 'requirement_status', 'stuck', 'deliverables', 'disabled_tools'}"
   },
   {
    "name": "CONTINUE",
@@ -17129,6 +17295,33 @@
     "max_input_chars",
     "max_summary_input_chars"
    ]
+  },
+  {
+   "name": "ARMS",
+   "path": "scripts/stage_e.py",
+   "line": 22,
+   "value": [
+    "off",
+    "on"
+   ]
+  },
+  {
+   "name": "FAILED",
+   "path": "scripts/stage_e_report.py",
+   "line": 23,
+   "value": "{'needs_clarification', 'no_deliverable', 'agent_error', 'infra_error'}"
+  },
+  {
+   "name": "CODE_RUNGS",
+   "path": "scripts/stage_e_report.py",
+   "line": 24,
+   "value": "{1, 2, 'input'}"
+  },
+  {
+   "name": "TRACE_NAMES",
+   "path": "scripts/stage_e_report.py",
+   "line": 25,
+   "value": "{'fix_try', 'claimed_file_missing', 'stuck', 'refine', 'fix_done', 'adapt_stop', 'input_truncated', 'proposer_reply', 'step_done', 'fix_skipped'}"
   },
   {
    "name": "ROOT",
@@ -34427,6 +34620,398 @@
    "effect": "choose value"
   },
   {
+   "key": "scripts/stage_e.py::one_task_file",
+   "path": "scripts/stage_e.py",
+   "line": 29,
+   "kind": "filter",
+   "code": "keep only if l.strip() and json.loads(l).get('id') == task_id",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e.py::one_task_file",
+   "path": "scripts/stage_e.py",
+   "line": 30,
+   "kind": "reject",
+   "code": "if line is None",
+   "effect": "raise SystemExit"
+  },
+  {
+   "key": "scripts/stage_e.py::run_dir_of",
+   "path": "scripts/stage_e.py",
+   "line": 41,
+   "kind": "filter",
+   "code": "keep only if (p / 'result.json').exists()",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e.py::run_dir_of",
+   "path": "scripts/stage_e.py",
+   "line": 42,
+   "kind": "fallback",
+   "code": "found[-1] if found else None",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e.py::arm_command",
+   "path": "scripts/stage_e.py",
+   "line": 50,
+   "kind": "decide",
+   "code": "if arm == 'on'",
+   "effect": "set cmd += ['--drafts-from', str(off_run)]"
+  },
+  {
+   "key": "scripts/stage_e.py::run_pairs",
+   "path": "scripts/stage_e.py",
+   "line": 68,
+   "kind": "decide",
+   "code": "if done is not None",
+   "effect": "set off_run = done if arm == 'off' else off_run"
+  },
+  {
+   "key": "scripts/stage_e.py::run_pairs",
+   "path": "scripts/stage_e.py",
+   "line": 69,
+   "kind": "fallback",
+   "code": "done if arm == 'off' else off_run",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e.py::run_pairs",
+   "path": "scripts/stage_e.py",
+   "line": 72,
+   "kind": "reject",
+   "code": "if arm == 'on' and off_run is None",
+   "effect": "skip (continue)"
+  },
+  {
+   "key": "scripts/stage_e.py::run_pairs",
+   "path": "scripts/stage_e.py",
+   "line": 81,
+   "kind": "fallback",
+   "code": "str(run) if run else None",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e.py::run_pairs",
+   "path": "scripts/stage_e.py",
+   "line": 88,
+   "kind": "decide",
+   "code": "if arm == 'off'",
+   "effect": "set off_run = run"
+  },
+  {
+   "key": "scripts/stage_e.py::main",
+   "path": "scripts/stage_e.py",
+   "line": 94,
+   "kind": "fallback",
+   "code": "sys.argv[1:] if argv is None else argv",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e.py::main",
+   "path": "scripts/stage_e.py",
+   "line": 95,
+   "kind": "fallback",
+   "code": "argv[argv.index('--') + 1:] if '--' in argv else []",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e.py::main",
+   "path": "scripts/stage_e.py",
+   "line": 96,
+   "kind": "fallback",
+   "code": "argv[:argv.index('--')] if '--' in argv else argv",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e.py::main",
+   "path": "scripts/stage_e.py",
+   "line": 104,
+   "kind": "reject",
+   "code": "if flag in passthrough",
+   "effect": "raise SystemExit"
+  },
+  {
+   "key": "scripts/stage_e_report.py::_load",
+   "path": "scripts/stage_e_report.py",
+   "line": 32,
+   "kind": "fallback",
+   "code": "except (OSError, ValueError)",
+   "effect": "return None"
+  },
+  {
+   "key": "scripts/stage_e_report.py::_final_metas",
+   "path": "scripts/stage_e_report.py",
+   "line": 39,
+   "kind": "decide",
+   "code": "if p.stem[len('step_'):].isdigit() and isinstance((m := _load(p)), dict)",
+   "effect": "set out[m.get('step')] = m"
+  },
+  {
+   "key": "scripts/stage_e_report.py::_trace",
+   "path": "scripts/stage_e_report.py",
+   "line": 50,
+   "kind": "fallback",
+   "code": "except ValueError",
+   "effect": "pass"
+  },
+  {
+   "key": "scripts/stage_e_report.py::_trace",
+   "path": "scripts/stage_e_report.py",
+   "line": 52,
+   "kind": "fallback",
+   "code": "except OSError",
+   "effect": "pass"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 60,
+   "kind": "fallback",
+   "code": "Path(row['run']) if row.get('run') else None",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 63,
+   "kind": "fallback",
+   "code": "_load(run / 'result.json') if run else None",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 64,
+   "kind": "stop",
+   "code": "if res is None",
+   "effect": "return rec"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 70,
+   "kind": "filter",
+   "code": "keep only if r.get('kind') == 'span' and r.get('name') == 'execute_tool'",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 74,
+   "kind": "decide",
+   "code": "if row['arm'] == 'on'",
+   "effect": "set events = res.get('stuck') or []"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 80,
+   "kind": "filter",
+   "code": "keep only if m.get('status') != 'done' and m.get('stuck')",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 88,
+   "kind": "filter",
+   "code": "keep only if r['stuck']",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 89,
+   "kind": "fallback",
+   "code": "'code: ' if f.get('rung') in CODE_RUNGS else 'proposer: '",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 90,
+   "kind": "filter",
+   "code": "keep only if f.get('result') == 'recovered'",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 91,
+   "kind": "filter",
+   "code": "keep only if f.get('result') == 'finished with limitation'",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 92,
+   "kind": "correct",
+   "code": "if row.get('rc') not in (0, None)",
+   "effect": "add f\"run_task exit code {row['rc']}\""
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 94,
+   "kind": "correct",
+   "code": "if res.get('error') and status not in ('stuck',)",
+   "effect": "add f\"error: {str(res['error'])[:200]}\""
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 96,
+   "kind": "decide",
+   "code": "if status in FAILED",
+   "effect": "set outcome = 'failed'"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 98,
+   "kind": "decide",
+   "code": "if status == 'stuck'",
+   "effect": "set outcome = 'stuck-stopped'"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 100,
+   "kind": "decide",
+   "code": "if unresolved or workarounds",
+   "effect": "set outcome = 'done with limitation'"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 107,
+   "kind": "filter",
+   "code": "keep only if f.get('result') == 'recovered'",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 109,
+   "kind": "fallback",
+   "code": "res.get('score') if res.get('rubric') else None",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 111,
+   "kind": "fallback",
+   "code": "ad.get('tokens', 0) if row['arm'] == 'on' else 0",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e_report.py::run_record",
+   "path": "scripts/stage_e_report.py",
+   "line": 112,
+   "kind": "fallback",
+   "code": "ad.get('cost_usd') if row['arm'] == 'on' else None",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e_report.py::samples",
+   "path": "scripts/stage_e_report.py",
+   "line": 122,
+   "kind": "filter",
+   "code": "keep only if r['arm'] == 'on' and r.get('run')",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::samples",
+   "path": "scripts/stage_e_report.py",
+   "line": 126,
+   "kind": "filter",
+   "code": "keep only if k2.startswith('amoeba.') and k2 != 'amoeba.box'",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::samples",
+   "path": "scripts/stage_e_report.py",
+   "line": 127,
+   "kind": "filter",
+   "code": "keep only if t.get('kind') == 'event' and t.get('name') in TRACE_NAMES and (t.get('amoeba.step') == n)",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::samples",
+   "path": "scripts/stage_e_report.py",
+   "line": 130,
+   "kind": "filter",
+   "code": "keep only if (art / f'step_{n}.{s}.md').exists()",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::samples",
+   "path": "scripts/stage_e_report.py",
+   "line": 132,
+   "kind": "filter",
+   "code": "keep only if f['step'] == n",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::samples",
+   "path": "scripts/stage_e_report.py",
+   "line": 134,
+   "kind": "fallback",
+   "code": "before.read_text(encoding='utf-8')[:700] if before else '(not kept)'",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e_report.py::samples",
+   "path": "scripts/stage_e_report.py",
+   "line": 135,
+   "kind": "fallback",
+   "code": "(art / f'step_{n}.md').read_text(encoding='utf-8')[:700] if (art / f'step_{n}.md').exists() else '(replaced by other steps)'",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e_report.py::_sum",
+   "path": "scripts/stage_e_report.py",
+   "line": 141,
+   "kind": "filter",
+   "code": "keep only if r['arm'] == arm",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::_sum",
+   "path": "scripts/stage_e_report.py",
+   "line": 148,
+   "kind": "filter",
+   "code": "keep only if r.get('rubric') is not None",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::report",
+   "path": "scripts/stage_e_report.py",
+   "line": 154,
+   "kind": "filter",
+   "code": "keep only if l.strip()",
+   "effect": "drop the rest"
+  },
+  {
+   "key": "scripts/stage_e_report.py::report",
+   "path": "scripts/stage_e_report.py",
+   "line": 168,
+   "kind": "fallback",
+   "code": "r.get('rubric') if r.get('rubric') is not None else '-'",
+   "effect": "choose value"
+  },
+  {
+   "key": "scripts/stage_e_report.py::report",
+   "path": "scripts/stage_e_report.py",
+   "line": 177,
+   "kind": "correct",
+   "code": "if not picks",
+   "effect": "add 'No step was recovered.'"
+  },
+  {
    "key": "scripts/stuck_report.py::run_folders",
    "path": "scripts/stuck_report.py",
    "line": 32,
@@ -34638,7 +35223,7 @@
   }
  },
  "tests": {
-  "summary": "717 passed, 9 skipped in 90.77s (0:01:30)",
+  "summary": "719 passed, 9 skipped in 94.60s (0:01:34)",
   "tests": {
    "tests/test_arch_text.py::test_tags_put_code_in_boxes": {
     "line": 34,
@@ -44486,6 +45071,8 @@
      "scripts/list_models.py::main",
      "scripts/run_task.py::main",
      "scripts/smoke_web.py::main",
+     "scripts/stage_e.py::main",
+     "scripts/stage_e_report.py::main",
      "scripts/stuck_report.py::main",
      "scripts/verify_evidence.py::main"
     ],
@@ -45195,6 +45782,17 @@
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::routing_mode",
      "scripts/run_task.py::run_one",
+     "scripts/stage_e.py::arm_command",
+     "scripts/stage_e.py::one_task_file",
+     "scripts/stage_e.py::run_dir_of",
+     "scripts/stage_e.py::run_pairs",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::report",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::_row",
      "scripts/stuck_report.py::report",
@@ -92790,6 +93388,8 @@
      "scripts/list_models.py::main",
      "scripts/run_task.py::main",
      "scripts/smoke_web.py::main",
+     "scripts/stage_e.py::main",
+     "scripts/stage_e_report.py::main",
      "scripts/stuck_report.py::main",
      "scripts/verify_evidence.py::main"
     ],
@@ -93501,6 +94101,17 @@
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::routing_mode",
      "scripts/run_task.py::run_one",
+     "scripts/stage_e.py::arm_command",
+     "scripts/stage_e.py::one_task_file",
+     "scripts/stage_e.py::run_dir_of",
+     "scripts/stage_e.py::run_pairs",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::report",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::_row",
      "scripts/stuck_report.py::report",
@@ -101432,6 +102043,8 @@
      "scripts/list_models.py::main",
      "scripts/run_task.py::main",
      "scripts/smoke_web.py::main",
+     "scripts/stage_e.py::main",
+     "scripts/stage_e_report.py::main",
      "scripts/stuck_report.py::main",
      "scripts/verify_evidence.py::main"
     ],
@@ -102141,6 +102754,17 @@
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::routing_mode",
      "scripts/run_task.py::run_one",
+     "scripts/stage_e.py::arm_command",
+     "scripts/stage_e.py::one_task_file",
+     "scripts/stage_e.py::run_dir_of",
+     "scripts/stage_e.py::run_pairs",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::report",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::_row",
      "scripts/stuck_report.py::report",
@@ -105571,6 +106195,8 @@
      "scripts/list_models.py::main",
      "scripts/run_task.py::main",
      "scripts/smoke_web.py::main",
+     "scripts/stage_e.py::main",
+     "scripts/stage_e_report.py::main",
      "scripts/stuck_report.py::main",
      "scripts/verify_evidence.py::main"
     ],
@@ -106281,6 +106907,17 @@
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::routing_mode",
      "scripts/run_task.py::run_one",
+     "scripts/stage_e.py::arm_command",
+     "scripts/stage_e.py::one_task_file",
+     "scripts/stage_e.py::run_dir_of",
+     "scripts/stage_e.py::run_pairs",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::report",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::_row",
      "scripts/stuck_report.py::report",
@@ -113093,6 +113730,7 @@
      "amoeba/task/models.py::Task",
      "amoeba/task/models.py::run_status",
      "amoeba/tools/registry.py::default_registry",
+     "scripts/stage_e_report.py::report",
      "scripts/stuck_report.py::report"
     ],
     "reached": [
@@ -113558,6 +114196,12 @@
      "scripts/eval_draft.py::Recording.route",
      "scripts/run_task.py::build_llm.make",
      "scripts/run_task.py::build_router_llm.make",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::run_folders",
      "scripts/stuck_report.py::run_stuck"
@@ -126272,6 +126916,8 @@
      "scripts/list_models.py::main",
      "scripts/run_task.py::main",
      "scripts/smoke_web.py::main",
+     "scripts/stage_e.py::main",
+     "scripts/stage_e_report.py::main",
      "scripts/stuck_report.py::main",
      "scripts/verify_evidence.py::main"
     ],
@@ -126984,6 +127630,17 @@
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::routing_mode",
      "scripts/run_task.py::run_one",
+     "scripts/stage_e.py::arm_command",
+     "scripts/stage_e.py::one_task_file",
+     "scripts/stage_e.py::run_dir_of",
+     "scripts/stage_e.py::run_pairs",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::report",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::_row",
      "scripts/stuck_report.py::report",
@@ -149456,6 +150113,8 @@
      "scripts/list_models.py::main",
      "scripts/run_task.py::main",
      "scripts/smoke_web.py::main",
+     "scripts/stage_e.py::main",
+     "scripts/stage_e_report.py::main",
      "scripts/stuck_report.py::main",
      "scripts/verify_evidence.py::main"
     ],
@@ -150168,6 +150827,17 @@
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::routing_mode",
      "scripts/run_task.py::run_one",
+     "scripts/stage_e.py::arm_command",
+     "scripts/stage_e.py::one_task_file",
+     "scripts/stage_e.py::run_dir_of",
+     "scripts/stage_e.py::run_pairs",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::report",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::_row",
      "scripts/stuck_report.py::report",
@@ -187107,6 +187777,8 @@
      "scripts/list_models.py::main",
      "scripts/run_task.py::main",
      "scripts/smoke_web.py::main",
+     "scripts/stage_e.py::main",
+     "scripts/stage_e_report.py::main",
      "scripts/stuck_report.py::main",
      "scripts/verify_evidence.py::main"
     ],
@@ -187819,6 +188491,17 @@
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::routing_mode",
      "scripts/run_task.py::run_one",
+     "scripts/stage_e.py::arm_command",
+     "scripts/stage_e.py::one_task_file",
+     "scripts/stage_e.py::run_dir_of",
+     "scripts/stage_e.py::run_pairs",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::report",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::_row",
      "scripts/stuck_report.py::report",
@@ -204662,6 +205345,8 @@
      "scripts/list_models.py::main",
      "scripts/run_task.py::main",
      "scripts/smoke_web.py::main",
+     "scripts/stage_e.py::main",
+     "scripts/stage_e_report.py::main",
      "scripts/stuck_report.py::main",
      "scripts/verify_evidence.py::main"
     ],
@@ -205373,6 +206058,17 @@
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::routing_mode",
      "scripts/run_task.py::run_one",
+     "scripts/stage_e.py::arm_command",
+     "scripts/stage_e.py::one_task_file",
+     "scripts/stage_e.py::run_dir_of",
+     "scripts/stage_e.py::run_pairs",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::report",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::_row",
      "scripts/stuck_report.py::report",
@@ -247110,6 +247806,7 @@
      "scripts/eval_draft.py::Recording.route",
      "scripts/run_task.py::build_llm.make",
      "scripts/run_task.py::build_router_llm.make",
+     "scripts/stage_e_report.py::_load",
      "scripts/stuck_report.py::_load"
     ],
     "prompts": []
@@ -247723,6 +248420,7 @@
      "scripts/run_task.py::models_of",
      "scripts/run_task.py::provenance_of",
      "scripts/run_task.py::refinement_of",
+     "scripts/stage_e_report.py::_load",
      "scripts/stuck_report.py::_load"
     ],
     "prompts": []
@@ -248336,6 +249034,7 @@
      "scripts/run_task.py::models_of",
      "scripts/run_task.py::provenance_of",
      "scripts/run_task.py::refinement_of",
+     "scripts/stage_e_report.py::_load",
      "scripts/stuck_report.py::_load"
     ],
     "prompts": []
@@ -248357,6 +249056,8 @@
      "scripts/list_models.py::main",
      "scripts/run_task.py::main",
      "scripts/smoke_web.py::main",
+     "scripts/stage_e.py::main",
+     "scripts/stage_e_report.py::main",
      "scripts/stuck_report.py::main",
      "scripts/verify_evidence.py::main"
     ],
@@ -249065,6 +249766,17 @@
      "scripts/run_task.py::refinement_of",
      "scripts/run_task.py::routing_mode",
      "scripts/run_task.py::run_one",
+     "scripts/stage_e.py::arm_command",
+     "scripts/stage_e.py::one_task_file",
+     "scripts/stage_e.py::run_dir_of",
+     "scripts/stage_e.py::run_pairs",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::report",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::_row",
      "scripts/stuck_report.py::report",
@@ -253371,6 +254083,511 @@
      "scripts/eval_draft.py::Recording.route",
      "scripts/run_task.py::build_llm.make",
      "scripts/run_task.py::build_router_llm.make"
+    ],
+    "prompts": []
+   },
+   "tests/test_stage_e_d117.py::test_the_on_arm_reuses_the_off_arm_and_only_adapt_differs": {
+    "line": 11,
+    "doc": "D117 Stage E — the pair runner and its report, offline: a toy task with the mock LLM, --adapt off then on (the on",
+    "outcome": "passed",
+    "direct": [
+     "scripts/stage_e.py::arm_command"
+    ],
+    "reached": [],
+    "prompts": []
+   },
+   "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports": {
+    "line": 22,
+    "doc": "D117 Stage E — the pair runner and its report, offline: a toy task with the mock LLM, --adapt off then on (the on",
+    "outcome": "passed",
+    "direct": [
+     "amoeba/adapt/evidence.py::EvidenceLog.rows",
+     "amoeba/config/prompts/__init__.py::resolve",
+     "amoeba/task/source.py::ToyTaskSource",
+     "amoeba/task/source.py::ToyTaskSource.tasks",
+     "scripts/stage_e.py::run_pairs",
+     "scripts/stage_e_report.py::report",
+     "scripts/stuck_report.py::report"
+    ],
+    "reached": [
+     "amoeba/adapt/architect.py::_allowed_ok",
+     "amoeba/adapt/architect.py::check",
+     "amoeba/adapt/evidence.py::EvidenceLog",
+     "amoeba/adapt/evidence.py::EvidenceLog._append",
+     "amoeba/adapt/evidence.py::EvidenceLog.append",
+     "amoeba/adapt/evidence.py::EvidenceLog.has",
+     "amoeba/adapt/evidence.py::EvidenceLog.lines",
+     "amoeba/adapt/evidence.py::GitShipper._copy",
+     "amoeba/adapt/evidence.py::GitShipper.ensure_worktree",
+     "amoeba/adapt/evidence.py::GitShipper.flush",
+     "amoeba/adapt/evidence.py::GitShipper.git",
+     "amoeba/adapt/evidence.py::Shipper.flush",
+     "amoeba/adapt/evidence.py::_file_sha",
+     "amoeba/adapt/evidence.py::chain_head",
+     "amoeba/adapt/evidence.py::gcs_uploader.upload",
+     "amoeba/adapt/evidence.py::key_scan",
+     "amoeba/adapt/evidence.py::manifest",
+     "amoeba/adapt/evidence.py::manifest_entries",
+     "amoeba/adapt/evidence.py::sha256_text",
+     "amoeba/adapt/fixes.py::_option",
+     "amoeba/adapt/fixes.py::_specific",
+     "amoeba/adapt/fixes.py::candidates",
+     "amoeba/adapt/fixes.py::fix_key",
+     "amoeba/adapt/fixes.py::holds",
+     "amoeba/adapt/fixes.py::limits",
+     "amoeba/adapt/proposer.py::FixEdit.key",
+     "amoeba/adapt/proposer.py::FixEdit.key.norm",
+     "amoeba/adapt/proposer.py::FixEdit.texts",
+     "amoeba/adapt/proposer.py::fix_problems",
+     "amoeba/adapt/proposer.py::parse_fix",
+     "amoeba/adapt/recipe.py::Edit.key",
+     "amoeba/adapt/recipe.py::Edit.texts",
+     "amoeba/adapt/recipe.py::Rule",
+     "amoeba/adapt/recipe.py::Transform",
+     "amoeba/adapt/recipe.py::Violation",
+     "amoeba/adapt/recipe.py::_adapt_config",
+     "amoeba/adapt/recipe.py::_next_id",
+     "amoeba/adapt/recipe.py::_texts",
+     "amoeba/adapt/recipe.py::adapt_config",
+     "amoeba/adapt/recipe.py::apply_edit",
+     "amoeba/adapt/recipe.py::apply_transforms",
+     "amoeba/adapt/recipe.py::plan_problems",
+     "amoeba/adapt/recipe.py::validate_recipe",
+     "amoeba/adapt/stuck.py::_words",
+     "amoeba/adapt/stuck.py::classify_lacked",
+     "amoeba/adapt/stuck.py::diagnose",
+     "amoeba/adapt/stuck.py::file_sig",
+     "amoeba/adapt/stuck.py::is_stuck",
+     "amoeba/adapt/stuck.py::norm_error",
+     "amoeba/adapt/stuck.py::owes_file",
+     "amoeba/adapt/stuck.py::repeated_errors",
+     "amoeba/adapt/stuck.py::step_signals",
+     "amoeba/capabilities/__init__.py::_table",
+     "amoeba/capabilities/__init__.py::normalise",
+     "amoeba/capabilities/__init__.py::snake",
+     "amoeba/checks/__init__.py::run_checks",
+     "amoeba/checks/calc.py::check",
+     "amoeba/checks/calc.py::figures",
+     "amoeba/checks/xlsx_formulas.py::_given",
+     "amoeba/checks/xlsx_formulas.py::_same",
+     "amoeba/checks/xlsx_formulas.py::check",
+     "amoeba/checks/xlsx_formulas.py::typed_derived_cells",
+     "amoeba/config/niche.py::tool_allowed",
+     "amoeba/config/prompts/__init__.py::render",
+     "amoeba/config/proxy.py::fresh_proxy",
+     "amoeba/config/proxy.py::refresh_proxy",
+     "amoeba/config/schema.py::PlanStep",
+     "amoeba/interp/citecheck.py::_has",
+     "amoeba/interp/citecheck.py::_identifier_in",
+     "amoeba/interp/citecheck.py::_time_match",
+     "amoeba/interp/citecheck.py::claims",
+     "amoeba/interp/citecheck.py::derived_tokens",
+     "amoeba/interp/citecheck.py::digits",
+     "amoeba/interp/citecheck.py::identifiers",
+     "amoeba/interp/citecheck.py::identifiers.take",
+     "amoeba/interp/citecheck.py::identifiers.take.sub",
+     "amoeba/interp/citecheck.py::mislabelled_citations",
+     "amoeba/interp/citecheck.py::norm",
+     "amoeba/interp/citecheck.py::numbers",
+     "amoeba/interp/citecheck.py::times_in",
+     "amoeba/interp/clock.py::run_clock",
+     "amoeba/interp/dates.py::_figures",
+     "amoeba/interp/dates.py::dated_finding",
+     "amoeba/interp/dates.py::undated_figures",
+     "amoeba/interp/disputes.py::_kind",
+     "amoeba/interp/disputes.py::_same_label",
+     "amoeba/interp/disputes.py::_value",
+     "amoeba/interp/disputes.py::agree",
+     "amoeba/interp/disputes.py::disputed_figures",
+     "amoeba/interp/disputes.py::disputes_text",
+     "amoeba/interp/disputes.py::labelled_figures",
+     "amoeba/interp/disputes.py::parse_resolution",
+     "amoeba/interp/disputes.py::replace_figure",
+     "amoeba/interp/disputes.py::settle",
+     "amoeba/interp/freshness.py::dates_in",
+     "amoeba/interp/freshness.py::stale_figure",
+     "amoeba/interp/freshness.py::time_sensitive",
+     "amoeba/interp/plan_runner.py::PlanGraphError",
+     "amoeba/interp/plan_runner.py::PlanRunner",
+     "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
+     "amoeba/interp/plan_runner.py::PlanRunner._d_live",
+     "amoeba/interp/plan_runner.py::PlanRunner._fix_done",
+     "amoeba/interp/plan_runner.py::PlanRunner._loop",
+     "amoeba/interp/plan_runner.py::PlanRunner._max_turns",
+     "amoeba/interp/plan_runner.py::PlanRunner._observer_call",
+     "amoeba/interp/plan_runner.py::PlanRunner._proposer_call",
+     "amoeba/interp/plan_runner.py::PlanRunner._review",
+     "amoeba/interp/plan_runner.py::PlanRunner._save",
+     "amoeba/interp/plan_runner.py::PlanRunner._sources",
+     "amoeba/interp/plan_runner.py::PlanRunner._split_change",
+     "amoeba/interp/plan_runner.py::PlanRunner._text",
+     "amoeba/interp/plan_runner.py::PlanRunner._turn",
+     "amoeba/interp/plan_runner.py::PlanRunner._write",
+     "amoeba/interp/plan_runner.py::PlanRunner.action_observer",
+     "amoeba/interp/plan_runner.py::PlanRunner.adapt_limitations",
+     "amoeba/interp/plan_runner.py::PlanRunner.adapt_report",
+     "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
+     "amoeba/interp/plan_runner.py::PlanRunner.adapt_usd",
+     "amoeba/interp/plan_runner.py::PlanRunner.add_agent",
+     "amoeba/interp/plan_runner.py::PlanRunner.add_files_section",
+     "amoeba/interp/plan_runner.py::PlanRunner.all_inputs_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.answer_findings",
+     "amoeba/interp/plan_runner.py::PlanRunner.answer_gaps",
+     "amoeba/interp/plan_runner.py::PlanRunner.apply_decision",
+     "amoeba/interp/plan_runner.py::PlanRunner.apply_fix",
+     "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
+     "amoeba/interp/plan_runner.py::PlanRunner.attach_missing",
+     "amoeba/interp/plan_runner.py::PlanRunner.blind_inputs_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.blocked_capabilities",
+     "amoeba/interp/plan_runner.py::PlanRunner.blocked_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.cap",
+     "amoeba/interp/plan_runner.py::PlanRunner.checkable",
+     "amoeba/interp/plan_runner.py::PlanRunner.citation_exempt",
+     "amoeba/interp/plan_runner.py::PlanRunner.computed_results",
+     "amoeba/interp/plan_runner.py::PlanRunner.contract",
+     "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
+     "amoeba/interp/plan_runner.py::PlanRunner.contract_findings",
+     "amoeba/interp/plan_runner.py::PlanRunner.critique",
+     "amoeba/interp/plan_runner.py::PlanRunner.deliverables_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.dependants",
+     "amoeba/interp/plan_runner.py::PlanRunner.domain_checks",
+     "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
+     "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations.named",
+     "amoeba/interp/plan_runner.py::PlanRunner.evidence_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.failed_steps",
+     "amoeba/interp/plan_runner.py::PlanRunner.files_of",
+     "amoeba/interp/plan_runner.py::PlanRunner.final_answer_check",
+     "amoeba/interp/plan_runner.py::PlanRunner.final_step",
+     "amoeba/interp/plan_runner.py::PlanRunner.finished_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.fix_ctx",
+     "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
+     "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+     "amoeba/interp/plan_runner.py::PlanRunner.held_items",
+     "amoeba/interp/plan_runner.py::PlanRunner.inputs_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
+     "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
+     "amoeba/interp/plan_runner.py::PlanRunner.keep_try",
+     "amoeba/interp/plan_runner.py::PlanRunner.ledger_update",
+     "amoeba/interp/plan_runner.py::PlanRunner.left_on_old_output",
+     "amoeba/interp/plan_runner.py::PlanRunner.log_event",
+     "amoeba/interp/plan_runner.py::PlanRunner.mark_stale",
+     "amoeba/interp/plan_runner.py::PlanRunner.own_result",
+     "amoeba/interp/plan_runner.py::PlanRunner.plan_items",
+     "amoeba/interp/plan_runner.py::PlanRunner.plan_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
+     "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
+     "amoeba/interp/plan_runner.py::PlanRunner.raw_results_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.refine",
+     "amoeba/interp/plan_runner.py::PlanRunner.replan_summary",
+     "amoeba/interp/plan_runner.py::PlanRunner.replan_triggers",
+     "amoeba/interp/plan_runner.py::PlanRunner.requirement_status",
+     "amoeba/interp/plan_runner.py::PlanRunner.resolve_disputes",
+     "amoeba/interp/plan_runner.py::PlanRunner.restock",
+     "amoeba/interp/plan_runner.py::PlanRunner.rework_producers",
+     "amoeba/interp/plan_runner.py::PlanRunner.roles_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.route_ids",
+     "amoeba/interp/plan_runner.py::PlanRunner.run",
+     "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+     "amoeba/interp/plan_runner.py::PlanRunner.same_method",
+     "amoeba/interp/plan_runner.py::PlanRunner.save_plan_version",
+     "amoeba/interp/plan_runner.py::PlanRunner.so",
+     "amoeba/interp/plan_runner.py::PlanRunner.source_texts",
+     "amoeba/interp/plan_runner.py::PlanRunner.stop_report",
+     "amoeba/interp/plan_runner.py::PlanRunner.summary_check",
+     "amoeba/interp/plan_runner.py::PlanRunner.tools_text",
+     "amoeba/interp/plan_runner.py::PlanRunner.unused_items",
+     "amoeba/interp/plan_runner.py::PlanRunner.upstream",
+     "amoeba/interp/plan_runner.py::PlanRunner.validate_decision",
+     "amoeba/interp/plan_runner.py::PlanRunner.verifier_tools",
+     "amoeba/interp/plan_runner.py::PlanRunner.watch",
+     "amoeba/interp/plan_runner.py::PlanRunner.web_ids",
+     "amoeba/interp/plan_runner.py::PlanRunner.write_adapt_report",
+     "amoeba/interp/plan_runner.py::PlanRunner.xlsx_checks",
+     "amoeba/interp/plan_runner.py::_Work",
+     "amoeba/interp/plan_runner.py::_format_check",
+     "amoeba/interp/plan_runner.py::_keyword_checks",
+     "amoeba/interp/plan_runner.py::_words",
+     "amoeba/interp/plan_runner.py::blocked_marks",
+     "amoeba/interp/plan_runner.py::cap_key",
+     "amoeba/interp/plan_runner.py::claim_terms",
+     "amoeba/interp/plan_runner.py::compare_figures",
+     "amoeba/interp/plan_runner.py::compare_figures.floats",
+     "amoeba/interp/plan_runner.py::conclusion_check",
+     "amoeba/interp/plan_runner.py::dependencies",
+     "amoeba/interp/plan_runner.py::excerpt",
+     "amoeba/interp/plan_runner.py::excerpt.hit",
+     "amoeba/interp/plan_runner.py::head_tail",
+     "amoeba/interp/plan_runner.py::missing_input_marks",
+     "amoeba/interp/plan_runner.py::names_match",
+     "amoeba/interp/plan_runner.py::no_conclusion",
+     "amoeba/interp/plan_runner.py::not_needed_marks",
+     "amoeba/interp/plan_runner.py::number",
+     "amoeba/interp/plan_runner.py::output_markers",
+     "amoeba/interp/plan_runner.py::parse_decision",
+     "amoeba/interp/plan_runner.py::parse_verdict_block",
+     "amoeba/interp/plan_runner.py::plan_card",
+     "amoeba/interp/plan_runner.py::refine_counts",
+     "amoeba/interp/plan_runner.py::refine_findings",
+     "amoeba/interp/plan_runner.py::relink",
+     "amoeba/interp/plan_runner.py::shares_words",
+     "amoeba/interp/plan_runner.py::step_checks",
+     "amoeba/interp/plan_runner.py::step_detail",
+     "amoeba/interp/plan_runner.py::step_field",
+     "amoeba/interp/plan_runner.py::strip_not_needed",
+     "amoeba/interp/plan_runner.py::tool_ok",
+     "amoeba/interp/plan_runner.py::uses_inputs",
+     "amoeba/interp/plan_runner.py::waves",
+     "amoeba/interp/provenance.py::_derived",
+     "amoeba/interp/provenance.py::_float",
+     "amoeba/interp/provenance.py::_line_numbers",
+     "amoeba/interp/provenance.py::_norm",
+     "amoeba/interp/provenance.py::check_provenance",
+     "amoeba/interp/provenance.py::claim_numbers",
+     "amoeba/interp/provenance.py::computed_values",
+     "amoeba/interp/provenance.py::equals_computed",
+     "amoeba/interp/provenance.py::numbers_in",
+     "amoeba/interp/provenance.py::strip_unverified",
+     "amoeba/interp/replan_method.py::_words",
+     "amoeba/interp/replan_method.py::failed_method",
+     "amoeba/interp/replan_method.py::failed_methods_text",
+     "amoeba/interp/replan_method.py::method_change",
+     "amoeba/interp/replan_method.py::replaces",
+     "amoeba/interp/runtime.py::Interpreter._dispatch",
+     "amoeba/interp/runtime.py::Interpreter._llm_messages",
+     "amoeba/interp/runtime.py::Interpreter._llm_sections",
+     "amoeba/interp/runtime.py::Interpreter._record",
+     "amoeba/interp/runtime.py::Interpreter._tool",
+     "amoeba/interp/runtime.py::Interpreter._tool_loop",
+     "amoeba/interp/runtime.py::Interpreter.run",
+     "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers",
+     "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.broadcast",
+     "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+     "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.review",
+     "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
+     "amoeba/interp/runtime.py::Interpreter.run_flat",
+     "amoeba/interp/runtime.py::_Msg",
+     "amoeba/interp/runtime.py::_output_text",
+     "amoeba/interp/runtime.py::file_block_write",
+     "amoeba/interp/runtime.py::full_action_input",
+     "amoeba/interp/runtime.py::grant_web",
+     "amoeba/interp/runtime.py::role_card",
+     "amoeba/interp/runtime.py::step_context",
+     "amoeba/interp/runtime.py::strip_thought",
+     "amoeba/interp/runtime.py::with_card",
+     "amoeba/interp/runtime.py::with_unavailable",
+     "amoeba/interp/shorten.py::_cut_line",
+     "amoeba/interp/shorten.py::_output_tails",
+     "amoeba/interp/shorten.py::shorten",
+     "amoeba/interp/trace.py::NoopListener.on_llm_call",
+     "amoeba/interp/trace.py::NoopListener.on_tool_call",
+     "amoeba/interp/trace.py::TraceWriter._write",
+     "amoeba/interp/trace.py::TraceWriter.close",
+     "amoeba/interp/trace.py::TraceWriter.event",
+     "amoeba/interp/trace.py::TraceWriter.span",
+     "amoeba/interp/trace.py::TraceWriter.spans",
+     "amoeba/interp/trace.py::TracedLLM._log_retries",
+     "amoeba/interp/trace.py::TracedLLM.chat",
+     "amoeba/interp/trace.py::TracedLLM.chat_messages",
+     "amoeba/interp/trace.py::TracedLLM.chat_sections",
+     "amoeba/interp/trace.py::_route_attrs",
+     "amoeba/llm/cache.py::CacheMiss",
+     "amoeba/llm/cache.py::CachedLLM",
+     "amoeba/llm/cache.py::CachedLLM.chat_messages",
+     "amoeba/llm/cache.py::CachedLLM.key",
+     "amoeba/llm/cache.py::CachedProvider._call",
+     "amoeba/llm/cache.py::CachedProvider.search",
+     "amoeba/llm/cache.py::_Store.get",
+     "amoeba/llm/cache.py::_Store.path",
+     "amoeba/llm/cache.py::_Store.put",
+     "amoeba/llm/cache.py::cache_key",
+     "amoeba/llm/cache.py::stamped",
+     "amoeba/llm/client.py::ChatResponse",
+     "amoeba/llm/client.py::LLMClient.chat_messages",
+     "amoeba/llm/client.py::MockLLMClient._next",
+     "amoeba/llm/client.py::MockLLMClient.chat_messages",
+     "amoeba/llm/client.py::MockLLMClient.classify",
+     "amoeba/llm/client.py::OpenAICompatibleClient",
+     "amoeba/llm/client.py::OpenAICompatibleClient._create",
+     "amoeba/llm/client.py::OpenAICompatibleClient._throttle",
+     "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
+     "amoeba/llm/client.py::_reasoning_tokens",
+     "amoeba/llm/client.py::api_error",
+     "amoeba/llm/client.py::describe_api_error",
+     "amoeba/llm/client.py::dropped",
+     "amoeba/llm/client.py::merge_system",
+     "amoeba/llm/client.py::retry_after",
+     "amoeba/llm/client.py::spend_cap",
+     "amoeba/llm/limits.py::RunLimitReached",
+     "amoeba/llm/limits.py::RunLimits.active",
+     "amoeba/llm/limits.py::RunLimits.check",
+     "amoeba/llm/limits.py::billed",
+     "amoeba/llm/limits.py::estimate",
+     "amoeba/llm/limits.py::load_prices",
+     "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+     "amoeba/llm/profiles.py::RoleRouter.route",
+     "amoeba/llm/profiles.py::role_group",
+     "amoeba/llm/router.py::CallSpec",
+     "amoeba/llm/router.py::ModelEntry.usd",
+     "amoeba/llm/router.py::ModelRouter.bucket",
+     "amoeba/llm/router.py::ModelRouter.call",
+     "amoeba/llm/router.py::ModelRouter.chat_messages",
+     "amoeba/llm/router.py::ModelRouter.client",
+     "amoeba/llm/router.py::ModelRouter.role_tier",
+     "amoeba/llm/router.py::ModelRouter.route",
+     "amoeba/llm/router.py::ModelRouter.spent_usd",
+     "amoeba/llm/router.py::NoModelAvailable",
+     "amoeba/llm/router.py::SharedBucket",
+     "amoeba/llm/router.py::SharedBucket._wait_needed",
+     "amoeba/llm/router.py::SharedBucket.acquire",
+     "amoeba/llm/router.py::SharedBucket.cooldown",
+     "amoeba/llm/router.py::SharedBucket.cooling",
+     "amoeba/llm/router.py::estimate_tokens",
+     "amoeba/llm/router.py::spec_for",
+     "amoeba/localtools/claims.py::claimed_files",
+     "amoeba/localtools/gate.py::in_workspace",
+     "amoeba/localtools/gate.py::inside",
+     "amoeba/localtools/gate.py::protected_command",
+     "amoeba/localtools/gate.py::protected_path",
+     "amoeba/localtools/gate.py::readonly_root",
+     "amoeba/localtools/gate.py::screen_command",
+     "amoeba/localtools/sandbox.py::OpenShellBox",
+     "amoeba/localtools/sandbox.py::OpenShellBox.create",
+     "amoeba/localtools/sandbox.py::OpenShellBox.delete",
+     "amoeba/localtools/sandbox.py::OpenShellBox.exec",
+     "amoeba/localtools/sandbox.py::OpenShellBox.expired",
+     "amoeba/localtools/sandbox.py::OpenShellBox.pull",
+     "amoeba/localtools/sandbox.py::OpenShellBox.spec",
+     "amoeba/localtools/sandbox.py::sandbox_config",
+     "amoeba/localtools/server.py::LocalServerError",
+     "amoeba/localtools/server.py::StdioServer",
+     "amoeba/localtools/server.py::StdioServer._hold",
+     "amoeba/localtools/server.py::StdioServer._listing",
+     "amoeba/localtools/server.py::StdioServer._run",
+     "amoeba/localtools/server.py::StdioServer.call",
+     "amoeba/localtools/server.py::StdioServer.call.go",
+     "amoeba/localtools/server.py::StdioServer.close",
+     "amoeba/localtools/server.py::StdioServer.start",
+     "amoeba/localtools/skills.py::list_skills",
+     "amoeba/localtools/skills.py::skill_roots",
+     "amoeba/localtools/toolbox.py::LocalSetup.limits",
+     "amoeba/localtools/toolbox.py::LocalToolbox._refuse_tool",
+     "amoeba/localtools/toolbox.py::LocalToolbox._scan",
+     "amoeba/localtools/toolbox.py::LocalToolbox._snapshot",
+     "amoeba/localtools/toolbox.py::LocalToolbox.alias_hits",
+     "amoeba/localtools/toolbox.py::LocalToolbox.arguments",
+     "amoeba/localtools/toolbox.py::LocalToolbox.begin_step",
+     "amoeba/localtools/toolbox.py::LocalToolbox.call",
+     "amoeba/localtools/toolbox.py::LocalToolbox.candidates",
+     "amoeba/localtools/toolbox.py::LocalToolbox.entries",
+     "amoeba/localtools/toolbox.py::LocalToolbox.has_file",
+     "amoeba/localtools/toolbox.py::LocalToolbox.refuse",
+     "amoeba/localtools/toolbox.py::LocalToolbox.register",
+     "amoeba/localtools/toolbox.py::LocalToolbox.server_env",
+     "amoeba/localtools/toolbox.py::LocalToolbox.start",
+     "amoeba/localtools/toolbox.py::LocalToolbox.what",
+     "amoeba/localtools/toolbox.py::alias_words",
+     "amoeba/localtools/toolbox.py::as_python_command",
+     "amoeba/localtools/toolbox.py::python_source",
+     "amoeba/localtools/toolbox.py::unfence",
+     "amoeba/pool/index.py::split_skill",
+     "amoeba/pool/match.py::aliases_of",
+     "amoeba/pool/match.py::rank",
+     "amoeba/pool/match.py::request_words",
+     "amoeba/pool/match.py::words",
+     "amoeba/pool/mcp.py::Connector.call",
+     "amoeba/pool/mcp.py::PoolToolError",
+     "amoeba/pool/mcp.py::PoolTools._event",
+     "amoeba/pool/mcp.py::PoolTools._fail",
+     "amoeba/pool/mcp.py::PoolTools.arguments",
+     "amoeba/pool/mcp.py::PoolTools.begin_step",
+     "amoeba/pool/mcp.py::PoolTools.call",
+     "amoeba/pool/mcp.py::PoolTools.call.check",
+     "amoeba/pool/mcp.py::SdkConnector._listing",
+     "amoeba/pool/mcp.py::SdkConnector._run",
+     "amoeba/pool/mcp.py::SdkConnector.call",
+     "amoeba/pool/mcp.py::SdkConnector.call.go",
+     "amoeba/pool/mcp.py::SdkConnector.tools.go",
+     "amoeba/pool/mcp.py::SourceBook._source",
+     "amoeba/pool/mcp.py::SourceBook.begin_step",
+     "amoeba/pool/mcp.py::SourceBook.source_texts",
+     "amoeba/pool/mcp.py::SourceBook.sources_for",
+     "amoeba/pool/mcp.py::data_block",
+     "amoeba/pool/mcp.py::listing_digest",
+     "amoeba/pool/stock.py::PoolSetup.limits",
+     "amoeba/pool/stock.py::SharedPicks._read",
+     "amoeba/pool/stock.py::SharedPicks.get",
+     "amoeba/pool/stock.py::SharedPicks.key",
+     "amoeba/pool/stock.py::SharedPicks.put",
+     "amoeba/pool/stock.py::pool_skill_notes",
+     "amoeba/pool/stock.py::pool_tool_notes",
+     "amoeba/pool/stock.py::side_effect",
+     "amoeba/task/deliverables.py::_has_term",
+     "amoeba/task/deliverables.py::answer_content",
+     "amoeba/task/deliverables.py::check_deliverables",
+     "amoeba/task/deliverables.py::final_check",
+     "amoeba/task/deliverables.py::final_findings",
+     "amoeba/task/deliverables.py::promised_files",
+     "amoeba/task/deliverables.py::requirement_check",
+     "amoeba/task/deliverables.py::requirement_terms",
+     "amoeba/task/evaluate.py::normalise",
+     "amoeba/task/interpret.py::settle",
+     "amoeba/task/models.py::AgentResult",
+     "amoeba/task/models.py::CapabilityRequest",
+     "amoeba/task/models.py::CapabilityRequest._kind",
+     "amoeba/task/models.py::DraftedRole",
+     "amoeba/task/models.py::Episode",
+     "amoeba/task/models.py::Message",
+     "amoeba/task/models.py::Task",
+     "amoeba/task/models.py::run_status",
+     "amoeba/task/parsers.py::MissingSections",
+     "amoeba/task/parsers.py::ParseError",
+     "amoeba/task/parsers.py::parse_critic",
+     "amoeba/task/parsers.py::parse_json_objects",
+     "amoeba/task/parsers.py::parse_plan_d24",
+     "amoeba/task/parsers.py::parse_sections",
+     "amoeba/task/parsers.py::repair_prompt",
+     "amoeba/task/parsers.py::require",
+     "amoeba/task/parsers.py::split_blocks",
+     "amoeba/task/saved_drafts.py::_load",
+     "amoeba/task/source.py::_make",
+     "amoeba/tools/registry.py::Tool",
+     "amoeba/tools/registry.py::ToolError",
+     "amoeba/tools/registry.py::ToolRegistry.descriptions",
+     "amoeba/tools/registry.py::ToolRegistry.execute",
+     "amoeba/tools/registry.py::ToolRegistry.names",
+     "amoeba/tools/registry.py::ToolRegistry.register",
+     "amoeba/tools/registry.py::calc",
+     "amoeba/tools/registry.py::calc.ev",
+     "amoeba/tools/research.py::excerpt",
+     "amoeba/tools/research.py::official",
+     "amoeba/tools/research.py::terms",
+     "amoeba/tools/web.py::SearchProvider.search",
+     "amoeba/tools/web.py::TavilyProvider._post",
+     "amoeba/tools/web.py::TavilyProvider.search",
+     "amoeba/tools/web.py::WebLimits.as_trace",
+     "amoeba/tools/web.py::WebTools._source",
+     "amoeba/tools/web.py::WebTools.begin_step",
+     "amoeba/tools/web.py::WebTools.source_texts",
+     "amoeba/tools/web.py::WebTools.sources_for",
+     "amoeba/tools/web.py::note_seen",
+     "amoeba/tools/web.py::now_iso",
+     "scripts/eval_draft.py::Recording",
+     "scripts/eval_draft.py::Recording.chat_messages",
+     "scripts/eval_draft.py::Recording.route",
+     "scripts/run_task.py::build_llm.make",
+     "scripts/run_task.py::build_router_llm.make",
+     "scripts/stage_e.py::arm_command",
+     "scripts/stage_e.py::one_task_file",
+     "scripts/stage_e.py::run_dir_of",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
+     "scripts/stuck_report.py::_load",
+     "scripts/stuck_report.py::run_folders",
+     "scripts/stuck_report.py::run_stuck"
     ],
     "prompts": []
    },
@@ -258185,6 +259402,7 @@
     "doc": "D117 Stage B — the stuck watch: after each step attempt plain code looks for the five stuck signals, marks a step",
     "outcome": "passed",
     "direct": [
+     "scripts/stage_e_report.py::report",
      "scripts/stuck_report.py::report",
      "scripts/stuck_report.py::run_stuck"
     ],
@@ -258618,6 +259836,7 @@
      "amoeba/task/models.py::DraftedRole",
      "amoeba/task/models.py::Episode",
      "amoeba/task/models.py::Message",
+     "amoeba/task/models.py::run_status",
      "amoeba/task/parsers.py::MissingSections",
      "amoeba/task/parsers.py::ParseError",
      "amoeba/task/parsers.py::parse_critic",
@@ -258652,6 +259871,12 @@
      "scripts/eval_draft.py::Recording.route",
      "scripts/run_task.py::build_llm.make",
      "scripts/run_task.py::build_router_llm.make",
+     "scripts/stage_e_report.py::_final_metas",
+     "scripts/stage_e_report.py::_load",
+     "scripts/stage_e_report.py::_sum",
+     "scripts/stage_e_report.py::_trace",
+     "scripts/stage_e_report.py::run_record",
+     "scripts/stage_e_report.py::samples",
      "scripts/stuck_report.py::_load",
      "scripts/stuck_report.py::run_folders"
     ],
@@ -294425,7 +295650,7 @@
  },
  "sample": {
   "free_text_task": {
-   "id": "f1670570-6a93-4e37-b3a2-b39aec0aebfb",
+   "id": "6b1b848b-ea07-4827-bfa0-30299162cfd8",
    "prompt": "Reverse the string 'adaptive' then uppercase it",
    "family": "freeform",
    "ground_truth": null,
@@ -294480,8 +295705,8 @@
   },
   "runs": {
    "flat": {
-    "run_id": "159ffe90-2940-4d25-835f-72d6698873ce",
-    "dir": "runs/159ffe90-2940-4d25-835f-72d6698873ce",
+    "run_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
+    "dir": "runs/a21dc1cf-4aca-4e68-8089-ac0158d62348",
     "files": [
      "capability_requests.json",
      "plan.json",
@@ -294491,10 +295716,10 @@
     ],
     "result": {
      "interpretation": {},
-     "run_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+     "run_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
      "task_id": "toy-0-000",
      "draft_source": null,
-     "team_id": "f5bdc90d-4266-484e-b012-24d78dee99b6",
+     "team_id": "a133d4a7-4eab-4539-8e89-5f79e9394e08",
      "topology": "flat",
      "answer": "734",
      "error": null,
@@ -294510,7 +295735,7 @@
       "model": "toy-mock",
       "cost_usd": null
      },
-     "latency_ms": 11,
+     "latency_ms": 8,
      "n_llm_calls": 6,
      "draft_rounds": 1,
      "consensus": true,
@@ -294610,11 +295835,11 @@
     "team_trimmed": {
      "topology": "flat",
      "entry": [
-      "083dd328-dde8-457a-80a9-63c21be067cd"
+      "216325dd-563a-405a-9574-b268f0e591da"
      ],
-     "exit": "52a82ac5-aaf1-4eae-bf3e-8a058e2c30de",
+     "exit": "623bc479-9c24-4c2b-b262-7a4d3b1e8ff0",
      "agents": {
-      "083dd328-dde8-457a-80a9-63c21be067cd": {
+      "216325dd-563a-405a-9574-b268f0e591da": {
        "name": "Solver",
        "role": "worker",
        "model": "toy-mock",
@@ -294624,7 +295849,7 @@
        "role_prompt": "You are a careful problem solver. Do exactly what the task asks and report only the result … [+1 chars]",
        "max_history": 5
       },
-      "52a82ac5-aaf1-4eae-bf3e-8a058e2c30de": {
+      "623bc479-9c24-4c2b-b262-7a4d3b1e8ff0": {
        "name": "Language Expert",
        "role": "worker",
        "model": "toy-mock",
@@ -294635,8 +295860,8 @@
      },
      "edges": [
       {
-       "src": "083dd328-dde8-457a-80a9-63c21be067cd",
-       "dst": "52a82ac5-aaf1-4eae-bf3e-8a058e2c30de",
+       "src": "216325dd-563a-405a-9574-b268f0e591da",
+       "dst": "623bc479-9c24-4c2b-b262-7a4d3b1e8ff0",
        "type": "sequential",
        "schema_id": "text",
        "condition": null
@@ -294646,7 +295871,7 @@
       {
        "index": 0,
        "agent_ids": [
-        "083dd328-dde8-457a-80a9-63c21be067cd"
+        "216325dd-563a-405a-9574-b268f0e591da"
        ],
        "text": "[Solver]: Solve the task and report the result.",
        "kind": "",
@@ -294659,7 +295884,7 @@
       {
        "index": 1,
        "agent_ids": [
-        "52a82ac5-aaf1-4eae-bf3e-8a058e2c30de"
+        "623bc479-9c24-4c2b-b262-7a4d3b1e8ff0"
        ],
        "text": "[Language Expert]: Restate the Solver's result as the final answer.",
        "kind": "",
@@ -294871,9 +296096,9 @@
      "raw_draft": "## Thought\nThe task is small: one role works it out, one language expert states the answer.\n\n## Question or Task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n## Selected Roles List:\n```\n```\n\n## Created Roles List:\n```\n{\n    \"name\": \"Solver\",\n    \"description\": \"Works out the answer to the task, using the calc tool for any arithmetic.\",\n    \"tools\": [\"calc\"],\n    \"suggestions\": \"Use calc for arithmetic. Reply with only the final value.\",\n    \"prompt\": \"You are a careful problem solver. Do exactly what the task asks and report only the result.\"\n},\n{\n    \"name\": \"Language Expert\",\n    \"desc … [+458 chars]"
     },
     "trace_lines": [
-     "{\"ts\": \"2026-10-06T20:39:30.673827+00:00\", \"episode_id\": \"159ffe90-2940-4d25-835f-72d6698873ce\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-06T20:39:30.674657+00:00\", \"episode_id\": \"159ffe90-2940-4d25-835f-72d6698873ce\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-06T20:39:30.674791+00:00\", \"episode_id\": \"159ffe90-2940-4d25-835f-72d6698873ce\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
+     "{\"ts\": \"2026-10-06T20:52:54.583834+00:00\", \"episode_id\": \"a21dc1cf-4aca-4e68-8089-ac0158d62348\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-06T20:52:54.584497+00:00\", \"episode_id\": \"a21dc1cf-4aca-4e68-8089-ac0158d62348\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-06T20:52:54.584619+00:00\", \"episode_id\": \"a21dc1cf-4aca-4e68-8089-ac0158d62348\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
     ],
     "n_trace_lines": 14,
     "timeline": [
@@ -294884,16 +296109,16 @@
       "box": "planner",
       "helper": "planner",
       "tokens": 0,
-      "latency_ms": 1,
+      "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.673747+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.583773+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "invoke_agent",
        "gen_ai.agent.name": "planner",
        "amoeba.box": "planner",
-       "latency_ms": 1
+       "latency_ms": 0
       }
      },
      {
@@ -294906,8 +296131,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-06T20:39:30.673827+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.583834+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "planner",
@@ -294934,8 +296159,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-06T20:39:30.674657+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.584497+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "agent_observer",
@@ -294962,8 +296187,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-06T20:39:30.674791+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.584619+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "plan_observer",
@@ -294990,8 +296215,8 @@
       "latency_ms": 0,
       "result": "draft_quality: passed=2, failed=1, failed_checks=roles_fully_defined, box=checks",
       "raw": {
-       "ts": "2026-10-06T20:39:30.675198+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.584916+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "event",
        "name": "draft_quality",
        "amoeba.quality.passed": 2,
@@ -295007,17 +296232,17 @@
       "box": "interpreter",
       "helper": "",
       "tokens": 0,
-      "latency_ms": 2,
+      "latency_ms": 1,
       "result": "answer '734'",
       "raw": {
-       "ts": "2026-10-06T20:39:30.680261+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.589562+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "invoke_workflow",
        "gen_ai.workflow.name": "team-flat-toy-0-00",
-       "gen_ai.conversation.id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "gen_ai.conversation.id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "amoeba.box": "interpreter",
-       "latency_ms": 2
+       "latency_ms": 1
       }
      },
      {
@@ -295030,8 +296255,8 @@
       "latency_ms": 0,
       "result": "run_clock: date=2026-10-06, weekday=Tuesday, tz=UTC, box=interpreter",
       "raw": {
-       "ts": "2026-10-06T20:39:30.680293+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.589587+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "event",
        "name": "run_clock",
        "amoeba.date": "2026-10-06",
@@ -295047,17 +296272,17 @@
       "box": "helper",
       "helper": "Solver",
       "tokens": 0,
-      "latency_ms": 1,
+      "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.680416+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.589683+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "083dd328-dde8-457a-80a9-63c21be067cd",
+       "gen_ai.agent.id": "216325dd-563a-405a-9574-b268f0e591da",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "helper",
-       "latency_ms": 1
+       "latency_ms": 0
       }
      },
      {
@@ -295067,14 +296292,14 @@
       "box": "helper",
       "helper": "Solver",
       "tokens": 615,
-      "latency_ms": 1,
+      "latency_ms": 0,
       "result": "Action: calc · ActionInput: 26 * 28 + 6",
       "raw": {
-       "ts": "2026-10-06T20:39:30.680447+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.589716+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "083dd328-dde8-457a-80a9-63c21be067cd",
+       "gen_ai.agent.id": "216325dd-563a-405a-9574-b268f0e591da",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
@@ -295085,7 +296310,7 @@
        "gen_ai.response.finish_reasons": [
         "stop"
        ],
-       "latency_ms": 1
+       "latency_ms": 0
       }
      },
      {
@@ -295098,12 +296323,12 @@
       "latency_ms": 0,
       "result": "ran tool calc (result is not written to the trace)",
       "raw": {
-       "ts": "2026-10-06T20:39:30.681952+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.590326+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "execute_tool",
        "gen_ai.tool.name": "calc",
-       "gen_ai.agent.id": "083dd328-dde8-457a-80a9-63c21be067cd",
+       "gen_ai.agent.id": "216325dd-563a-405a-9574-b268f0e591da",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "tools",
        "latency_ms": 0
@@ -295119,11 +296344,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.682143+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.590463+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "083dd328-dde8-457a-80a9-63c21be067cd",
+       "gen_ai.agent.id": "216325dd-563a-405a-9574-b268f0e591da",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "helper",
        "latency_ms": 0
@@ -295139,11 +296364,11 @@
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-06T20:39:30.682246+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.590485+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "083dd328-dde8-457a-80a9-63c21be067cd",
+       "gen_ai.agent.id": "216325dd-563a-405a-9574-b268f0e591da",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
@@ -295167,11 +296392,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.682582+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.590684+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "52a82ac5-aaf1-4eae-bf3e-8a058e2c30de",
+       "gen_ai.agent.id": "623bc479-9c24-4c2b-b262-7a4d3b1e8ff0",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.box": "helper",
        "latency_ms": 0
@@ -295187,11 +296412,11 @@
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-06T20:39:30.682609+00:00",
-       "episode_id": "159ffe90-2940-4d25-835f-72d6698873ce",
+       "ts": "2026-10-06T20:52:54.590709+00:00",
+       "episode_id": "a21dc1cf-4aca-4e68-8089-ac0158d62348",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "52a82ac5-aaf1-4eae-bf3e-8a058e2c30de",
+       "gen_ai.agent.id": "623bc479-9c24-4c2b-b262-7a4d3b1e8ff0",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.role_group": "summariser",
        "gen_ai.request.model": "toy-mock",
@@ -295225,12 +296450,12 @@
      "interpreter": {
       "calls": 0,
       "tokens": 0,
-      "ms": 2
+      "ms": 1
      },
      "helper": {
       "calls": 3,
       "tokens": 1901,
-      "ms": 1
+      "ms": 0
      },
      "tools": {
       "calls": 0,
@@ -295278,6 +296503,7 @@
       "scoring",
       "solver",
       "split",
+      "stage_e",
       "step_check",
       "stuck",
       "task_record",
@@ -295418,8 +296644,8 @@
     }
    },
    "boss_reviewers": {
-    "run_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
-    "dir": "runs/dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+    "run_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
+    "dir": "runs/83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
     "files": [
      "capability_requests.json",
      "plan.json",
@@ -295429,10 +296655,10 @@
     ],
     "result": {
      "interpretation": {},
-     "run_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+     "run_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
      "task_id": "toy-0-000",
      "draft_source": null,
-     "team_id": "967392b8-f4a8-4d84-a38f-2b420ca54392",
+     "team_id": "22f54680-8401-405f-bb02-eba57d86636c",
      "topology": "boss_reviewers",
      "answer": "734",
      "error": null,
@@ -295448,7 +296674,7 @@
       "model": "toy-mock",
       "cost_usd": null
      },
-     "latency_ms": 9,
+     "latency_ms": 8,
      "n_llm_calls": 5,
      "draft_rounds": 1,
      "consensus": true,
@@ -295548,11 +296774,11 @@
     "team_trimmed": {
      "topology": "boss_reviewers",
      "entry": [
-      "b9fd3dac-55fe-457e-bbff-32bc3ace6c96"
+      "323e21de-3c7b-4dda-a50d-5090cec40c2c"
      ],
-     "exit": "b9fd3dac-55fe-457e-bbff-32bc3ace6c96",
+     "exit": "323e21de-3c7b-4dda-a50d-5090cec40c2c",
      "agents": {
-      "f9c759d7-6cb7-4450-a759-7db3bb0c6f12": {
+      "58767da5-496c-449c-8678-f7f05f3ae733": {
        "name": "Solver",
        "role": "critic",
        "model": "toy-mock",
@@ -295562,7 +296788,7 @@
        "role_prompt": "You are a careful problem solver. Do exactly what the task asks and report only the result … [+1 chars]",
        "max_history": 3
       },
-      "b9fd3dac-55fe-457e-bbff-32bc3ace6c96": {
+      "323e21de-3c7b-4dda-a50d-5090cec40c2c": {
        "name": "Language Expert",
        "role": "solver",
        "model": "toy-mock",
@@ -295573,15 +296799,15 @@
      },
      "edges": [
       {
-       "src": "b9fd3dac-55fe-457e-bbff-32bc3ace6c96",
-       "dst": "f9c759d7-6cb7-4450-a759-7db3bb0c6f12",
+       "src": "323e21de-3c7b-4dda-a50d-5090cec40c2c",
+       "dst": "58767da5-496c-449c-8678-f7f05f3ae733",
        "type": "review",
        "schema_id": "text",
        "condition": null
       },
       {
-       "src": "f9c759d7-6cb7-4450-a759-7db3bb0c6f12",
-       "dst": "b9fd3dac-55fe-457e-bbff-32bc3ace6c96",
+       "src": "58767da5-496c-449c-8678-f7f05f3ae733",
+       "dst": "323e21de-3c7b-4dda-a50d-5090cec40c2c",
        "type": "revise",
        "schema_id": "text",
        "condition": "critic_disagrees"
@@ -295789,9 +297015,9 @@
      "raw_draft": "## Thought\nThe task is small: one role works it out, one language expert states the answer.\n\n## Question or Task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n## Selected Roles List:\n```\n```\n\n## Created Roles List:\n```\n{\n    \"name\": \"Solver\",\n    \"description\": \"Works out the answer to the task, using the calc tool for any arithmetic.\",\n    \"tools\": [\"calc\"],\n    \"suggestions\": \"Use calc for arithmetic. Reply with only the final value.\",\n    \"prompt\": \"You are a careful problem solver. Do exactly what the task asks and report only the result.\"\n},\n{\n    \"name\": \"Language Expert\",\n    \"desc … [+458 chars]"
     },
     "trace_lines": [
-     "{\"ts\": \"2026-10-06T20:39:30.696425+00:00\", \"episode_id\": \"dd9814d0-7c28-4783-ab8c-34d454bfa65e\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-06T20:39:30.697048+00:00\", \"episode_id\": \"dd9814d0-7c28-4783-ab8c-34d454bfa65e\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-06T20:39:30.697185+00:00\", \"episode_id\": \"dd9814d0-7c28-4783-ab8c-34d454bfa65e\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
+     "{\"ts\": \"2026-10-06T20:52:54.603049+00:00\", \"episode_id\": \"83cd548f-fa08-4e2a-9c3c-64c97fd40ba8\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-06T20:52:54.603744+00:00\", \"episode_id\": \"83cd548f-fa08-4e2a-9c3c-64c97fd40ba8\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-06T20:52:54.603887+00:00\", \"episode_id\": \"83cd548f-fa08-4e2a-9c3c-64c97fd40ba8\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
     ],
     "n_trace_lines": 11,
     "timeline": [
@@ -295805,8 +297031,8 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.696346+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.602970+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "span",
        "name": "invoke_agent",
        "gen_ai.agent.name": "planner",
@@ -295824,8 +297050,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-06T20:39:30.696425+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.603049+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "planner",
@@ -295852,8 +297078,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-06T20:39:30.697048+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.603744+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "agent_observer",
@@ -295880,8 +297106,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-06T20:39:30.697185+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.603887+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "plan_observer",
@@ -295908,8 +297134,8 @@
       "latency_ms": 0,
       "result": "draft_quality: passed=2, failed=1, failed_checks=roles_fully_defined, box=checks",
       "raw": {
-       "ts": "2026-10-06T20:39:30.697532+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.604258+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "event",
        "name": "draft_quality",
        "amoeba.quality.passed": 2,
@@ -295928,12 +297154,12 @@
       "latency_ms": 0,
       "result": "answer '734'",
       "raw": {
-       "ts": "2026-10-06T20:39:30.702694+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.608390+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "span",
        "name": "invoke_workflow",
        "gen_ai.workflow.name": "team-boss_reviewers-toy-0-00",
-       "gen_ai.conversation.id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "gen_ai.conversation.id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "amoeba.box": "interpreter",
        "latency_ms": 0
       }
@@ -295948,8 +297174,8 @@
       "latency_ms": 0,
       "result": "run_clock: date=2026-10-06, weekday=Tuesday, tz=UTC, box=interpreter",
       "raw": {
-       "ts": "2026-10-06T20:39:30.702737+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.608415+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "event",
        "name": "run_clock",
        "amoeba.date": "2026-10-06",
@@ -295968,11 +297194,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.703014+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.608579+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "b9fd3dac-55fe-457e-bbff-32bc3ace6c96",
+       "gen_ai.agent.id": "323e21de-3c7b-4dda-a50d-5090cec40c2c",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.box": "solver",
        "latency_ms": 0
@@ -295988,11 +297214,11 @@
       "latency_ms": 0,
       "result": "734",
       "raw": {
-       "ts": "2026-10-06T20:39:30.703050+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.608597+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "b9fd3dac-55fe-457e-bbff-32bc3ace6c96",
+       "gen_ai.agent.id": "323e21de-3c7b-4dda-a50d-5090cec40c2c",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.role_group": "summariser",
        "gen_ai.request.model": "toy-mock",
@@ -296016,11 +297242,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.703542+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.609009+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "f9c759d7-6cb7-4450-a759-7db3bb0c6f12",
+       "gen_ai.agent.id": "58767da5-496c-449c-8678-f7f05f3ae733",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "critics",
        "latency_ms": 0
@@ -296036,11 +297262,11 @@
       "latency_ms": 0,
       "result": "Action: Agree",
       "raw": {
-       "ts": "2026-10-06T20:39:30.703562+00:00",
-       "episode_id": "dd9814d0-7c28-4783-ab8c-34d454bfa65e",
+       "ts": "2026-10-06T20:52:54.609027+00:00",
+       "episode_id": "83cd548f-fa08-4e2a-9c3c-64c97fd40ba8",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "f9c759d7-6cb7-4450-a759-7db3bb0c6f12",
+       "gen_ai.agent.id": "58767da5-496c-449c-8678-f7f05f3ae733",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "reviewers",
        "gen_ai.request.model": "toy-mock",
@@ -296126,6 +297352,7 @@
       "runresult",
       "scoring",
       "split",
+      "stage_e",
       "step_check",
       "stuck",
       "task_record",
@@ -296278,8 +297505,8 @@
     }
    },
    "plan": {
-    "run_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
-    "dir": "runs/9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+    "run_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
+    "dir": "runs/dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
     "files": [
      "artifacts",
      "capability_requests.json",
@@ -296290,10 +297517,10 @@
     ],
     "result": {
      "interpretation": {},
-     "run_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+     "run_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
      "task_id": "toy-0-000",
      "draft_source": null,
-     "team_id": "535bed15-b8ad-41d5-b83b-1c8a89e2f4c4",
+     "team_id": "ed842781-2377-4e3b-8af1-8c4d376683de",
      "topology": "plan",
      "answer": "734",
      "error": null,
@@ -296309,7 +297536,7 @@
       "model": "toy-mock",
       "cost_usd": null
      },
-     "latency_ms": 60,
+     "latency_ms": 51,
      "n_llm_calls": 6,
      "draft_rounds": 1,
      "consensus": true,
@@ -296482,12 +297709,12 @@
     "team_trimmed": {
      "topology": "plan",
      "entry": [
-      "670b266c-de1b-49c5-a26f-fd46258050bc",
-      "d7ed6299-2678-49c9-9e71-205da0edabd6"
+      "985a7bd3-d7b4-4c89-a597-5f77a9db08eb",
+      "835e8125-428f-41b2-aff9-e46f3607b889"
      ],
-     "exit": "d7ed6299-2678-49c9-9e71-205da0edabd6",
+     "exit": "835e8125-428f-41b2-aff9-e46f3607b889",
      "agents": {
-      "670b266c-de1b-49c5-a26f-fd46258050bc": {
+      "985a7bd3-d7b4-4c89-a597-5f77a9db08eb": {
        "name": "Solver",
        "role": "worker",
        "model": "toy-mock",
@@ -296497,7 +297724,7 @@
        "role_prompt": "You are a careful problem solver. Do exactly what the task asks and report only the result … [+1 chars]",
        "max_history": 5
       },
-      "d7ed6299-2678-49c9-9e71-205da0edabd6": {
+      "835e8125-428f-41b2-aff9-e46f3607b889": {
        "name": "Language Expert",
        "role": "worker",
        "model": "toy-mock",
@@ -296511,7 +297738,7 @@
       {
        "index": 0,
        "agent_ids": [
-        "670b266c-de1b-49c5-a26f-fd46258050bc"
+        "985a7bd3-d7b4-4c89-a597-5f77a9db08eb"
        ],
        "text": "[Solver]: Solve the task and report the result.",
        "kind": "",
@@ -296524,7 +297751,7 @@
       {
        "index": 1,
        "agent_ids": [
-        "d7ed6299-2678-49c9-9e71-205da0edabd6"
+        "835e8125-428f-41b2-aff9-e46f3607b889"
        ],
        "text": "[Language Expert]: Restate the Solver's result as the final answer.",
        "kind": "",
@@ -296736,9 +297963,9 @@
      "raw_draft": "## Thought\nThe task is small: one role works it out, one language expert states the answer.\n\n## Question or Task:\nCompute 26 * 28 + 6. Reply with just the number.\n\n## Selected Roles List:\n```\n```\n\n## Created Roles List:\n```\n{\n    \"name\": \"Solver\",\n    \"description\": \"Works out the answer to the task, using the calc tool for any arithmetic.\",\n    \"tools\": [\"calc\"],\n    \"suggestions\": \"Use calc for arithmetic. Reply with only the final value.\",\n    \"prompt\": \"You are a careful problem solver. Do exactly what the task asks and report only the result.\"\n},\n{\n    \"name\": \"Language Expert\",\n    \"desc … [+458 chars]"
     },
     "trace_lines": [
-     "{\"ts\": \"2026-10-06T20:39:30.713891+00:00\", \"episode_id\": \"9fe1fcf1-270b-403d-9b87-2971926ed4fd\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-06T20:39:30.714484+00:00\", \"episode_id\": \"9fe1fcf1-270b-403d-9b87-2971926ed4fd\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
-     "{\"ts\": \"2026-10-06T20:39:30.714613+00:00\", \"episode_id\": \"9fe1fcf1-270b-403d-9b87-2971926ed4fd\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
+     "{\"ts\": \"2026-10-06T20:52:54.618843+00:00\", \"episode_id\": \"dbea59b5-46fe-48c7-9fa2-9c95ab12db19\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"planner\", \"amoeba.role_group\": \"planner\", \"amoeba.box\": \"planner\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 935, \"gen_ai.usage.output_tokens\": 264, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-06T20:52:54.619404+00:00\", \"episode_id\": \"dbea59b5-46fe-48c7-9fa2-9c95ab12db19\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"agent_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"agent_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 1047, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}",
+     "{\"ts\": \"2026-10-06T20:52:54.619521+00:00\", \"episode_id\": \"dbea59b5-46fe-48c7-9fa2-9c95ab12db19\", \"kind\": \"span\", \"name\": \"chat\", \"gen_ai.agent.name\": \"plan_observer\", \"amoeba.role_group\": \"observers\", \"amoeba.box\": \"plan_obs\", \"gen_ai.request.model\": \"toy-mock\", \"gen_ai.request.max_tokens\": 8192, \"gen_ai.response.model\": \"toy-mock\", \"gen_ai.usage.input_tokens\": 690, \"gen_ai.usage.output_tokens\": 23, \"gen_ai.response.finish_reasons\": [\"stop\"], \"latency_ms\": 0}"
     ],
     "n_trace_lines": 23,
     "timeline": [
@@ -296752,8 +297979,8 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.713771+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.618770+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "invoke_agent",
        "gen_ai.agent.name": "planner",
@@ -296771,8 +297998,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-06T20:39:30.713891+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.618843+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "planner",
@@ -296799,8 +298026,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-06T20:39:30.714484+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.619404+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "agent_observer",
@@ -296827,8 +298054,8 @@
       "latency_ms": 0,
       "result": "## Thought",
       "raw": {
-       "ts": "2026-10-06T20:39:30.714613+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.619521+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "chat",
        "gen_ai.agent.name": "plan_observer",
@@ -296855,8 +298082,8 @@
       "latency_ms": 0,
       "result": "draft_quality: passed=2, failed=1, failed_checks=roles_fully_defined, box=checks",
       "raw": {
-       "ts": "2026-10-06T20:39:30.714976+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.619889+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "draft_quality",
        "amoeba.quality.passed": 2,
@@ -296872,17 +298099,17 @@
       "box": "interpreter",
       "helper": "",
       "tokens": 0,
-      "latency_ms": 9,
+      "latency_ms": 5,
       "result": "answer '734'",
       "raw": {
-       "ts": "2026-10-06T20:39:30.760920+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.662624+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "invoke_workflow",
        "gen_ai.workflow.name": "team-plan-toy-0-00",
-       "gen_ai.conversation.id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "gen_ai.conversation.id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "amoeba.box": "interpreter",
-       "latency_ms": 9
+       "latency_ms": 5
       }
      },
      {
@@ -296895,8 +298122,8 @@
       "latency_ms": 0,
       "result": "run_clock: date=2026-10-06, weekday=Tuesday, tz=UTC, box=interpreter",
       "raw": {
-       "ts": "2026-10-06T20:39:30.760967+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.662661+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "run_clock",
        "amoeba.date": "2026-10-06",
@@ -296915,8 +298142,8 @@
       "latency_ms": 0,
       "result": "plan_graph: waves=[[1], [2]], depends_on={'1': [], '2': [1]}, max_turns=5, max_tokens=8192, rerun_stale=False, check_ret … [+336 chars]",
       "raw": {
-       "ts": "2026-10-06T20:39:30.761409+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.663021+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "plan_graph",
        "amoeba.waves": [
@@ -296968,8 +298195,8 @@
       "latency_ms": 0,
       "result": "step_input: step=1, wave=1, depends_on=[], received=[], input_chars=43, verification=False, rework=False, box=plan_step",
       "raw": {
-       "ts": "2026-10-06T20:39:30.761568+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.663141+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "step_input",
        "amoeba.step": 1,
@@ -296989,18 +298216,18 @@
       "box": "plan_step",
       "helper": "Solver",
       "tokens": 0,
-      "latency_ms": 1,
+      "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.762045+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.663420+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "670b266c-de1b-49c5-a26f-fd46258050bc",
+       "gen_ai.agent.id": "985a7bd3-d7b4-4c89-a597-5f77a9db08eb",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "plan_step",
        "amoeba.step": 1,
-       "latency_ms": 1
+       "latency_ms": 0
       }
      },
      {
@@ -297013,11 +298240,11 @@
       "latency_ms": 0,
       "result": "Action: calc · ActionInput: 26 * 28 + 6",
       "raw": {
-       "ts": "2026-10-06T20:39:30.762109+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.663460+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "670b266c-de1b-49c5-a26f-fd46258050bc",
+       "gen_ai.agent.id": "985a7bd3-d7b4-4c89-a597-5f77a9db08eb",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
@@ -297042,12 +298269,12 @@
       "latency_ms": 0,
       "result": "ran tool calc (result is not written to the trace)",
       "raw": {
-       "ts": "2026-10-06T20:39:30.763053+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.663956+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "execute_tool",
        "gen_ai.tool.name": "calc",
-       "gen_ai.agent.id": "670b266c-de1b-49c5-a26f-fd46258050bc",
+       "gen_ai.agent.id": "985a7bd3-d7b4-4c89-a597-5f77a9db08eb",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "tools",
        "latency_ms": 0
@@ -297063,11 +298290,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.763662+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.664350+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "670b266c-de1b-49c5-a26f-fd46258050bc",
+       "gen_ai.agent.id": "985a7bd3-d7b4-4c89-a597-5f77a9db08eb",
        "gen_ai.agent.name": "Solver",
        "amoeba.box": "plan_step",
        "amoeba.step": 1,
@@ -297084,11 +298311,11 @@
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-06T20:39:30.763717+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.664379+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "670b266c-de1b-49c5-a26f-fd46258050bc",
+       "gen_ai.agent.id": "985a7bd3-d7b4-4c89-a597-5f77a9db08eb",
        "gen_ai.agent.name": "Solver",
        "amoeba.role_group": "workers",
        "gen_ai.request.model": "toy-mock",
@@ -297113,8 +298340,8 @@
       "latency_ms": 0,
       "result": "step_done: step=1, wave=1, status=done, status_reason=, turns=2, output_chars=3, rework=False, checks_failed=[], box=ste … [+7 chars]",
       "raw": {
-       "ts": "2026-10-06T20:39:30.767276+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.666332+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "step_done",
        "amoeba.step": 1,
@@ -297138,8 +298365,8 @@
       "latency_ms": 0,
       "result": "provenance: step=1, cited=0, unverified=0, given=0, derived=1, inherited=0, untagged=0, numbers=1, hallucinated_citation … [+43 chars]",
       "raw": {
-       "ts": "2026-10-06T20:39:30.767356+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.666394+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "provenance",
        "amoeba.step": 1,
@@ -297165,8 +298392,8 @@
       "latency_ms": 0,
       "result": "step_input: step=2, wave=2, depends_on=[1], received=[1], input_chars=80, verification=False, rework=False, box=plan_ste … [+1 chars]",
       "raw": {
-       "ts": "2026-10-06T20:39:30.768149+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.666774+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "step_input",
        "amoeba.step": 2,
@@ -297193,11 +298420,11 @@
       "latency_ms": 0,
       "result": "",
       "raw": {
-       "ts": "2026-10-06T20:39:30.768417+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.666929+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "invoke_agent",
-       "gen_ai.agent.id": "d7ed6299-2678-49c9-9e71-205da0edabd6",
+       "gen_ai.agent.id": "835e8125-428f-41b2-aff9-e46f3607b889",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.box": "plan_summary",
        "amoeba.step": 2,
@@ -297214,11 +298441,11 @@
       "latency_ms": 0,
       "result": "Action: Final Output · ActionInput: 734",
       "raw": {
-       "ts": "2026-10-06T20:39:30.768467+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.666958+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "span",
        "name": "chat",
-       "gen_ai.agent.id": "d7ed6299-2678-49c9-9e71-205da0edabd6",
+       "gen_ai.agent.id": "835e8125-428f-41b2-aff9-e46f3607b889",
        "gen_ai.agent.name": "Language Expert",
        "amoeba.role_group": "summariser",
        "gen_ai.request.model": "toy-mock",
@@ -297243,8 +298470,8 @@
       "latency_ms": 0,
       "result": "summary_check: step=2, new_number_in_summary=0, new_numbers=[], limitations_section=False, box=plan_summary",
       "raw": {
-       "ts": "2026-10-06T20:39:30.769949+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.667854+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "summary_check",
        "amoeba.step": 2,
@@ -297264,8 +298491,8 @@
       "latency_ms": 0,
       "result": "step_done: step=2, wave=2, status=done, status_reason=, turns=1, output_chars=3, rework=False, checks_failed=[], box=ste … [+7 chars]",
       "raw": {
-       "ts": "2026-10-06T20:39:30.770010+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.667891+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "step_done",
        "amoeba.step": 2,
@@ -297289,8 +298516,8 @@
       "latency_ms": 0,
       "result": "provenance: step=2, cited=0, unverified=0, given=0, derived=0, inherited=1, untagged=0, numbers=1, hallucinated_citation … [+43 chars]",
       "raw": {
-       "ts": "2026-10-06T20:39:30.770048+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.667913+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "provenance",
        "amoeba.step": 2,
@@ -297316,8 +298543,8 @@
       "latency_ms": 0,
       "result": "figure_ledger: figures=1, first_derived=1, box=provenance",
       "raw": {
-       "ts": "2026-10-06T20:39:30.770693+00:00",
-       "episode_id": "9fe1fcf1-270b-403d-9b87-2971926ed4fd",
+       "ts": "2026-10-06T20:52:54.668311+00:00",
+       "episode_id": "dbea59b5-46fe-48c7-9fa2-9c95ab12db19",
        "kind": "event",
        "name": "figure_ledger",
        "amoeba.figures": 1,
@@ -297345,7 +298572,7 @@
      "interpreter": {
       "calls": 0,
       "tokens": 0,
-      "ms": 9
+      "ms": 5
      },
      "plan_step": {
       "calls": 2,
@@ -297400,6 +298627,7 @@
       "scoring",
       "solver",
       "split",
+      "stage_e",
       "stuck",
       "task_record",
       "teamconfig",
@@ -302926,6 +304154,7 @@
       "scoring",
       "solver",
       "split",
+      "stage_e",
       "stuck",
       "task_record",
       "teamconfig",
@@ -303001,8 +304230,8 @@
    ],
    "events": [
     {
-     "ts": "2026-10-06T20:39:30.656687+00:00",
-     "episode_id": "1e5a5b4a-5add-48c7-bcf4-0dc74a242938",
+     "ts": "2026-10-06T20:52:54.568530+00:00",
+     "episode_id": "4381023d-88ab-4aa8-85c3-3c2ddf65fbcd",
      "kind": "event",
      "name": "capability_request",
      "capability.name": "web_search",
@@ -303012,8 +304241,8 @@
      "amoeba.box": "capreq"
     },
     {
-     "ts": "2026-10-06T20:39:30.656718+00:00",
-     "episode_id": "1e5a5b4a-5add-48c7-bcf4-0dc74a242938",
+     "ts": "2026-10-06T20:52:54.568564+00:00",
+     "episode_id": "4381023d-88ab-4aa8-85c3-3c2ddf65fbcd",
      "kind": "event",
      "name": "capability_request",
      "capability.name": "unit_conversion",
@@ -303023,8 +304252,8 @@
      "amoeba.box": "capreq"
     },
     {
-     "ts": "2026-10-06T20:39:30.656872+00:00",
-     "episode_id": "1e5a5b4a-5add-48c7-bcf4-0dc74a242938",
+     "ts": "2026-10-06T20:52:54.568678+00:00",
+     "episode_id": "4381023d-88ab-4aa8-85c3-3c2ddf65fbcd",
      "kind": "event",
      "name": "draft_quality",
      "amoeba.quality.passed": 2,
@@ -303033,8 +304262,8 @@
      "amoeba.box": "checks"
     },
     {
-     "ts": "2026-10-06T20:39:30.666452+00:00",
-     "episode_id": "1e5a5b4a-5add-48c7-bcf4-0dc74a242938",
+     "ts": "2026-10-06T20:52:54.577582+00:00",
+     "episode_id": "4381023d-88ab-4aa8-85c3-3c2ddf65fbcd",
      "kind": "event",
      "name": "run_clock",
      "amoeba.date": "2026-10-06",
@@ -303043,11 +304272,11 @@
      "amoeba.box": "interpreter"
     },
     {
-     "ts": "2026-10-06T20:39:30.667248+00:00",
-     "episode_id": "1e5a5b4a-5add-48c7-bcf4-0dc74a242938",
+     "ts": "2026-10-06T20:52:54.578340+00:00",
+     "episode_id": "4381023d-88ab-4aa8-85c3-3c2ddf65fbcd",
      "kind": "event",
      "name": "unknown_tool",
-     "gen_ai.agent.id": "1d3f752e-e65a-4ea0-adef-01945a1592cd",
+     "gen_ai.agent.id": "b83056f3-0328-4275-a74c-3b0a2ee28e0f",
      "gen_ai.agent.name": "Researcher",
      "gen_ai.tool.name": "web_search",
      "amoeba.tool.registered": false,
@@ -306033,6 +307262,12 @@
      "how": "direct"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "direct"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -306315,7 +307550,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "a6854705a96363d1",
+   "fingerprint": "e3597b25d6223233",
    "sentence_tpl": "One job to do; practice jobs also carry the right answer, so the system can grade itself.",
    "what_tpl": [
     "A task is one job for the team: a line of text, plus the right answer when it is a practice job.",
@@ -310167,6 +311402,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_parser_reads_kind",
      "line": 10,
      "outcome": "passed",
@@ -310503,7 +311744,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "d6b64e120b2ae41c",
+   "fingerprint": "2a3041cd4895f082",
    "sentence_tpl": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call and adaptation report is logged.",
    "what_tpl": [
     "The team runs in one of three shapes chosen when you start the run, never by an AI.",
@@ -313629,6 +314870,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -314115,7 +315362,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "e54bb26ab32c29f4",
+   "fingerprint": "ab4df4af0ed79eec",
    "sentence_tpl": "D117: the offline learning loop is gone; adaptation happens inside one task, when a Box 3 step gets stuck.",
    "what_tpl": [
     "Stage B (built): after each step attempt plain code looks for the stuck signals, marks the step STUCK, diagnoses one cause and logs it.",
@@ -316895,6 +318142,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -317369,7 +318622,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "a50df8527f4423f5",
+   "fingerprint": "9a60a12b14ad970f",
    "sentence_tpl": "The model router behind every AI call and the niche profile every run obeys.",
    "what_tpl": [
     "Model router (D97–D98), niche profiles (D102)."
@@ -317572,6 +318825,12 @@
      "how": "direct"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "direct"
+    },
+    {
      "test": "tests/test_t09_tokens.py::test_chat_spans_carry_usage_and_result_sums_them",
      "line": 11,
      "outcome": "passed",
@@ -317632,7 +318891,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "aac8e291bf7fb4f2",
+   "fingerprint": "b1d1615e026c2e82",
    "sentence_tpl": "Makes practice jobs with known answers (sums, reversed words, vowel counts), the same for the same seed.",
    "what_tpl": [
     "Generates practice jobs from a seed number, cycling through three kinds of job, though the current implementation differs from the original design plan.",
@@ -317727,6 +318986,8 @@
       "scripts/list_models.py::main",
       "scripts/run_task.py::main",
       "scripts/run_task.py::parse_args",
+      "scripts/stage_e.py::main",
+      "scripts/stage_e_report.py::main",
       "scripts/stuck_report.py::main",
       "scripts/verify_evidence.py::main"
      ],
@@ -318197,7 +319458,7 @@
      "how": "direct"
     }
    ],
-   "fingerprint": "a30a63837faaabb3",
+   "fingerprint": "df3a11dc75a096e8",
    "sentence_tpl": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
    "what_tpl": [
     "When you give a sentence instead of asking for practice jobs, it becomes a single job that may ask you for further clarification.",
@@ -319913,6 +321174,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_t09_tokens.py::test_chat_spans_carry_usage_and_result_sums_them",
      "line": 11,
      "outcome": "passed",
@@ -319931,7 +321198,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "249a62a7051c6c61",
+   "fingerprint": "5f20989022abdc18",
    "sentence_tpl": "The single record every later step reads: the job text, its kind and, for practice jobs, the answer.",
    "what_tpl": [
     "A small record with an id, the job text, its kind, the known answer if any, and tags.",
@@ -323684,6 +324951,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -324170,7 +325443,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "5b76f793a046f782",
+   "fingerprint": "a2e7a4cd2bc9f98d",
    "sentence_tpl": "Compares the team's answer with the known answer; a job with no single right answer is scored against its rubric instead.",
    "what_tpl": [
     "After the run, the team's answer is compared with the known answer.",
@@ -329250,6 +330523,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -329724,7 +331003,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "ceb9ef29f7ccbfff",
+   "fingerprint": "ab820ae637c4be7c",
    "sentence_tpl": "Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a clear winner, asks the user one question, or makes the answer state its assumption.",
    "what_tpl": [
     "One call reads the task (and the read-only user context from --context: location, organisation, role) and lists the key entities and terms that could be read more than one way — names, abbreviations, acronyms, likely voice-input errors such as \"P and W\" for \"PNW\" — each reading with a one-line reason and a confidence.",
@@ -332705,6 +333984,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -333179,7 +334464,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "db30c522c1b07521",
+   "fingerprint": "57515e9aebff214d",
    "sentence_tpl": "Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
    "what_tpl": [
     "Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts. Only a '##' that starts a line (or follows a closing tag, as in '</thought>## Thought') is a heading; one in the middle of a line, such as a lesson echoed inside a role's JSON, is text.",
@@ -340909,6 +342194,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -341281,7 +342572,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "7192d70001d0c2ad",
+   "fingerprint": "7c0ce168624290e5",
    "sentence_tpl": "Throws out broken or nameless helper entries, records tools we lack instead of dropping them, flags the summariser, and drops steps that name nobody.",
    "what_tpl": [
     "Reads the helper records and the numbered steps out of the last draft.",
@@ -345040,6 +346331,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -345526,7 +346823,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "c4686dca7d9e2d3c",
+   "fingerprint": "0cf91be68b2d59fd",
    "sentence_tpl": "Keeps the tools that exist; a tool we lack is recorded as a request, never used and never silently dropped.",
    "what_tpl": [
     "After drafting: each helper's tools are split into the ones the registry has (kept) and the rest (its missing tools). Each missing one becomes a capability request unless the planner already asked for it.",
@@ -348413,6 +349710,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -348881,7 +350184,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "492482851ed49f30",
+   "fingerprint": "8591d2ca49fa2400",
    "sentence_tpl": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
    "what_tpl": [
     "One record per request: name, tool or skill, for which helper, what it does, input, output and an example of each.",
@@ -352660,6 +353963,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_parser_reads_kind",
      "line": 10,
      "outcome": "passed",
@@ -352996,7 +354305,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "45c7f156d2312e44",
+   "fingerprint": "1b98c850fe37823a",
    "sentence_tpl": "Coordinates the team's workflow by selecting the appropriate execution strategy based on the team's structure.",
    "what_tpl": [
     "Opens the log entry for the whole run and picks the runner for the team's shape.",
@@ -355757,6 +357066,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -356243,7 +357558,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "22be9d44fa47a5ea",
+   "fingerprint": "7705b1718e3e373c",
    "sentence_tpl": "Walks through the plan's steps in order, giving each step everything the earlier steps produced.",
    "what_tpl": [
     "Takes the plan's steps one at a time, in order.",
@@ -359177,6 +360492,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -359663,7 +360984,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "6c4b40544e0e10ce",
+   "fingerprint": "85e63d8730b0ec90",
    "sentence_tpl": "The AI helper for a step reads the step, the earlier results and a shared scratchpad, then picks one action.",
    "what_tpl": [
     "Each helper named in the step gets its own drafted instructions plus the step, earlier results and a scratchpad shared with the other helpers of that step.",
@@ -362676,6 +363997,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -363162,7 +364489,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "7668298254be5983",
+   "fingerprint": "5539e152e334b442",
    "sentence_tpl": "Reads the helper's chosen action: runs a tool and loops, or accepts a final answer; gives up after five turns.",
    "what_tpl": [
     "If the chosen action is one of the helper's tools, the tool runs and its result goes on the scratchpad.",
@@ -363250,7 +364577,8 @@
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
       "amoeba/localtools/toolbox.py::LocalToolbox.call",
-      "amoeba/pool/mcp.py::PoolTools.call"
+      "amoeba/pool/mcp.py::PoolTools.call",
+      "scripts/stage_e.py::run_pairs"
      ],
      "callees": [
       "amoeba/config/prompts/__init__.py::render",
@@ -366173,6 +367501,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -366653,7 +367987,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "5958b4a59e18e432",
+   "fingerprint": "0cf57b4ea24baf1c",
    "sentence_tpl": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply gets one retry.",
    "what_tpl": [
     "The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
@@ -369606,6 +370940,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -370080,7 +371420,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "4d58c1e314de4b7b",
+   "fingerprint": "69205a4e69495c0d",
    "sentence_tpl": "Every other helper reviews the answer and must reply Agree or Disagree; unreadable replies count as agreement.",
    "what_tpl": [
     "Each reviewer sees the job, its own role and the recent chat history (answers and objections).",
@@ -372834,6 +374174,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -373320,7 +374666,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "7959cdc7df6c8c66",
+   "fingerprint": "89b1f6ba07e53940",
    "sentence_tpl": "Counts the objections: none ends the run; otherwise everyone sees them and the writer revises, up to {TeamConfig.max_inner_turns} rounds, or stops if the plan is empty.",
    "what_tpl": [
     "After each review round, plain code keeps only the disagreeing reviews that carry a reason.",
@@ -376428,6 +377774,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_parser_reads_kind",
      "line": 10,
      "outcome": "passed",
@@ -376764,7 +378116,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "0ce69f06a28e718b",
+   "fingerprint": "2c53203bbb8621ba",
    "sentence_tpl": "Builds the order of work from each step's 'depends on' line and rejects a plan that loops.",
    "what_tpl": [
     "Reads which earlier steps each step depends on; a plan with no such lines runs as a simple chain.",
@@ -381028,6 +382380,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -381514,7 +382872,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "cb5653480328ecb4",
+   "fingerprint": "2f6dbf4bee0b883c",
    "sentence_tpl": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
    "what_tpl": [
     "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, the outputs of the steps it depends on, and a list of local files it can reference.",
@@ -386007,6 +387365,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -386487,7 +387851,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "85f414347d9a0e22",
+   "fingerprint": "db39f4714861e93b",
    "sentence_tpl": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
    "what_tpl": [
     "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
@@ -390403,6 +391767,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -390889,7 +392259,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "59902030bbc18f51",
+   "fingerprint": "d995398ea8b54fb0",
    "sentence_tpl": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code validates the change.",
    "what_tpl": [
     "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, or a tool the plan did not know about. No trigger, no call.",
@@ -393797,6 +395167,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -394283,7 +395659,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "88da6e4f56a12643",
+   "fingerprint": "98df4f5a2d52d780",
    "sentence_tpl": "Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
    "what_tpl": [
     "A number is cited when its line carries a source id the step could have seen.",
@@ -396986,6 +398362,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -397472,7 +398854,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "ceecc4b9dcd3d257",
+   "fingerprint": "13d18ebd6a57e07d",
    "sentence_tpl": "Each step's output saved as a file, with who wrote it, what it saw, its status and its sources.",
    "what_tpl": [
     "runs/<id>/artifacts/step_<n>.md holds the text; step_<n>.json the step, wave, roles, inputs, status, checks, verdict, sources and figure counts.",
@@ -400951,6 +402333,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -401437,7 +402825,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "d5cf1dca35a993cf",
+   "fingerprint": "fb72c5f561b4b6ed",
    "sentence_tpl": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
    "what_tpl": [
     "Sees every step's latest output with its status, missing capabilities, verdict, figure counts, the deliverables the plan committed to, and where each figure was found (never the scoring rubric).",
@@ -404706,6 +406094,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_parser_reads_kind",
      "line": 10,
      "outcome": "passed",
@@ -404928,7 +406322,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "67004b826699679d",
+   "fingerprint": "aa1346f17f56a3b3",
    "sentence_tpl": "Writes one log line per AI call and tool call: who, which model, tokens, reasoning tokens, time, step, and automated safety checks. Nothing enforces a budget.",
    "what_tpl": [
     "Every AI call becomes one log line with the helper, model, tokens in and out, reasoning tokens, time taken, and step number.",
@@ -405559,7 +406953,8 @@
      "doc": "D111: ok | infra_error | agent_error, from a run's error (D105 adds no_deliverable at the end of a plan run,",
      "callers": [
       "amoeba/task/models.py::infra_error",
-      "scripts/run_task.py::run_one"
+      "scripts/run_task.py::run_one",
+      "scripts/stage_e_report.py::run_record"
      ],
      "callees": [],
      "range": [
@@ -408238,6 +409633,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -408706,7 +410107,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "75eb2303caec742c",
+   "fingerprint": "9e3e93fc331f8404",
    "sentence_tpl": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
    "what_tpl": [
     "Summarises the run in one record saved as result.json.",
@@ -412912,6 +414313,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_parser_reads_kind",
      "line": 10,
      "outcome": "passed",
@@ -413182,7 +414589,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "a6f4489584ee236b",
+   "fingerprint": "622414b4f4183fcc",
    "sentence_tpl": "Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search and page reading.",
    "what_tpl": [
     "Tools are looked up by name; a name that is not registered is an error, not a web search.",
@@ -418218,6 +419625,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_parser_reads_kind",
      "line": 10,
      "outcome": "passed",
@@ -418398,7 +419811,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "8d8866ac7cfd7494",
+   "fingerprint": "8874a2014bd5dad4",
    "sentence_tpl": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
    "what_tpl": [
     "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
@@ -423468,6 +424881,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_parser_reads_kind",
      "line": 10,
      "outcome": "passed",
@@ -423912,7 +425331,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "c22ece9e76812bfc",
+   "fingerprint": "b62ed8d938b02001",
    "sentence_tpl": "With --local-tools on, Claude Code's tools and skills run in a fresh OpenShell sandbox per run: no network, only the workspace writable.",
    "what_tpl": [
     "D96: `claude mcp serve` and every command run inside a fresh OpenShell sandbox per run (image amoeba-sandbox:local, gateway on 127.0.0.1:17680): no network, Landlock lets only /sandbox, /tmp and /dev/null be written, skills are read-only under /opt/skills, no secrets, runs as user sandbox; the sandbox is deleted at the end.",
@@ -426939,6 +428358,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -427425,7 +428850,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "8680322a53952d31",
+   "fingerprint": "37dcb2f8ef4ef9ee",
    "sentence_tpl": "The tools and skills Box 3 may draw on, fetched ahead of time by `amoeba pool refresh`; a run only reads it.",
    "what_tpl": [
     "Tools: the official MCP Registry, the latest version of each server (remote, repository, version, whether a key is needed).",
@@ -431203,6 +432628,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -431677,7 +433108,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "9713cd47fcecc770",
+   "fingerprint": "3fa307a7342f770e",
    "sentence_tpl": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
    "what_tpl": [
     "Sends the messages to the AI service and returns the reply with its token counts.",
@@ -434718,6 +436149,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -435012,7 +436449,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "74e6af436631051d",
+   "fingerprint": "47e6b6c8118ed4f6",
    "sentence_tpl": "A scripted pretend AI that answers the practice jobs correctly, so everything runs without a real AI.",
    "what_tpl": [
     "Recognises which role is being asked from a fixed phrase in the prompt.",
@@ -439221,6 +440658,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -439695,7 +441138,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "f3a3a8903f63e0fa",
+   "fingerprint": "abe8b7ec32cfc217",
    "sentence_tpl": "The typed edits a fix may make, the code that applies them to a plan, and the plain-code validation every edit must pass.",
    "what_tpl": [
     "The edit menu: add or remove a planner rule, add a check step after selected steps, add a clause to selected steps' done-when, grant or revoke a tool on selected roles, add a rule to selected roles' cards, set one run option, prefer a model (built, off). Each edit is a pure function that makes version N+1 with parent N.",
@@ -441289,6 +442732,12 @@
     {
      "test": "tests/test_shorten.py::test_program_output_keeps_its_last_twenty_lines",
      "line": 35,
+     "outcome": "passed",
+     "how": "direct"
+    },
+    {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
      "outcome": "passed",
      "how": "direct"
     },
@@ -444095,7 +445544,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "caf54ec3c0a6d1cb",
+   "fingerprint": "e8f490f6522df7d1",
    "sentence_tpl": "An append-only, hash-chained log written only by the harness, with a fingerprint of every run folder it names, and an off-container copy on the repository's evidence branch.",
    "what_tpl": [
     "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
@@ -447887,6 +449336,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -448361,7 +449816,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "dbd19fca5d64dfce",
+   "fingerprint": "5b0bbf3ed24a88b5",
    "sentence_tpl": "Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters that are never relaxed, then a preference set for the role (D98, built, off), the role's default or the cheapest of the right size.",
    "what_tpl": [
     "Every call states its role, step, size, needed features and data class; the router keeps the models that are allowed (niche profile, --allowed-models) and available (key present, not cooling down, not failing), drops those whose context, features, privacy, budget or verifier-independence rule fails, then chooses.",
@@ -451894,6 +453349,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -452374,7 +453835,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "8fbecd355afa5f59",
+   "fingerprint": "0408cea453df4268",
    "sentence_tpl": "One file per environment says which tools and models are allowed, the limits, what counts as done, the domain's rules and words, and which domain checks run; plain code enforces it.",
    "what_tpl": [
     "--niche <name> loads profiles/<name>.yaml; the default, general, changes nothing.",
@@ -452693,6 +454154,9 @@
      "doc": "",
      "callers": [
       "amoeba/task/saved_drafts.py::load_saved_drafts",
+      "scripts/stage_e_report.py::_final_metas",
+      "scripts/stage_e_report.py::run_record",
+      "scripts/stage_e_report.py::samples",
       "scripts/stuck_report.py::run_stuck"
      ],
      "callees": [],
@@ -452732,6 +454196,7 @@
      "callees": [
       "scripts/eval_draft.py::parse_args",
       "scripts/run_task.py::parse_args",
+      "scripts/stage_e_report.py::report",
       "scripts/stuck_report.py::_row",
       "scripts/stuck_report.py::report"
      ],
@@ -452750,6 +454215,7 @@
      "signature": "report(roots: list[str]) -> dict",
      "doc": "Counts per run set and in total.",
      "callers": [
+      "scripts/stage_e_report.py::main",
       "scripts/stuck_report.py::main"
      ],
      "callees": [
@@ -452792,6 +454258,7 @@
      "signature": "run_stuck(run: Path) -> list[dict]",
      "doc": "One record per step attempt of a stored run: {step, attempt, status, stuck, cause, signals, evidence,",
      "callers": [
+      "scripts/stage_e_report.py::run_record",
       "scripts/stuck_report.py::report"
      ],
      "callees": [
@@ -452803,6 +454270,7 @@
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/saved_drafts.py::_load",
+      "scripts/stage_e_report.py::_load",
       "scripts/stuck_report.py::_load"
      ],
      "range": [
@@ -452885,6 +454353,12 @@
     {
      "test": "tests/test_saved_drafts.py::test_cli_reuses_the_picked_draft_and_skips_tasks_without_one",
      "line": 62,
+     "outcome": "passed",
+     "how": "direct"
+    },
+    {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
      "outcome": "passed",
      "how": "direct"
     },
@@ -455919,7 +457393,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "d87d10095bc8b532",
+   "fingerprint": "f6a589b132128ffe",
    "sentence_tpl": "After each step attempt plain code marks a step that did not end done STUCK on any of six signals and names one cause.",
    "what_tpl": [
     "Signals: a missing input (data an earlier step should have given, told from a missing tool by classify_lacked); the same tool error twice in a row (digits masked); checks still failing after the retry turn (unless the helpers ran out of turns); max turns; a capability or skill lacked or requested and unfilled; a file owed and no file change between attempts.",
@@ -455930,9 +457404,9 @@
    "numbers": {
     "MAX_EVIDENCE": 8
    },
-   "text_source": "hand",
+   "text_source": "hand (model: still true)",
    "text_stale": null,
-   "text_hash": "ec5639a8243a033f"
+   "text_hash": "289984518411b6ef"
   },
   {
    "id": "fixes",
@@ -459034,6 +460508,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -459514,7 +460994,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "b2d1ed67b64dfdec",
+   "fingerprint": "6383bf42968bdfc3",
    "sentence_tpl": "Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
    "what_tpl": [
     "missing_input: an upstream step that is done and holds the data is added to depends_on or passed in full; an upstream output without it is re-run once with the item in its done_when (the only redo of a completed step), then the stuck step.",
@@ -462782,6 +464262,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -463262,7 +464748,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "848e2a9f46bde5ea",
+   "fingerprint": "bb05e4991d6798f9",
    "sentence_tpl": "The last rung: one AI call proposes one edit for the stuck step; plain code checks it, applies it to the live plan and re-runs the step.",
    "what_tpl": [
     "Called only when the code fixes for the step are used up or not allowed (including \"capability fix unavailable: pool off\").",
@@ -463286,6 +464772,298 @@
    "text_source": "hand",
    "text_stale": null,
    "text_hash": "2dd35ab54851c931"
+  },
+  {
+   "id": "stage_e",
+   "view": "adapt",
+   "title": "Stage E: --adapt off vs on (pairs and report)",
+   "kind": "code",
+   "plan": null,
+   "sentence": "Runs each task and seed with --adapt off, then on with the off run's draft and pool picks, and reports the two arms side by side.",
+   "what": [
+    "The on arm reuses the off run's plan.json (--drafts-from) and both share one --picks-file: the arms differ only in Box 3. A pair whose arm already has a result is not run again.",
+    "The report: outcome per run (done, done with limitation, stuck-stopped, failed), stuck steps by cause (the off arm read offline by the same watch), recovered steps by rung, work-arounds apart, rubric scores, billed tokens, the adaptation's tokens and $, wall time, searches, and what broke.",
+    "Three recovered steps per arm, picked at random with a fixed seed, are shown with their trace lines and their output before and after."
+   ],
+   "proposes": "Nothing: no AI works here.",
+   "disposes": "Plain code runs the pairs and counts.",
+   "guard_anchors": [],
+   "anchors": [
+    {
+     "key": "scripts/stage_e.py::run_pairs",
+     "kind": "function",
+     "name": "run_pairs",
+     "path": "scripts/stage_e.py",
+     "line": 56,
+     "end_line": 90,
+     "signature": "run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthrough: list[str], python: str=sys.executable) -> list[dict]",
+     "doc": "",
+     "callers": [
+      "scripts/stage_e.py::main"
+     ],
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+      "amoeba/llm/router.py::ModelRouter.call",
+      "amoeba/localtools/server.py::StdioServer.call",
+      "amoeba/localtools/toolbox.py::LocalToolbox.call",
+      "amoeba/pool/mcp.py::Connector.call",
+      "amoeba/pool/mcp.py::PoolTools.call",
+      "amoeba/pool/mcp.py::SdkConnector.call",
+      "scripts/stage_e.py::arm_command",
+      "scripts/stage_e.py::one_task_file",
+      "scripts/stage_e.py::run_dir_of"
+     ],
+     "range": [
+      56,
+      90
+     ]
+    },
+    {
+     "key": "scripts/stage_e_report.py::run_record",
+     "kind": "function",
+     "name": "run_record",
+     "path": "scripts/stage_e_report.py",
+     "line": 58,
+     "end_line": 115,
+     "signature": "run_record(row: dict) -> dict",
+     "doc": "One arm's run, measured.",
+     "callers": [
+      "scripts/stage_e_report.py::report"
+     ],
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/models.py::run_status",
+      "amoeba/task/saved_drafts.py::_load",
+      "scripts/stage_e_report.py::_final_metas",
+      "scripts/stage_e_report.py::_load",
+      "scripts/stage_e_report.py::_trace",
+      "scripts/stuck_report.py::_load",
+      "scripts/stuck_report.py::run_stuck"
+     ],
+     "range": [
+      58,
+      115
+     ]
+    },
+    {
+     "key": "scripts/stage_e.py::arm_command",
+     "kind": "function",
+     "name": "arm_command",
+     "path": "scripts/stage_e.py",
+     "line": 46,
+     "end_line": 52,
+     "signature": "arm_command(arm: str, task_file: Path, seed: int, runs: Path, picks: Path, off_run: Path | None, passthrough: list[str], python: str=sys.executable) -> list[str]",
+     "doc": "",
+     "callers": [
+      "scripts/stage_e.py::run_pairs"
+     ],
+     "callees": [],
+     "range": [
+      46,
+      52
+     ]
+    },
+    {
+     "key": "scripts/stage_e.py::one_task_file",
+     "kind": "function",
+     "name": "one_task_file",
+     "path": "scripts/stage_e.py",
+     "line": 26,
+     "end_line": 35,
+     "signature": "one_task_file(tasks: Path, task_id: str, out: Path) -> Path",
+     "doc": "A tasks file holding only `task_id` (run_task runs every task of its --tasks file).",
+     "callers": [
+      "scripts/stage_e.py::run_pairs"
+     ],
+     "callees": [
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "range": [
+      26,
+      35
+     ]
+    },
+    {
+     "key": "scripts/stage_e.py::run_dir_of",
+     "kind": "function",
+     "name": "run_dir_of",
+     "path": "scripts/stage_e.py",
+     "line": 39,
+     "end_line": 42,
+     "signature": "run_dir_of(runs: Path) -> Path | None",
+     "doc": "The one run folder an arm wrote (the newest with a result.json).",
+     "callers": [
+      "scripts/stage_e.py::run_pairs"
+     ],
+     "callees": [],
+     "range": [
+      39,
+      42
+     ]
+    },
+    {
+     "key": "scripts/stage_e_report.py::report",
+     "kind": "function",
+     "name": "report",
+     "path": "scripts/stage_e_report.py",
+     "line": 152,
+     "end_line": 185,
+     "signature": "report(folder: Path, seed: int=117) -> tuple[str, dict]",
+     "doc": "",
+     "callers": [
+      "scripts/stage_e_report.py::main",
+      "scripts/stuck_report.py::main"
+     ],
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/stage_e_report.py::_sum",
+      "scripts/stage_e_report.py::run_record",
+      "scripts/stage_e_report.py::samples"
+     ],
+     "range": [
+      152,
+      185
+     ]
+    },
+    {
+     "key": "scripts/stage_e_report.py::samples",
+     "kind": "function",
+     "name": "samples",
+     "path": "scripts/stage_e_report.py",
+     "line": 119,
+     "end_line": 137,
+     "signature": "samples(rows: list[dict], records: list[dict], k: int=3, seed: int=117) -> list[dict]",
+     "doc": "k recovered steps of the on arm picked at random (seeded), each with its trace lines and its output before",
+     "callers": [
+      "scripts/stage_e_report.py::report"
+     ],
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/saved_drafts.py::_load",
+      "scripts/stage_e_report.py::_load",
+      "scripts/stage_e_report.py::_trace",
+      "scripts/stuck_report.py::_load"
+     ],
+     "range": [
+      119,
+      137
+     ]
+    }
+   ],
+   "guards": [],
+   "deviations": [],
+   "output_guards": [],
+   "shield": false,
+   "ai_sites": [],
+   "src": "scripts/stage_e.py:56",
+   "plan_card": null,
+   "plan_texts": null,
+   "checks": [],
+   "status": "extra",
+   "tests": [
+    {
+     "test": "tests/test_fixes_d117.py::test_an_empty_shortlist_is_one_failed_fix_never_repeated_then_the_task_stops",
+     "line": 217,
+     "outcome": "passed",
+     "how": "direct"
+    },
+    {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "direct"
+    },
+    {
+     "test": "tests/test_stage_e_d117.py::test_the_on_arm_reuses_the_off_arm_and_only_adapt_differs",
+     "line": 11,
+     "outcome": "passed",
+     "how": "direct"
+    },
+    {
+     "test": "tests/test_stuck_d117.py::test_the_report_reads_stored_runs_the_same_way",
+     "line": 98,
+     "outcome": "passed",
+     "how": "direct"
+    },
+    {
+     "test": "tests/test_cache.py::test_cli_record_then_replay_is_identical_and_traced",
+     "line": 70,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
+     "test": "tests/test_draft_record.py::test_cli_logs_content_by_default",
+     "line": 61,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
+     "test": "tests/test_eval_draft.py::test_main_writes_summary_csv",
+     "line": 34,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
+     "test": "tests/test_evidence_d95.py::test_verify_evidence_script_exit_codes",
+     "line": 50,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
+     "test": "tests/test_limits.py::test_cli_prints_tokens_and_cost_and_honours_the_limits",
+     "line": 54,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
+     "test": "tests/test_open_questions.py::test_eval_scripts_have_no_interactive_flag",
+     "line": 93,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
+     "test": "tests/test_profiles.py::test_list_models_marks_the_profile_models",
+     "line": 177,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
+     "test": "tests/test_quality_gate_d79.py::test_main_passes_the_resolved_gate_to_run_one",
+     "line": 19,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
+     "test": "tests/test_saved_drafts.py::test_cli_reuses_the_picked_draft_and_skips_tasks_without_one",
+     "line": 62,
+     "outcome": "passed",
+     "how": "indirect"
+    }
+   ],
+   "fingerprint": "b62ba402b22e09b5",
+   "sentence_tpl": "Runs each task and seed with --adapt off, then on with the off run's draft and pool picks, and reports the two arms side by side.",
+   "what_tpl": [
+    "The on arm reuses the off run's plan.json (--drafts-from) and both share one --picks-file: the arms differ only in Box {samples.k}. A pair whose arm already has a result is not run again.",
+    "The report: outcome per run (done, done with limitation, stuck-stopped, failed), stuck steps by cause (the off arm read offline by the same watch), recovered steps by rung, work-arounds apart, rubric scores, billed tokens, the adaptation's tokens and $, wall time, searches, and what broke.",
+    "Three recovered steps per arm, picked at random with a fixed seed, are shown with their trace lines and their output before and after."
+   ],
+   "numbers": {
+    "Episode.seed": 0,
+    "report.seed": 117,
+    "samples.k": 3,
+    "samples.seed": 117
+   },
+   "text_source": "hand",
+   "text_stale": null,
+   "text_hash": "788c6466bb370983"
   },
   {
    "id": "arch_check",
@@ -466173,6 +467951,12 @@
      "how": "indirect"
     },
     {
+     "test": "tests/test_stage_e_d117.py::test_a_pilot_folder_runs_and_reports",
+     "line": 22,
+     "outcome": "passed",
+     "how": "indirect"
+    },
+    {
      "test": "tests/test_step_kind.py::test_a_declared_verify_step_is_a_verifier_whatever_its_title",
      "line": 26,
      "outcome": "passed",
@@ -466659,7 +468443,7 @@
      "how": "indirect"
     }
    ],
-   "fingerprint": "00b4bc386cb046e5",
+   "fingerprint": "77f068e8d95b7295",
    "sentence_tpl": "One proposed change is one strict JSON object; plain code parses it and checks it is allowed, valid and new.",
    "what_tpl": [
     "The reply: exactly one JSON object with one typed edit, a short rationale (at most 400 characters) and a predicted change between -1 and 1; any other key is refused.",
@@ -468015,6 +469799,27 @@
   "scripts/run_task.py::main": [
    "free_text"
   ],
+  "scripts/stage_e.py::one_task_file": [
+   "stage_e"
+  ],
+  "scripts/stage_e.py::run_dir_of": [
+   "stage_e"
+  ],
+  "scripts/stage_e.py::arm_command": [
+   "stage_e"
+  ],
+  "scripts/stage_e.py::run_pairs": [
+   "stage_e"
+  ],
+  "scripts/stage_e_report.py::run_record": [
+   "stage_e"
+  ],
+  "scripts/stage_e_report.py::samples": [
+   "stage_e"
+  ],
+  "scripts/stage_e_report.py::report": [
+   "stage_e"
+  ],
   "scripts/stuck_report.py::run_folders": [
    "stuck"
   ],
@@ -468562,6 +470367,19 @@
   "scripts/run_task.py::routing_mode",
   "scripts/run_task.py::run_one",
   "scripts/smoke_web.py::main",
+  "scripts/stage_e.py::arm_command",
+  "scripts/stage_e.py::main",
+  "scripts/stage_e.py::one_task_file",
+  "scripts/stage_e.py::run_dir_of",
+  "scripts/stage_e.py::run_pairs",
+  "scripts/stage_e_report.py::_final_metas",
+  "scripts/stage_e_report.py::_load",
+  "scripts/stage_e_report.py::_sum",
+  "scripts/stage_e_report.py::_trace",
+  "scripts/stage_e_report.py::main",
+  "scripts/stage_e_report.py::report",
+  "scripts/stage_e_report.py::run_record",
+  "scripts/stage_e_report.py::samples",
   "scripts/stuck_report.py::_load",
   "scripts/stuck_report.py::_row",
   "scripts/stuck_report.py::main",
@@ -468571,6 +470389,54 @@
   "scripts/verify_evidence.py::main"
  ],
  "unassigned": [
+  {
+   "key": "scripts/stage_e.py::main",
+   "name": "main",
+   "path": "scripts/stage_e.py",
+   "line": 93,
+   "kind": "function",
+   "new": true
+  },
+  {
+   "key": "scripts/stage_e_report.py::_final_metas",
+   "name": "_final_metas",
+   "path": "scripts/stage_e_report.py",
+   "line": 36,
+   "kind": "function",
+   "new": true
+  },
+  {
+   "key": "scripts/stage_e_report.py::_load",
+   "name": "_load",
+   "path": "scripts/stage_e_report.py",
+   "line": 29,
+   "kind": "function",
+   "new": true
+  },
+  {
+   "key": "scripts/stage_e_report.py::_sum",
+   "name": "_sum",
+   "path": "scripts/stage_e_report.py",
+   "line": 140,
+   "kind": "function",
+   "new": true
+  },
+  {
+   "key": "scripts/stage_e_report.py::_trace",
+   "name": "_trace",
+   "path": "scripts/stage_e_report.py",
+   "line": 44,
+   "kind": "function",
+   "new": true
+  },
+  {
+   "key": "scripts/stage_e_report.py::main",
+   "name": "main",
+   "path": "scripts/stage_e_report.py",
+   "line": 188,
+   "kind": "function",
+   "new": true
+  },
   {
    "key": "amoeba/capabilities/__init__.py::_table",
    "name": "_table",
@@ -469999,21 +471865,21 @@
   ]
  ],
  "text_log": {
-  "ts": "2026-10-06T20:39:31+00:00",
-  "commit": "140688f",
-  "boxes": 53,
+  "ts": "2026-10-06T20:52:55+00:00",
+  "commit": "8c49914",
+  "boxes": 54,
   "unchanged": 50,
   "hand": 1,
-  "checked": 0,
-  "kept": 0,
+  "checked": 1,
+  "kept": 1,
   "rewritten": 0,
   "stale": 2,
   "rejected": 0,
-  "llm_calls": 0,
-  "input_tokens": 0,
-  "output_tokens": 0,
+  "llm_calls": 1,
+  "input_tokens": 2613,
+  "output_tokens": 7,
   "reasoning_tokens": 0,
-  "model": null,
+  "model": "gemini-3.1-flash-lite",
   "rewritten_boxes": [],
   "stale_boxes": [
    "toolbox",
@@ -470392,7 +472258,7 @@
  "status_counts": {
   "built": 17,
   "differs": 8,
-  "extra": 28,
+  "extra": 29,
   "ref": 1
  }
 }
