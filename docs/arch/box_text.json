@@ -3324,7 +3324,7 @@
   ]
  },
  "fixes": {
-  "checked_at": "5d474b1",
+  "checked_at": "6b13b69",
   "facts": {
    "anchors": [
     {
@@ -3352,6 +3352,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.apply_fix",
       "amoeba/interp/plan_runner.py::PlanRunner.fix_ctx",
       "amoeba/interp/plan_runner.py::PlanRunner.log_event",
+      "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/toolbox.py::LocalToolbox.candidates",
@@ -3359,7 +3360,7 @@
      ],
      "doc": "D117 Stage C: while step n is stuck, try the next code fix for its cause (cheapest first, allowed by the",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
-     "signature": "fix_stuck(self, n: int, wave: int) -> bool"
+     "signature": "fix_stuck(self, n: int, wave: int) -> str | None"
     },
     {
      "callees": [
@@ -3435,7 +3436,23 @@
     },
     {
      "callees": [
-      "amoeba/interp/plan_runner.py::PlanRunner.adapt_usd"
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/interp/plan_runner.py::PlanRunner.adapt_usd",
+      "amoeba/interp/plan_runner.py::PlanRunner.left_on_old_output",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The adaptation report: each stuck step, its cause and evidence, each fix tried (code or fix proposer) and",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.adapt_report",
+     "signature": "adapt_report(self, stopped: int | None=None) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.adapt_usd",
+      "amoeba/interp/plan_runner.py::PlanRunner.left_on_old_output",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
      ],
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
@@ -3502,9 +3519,9 @@
     },
     {
      "callees": [
-      "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.log_event",
+      "amoeba/interp/plan_runner.py::PlanRunner.write_adapt_report",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -3512,6 +3529,14 @@
      "doc": "All fixes failed (or none was left): the task stops. The report says what was stuck, the cause, each fix",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.stop_report",
      "signature": "stop_report(self, n: int) -> tuple[str, str]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.adapt_report"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.write_adapt_report",
+     "signature": "write_adapt_report(self, stopped: int | None=None) -> str"
     }
    ],
    "checks": [],
@@ -3524,18 +3549,16 @@
    "prompts": {},
    "title": "Code fixes for a stuck step (D117 Stage C)"
   },
-  "facts_hash": "e132a281c9ac9ad9",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "b26a3fbb66b1de2d",
-  "seed_hash": "1fb809564e50141b",
+  "facts_hash": "b26a3fbb66b1de2d",
+  "seed_hash": "7e8156707a200b60",
   "sentence": "Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
-  "source": "hand (model: still true)",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand",
   "what": [
    "missing_input: an upstream step that is done and holds the data is added to depends_on or passed in full; an upstream output without it is re-run once with the item in its done_when (the only redo of a completed step), then the stuck step.",
    "Rung 1: more turns (tool_error, max_turns), more retry turns then a larger input (checks).",
    "Rung 2: the missing tool or skill from the pool shortlist, first vetted candidate not given before (no AI pick); with the pool and local tools off it is skipped: \"capability fix unavailable: pool off\".",
-   "Limits from adapt.yaml (adapt): three fixes per step, eight per task, a token and dollar cap; a fix is never repeated. When none recovers the step the task stops: adapt_report.md says what was stuck, the cause, each fix and why it failed."
+   "When no code fix is left for the step (used up, not allowed for the cause, or skipped), the fix proposer (Stage D) is the next and last rung.",
+   "Limits from adapt.yaml (adapt): three fixes per step and eight per task, the proposer's included, a token and dollar cap; a fix is never repeated. When nothing recovers the step the task stops: adapt_report.md says what was stuck, the cause, each fix and why it failed."
   ]
  },
  "free_text": {
