@@ -36,7 +36,7 @@ class ArchitectReply(BaseModel):
     rationale: str = Field(max_length=400)
     predicted_delta: float
     metric: str = "score"
-    hypothesis_id: str | None = None          # ignored: code names the hypothesis
+    hypothesis_id: str | None = None          # ignored (a field of the removed loop; the format stays strict)
     family: str | None = None
     diagnosis_ref: str | None = None
 

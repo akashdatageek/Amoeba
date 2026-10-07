@@ -194,10 +194,11 @@ is written for every run with a stuck step. With `stop_when_exhausted` (on), a s
 
 ## Model router (D97)
 
-**What it does.** Chooses the model for every model call in Boxes 1–9. Each call states:
+**What it does.** Chooses the model for every model call in Boxes 1–4. Each call states:
 
 - its role (interpreter, planner, agent_observer, plan_observer, worker, verifier, action_observer, summariser,
-  architect, pool_picker, family_classifier);
+  pool_picker, family_classifier; the fix proposer calls as planner; `architect` is still listed for the removed
+  loop's traces);
 - its step;
 - its size (estimated prompt tokens and reply limit);
 - the features it needs (JSON, tools, vision);

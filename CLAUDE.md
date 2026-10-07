@@ -3,6 +3,7 @@
 Amoeba is a research system in which a team of AI helpers is drafted per task and, in later phases, reshapes itself under plain-code control. Motto: **first make it, then make it better.** Principle everywhere: **LLM proposes, deterministic code disposes.**
 
 Phase 1 builds three boxes only: **Task → Plan a new team → Team runs the task.** No memory, monitor, gate, or cost handling.
+Since D117 a fourth box adapts a stuck step inside one task (stuck watch, code fixes, a fix-proposer agent; spec/BUILD_SPEC_PHASE2.md §17). The offline learning loop of Phase 2 (Boxes 4–9: task streams, Experimenter, Gate, recipes) was removed; nothing carries over between tasks.
 
 ## Read in this order
 1. `spec/BUILD_SPEC_PHASE1.md` — the spec. §13 is your instruction. §11 lists deliberate deviations from the source papers.

@@ -182,8 +182,9 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     have (toolbox_text), shown to the d24 Planner and both observers instead of the installed-tool list.
     interpretation: D77 — the task interpretation step's result (read_task); the caller has put its note in the task
     text. It is kept on the draft, and an open question about an interpreted entity is answered from it.
-    lessons: D82 — the recipe's planner rules as the d24 prompts' {lessons} slot, one text per reader ("planner",
-    "agent_observer", "plan_observer"; amoeba.adapt.recipe.lessons_text); None or empty: the prompts are unchanged."""
+    lessons: D82 — text for the d24 prompts' {lessons} slot, one per reader ("planner", "agent_observer",
+    "plan_observer"). D117 removed the recipes that filled it; nothing passes it now, and None or empty leaves the
+    prompts unchanged."""
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
     d24 = prompts == D24

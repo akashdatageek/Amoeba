@@ -1,5 +1,7 @@
 # Stream m2: frozen
 
+> **History.** This describes the offline learning loop (task streams, the Experimenter, the Gate, recipes) that D117 removed on Oct 6, 2026 (spec/BUILD_SPEC_PHASE1.md row D117; spec/BUILD_SPEC_PHASE2.md §17). The results are kept as they were; the scripts and files it names may no longer exist.
+
 Approved and frozen on Oct 4, 2026, before any run on the gate set. Any later change to these files is a new stream.
 
 | file | SHA-256 |

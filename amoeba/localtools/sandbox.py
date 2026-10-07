@@ -10,7 +10,7 @@ gateway, never by the agent:
   - network: none. The workload container runs with network=none and the policy names no egress endpoint;
   - filesystem (Landlock, hard requirement): only the sandbox's own home (/sandbox, holding the workspace
     /sandbox/workspace), /tmp and /dev/null are writable; system directories and /opt/skills are read-only; nothing else
-    is visible. The harness code, eval/, events.jsonl, the ledger, recipes, .git and env files are never mounted;
+    is visible. The harness code, eval/, runs/ (events.jsonl, trace, result), .git and env files are never mounted;
   - process: runs as the unprivileged `sandbox` user, no capabilities, no-new-privileges, seccomp;
   - no secrets: the environment is LANG and nothing else (no API keys, git or cloud credentials, SSH agent);
   - skills (/opt/skills) and Claude Code's managed settings (all hooks off) are baked into the image, root-owned and

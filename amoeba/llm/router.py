@@ -8,7 +8,8 @@ features, data class, the steps it checks) and `ModelRouter.route(spec)` picks t
   b. hard filters, never relaxed: context window ≥ prompt + reply; the needed features (json, tools, vision);
      sensitive data → privacy local only; estimated USD ≤ what is left of the run USD cap; verifier independence
      (`required` keeps only models of another family than the one that produced the checked work);
-  c. choice: the recipe's preference for the role if still a candidate; else the role's default from the profile;
+  c. choice: a preference for the role (begin_run's recipe_prefs; nothing sets it since D117) if still a candidate;
+     else the role's default from the profile;
      else the cheapest candidate in the role's size tier (tie → the lowest current load); under verifier
      independence `preferred` a different family wins when one is left, else the same family is used and the
      decision says `verifier_same_family: no alternative`;

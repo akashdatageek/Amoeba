@@ -353,7 +353,6 @@ class RunResult(BaseModel):
     rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric
     # Phase 2 fields, left out of result.json when None (a Phase 1 run's record is unchanged)
     disabled_tools: list[str] | None = None   # D80 --disable-tools: tools taken out of this run
-    recipe: dict | None = None   # D82 --recipes: the family's recipe, the transforms applied and the run options
     family: dict | None = None   # D101: the family assigned to a free-text task and how ({family, how, keywords})
     deliverables: dict | None = None   # D105 (plan, --deliverable-check on): answer content and promised files
     requirement_status: dict | None = None   # D105 (amended): each Box 2 requirement as checked on the FINAL answer

@@ -44,7 +44,7 @@ def _adapt_config(model_edits: bool) -> dict:
 class Rule(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str                                # "L1", "L2", ...
-    text: str                              # ≤ 300 characters, task-neutral (V3; the Gate's leakage screen)
+    text: str                              # ≤ 300 characters, task-neutral (V3)
 
 
 # box: recipe
@@ -81,7 +81,7 @@ class Recipe(BaseModel):
     run_options: dict[str, Any] = Field(default_factory=dict)
     model_prefs: dict[str, str] = Field(default_factory=dict)   # D98: role -> registry model (the router's 3c)
     # D99: where each line came from — key "L1" / "T1" / "run_options.<name>" / "model_prefs.<role>" ->
-    # {hypothesis_id, created_by, date, gate_row}; gate_row is filled by the store when the Gate's accept commits it
+    # {hypothesis_id, created_by, date, gate_row}; gate_row was filled by the removed loop's Gate (always None now)
     provenance: dict[str, dict] = Field(default_factory=dict)
     created_by: Literal["seed", "human", "architect", "prune"] = "seed"
     hypothesis_id: str | None = None

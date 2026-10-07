@@ -16,6 +16,10 @@ Task  ──▶  Plan a new team  ──▶  Team runs the task
 
 No memory, monitor, gate or cost handling yet. Token counts are recorded in the trace, never enforced.
 
+Since D117 a fourth box adapts a stuck step inside one task: a stuck watch, code fixes and a fix-proposer agent
+("In-task adaptation replaces the learning loop" below). The offline learning loop of Phase 2 (task streams,
+Experimenter, Gate, recipes) was removed; nothing carries over between tasks.
+
 ## Quick start
 
 ```bash
@@ -270,8 +274,8 @@ the Planner within the round cap), off for flat and boss_reviewers and when `--d
 ## Metres are not millions (D80a)
 
 The rubric's number reader used to read the "m" of "32.4 m²" or "8 m long" as million. A lowercase "m" now scales to
-a million only after a currency sign ($1.5m), and a scale letter followed by a digit, ² or ³ is no scale at all. The
-Experimenter re-scores every run from its saved answer, so a scorer fix applies to both arms alike.
+a million only after a currency sign ($1.5m), and a scale letter followed by a digit, ² or ³ is no scale at all. (The
+Experimenter of the time re-scored every run from its saved answer; D117 removed it.)
 
 ## Headings inside a line are text (D84a)
 
@@ -318,7 +322,7 @@ per machine:
 
 Every model call says what it is (role, step, size, needed features, data class) and plain code picks the model from
 the registry in `amoeba/config/models.yaml`: only allowed and available models, never one that fails a hard filter
-(context, features, privacy, cost cap, verifier independence), then the recipe's or the role's preference, else the
+(context, features, privacy, cost cap, verifier independence), then the role's preference, else the
 cheapest of the right size. Per-model rate buckets, shared by all processes, keep calls inside each model's limits.
 `--routing routed` is the default for Amoeba; the baselines use `fixed`. Today the registry holds Gemma 4 31B only;
 adding a model is a registry entry. Each decision is in the trace, events.jsonl and result.json.
@@ -346,7 +350,7 @@ refuses any model outside it, and the domain checks earn a retry turn when they 
 
 Every result.json records a `status`: `ok`, `agent_error`, or `infra_error`. An infra error is one that is not the team's doing: the model service still failing after the client's retries (a dropped connection, a timeout, a proxy that moved, 429 or 5xx), a replay-cache miss, or a run that left no result. A 400, 413 or 422 comes from what the team sent, so it stays the team's.
 
-An infra-error run is never a score. The Experimenter and the loop run it again, at most twice (`amoeba/config/adapt.yaml` `infra.retries`). If it still fails, it is left out of the pairs (listed in `experiment.json` under `excluded`), out of the Monitor's window and out of the Gate's reliability rule, which counts agent errors only. Each case is logged.
+An infra-error run is never the team's score: its result.json says `infra_error`, and a comparison counts it apart (the Stage E report lists it under its problems). (D117 removed the loop parts that also re-ran such runs: the Experimenter's retries, the Monitor and the Gate.)
 
 If your HTTPS proxy can move (a cloud session restart does this), set `AMOEBA_PROXY_FILE` to a file that always holds the current proxy. On a dropped connection the client reads it and reconnects through the new proxy, and each new run starts with it.
 

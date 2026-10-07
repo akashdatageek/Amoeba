@@ -1,7 +1,7 @@
 """D95 — evidence logging outside the agents' reach: one append-only, hash-chained events.jsonl written by the harness;
 each row carries the SHA-256 of the row before and of the run folders it names; verify_evidence finds the first break;
-finished runs are key-scanned and queued for the bucket copy (unshipped ones kept in loop_state.json); no agent path,
-Bash command or environment reaches the log, the ledger, a run record or a cloud credential. Offline."""
+finished runs are key-scanned and queued for the bucket copy; no agent path, Bash command or environment reaches the
+log, a run record or a cloud credential. Offline."""
 import json
 from pathlib import Path
 
@@ -109,18 +109,17 @@ def test_an_agent_path_or_command_cannot_reach_the_evidence(tmp_path):
     run = root / "practice" / "01-p1" / "run1"
     ws = run / "workspace"
     ws.mkdir(parents=True)
-    for f in ("events.jsonl", "ledger.jsonl", "loop_state.json"):
-        (root / f).write_text("{}\n")
+    (root / "events.jsonl").write_text("{}\n")
     for f in ("result.json", "trace.jsonl"):
         (run / f).write_text("{}\n")
-    targets = [root / "events.jsonl", root / "ledger.jsonl", run / "result.json", run / "trace.jsonl"]
+    targets = [root / "events.jsonl", run / "result.json", run / "trace.jsonl"]
     for t in targets:
         assert inside(str(t), ws) is None                                      # absolute
         assert inside(str(Path("..") / ".." / ".." / ".." / t.name) if t.parent == root else f"../{t.name}", ws) is None
     (ws / "link").symlink_to(root / "events.jsonl")                            # a symlink is followed, then refused
     assert inside("link", ws) is None
     assert inside("notes.txt", ws) == (ws / "notes.txt").resolve()
-    for cmd in (f"cat {root / 'events.jsonl'}", "cat ../trace.jsonl", "cat ../../../../ledger.jsonl",
+    for cmd in (f"cat {root / 'events.jsonl'}", "cat ../trace.jsonl", "cat ../../../../events.jsonl",
                 "cd .. && cat result.json", "python3 -c \"print(open('../result.json').read())\"",
                 f"echo x >> {root / 'events.jsonl'}", "cp ~/x .", "cat $HOME/.config/gcloud"):
         assert screen_command(cmd, ws) is not None, cmd

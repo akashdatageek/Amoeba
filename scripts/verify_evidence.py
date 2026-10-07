@@ -1,7 +1,9 @@
-"""D95 — check an evidence log: the whole hash chain of eval/loop/<stream>/events.jsonl and every run-folder manifest
-its rows name. Prints the first break (line, kind, detail) and exits 1 on one; exits 0 when everything holds.
+"""D95 — check an evidence log: the whole hash chain of an events.jsonl and every run-folder manifest its rows name.
+Prints the first break (line, kind, detail) and exits 1 on one; exits 0 when everything holds. Since D117 each run
+keeps its own log (<run>/events.jsonl); --stream and --all read the removed loop's logs under eval/loop/.
 
-    python -m scripts.verify_evidence --stream m2          # or --root <folder holding events.jsonl>, or --all
+    python -m scripts.verify_evidence --root runs/<run_id>      # a run's adaptation log
+    python -m scripts.verify_evidence --stream m2               # a log of the removed loop (or --all)
     python -m scripts.verify_evidence --branch evidence [--stream m2]   # GitHub's copy: commit chain heads + head copy
 """
 from __future__ import annotations
@@ -19,9 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # box: evidence
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--stream")
-    p.add_argument("--root")
-    p.add_argument("--all", action="store_true", help="every eval/loop/*/events.jsonl")
+    p.add_argument("--stream", help="a stream of the removed learning loop (eval/loop/<stream>)")
+    p.add_argument("--root", help="a folder holding events.jsonl, e.g. a run folder")
+    p.add_argument("--all", action="store_true", help="every eval/loop/*/events.jsonl (the removed loop's logs)")
     p.add_argument("--branch", default=None, help="verify this evidence branch (origin/<branch>) instead of the local copy")
     p.add_argument("--no-fetch", action="store_true", help="with --branch: do not fetch first")
     args = p.parse_args(argv)

@@ -1,5 +1,11 @@
 # Amoeba Phase 2 build spec: the adaptation loop (Boxes 4–9)
 
+> **Superseded by D117 (Oct 6, 2026).** The offline learning loop this spec describes (task streams, Experimenter,
+> Gate, Monitor, Diagnoser, Architect, recipe store, retention, pruning, user-memory proposals, ledger; §§3–11) was
+> removed. Adaptation now happens inside one task: §17 is the current design (stuck watch, code fixes, the fix
+> proposer, the --adapt comparison). §§12–16 (D90–D116) still describe current Box 1–3 behaviour. The rest is kept as
+> history; nothing in it is built any more except what §17 says is kept.
+
 October 2026. Builds on the Phase 1 code as merged (PR #32: Boxes 1–3, D1–D77). Reuses the designs in
 `spec/BUILD_SPEC_FULL_reference_only.md` §3.1, §6, §7 and §8, updated for the step graph that Phase 1 made the real unit
 of work. Gate rules follow RRSI (Xia et al., arXiv 2609.24972, Sep 2026): noise floor, cost justification, leakage

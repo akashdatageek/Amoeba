@@ -1087,7 +1087,7 @@ def render(lite: bool = False) -> Path:
 <p class="sub">Amoeba drafts a team of AI helpers for each task and runs it step by step. From D117 it adapts within a single task, when a step gets stuck; nothing carries over between tasks. The AI proposes; plain code decides. This page is built from the code at the commit below, not from the plan.</p>
 <ul class="howto">
 <li><b>Boxes 1–3 · one task</b>Read the task, plan a team, run it step by step. Every AI call is logged.</li>
-<li><b>Box 4 · adapt within the task</b>D117 removed the offline learning loop. What adaptation inside one task will use is kept: the cause → edit table, the single-edit format with V1–V6, and the event log.</li>
+<li><b>Box 4 · adapt within the task</b>D117 removed the offline learning loop. Inside one task, plain code watches each step for stuck signals, tries code fixes cheapest first, then asks the fix proposer for one checked edit; the task stops with a report when nothing recovers the step.</li>
 <li><b>Use the page</b>Click a box to open it. ⓘ shows the code, prompt and tests; ✎ asks a question or requests a change.</li>
 </ul>
 <div class="summary" id="summary">{summary}</div>

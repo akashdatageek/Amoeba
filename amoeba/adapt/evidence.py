@@ -1,13 +1,15 @@
 """D95 — evidence logging outside the agents' reach (Phase 2, research review).
 
-One append-only `eval/loop/<stream>/events.jsonl`, written only by the harness (the loop driver and the hand-check
-script; never an agent): every alarm with its inputs, every diagnosis, every Architect prompt and FULL reply, every
-experiment, Gate decision, revert and human-queue entry, every finished practice run. Each row stores the SHA-256 of
+An append-only `events.jsonl`, written only by the harness, never by an agent. Since D117 each run keeps its own
+(`<run>/events.jsonl`): every stuck event, every fix tried, every rung skipped and every stop of in-task adaptation.
+(The removed learning loop wrote one per stream, `eval/loop/<stream>/events.jsonl`; those logs stay verifiable.)
+Each row stores the SHA-256 of
 the previous row's line (a hash chain from a genesis of 64 zeros) and the SHA-256 manifest of each run folder or file
 it refers to (`MANIFEST.sha256.json` is written next to the files; the hash in the row is what counts).
 `scripts/verify_evidence.py` re-checks the whole chain and every manifest and reports the first break.
 
-Shipping off the container (D95): each finished run that passes the key scan, and the new event rows, go to the
+Shipping off the container (D95; used by the removed loop, kept for later use): each finished run that passes the key
+scan, and the new event rows, go to the
 repository's orphan `evidence` branch (`GitShipper`): copied into a worktree of that branch in the same layout as
 eval/loop/<stream>/, committed at most every 10 minutes as a normal fast-forward commit whose message carries the
 hash-chain head (the SHA-256 of the last event row), and pushed. A failed push is retried; whatever is not pushed yet

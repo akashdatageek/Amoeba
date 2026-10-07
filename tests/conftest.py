@@ -58,14 +58,3 @@ def mock(**script) -> MockLLMClient:
         script.setdefault("plan_summariser", script["plan_worker"])
         script.setdefault("plan_critic", ["## Verdict\nAGREE\n\n## Issues\nnone\n"])   # D51 reviewers agree
     return MockLLMClient(script=script)
-
-
-@pytest.fixture
-def gate_v2():
-    """D91: Stage A/B tests written for Gate v2 pin it (adapt.yaml's default is v3); the cached config is restored."""
-    from amoeba.adapt.recipe import adapt_config
-    g = adapt_config()["gate"]
-    old = g["version"]
-    g["version"] = "v2"
-    yield
-    g["version"] = old
