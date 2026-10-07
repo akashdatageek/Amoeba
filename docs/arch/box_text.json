@@ -13741,12 +13741,13 @@
   ]
  },
  "toolbox": {
-  "checked_at": "96a9a03",
+  "checked_at": "1aaf9a4",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/fixes.py::candidates",
       "amoeba/interp/trace.py::NoopListener",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
@@ -13787,7 +13788,7 @@
      ],
      "doc": "Fill what it can of `requests` (Box 2's capability requests) from the cached pool. Changes cfg's helpers",
      "key": "amoeba/pool/stock.py::stock_toolbox",
-     "signature": "stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, trace: TraceWriter, setup: PoolSetup | None, seed: int=0, local=None, restock: bool=False, picks: SharedPicks | None=None) -> tuple[ToolRegistry, dict]"
+     "signature": "stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, trace: TraceWriter, setup: PoolSetup | None, seed: int=0, local=None, restock: bool=False, picks: SharedPicks | None=None, code_pick: bool=False, exclude: set | None=None) -> tuple[ToolRegistry, dict]"
     },
     {
      "callees": [
@@ -14138,6 +14139,11 @@
     ],
     [
      "decide",
+     "if code_pick",
+     "set chosen = next((e['id'] for _, e in shown if e['id'] not in (exclude or set())), None)"
+    ],
+    [
+     "decide",
      "if e.get('auth_required')",
      "set a = (setup.config.get('auth_env') or {}).get(e['name']) or {}"
     ],
@@ -14478,6 +14484,11 @@
     ],
     [
      "filter",
+     "keep only if e['id'] not in (exclude or set())",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if e['kind'] != 'skill'",
      "drop the rest"
     ],
@@ -14713,13 +14724,10 @@
    "prompts": {},
    "title": "Stock the toolbox"
   },
-  "facts_hash": "da3b40b3bce1f36b",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "537c2df4857eb350",
-  "seed_hash": "7524778ff38722f5",
-  "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code.",
-  "source": "model: kept",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "facts_hash": "537c2df4857eb350",
+  "seed_hash": "ec288792550b2470",
+  "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code. D117: the in-task capability fix calls it again with no AI pick.",
+  "source": "hand",
   "what": [
    "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
    "Vet first (D60): the candidates are checked before the pick and the AI is shown only the best {rank.top} that pass (up to 50 matches are checked); if none pass, the request is unfilled (all_refused) with no AI call.",
@@ -14730,7 +14738,8 @@
    "With --local-tools on (D59) the local toolbox's items are candidates too — ahead of the pool's only when an alias names them or they match at least as well (D61) — and a skill with scripts is no longer refused: it is copied into the run's workspace.",
    "What became of each request (filled or not) is handed to the plan runner for the step contract (D61).",
    "D69: a request that names a document format (xlsx, docx, pptx, pdf) gets the vetted local skill for it, chosen by plain code with no AI pick; an outside service that creates things stays refused.",
-   "D70: with --picks-file every run of a task reuses the task's first pick for a request (all three architectures), when it passes vetting again; --picks-only makes the picks in a pre-pass."
+   "D70: with --picks-file every run of a task reuses the task's first pick for a request (all three architectures), when it passes vetting again; --picks-only makes the picks in a pre-pass.",
+   "D117 Stage C: when a stuck step lacks a capability and the pool or local tools are on, the plan runner runs this step again for it with code_pick: plain code takes the first vetted candidate not given to that step before (no AI call, no shared pick); with both off the rung is skipped."
   ]
  },
  "tools": {
