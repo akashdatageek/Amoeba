@@ -162,6 +162,44 @@ commands run again, since they change files. To skip tasks that finished, remove
   (`~/.cache/amoeba/rate`, or `AMOEBA_RATE_DIR`). Stop the cloud session's runs before you start on the VM.
 - A killed sandbox run can leave a container behind: check `docker ps --filter label=openshell`.
 
+### The Stage E pilot: --adapt off vs on (D117)
+
+The cloud session cannot hold it: its container restarted twice in 25 minutes during the first attempt and each
+restart killed the run in progress (`docs/eval/stage_e/PLAN.md`). Run it here. `scripts/stage_e.py` runs each task
+and seed with `--adapt off`, then `--adapt on` with the off run's draft and pool picks, so only Box 3 differs; it is
+resumable (an arm with a result.json is skipped), but a run killed half-way starts again from the beginning.
+
+`~/work/stage_e.sh` (`chmod 700`):
+
+```bash
+#!/bin/bash
+# D117 Stage E pilot: H1-H3 x (adapt off, adapt on) x seed 0, one run at a time.
+W=$HOME/work
+cd "$HOME/Amoeba" && . .venv/bin/activate
+set -a; . "$W/keys.env"; set +a; unset AMOEBA_MODEL AMOEBA_BASE_URL AMOEBA_API_KEY
+echo "== code $(git rev-parse --short HEAD) $(date -u +%FT%TZ)"
+python -m scripts.stage_e --tasks tasks/probe_hard.jsonl \
+  --ids probe-h1-freight,probe-h2-income,probe-h3-ev-trucks --seeds 0 --out eval/stage_e/pilot -- \
+  --topology plan --llm openai --routing routed --niche general \
+  --local-tools on --local-tools-mode sandbox --web-tools --replan off --timezone America/Chicago \
+  --draft-prompts d24 --max-rate-retries 8 --ask-assumed off
+echo "== pilot done rc=$? $(date -u +%FT%TZ)"
+python -m scripts.stage_e_report eval/stage_e/pilot > /dev/null && echo "== report written"
+```
+
+- **`--replan off` in both arms** (user decision, Oct 7): D63's mid-run re-plan changed H1's plan in one arm of the
+  first attempt, so the arms differed for a reason other than `--adapt`.
+- **No `--llm-cache`.** A cache would replay the off arm's calls into the on arm wherever the prompts match and make
+  the arms look more alike than they are.
+- **Check out a fixed commit** before starting (`git checkout --detach <commit>`) and leave it there until the pilot is
+  done; the report names the commit on its first line.
+- **Unit:** the oneshot unit of section 5 with `ExecStart=/home/amoeba/work/stage_e.sh` and
+  `StandardOutput=append:/home/amoeba/work/logs/stage_e.log` (same for StandardError).
+- **Expected:** six runs, about 1.5 M billed tokens and 3–5 hours one at a time (H1 measured 24 and 23 minutes; one
+  H2 attempt passed 77 minutes before it was killed).
+- **Results back:** `eval/stage_e/pilot/REPORT.md` and `report.json`, plus the run folders. Key scan (section 3),
+  commit `eval/stage_e/pilot`, push; or copy the folder back and the report is re-run from it.
+
 ## 6. Monitoring
 
 Use `tail -f ~/work/logs/batch.log`, `systemctl status amoeba-batch` and `grep -n 'error=api:' ~/work/logs/batch.log`.
@@ -196,3 +234,4 @@ is broken: stop, fix the cause, start again. `… 429` lines mean the key is sha
 - [ ] Batch script; systemd oneshot unit; `start`.
 - [ ] `tail -f` the log; stop at once on a repeated `error=api:`.
 - [ ] Key scan, commit the run folders you keep, push.
+- [ ] Stage E: fixed commit checked out; `stage_e.sh` with `--replan off`, no `--llm-cache`; report written.

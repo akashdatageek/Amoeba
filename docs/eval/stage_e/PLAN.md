@@ -1,9 +1,9 @@
-# D117 Stage E: --adapt off vs on — plan and cost estimate (not run)
+# D117 Stage E: --adapt off vs on — plan, cost estimate and first pilot attempt
 
 ## Design
 
 - **Arms**: the same command, only `--adapt off|on` differs. Shared flags: `--topology plan`, the `gemma-api` model
-  (gemma-4-31b-it, as before), pool on, `--local-tools on`, `--web-tools` (as in the probe runs), `--ask-assumed off`
+  (gemma-4-31b-it, as before), pool on, `--local-tools on`, `--web-tools` (as in the probe runs), `--replan off` (user decision, Oct 7), `--ask-assumed off`
   (background runs cannot answer questions; D116 would otherwise stop at Box 1).
 - **Pairs**: same task, same seed. The off arm drafts (Boxes 1–2); the on arm reuses that run's `plan.json`
   (`--drafts-from <off runs folder>`), and both use one `--picks-file`, so the team, the plan, the interpretation and
@@ -89,3 +89,29 @@ bench5b (older code, saved drafts) are scaled ×1.5 and given 35,000 Box 2 token
   set may use a few hundred. The API's request rate limit may stretch the wall time.
 - **Uncertainty**: the stuck rates come from older runs and fixes since then (D105–D116) change them; one stored run
   each for H1 and H2. The pilot's measured cost per run replaces these figures before the full set is asked for.
+
+## Pilot, attempt 1 (cloud session, Oct 6–7) — stopped
+
+Ran on the frozen worktree at `8c49914` with the flags above plus `--replan on` (from the probe). Two of six runs
+finished; the cloud container then restarted twice (at about 22:58 and 00:24 UTC) and each restart killed the H2
+off run in progress (run_task cannot resume a run half-way). Kept in `eval/stage_e/attempt1_cloud/` (without
+workspaces); its `REPORT.md` is the report script's output.
+
+| Run | Outcome | Steps not done (why) | Stuck | Billed tokens | Wall | Searches + fetches |
+|---|---|---|---:|---:|---:|---:|
+| H1 off | done with limitation | attached unused (1) | 0 | 160,716 | 24.3 min | 0 |
+| H1 on | done with limitation | mislabelled citation (3) | 0 | 141,856 | 22.8 min | 0 |
+| H2 off, killed after 77 min | — | — | — | 520,557 | — | 21 |
+| H2 off, killed after 22 min | — | — | — | 143,284 | — | 8 |
+
+- No step was stuck in either H1 run, so `--adapt on` made no fix; the difference between the arms is Box 3 noise
+  (and the re-plan below). H1 used about what was estimated (156 k off, 108 k on).
+- H2 ran well past its stored 35 minutes: it was 77 minutes in, in a rework, when it was killed.
+- **The D63 re-plan confounds the arms**: in H1 on, the Action Observer dropped step 2 and rewrote steps 3–4.
+- **Report fixes** (8d7ff76): an answer whose last step ended partial counted as "failed" (now "done with
+  limitation", with the reasons listed); relative run paths in pairs.jsonl did not resolve from another folder.
+- **D105** (one-word answer → no_deliverable) was fixed before the pilot (d99f4c4); no run ended no_deliverable.
+
+**Decisions (user, Oct 7).** The pilot runs on a VM (`docs/RUNNING_ON_A_VM.md`, "The Stage E pilot"), all six runs
+again, with `--replan off` in both arms, so the arms differ only in `--adapt`. The full set waits for the VM pilot's
+report.
