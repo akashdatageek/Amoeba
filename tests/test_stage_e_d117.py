@@ -34,3 +34,17 @@ def test_a_pilot_folder_runs_and_reports(tmp_path, monkeypatch):
     assert {r["arm"]: r["outcome"] for r in data["records"]} == {"off": "done", "on": "done"}
     assert "| toy-1 | 0 | on | done |" in md and data["arms"]["on"]["runs"] == 1
     assert "No step was recovered." in md
+
+
+def test_an_answer_with_a_partial_last_step_is_done_with_limitation(tmp_path):
+    from scripts.stage_e_report import run_record
+    run = tmp_path / "run"
+    (run / "artifacts").mkdir(parents=True)
+    (run / "result.json").write_text(json.dumps({"status": "agent_error", "error": "partial", "answer": "# Answer",
+                                                 "usage": {"tokens": 10}}))
+    (run / "artifacts" / "step_1.json").write_text(json.dumps(
+        {"step": 1, "status": "partial", "status_reason": "mislabelled citation: '0%' not in S2", "checks": []}))
+    r = run_record({"task": "t", "seed": 0, "arm": "on", "run": str(run), "rc": 0})
+    assert r["outcome"] == "done with limitation" and r["not_done"] == {"mislabelled citation": 1} and not r["problems"]
+    (run / "result.json").write_text(json.dumps({"status": "agent_error", "error": "parse: no sections", "answer": None}))
+    assert run_record({"task": "t", "seed": 0, "arm": "on", "run": str(run), "rc": 0})["outcome"] == "failed"

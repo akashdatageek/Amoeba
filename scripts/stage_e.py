@@ -78,7 +78,7 @@ def run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthro
                 t0 = time.monotonic()
                 rc = subprocess.call(arm_command(arm, task_file, seed, runs, picks, off_run, passthrough, python))
                 run = run_dir_of(runs)
-                row = {"task": task_id, "seed": seed, "arm": arm, "run": str(run) if run else None, "rc": rc,
+                row = {"task": task_id, "seed": seed, "arm": arm, "run": str(run.resolve()) if run else None, "rc": rc,
                        "start": start, "end": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                        "wall_s": round(time.monotonic() - t0, 1)}
                 rows.append(row)

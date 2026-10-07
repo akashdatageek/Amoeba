@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from amoeba.task.models import run_status
 from scripts.stuck_report import run_stuck
 
 FAILED = {"agent_error", "infra_error", "no_deliverable", "needs_clarification"}
+NOT_DONE = ("partial", "incomplete")      # the answer step's status as the run's error: an answer, not a failure
 CODE_RUNGS = {1, 2, "input"}
 TRACE_NAMES = {"stuck", "fix_try", "fix_skipped", "proposer_reply", "fix_done", "step_done", "refine",
                "input_truncated", "claimed_file_missing", "adapt_stop"}
@@ -55,9 +57,21 @@ def _trace(run: Path) -> list[dict]:
 
 
 # box: stage_e
-def run_record(row: dict) -> dict:
+def run_path(row: dict, folder: Path | None = None) -> Path | None:
+    """The run folder of a pairs.jsonl row; a relative path (older rows) is found again under the report folder by
+    its <arm>/<task>.s<seed>/<run id> tail."""
+    if not row.get("run"):
+        return None
+    p = Path(row["run"])
+    if p.exists() or folder is None or row["arm"] not in p.parts:
+        return p
+    return folder / Path(*p.parts[p.parts.index(row["arm"]):])
+
+
+# box: stage_e
+def run_record(row: dict, folder: Path | None = None) -> dict:
     """One arm's run, measured."""
-    run = Path(row["run"]) if row.get("run") else None
+    run = run_path(row, folder)
     rec = {"task": row["task"], "seed": row["seed"], "arm": row["arm"], "rc": row.get("rc"), "wall_s": row.get("wall_s"),
            "problems": []}
     res = _load(run / "result.json") if run else None
@@ -91,17 +105,22 @@ def run_record(row: dict) -> dict:
     workarounds = [f for f in fixes if f.get("result") == "finished with limitation"]
     if row.get("rc") not in (0, None):
         rec["problems"].append(f"run_task exit code {row['rc']}")
-    if res.get("error") and status not in ("stuck",):
-        rec["problems"].append(f"error: {str(res['error'])[:200]}")
-    if status in FAILED:
+    err = str(res.get("error") or "")
+    answered = bool((res.get("answer") or "").strip()) and err.startswith(NOT_DONE)
+    if err and status != "stuck" and not answered:
+        rec["problems"].append(f"error: {err[:200]}")
+    metas_all = _final_metas(run)
+    not_done = Counter(re.split(r"[:;(]", m.get("status_reason") or m.get("status") or "?")[0].strip() or "?"
+                       for m in metas_all.values() if m.get("status") != "done")
+    if status in FAILED and not answered:
         outcome = "failed"
     elif status == "stuck":
         outcome = "stuck-stopped"
-    elif unresolved or workarounds:
+    elif unresolved or workarounds or answered or not_done:
         outcome = "done with limitation"
     else:
         outcome = "done"
-    rec.update(run=str(run), status=status, outcome=outcome, stuck_steps=len(causes),
+    rec.update(run=str(run), status=status, outcome=outcome, stuck_steps=len(causes), not_done=dict(not_done),
                stuck_by_cause=dict(Counter(causes.values())), unresolved=unresolved,
                recovered=dict(recovered), recovered_steps=sorted({f["step"] for f in fixes
                                                                   if f.get("result") == "recovered"}),
@@ -155,15 +174,16 @@ def report(folder: Path, seed: int = 117) -> tuple[str, dict]:
     latest = {}
     for r in rows:                                   # a re-run arm replaces its earlier row
         latest[(r["task"], r["seed"], r["arm"])] = r
-    records = [run_record(r) for r in latest.values()]
+    records = [run_record(r, folder) for r in latest.values()]
     arms = {a: _sum(records, a) for a in ("off", "on")}
     picks = samples(rows, records, seed=seed)
     md = ["# D117 Stage E report", "", f"Folder: `{folder}`", "", "## Per run", "",
-          "| Task | Seed | Arm | Outcome | Stuck steps (cause) | Recovered (rung) | Work-arounds | Rubric | Tokens | "
-          "Adapt tokens | Wall (min) | Searches + fetches | Problems |",
-          "|---|---:|---|---|---|---|---:|---:|---:|---:|---:|---:|---|"]
+          "| Task | Seed | Arm | Outcome | Steps not done (why) | Stuck steps (cause) | Recovered (rung) | Work-arounds | "
+          "Rubric | Tokens | Adapt tokens | Wall (min) | Searches + fetches | Problems |",
+          "|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|"]
     for r in sorted(records, key=lambda r: (r["task"], r["seed"], r["arm"])):
-        md.append(f"| {r['task']} | {r['seed']} | {r['arm']} | {r['outcome']} | {r.get('stuck_steps', 0)} "
+        md.append(f"| {r['task']} | {r['seed']} | {r['arm']} | {r['outcome']} | {r.get('not_done') or '-'} | "
+                  f"{r.get('stuck_steps', 0)} "
                   f"{r.get('stuck_by_cause') or ''} | {r.get('recovered') or '-'} | {r.get('workarounds', 0)} | "
                   f"{r.get('rubric') if r.get('rubric') is not None else '-'} | {r.get('tokens') or 0:,} | "
                   f"{r.get('adapt_tokens') or 0:,} | {round((r.get('wall_s') or 0) / 60, 1)} | "
