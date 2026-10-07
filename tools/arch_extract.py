@@ -624,7 +624,7 @@ BOXES: list[dict] = [
                   "amoeba/tools/web.py::TavilyProvider", "amoeba/tools/web.py::web_registry"]),
     dict(id="toolbox", view="run", title="Stock the toolbox", kind="code", plan=None,
          sentence="Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI "
-                  "pick per request, everything else plain code.",
+                  "pick per request, everything else plain code. D117: the in-task capability fix calls it again with no AI pick.",
          what=["Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's "
                "guess; the kind asked and the kind picked are logged), are ranked by the words they share with the "
                "request (its standard name and aliases, name, what it does, input and output); the best 5 "
@@ -652,8 +652,11 @@ BOXES: list[dict] = [
                "D69: a request that names a document format (xlsx, docx, pptx, pdf) gets the vetted local skill for "
                "it, chosen by plain code with no AI pick; an outside service that creates things stays refused.",
                "D70: with --picks-file every run of a task reuses the task's first pick for a request (all three "
-               "architectures), when it passes vetting again; --picks-only makes the picks in a pre-pass."],
-         proposes="The picker names one candidate (or NONE).",
+               "architectures), when it passes vetting again; --picks-only makes the picks in a pre-pass.",
+               "D117 Stage C: when a stuck step lacks a capability and the pool or local tools are on, the plan runner "
+               "runs this step again for it with code_pick: plain code takes the first vetted candidate not given to "
+               "that step before (no AI call, no shared pick); with both off the rung is skipped."],
+         proposes="The picker names one candidate (or NONE); never for an in-task fix (code_pick).",
          disposes="Plain code ranks the candidates, rejects anything unsafe or over the caps, and attaches.",
          anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
                   "amoeba/pool/match.py::rank", "amoeba/pool/mcp.py::PoolTools", "amoeba/pool/mcp.py::SdkConnector",
