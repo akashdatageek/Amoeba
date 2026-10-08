@@ -12,6 +12,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Callable
 
+from amoeba.config.proxy import refresh_proxy
+
 Messages = list[dict[str, str]]
 
 
@@ -73,6 +75,7 @@ class OpenAICompatibleClient(LLMClient):
 
         # D48: the SDK's own retries are off; rate limits are retried below, where each wait is recorded
         self._client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
+        self._connect = lambda: OpenAI(api_key=api_key, base_url=base_url, max_retries=0)   # D111: rebuilt on a new proxy
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -127,6 +130,9 @@ class OpenAICompatibleClient(LLMClient):
                 wait = after if after is not None else min(60.0, 2.0 * 2 ** len(retries))
                 retries.append({"status": status, "wait_s": wait, "attempt": len(retries) + 1,
                                 "retry_after": after, "error": lost})
+                if lost == "connection" and refresh_proxy() is not None:   # D111: the proxy moved; reconnect
+                    self._client = self._connect()
+                    retries[-1]["proxy_refreshed"] = True
                 self._sleep(wait)
                 self._last_call = time.monotonic()
         usage = getattr(resp, "usage", None)
@@ -224,8 +230,9 @@ class MockLLMClient(LLMClient):
 
     SIGNATURES: dict[str, str | tuple[str, ...]] = {   # a kind may have several phrases (d19 and D24 prompts)
         "interpreter": "You read a task before any planning",                                            # D77
-        "architect": "You propose one change to a team recipe",                                          # D87
+        "family_classifier": "You sort a task into one of a fixed list of task families",                  # D101
         "replanner": "You are the Action Observer of a team",                                            # D63
+        "fix_proposer": "You propose one fix for a stuck step of a team plan",                         # D117 D
         "planner": ("You are a manager and expert prompt engineer",
                     "delivery lead with 15+ years of experience running cross-functional projects"),        # D24
         "agent_observer": ("identifying issues in role design",
@@ -235,6 +242,8 @@ class MockLLMClient(LLMClient):
         "plan_summariser": "You are assembling the team's final answer",                                   # D35
         "plan_critic": "You are reviewing a teammate's draft for one step of a team plan",                 # D51
         "plan_worker": "You are carrying out one step of a team plan",                                     # D31
+        "plan_verify_own": "You are checking steps of a team plan, and you first work out your own result",  # D90
+        "plan_resolve": "You settle disagreements between a team member and an independent check",           # D109
         "worker": "Based on prior agents' results and completed steps",
         "solver": "You are faced with the task",
         "critic": "Now the group is asking your opinion",

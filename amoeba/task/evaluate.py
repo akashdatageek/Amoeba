@@ -77,6 +77,32 @@ def _any(text: str, patterns: list[str]) -> str | None:
     return None
 
 
+_NEXT_HEADING = re.compile(r"(?m)^[ \t]*(?:#{1,6}[ \t]|\*\*[^*\n]{1,80}\*\*[ \t]*:?[ \t]*$)")
+
+
+# box: scoring
+def section_entity(text: str, patterns: list[str], entities: list[str]) -> tuple[str | None, str | None]:
+    """D94: (the heading found, the first entity its body names) over every section any pattern finds. The body runs
+    from the end of a markdown heading's line (from the end of the match for a bold or plain label, so
+    "**Assumptions:** no resale value" counts) to the next heading. (None, None) when no heading matches."""
+    heading = None
+    for p in patterns:
+        for m in re.finditer(p, text or "", re.I):
+            heading = heading or m.group(0)
+            line_start = text.rfind("\n", 0, m.start()) + 1
+            start = m.end()
+            if text[line_start:m.end()].lstrip().startswith("#"):
+                nl = text.find("\n", m.end())
+                start = len(text) if nl < 0 else nl + 1
+            nxt = _NEXT_HEADING.search(text, start)
+            body = text[start: nxt.start() if nxt else len(text)]
+            for e in entities:
+                hit = re.search(r"(?<![\w])" + re.escape(e) + r"(?![\w])", body, re.I)
+                if hit:
+                    return m.group(0), hit.group(0)
+    return heading, None
+
+
 # box: scoring
 def rubric_score(answer: str | None, rubric, judge=None) -> dict:
     """Per-item pass/fail and the overall fraction, by string/regex/number match only. `judge`, if given, is called
@@ -85,6 +111,12 @@ def rubric_score(answer: str | None, rubric, judge=None) -> dict:
     text = answer or ""
     items = []
     for d in rubric.required_deliverables:
+        if d.entities:                                # D94: the section must name a task-specific entity
+            head, ent = section_entity(text, d.any_of, d.entities)
+            items.append({"kind": "deliverable", "name": d.name, "pass": ent is not None,
+                          "evidence": f"{head.strip()} … {ent}" if ent else None,
+                          **({"detail": "heading without a task-specific entity"} if head and not ent else {})})
+            continue
         ev = _any(text, d.any_of)
         items.append({"kind": "deliverable", "name": d.name, "pass": ev is not None, "evidence": ev})
     for x in rubric.expected_numbers:

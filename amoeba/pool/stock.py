@@ -195,14 +195,17 @@ def _pins(setup: PoolSetup) -> dict:
 # box: toolbox
 def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, trace: TraceWriter,
                   setup: PoolSetup | None, seed: int = 0, local=None, restock: bool = False,
-                  picks: SharedPicks | None = None) -> tuple[ToolRegistry, dict]:
+                  picks: SharedPicks | None = None, code_pick: bool = False,
+                  exclude: set | None = None) -> tuple[ToolRegistry, dict]:
     """Fill what it can of `requests` (Box 2's capability requests) from the cached pool. Changes cfg's helpers
     (tools, missing tools, pool items) and each request's status / pool_id / candidates / reason. Returns the run's
     registry (a copy holding the pool tools when any were attached) and a summary for result.json.
     local: D59 — a LocalToolbox (--local-tools on): its items are candidates too, ranked first; setup may then be
     None (--no-pool: local items only).
     restock: D63 — a mid-run call for the requests an accepted re-plan made: the local server is already running
-    and the run's source list already set, so neither is started or replaced."""
+    and the run's source list already set, so neither is started or replaced.
+    code_pick: D117 Stage C — plain code takes the first vetted candidate of the shortlist not in `exclude` (no AI
+    pick); used by the in-task capability fix."""
     summary = {"status": "ran", "filled": 0, "unfilled": 0, "llm_calls": 0, "reasons": {}, "attached": []}
     index = load_index(setup.dir) if setup is not None else None
     if index is None and local is None:
@@ -288,6 +291,11 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                     recorded = picks.get(q) if picks is not None and not fmt else None        # D70: shared pick
                     if fmt and shown:
                         chosen = fmt["id"]
+                    elif code_pick:                                   # D117 Stage C: no AI pick
+                        chosen = next((e["id"] for _, e in shown if e["id"] not in (exclude or set())), None)
+                        trace.event("pool_pick_code", {"amoeba.capability": q.canonical or q.name,
+                                                       "amoeba.pool.id": chosen,
+                                                       "amoeba.excluded": sorted(exclude or [])})
                     elif recorded is not None and (recorded == NONE or recorded in verdicts):
                         chosen = None if recorded == NONE else recorded
                         trace.event("pool_pick_reused", {"amoeba.capability": q.canonical or q.name,

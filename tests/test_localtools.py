@@ -45,6 +45,7 @@ def skills(tmp_path):
 def lsetup(root: Path, env=SANDBOX, command=FAKE, **limits) -> LocalSetup:
     cfg = copy.deepcopy(load_local_config())                          # D60: skill_roots [] — the clone only
     cfg["limits"].update(limits)
+    cfg["sandbox"]["isolation"] = "process"            # D96: the fake server runs on the host in these tests
     return LocalSetup(config=cfg, command=command, pool_dir=root / "pool", env=env)
 
 
@@ -178,10 +179,15 @@ def test_without_amoeba_sandbox_it_refuses(skills, tmp_path, monkeypatch):
     with pytest.raises(SandboxRequired):
         LocalToolbox(lsetup(skills, env={}), tmp_path / "run", TraceWriter(None))
     monkeypatch.delenv("AMOEBA_SANDBOX", raising=False)
-    with pytest.raises(SystemExit):
-        parse_args(["a task", "--local-tools", "on"])
-    monkeypatch.setenv("AMOEBA_SANDBOX", "1")
+    # D96: with isolation openshell (the config's default) the OpenShell sandbox is the boundary, no env needed
     assert parse_args(["a task", "--local-tools", "on"]).local_tools == "on"
+    # D96a: the in-process server runs only when asked for, and only with AMOEBA_SANDBOX=1
+    with pytest.raises(SystemExit):
+        parse_args(["a task", "--local-tools", "on", "--local-tools-mode", "inprocess"])
+    monkeypatch.setenv("AMOEBA_SANDBOX", "1")
+    assert parse_args(["a task", "--local-tools", "on", "--local-tools-mode", "inprocess"]).local_tools_mode == \
+        "inprocess"
+    assert parse_args(["a task", "--local-tools", "on"]).local_tools_mode == "sandbox"
     assert parse_args(["a task"]).local_tools == "off"                # off by default
 
 

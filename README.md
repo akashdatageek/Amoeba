@@ -16,6 +16,10 @@ Task  ──▶  Plan a new team  ──▶  Team runs the task
 
 No memory, monitor, gate or cost handling yet. Token counts are recorded in the trace, never enforced.
 
+Since D117 a fourth box adapts a stuck step inside one task: a stuck watch, code fixes and a fix-proposer agent
+("In-task adaptation replaces the learning loop" below). The offline learning loop of Phase 2 (task streams,
+Experimenter, Gate, recipes) was removed; nothing carries over between tasks.
+
 ## Quick start
 
 ```bash
@@ -267,57 +271,11 @@ is no longer flagged as a mislabelled citation.
 the Planner within the round cap), off for flat and boss_reviewers and when `--drafts-from` reuses a saved draft.
 `--quality-gate on|off` overrides it.
 
-## Task stream (D80, Phase 2)
-
-Phase 2 (spec/BUILD_SPEC_PHASE2.md) learns from a stream of tasks. `tasks/stream_<name>.jsonl` holds practice tasks
-(with an `order`) and held-out tasks, each with its family, its D30 rubric and whether it comes before or after the
-family's shift; `tasks/stream_<name>.shifts.yaml` holds the shifts. A feedback shift adds rubric items the prompts
-never mention; a tool shift takes a tool out of the family's runs:
-
-    python -m scripts.run_task --tasks t.jsonl --topology plan --disable-tools calc,local:Bash
-
-Held-out tasks never reach the practice loop or any prompt; the loop learns only the names of the rubric items a
-practice run failed (`amoeba/adapt/stream.py::feedback`).
-
-## Team recipes (D81, Phase 2)
-
-A recipe (`amoeba/adapt/recipe.py`) is data per task family: planner rules shown to Box 2, transforms code applies to
-the drafted plan (add a check step, tighten a done-when, grant or revoke a tool, add a role rule) and whitelisted run
-options. Every family starts empty, and an empty recipe changes nothing. One typed edit makes the next version;
-`validate_recipe` refuses unknown tools, out-of-range options, long or check-weakening text, and transforms that
-break the step graph. Limits are in `amoeba/config/adapt.yaml`.
-
-## Recipes in a run (D82, Phase 2)
-
-    python -m scripts.run_task --tasks t.jsonl --topology plan --recipes eval/loop/m1/recipes
-
-loads the current recipe of each task's family (plan runner only; the baselines never get one). Its planner rules
-appear as "Lessons for this kind of task" in the d24 Planner and Observer prompts, code applies its transforms to
-the final draft (`plan.json` records them; `draft.json` keeps Box 2's own draft), and its run options overlay the run
-settings unless a flag sets them. With no recipe the run is a Phase 1 run, byte for byte.
-
-## The Experimenter (D83, Phase 2)
-
-    python -m scripts.run_experiment --stream m1 --family calc --calibrate-only  --llm openai --profile gemma-api ...
-    python -m scripts.run_experiment --stream m1 --family calc --edit edit.yaml   --llm openai --profile gemma-api ...
-
-runs the family's current recipe (A) against A plus one edit (B) on the stream's held-out tasks, 3 repeats each with
-the same seed. A transform edit reuses arm A's saved draft, so the arms differ only by the edit; a planner-rule edit
-drafts in each arm. Arm A runs are cached per recipe version. Results go to `eval/loop/<stream>/experiments/<id>/`.
-
-## The Gate (D84, Phase 2)
-
-The Gate keeps a recipe edit only when, on the held-out post tasks, its mean gain beats both the noise floor (the
-recipe against itself with other seeds) and 0.05, a one-sided paired test corrected for every hypothesis since the
-last accept is significant, the gain was predicted, the token cost is justified, honesty flags and refusals do not
-grow, and the held-out pre tasks lose nothing beyond the noise. Every calibration, hypothesis and decision is a line
-in `eval/loop/<stream>/ledger.jsonl`; thresholds are in `amoeba/config/adapt.yaml`.
-
 ## Metres are not millions (D80a)
 
 The rubric's number reader used to read the "m" of "32.4 m²" or "8 m long" as million. A lowercase "m" now scales to
-a million only after a currency sign ($1.5m), and a scale letter followed by a digit, ² or ³ is no scale at all. The
-Experimenter re-scores every run from its saved answer, so a scorer fix applies to both arms alike.
+a million only after a currency sign ($1.5m), and a scale letter followed by a digit, ² or ³ is no scale at all. (The
+Experimenter of the time re-scored every run from its saved answer; D117 removed it.)
 
 ## Headings inside a line are text (D84a)
 
@@ -325,53 +283,209 @@ The reply parser now starts a new section only at a "##" that begins a line (or 
 "</thought>"). A "##" quoted in the middle of a line, for example a role prompt that says "end with a section headed
 '## Assumptions'", stays text, so the role is no longer cut apart and lost.
 
-## Gate v2 (D84b, Phase 2)
+## The verifier answers first (D90)
 
-Gate v2 judges honesty per run: a run is flagged when it has at least one made-up or mislabelled citation, missing
-claimed file or unverified check, and the edit is rejected if the share of flagged runs grows by more than 0.2.
-Run errors are judged separately (rule 5b, error rate). Every ledger row names its gate version, and a decision made
-under v1 can be re-decided under v2 from its saved pairs, marked post hoc:
+A verify step works in two parts. First, in a fresh context, it sees the task, what each step it checks was asked to
+do and the inputs those steps had, but not what they produced, and works out its own result with its tools. Then it
+sees the outputs, compares them with its own result and gives the verdict. Both parts and plain code's figure
+comparison are in `step_N.json` (`verifier_own`, `comparison`). `--verify-first off` restores the earlier verifier.
 
-    python -m scripts.run_experiment --stream m1 --family calc --redecide h2-assumptions-rule --gate-version v2
+## Sections are scored on content (D94)
 
-## The Monitor (D85, Phase 2)
+A rubric item can list task-specific entities. Its section then passes only if the text under the heading names at
+least one of them, so a heading with nothing under it fails.
 
-After every practice run, the Monitor compares the last three scores of that kind of task with its scores since the
-last accepted change, and raises an alarm when they drop by more than max(2σ, 0.10), or when a step cause or a
-missing rubric item suddenly appears in most recent runs. It stays quiet for a few tasks after a change is accepted
-or rejected. Thresholds: `amoeba/config/adapt.yaml` monitor.
+## The evidence log (D95)
 
-## The Diagnoser (D86, Phase 2)
+`amoeba/adapt/evidence.py` keeps an append-only `events.jsonl`, written only by the harness. Each line carries the
+fingerprint (SHA-256) of the line before it and of every run folder it refers to, so any later change shows
+(`python -m scripts.verify_evidence`). Finished runs are key-scanned and can be shipped to this repository's
+`evidence` branch; each commit message carries the chain head (`python -m scripts.verify_evidence --branch evidence`).
+Agents never get git or cloud credentials, and their local tools cannot reach the log. D117 keeps it for in-task
+adaptation: every stuck step, diagnosis and fix will be a row.
 
-After an alarm, the Diagnoser counts what the window's runs recorded (step causes, blocked capabilities, unused tools,
-missing files, unverified checks, citation problems, failed rubric item names) and names the cause that rose most
-compared with the runs before. The table in `amoeba/config/adapt.yaml` says which edits may answer it. No model is
-called; `--diagnoser none` gives the Architect the alarm only, with every edit allowed.
+## Agent tools in a sandbox (D96)
 
-## The Architect (D87, Phase 2)
+With local tools on, each run gets a fresh NVIDIA OpenShell sandbox: the tool server and every command an agent runs
+execute there, with no network, nothing writable but the sandbox's own workspace, skills and hooks read-only and no
+secrets; it is deleted at the end of the run. It is the default with `--local-tools on`; the older in-process server
+runs only with `--local-tools-mode inprocess` (and AMOEBA_SANDBOX=1). One command may take up to 300 s. Set up once
+per machine:
 
-The Architect is the only part of the loop that calls a model. Given the diagnosis, the current recipe, the edits it
-may use and the changes already rejected, it proposes one typed edit with a reason and a predicted gain, as JSON
-(prompt: `amoeba/config/prompts/architect.txt`). Code checks the proposal (allowed, valid, not a repeat, no text or
-numbers from held-out tasks) and allows one retry; after three proposals for one alarm, the alarm waits for a person
-in `eval/loop/<stream>/human_queue.jsonl`.
+    dockerd &                                                       # if Docker is not running
+    CA_BUNDLE=<proxy CA, if any> amoeba/config/sandbox/build.sh     # the sandbox image
+    docker compose -p amoeba-sandbox -f amoeba/config/sandbox/docker-compose.yml up -d   # the gateway
+    # the gateway's signing keys, once: docker run --rm --user 0 -v /var/lib/openshell:/var/lib/openshell \
+    #   ghcr.io/nvidia/openshell/gateway:latest generate-certs --output-dir /var/lib/openshell/tls
 
-## The recipe store (D88, Phase 2)
+## The model router (D97)
 
-`eval/loop/<stream>/recipes/` holds each kind of task's recipe versions (`<family>/v<N>.yaml`), an index naming the
-current version with its history, and `experience.jsonl`, one line per decided change. Runs read it with
-`--recipes`; `--recipes-from` adds a read-only fallback store (a warm start from another stream). Only the Gate's
-accept writes a version; the rollback watch can revert to the parent.
+Every model call says what it is (role, step, size, needed features, data class) and plain code picks the model from
+the registry in `amoeba/config/models.yaml`: only allowed and available models, never one that fails a hard filter
+(context, features, privacy, cost cap, verifier independence), then the role's preference, else the
+cheapest of the right size. Per-model rate buckets, shared by all processes, keep calls inside each model's limits.
+`--routing routed` is the default for Amoeba; the baselines use `fixed`. Today the registry holds Gemma 4 31B only;
+adding a model is a registry entry. Each decision is in the trace, events.jsonl and result.json.
 
-## The loop (D89, Phase 2)
+## Task family for new tasks (D101)
 
-    python -m scripts.run_loop --stream m1 --parallel 4 --parallel-until 8 --env-file keys.env \
-        --llm openai --profile gemma-api --timezone America/Chicago --llm-cache runs/cache
+A free-text task (one whose source gave no family) is assigned a task family before planning. Keyword rules in `amoeba/config/families.yaml` are tried first. Only if none decides does one
+routed model call pick from the family list or "new", and code checks the answer. The family and how it was chosen
+are recorded in result.json (`family`). This is on by default for Amoeba's plan runner and off for the baselines
+(`--family-classify auto|on|off`). Since D117 nothing else follows from the family (there are no recipes).
 
-runs the stream's practice tasks with each kind's current recipe and, after an alarm, the Diagnoser, up to three
-Architect proposals, the Experimenter and the Gate; an accepted change becomes the next recipe version. Everything is
-written under `eval/loop/<stream>/` (practice runs, experiments, ledger, recipes, proposals, `summary.json`,
-`REPORT.md`), and running the same command again resumes where it stopped.
+## Niche profiles (D102)
+
+An environment is described in one file, `profiles/<niche>.yaml`. It sets the allowed tools and the local-sandbox
+limits, the allowed models and the verifier-independence setting, the domain's rules and vocabulary, what "done"
+means, which domain checks run after each step (`amoeba/checks/<name>.py`), and safety limits. Choose one with
+`--niche <name>`. The default, `general`, changes nothing.
+
+With any other profile, the prompts get one "Environment" section: assess the environment first and plan only with
+what is allowed. Code enforces the rest: Box 3 refuses any tool outside the profile and logs the refusal, the router
+refuses any model outside it, and the domain checks earn a retry turn when they fail. Two profiles ship today:
+`general`, and `calc` (every final figure must be reproducible by calc from the task's numbers).
+
+## Infrastructure errors (D111)
+
+Every result.json records a `status`: `ok`, `agent_error`, or `infra_error`. An infra error is one that is not the team's doing: the model service still failing after the client's retries (a dropped connection, a timeout, a proxy that moved, 429 or 5xx), a replay-cache miss, or a run that left no result. A 400, 413 or 422 comes from what the team sent, so it stays the team's.
+
+An infra-error run is never the team's score: its result.json says `infra_error`, and a comparison counts it apart (the Stage E report lists it under its problems). (D117 removed the loop parts that also re-ran such runs: the Experimenter's retries, the Monitor and the Gate.)
+
+If your HTTPS proxy can move (a cloud session restart does this), set `AMOEBA_PROXY_FILE` to a file that always holds the current proxy. On a dropped connection the client reads it and reconnects through the new proxy, and each new run starts with it.
+
+## Verifier disagreements: the resolver (D109)
+
+A verify step first works out its own result without seeing the outputs it checks (D90). Plain code then pairs the figures of that blind result with the checked outputs' figures by their labels ("BEV purchase price", "electricity rate") and compares the values with the rubric's tolerance (5%).
+
+Every disagreement goes to a resolver. This is one separate, fresh call whose only job is to settle each disputed figure: by the source text the team was shown, by fetching the source again, by a calculation, or by re-running the code in the sandbox. For each figure it writes a value, its evidence (a quote from the source, or a command and its output) and a verdict. Plain code accepts a value only if the quote really is in the source and states the value, or the value is in the resolver's own tool output.
+
+A settled value that differs from the worker's replaces the wrong one in the producer's output, so later steps and the answer use it. An unresolved figure keeps the step from PASS: the step is partial, the verdict is recorded as `DISPUTED`, and both values are listed in the answer's Limitations. Every dispute and resolution is logged. `--disputes off` turns this off; it needs `--verify-first on`.
+
+## Final-answer requirement check (D105 + D110)
+
+After the summariser writes the answer, plain code checks the final answer, not what the steps claimed:
+
+- each requirement from Box 2's list is covered (its key terms are in the answer, and no BLOCKED line is about it);
+- each file the plan promised is in the workspace (with `--local-tools on`);
+- every figure that cites a web source carries that source's date, on its line or in its source entry (D110).
+
+Anything missing gets the answer step one refine turn. What is still missing afterwards is listed in Limitations. The run ends with `status: no_deliverable` when a core deliverable is missing: no answer content, a promised file never made, or more than half of the requirements unmet. result.json's `requirement_status` is the result on the final answer. `--deliverable-check off` turns off the requirement and file part; `--dated-figures off` turns off the dates.
+
+## Skills in the sandbox (D103)
+
+With `--local-tools on` the skills the pool picks (xlsx, docx, pdf, pptx …) now reach the helpers in the OpenShell sandbox. The sandbox image holds the skills clone read-only at `/opt/skills/<name>/`. A helper reads the skill there with `local:Read` and runs its scripts with `local:Bash`. Writing into `/opt/skills` is still refused. Before this fix every skill was refused in sandbox mode, so helpers fell back to plain openpyxl or python-docx.
+
+## Research steps (D106)
+
+With `--web-tools`, Amoeba's research steps get help from plain code (`--research on`, the default for the plan runner; the baselines never get it):
+
+- A packed search is split. Several quoted queries in one string, several places ("USA and Indiana") or several years become one search each, at most four.
+- Each search reads its top three results itself, official domains first (.gov, .edu, statistical agencies). The helper sees the lines that match its query, with the source's [S#].
+- When a page links a data file (.csv, .xlsx, .json), plain code downloads and parses it, and shows the header rows and the matching rows as a table with its own [S#]. A `fetch_url` of a data file is read the same way.
+
+The helpers are also told to search one entity, year or series at a time and to prefer the official source and the data file. Every page and data file read is cached with `--llm-cache`.
+
+## Fetched data in the workspace (D107)
+
+With `--web-tools` and `--local-tools on`, every page and data file the web tools read is saved in the run's workspace under `sources/`: data tables as CSV, pages as text. The files are read-only on the host and inside the sandbox, and `sources/index.json` lists each one with its [S#], url, title and fetch time. Analysts in the sandbox, which still has no network, can compute from the data itself, and steps with local tools are told the files are there. Writes into `sources/` are refused, reading and copying from it are allowed, and the files never count as files the team made. Turn it off with `--workspace-sources off`.
+
+## Re-plans that change the method (D108)
+
+With `--replan on`, the Action Observer may add or rewrite steps after a step fails. It is now shown how each failed step worked: the tools it used, the sites it read and its queries. A step it adds or rewrites for a failed step must change the method and say how in its text: a different tool, a different source type (a data file, an official source, an API, another site), or one search per entity, year or series. A step that repeats the method gets the whole decision rejected, and the rejection is logged with what was repeated. `--replan-method off` turns this off.
+
+## Citation check and arithmetic (D104)
+
+The citation check (D74) no longer flags arithmetic. A number the line shows as a calculation's result (after `=` or `≈`), the base and exponent of a power, and the years of a range are not treated as claims about the cited source. The calculation's operands are still checked. `--cite-arithmetic off` restores the earlier check.
+
+## Python sent to Bash (D112)
+
+When a helper sends a Python program to `local:Bash`, either a fenced block tagged `python` or text whose first line starts like Python, it now runs with `python3` from a quoted heredoc instead of failing as a shell command. The rewrite is logged and the gate still screens the program. Set `bash_python: false` in `amoeba/config/localtools.yaml` to turn this off.
+
+## Spreadsheet formulas (D113)
+
+After a step that made a workbook (.xlsx), plain code checks that totals and derived cells are formulas, not typed numbers. Three kinds of typed number are flagged: one in a total row or column, one that equals the sum of the cells beside or above it, and one that equals the product of two cells in its row. A flagged cell fails the step check with the cell names, which earns the step's retry turn. Numbers the task states are inputs and are never flagged. `--xlsx-formulas off` turns this off.
+
+## Context size as run options (D114)
+
+`max_input_chars` (3,000–20,000 characters of one input a step is shown; default 6,000) and `max_summary_input_chars`
+(15,000–60,000 characters the summariser is shown; default 30,000) are whitelisted run options with ranges in
+`amoeba/config/adapt.yaml`; a flag given on the command line sets them for a run.
+
+## In-task adaptation replaces the learning loop (D117)
+
+Amoeba no longer learns offline from a stream of practice tasks. The learning loop is removed: task streams, the
+Experimenter, the Gate and its statistics, calibration, the Monitor, the loop's Diagnoser and Architect, the recipe
+store (`--recipes`, `--recipes-from`), retention replays, pruning, user-memory proposals (`approve_memory.py`), the
+human queue and the ledger, with `run_loop.py`, `run_experiment.py`, `run_audit.py` and `prune_recipe.py`.
+Adaptation now happens inside a single task: when a Box 3 step gets stuck, the planned team is changed from that
+run's own logs, results and errors so the task can still finish. Nothing carries over between tasks.
+
+Kept for it: the step contract's causes (they become stuck signals), the cause → allowed-edit table
+(`amoeba/config/adapt.yaml`, read by `amoeba/adapt/config.py`) and the hash-chained event log with its evidence
+branch (`amoeba/adapt/evidence.py`). The D117 cleanup removed the last pieces of the loop: the recipe module and its
+V1–V6 validator (`recipe.py`) and the Architect's single-edit format (`architect.py`); the proposer's own checks — a rule, goal or done_when at most 300 characters (adapt.yaml `limits`), no denylisted wording, and only tools available in this run that act nowhere outside it and are not paid — live in `amoeba/adapt/proposer.py`.
+
+**Stage B: the stuck watch (built).** With `--adapt on` (the default from the command line) plain code looks at every
+plan step attempt for five stuck signals: the same tool error twice in a row, checks still failing after the retry
+turn, max turns reached, a capability or skill lacked or requested and unfilled, and a file owed with no file change
+between attempts. A step that did not end `done` with a signal is STUCK; one cause is picked by the order of
+`diagnoser.causes` in `amoeba/config/adapt.yaml` (a new cause, `tool_error`, sits after `capability`). The event (step,
+cause, signals, allowed edits, evidence lines) goes to the trace, `step_N.json`, `result.json` (`stuck`) and the run's
+hash-chained `events.jsonl`. The same code counts stored runs, offline:
+
+    python -m scripts.stuck_report eval --json stuck_counts.json
+
+**Stage C: code fixes (built, no AI).** A stuck step gets plain-code fixes, cheapest first, each one an edit the
+cause table allows; only the stuck step is re-run and re-checked, and it counts as recovered when it ends `done`:
+
+| Cause | Fixes, in order |
+|---|---|
+| missing_input (data an earlier step should have given; fixed before capability) | the upstream step is done and holds the data: add it to depends_on, or pass its output in full; else re-run that upstream step once with the item added to its done_when, then the stuck step |
+| tool_error, max_turns | three more turns |
+| checks | one more retry turn, then double the input limit when an input was shortened |
+| capability | attach the missing tool or skill: a registry tool is granted; otherwise the first vetted candidate of the pool shortlist not given before (plain code picks). With the pool and local tools off: skipped, "capability fix unavailable: pool off" |
+
+Limits (`adapt` in `amoeba/config/adapt.yaml`): 3 fixes per step, 8 per task, 200,000 tokens and $1 of fix attempts
+per task, never the same fix twice.
+
+**Stage D: the fix proposer (built).** When the code fixes for a stuck step are used up or not allowed (the pool
+off included), one AI call proposes one edit, with a short reason. It sees only the task, the step's card and
+done_when, the cause and evidence, the last attempt's errors and checks (trimmed), the team (a line per role), the
+tools and skills of this run, the edits the cause allows and the fixes already tried:
+
+| Edit | What plain code does with it |
+|---|---|
+| add_role_rule | adds one rule to a role card of the step, re-runs the step |
+| add_helper_role | adds a helper (the Planner's role card; tools of this run only) to the step, re-runs it; at most 2 per task |
+| grant_tool | gives a tool available in this run to a role of the step, re-runs it |
+| split_step | replaces the step with 2–3 sub-steps; steps that waited for it wait for the last one |
+| replan_remaining | replaces the part not done (the Planner's plan format; done steps never change) |
+| work_around | capability only, and only after a grant_tool or add_helper_role was tried for the step: another method or a narrower done_when, stated in the answer's Limitations; the step counts as "finished with limitation", never as recovered |
+
+Plain code refuses an edit that is not allowed for the cause, breaks the schema, names a tool the run does not have,
+breaks a limit (size, denylisted wording, tools; `proposer.py`) or the step graph, touches a done step or repeats a fix; it asks once more, and a second invalid reply
+means no fix. With `stop_when_exhausted: true` (on again with Stage D), a step nothing recovers stops the task: the
+answer and `adapt_report.md` say what was stuck, the cause, each fix tried and why it failed; the run status is
+`stuck`. Every run with a stuck step gets `adapt_report.md`, and the answer's Limitations list each work-around and
+each step that used an upstream output from before that step was re-run.
+`result.json` `adaptation` lists every fix with its result and tokens. `--adapt off` turns the watch and the fixes off.
+
+## Ask before assuming (D116)
+
+When the interpretation step finds a name or term whose readings are close (no reading leads the next by 0.3,
+a tie included), Amoeba asks you before it plans, one multiple-choice question per term:
+
+    What did you mean by "P and W"?
+      1. Purdue University Northwest
+      2. University of Washington
+      3. other (type what you meant)
+
+This is on by default (`--ask-assumed on`). If nobody can answer (no terminal, e.g. a background run), the run stops
+before planning with status `needs_clarification` and writes the questions to `clarification.json` in the run
+folder; answer them and run again with `--clarify 'P and W=1'` (the words or the option number, one per term).
+`--ask-assumed off` keeps the earlier behaviour: the top reading is assumed and the answer opens by saying so.
+A batch run with no terminal stops for questions instead of guessing; pass `--clarify` answers or `--ask-assumed off` there.
 
 ## Cost controls (D45–D48)
 
@@ -479,6 +593,7 @@ amoeba/
   safety/envelope.py       allowed_tools per role, max_agents
   pool/                    D56: index (refresh), match, stock (pick, vet, attach), mcp (pool tools)
   localtools/              D59: claude mcp serve (server), gate, skills, claims, toolbox (--local-tools on)
+  adapt/                   D117: stuck watch (stuck), code fixes (fixes), fix proposer (proposer), settings (config), event log (evidence)
   cli.py                   D56: `amoeba pool refresh` / `python -m amoeba pool refresh`
 scripts/run_task.py        CLI
 scripts/list_models.py     D54: the models an endpoint offers (check a profile's names)

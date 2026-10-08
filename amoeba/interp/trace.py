@@ -45,7 +45,7 @@ EVENT_BOX = {
     "plan_version": "action_obs", "requirement_status": "action_obs",
 }
 BOX2_BOX = {"planner": "planner", "agent_observer": "agent_obs", "plan_observer": "plan_obs",
-            "interpreter": "interpret", "architect": "architect"}   # D77, D87
+            "interpreter": "interpret", "fix_proposer": "proposer"}   # D77, D87 (D117: the in-task fix proposer)
 
 
 # box: trace
@@ -142,20 +142,33 @@ class NoopListener:
         pass
 
 
+# box: router
+def _route_attrs(dec: dict) -> dict:
+    """D97: a routing decision as trace attributes."""
+    return {f"amoeba.route.{k}": v for k, v in dec.items()}
+
+
 class TracedLLM:
     """Wraps an LLMClient so every call emits one ``chat`` span carrying the token counts the API returned."""
 
-    def __init__(self, llm: LLMClient, trace: TraceWriter, listener: NoopListener | None = None):
+    def __init__(self, llm: LLMClient, trace: TraceWriter, listener: NoopListener | None = None,
+                 data_class: str = "normal"):
         self.llm, self.trace, self.listener = llm, trace, listener or NoopListener()
+        self.data_class = data_class                  # D97: "sensitive" keeps the router to local models
 
     # box: trace
     def chat_messages(self, messages: Messages, seed: int = 0, *, agent_id: str | None = None,
                       agent_name: str | None = None, max_tokens: int | None = None, role: str | None = None,
-                      _retry: bool = False) -> ChatResponse:
+                      step: int | None = None, checks=None, needs=(), _retry: bool = False) -> ChatResponse:
         """role: the call's role group (D54; Box 2 callers are known by name). A profile's RoleRouter picks the
-        group's model and, when the profile sets one, its reply limit."""
+        group's model and, when the profile sets one, its reply limit. D97: with a ModelRouter every call states a
+        CallSpec (role, step, size, needs, data class, the steps it checks) and the router picks the model."""
         group = role or BOX2_GROUPS.get(agent_name or "")
-        llm, cap = self.llm.route(group) if hasattr(self.llm, "route") else (self.llm, None)
+        routed = hasattr(self.llm, "call") and hasattr(self.llm, "route") and hasattr(self.llm, "registry")
+        if routed:
+            llm, cap = self.llm, None
+        else:
+            llm, cap = self.llm.route(group) if hasattr(self.llm, "route") else (self.llm, None)
         if cap and not _retry:
             max_tokens = cap
         attrs = {"gen_ai.agent.id": agent_id, "gen_ai.agent.name": agent_name, "amoeba.role_group": group,
@@ -169,7 +182,21 @@ class TracedLLM:
             if self.trace.log_content:   # OTel GenAI opt-in content capture: the exact prompt, even if the call fails
                 rec["gen_ai.input.messages"] = [dict(m) for m in messages]
             try:
-                resp = llm.chat_messages(messages, seed, max_tokens=max_tokens)
+                if routed:                                 # D97: the router decides, and the decision is logged
+                    from amoeba.llm.router import NoModelAvailable, spec_for
+                    spec = spec_for(agent_name, group, messages, max_tokens, step, checks or (), needs,
+                                    getattr(llm, "data_class", self.data_class))
+                    try:
+                        resp, dec = llm.call(spec, messages, seed, max_tokens)
+                    except NoModelAvailable:
+                        self.trace.event("route", {"amoeba.box": "router", **_route_attrs(llm.decisions[-1])})
+                        self.trace.event("no_model", {"amoeba.box": "router", "amoeba.role": spec.role,
+                                                      "amoeba.step": step})
+                        raise
+                    rec["gen_ai.request.model"] = llm.registry[dec["chosen"]].model
+                    self.trace.event("route", {"amoeba.box": "router", **_route_attrs(dec)})
+                else:
+                    resp = llm.chat_messages(messages, seed, max_tokens=max_tokens)
             except Exception as e:     # D48: the rate-limit waits before a call that still failed are logged too
                 self._log_retries(getattr(e, "amoeba_retries", []), agent_name, failed=True)
                 raise
@@ -201,7 +228,8 @@ class TracedLLM:
         if resp.finish_reason == "length" and max_tokens and not _retry:
             # D27: hidden reasoning can use up the limit; ask once more with double room, then accept whatever comes
             return self.chat_messages(messages, seed, agent_id=agent_id, agent_name=agent_name,
-                                      max_tokens=2 * max_tokens, role=role, _retry=True)
+                                      max_tokens=2 * max_tokens, role=role, step=step, checks=checks, needs=needs,
+                                      _retry=True)
         return resp
 
     def _log_retries(self, retries: list, agent_name: str | None, failed: bool = False) -> None:

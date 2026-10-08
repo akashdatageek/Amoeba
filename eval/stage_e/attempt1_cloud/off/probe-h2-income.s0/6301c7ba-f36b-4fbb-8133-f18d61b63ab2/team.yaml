@@ -1,0 +1,404 @@
+team_id: 2d63af4f-4eb9-4afa-91b6-b793c41cc73c
+version: 1
+parent_version: null
+name: team-plan-probe-h2
+topology: plan
+agents:
+  4d6784f9-a34a-46e1-b700-87ca80b68892:
+    agent_id: 4d6784f9-a34a-46e1-b700-87ca80b68892
+    name: Economic Data Researcher
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in navigating US government data portals (Census Bureau, BLS)
+      to extract precise longitudinal economic indicators.
+    role_prompt: "You are a Senior Economic Data Researcher. Your task is to gather\
+      \ the raw nominal data required for an inflation-adjusted income analysis. \n\
+      \n1. Use web_search and fetch_url to find the 'Median Household Income' for\
+      \ the United States and the state of Indiana for every year from 2015 to 2023.\
+      \ Use the U.S. Census Bureau's American Community Survey (ACS) 1-year estimates.\
+      \ \n2. Find the annual average Consumer Price Index for All Urban Consumers\
+      \ (CPI-U) from the Bureau of Labor Statistics (BLS) for the same period.\n3.\
+      \ Create a table with the following columns: Year, US Nominal Income, IN Nominal\
+      \ Income, CPI-U, and Source URL. \n4. Ensure you cite the specific table or\
+      \ survey release for each value. If a 1-year estimate is unavailable for Indiana\
+      \ in a specific year, use the 5-year estimate but explicitly note it in the\
+      \ source column."
+    max_history: 5
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Provide a verified dataset of nominal incomes and CPI values with direct
+      source citations.
+    skills:
+    - US Census Bureau API/Data portals
+    - BLS database navigation
+    - Data sourcing
+    outputs:
+    - artifact: Nominal Data Table
+      format: 'table: Year | US Nominal Income | IN Nominal Income | CPI-U | Source
+        URL'
+    success_criteria:
+    - All 9 years of data are present for all three variables.
+    - Every figure has a corresponding official source URL.
+    constraints:
+    - Must use only official US Census and BLS sources.
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  15a068f6-4a7c-4491-a08e-8c91c44cae12:
+    agent_id: 15a068f6-4a7c-4491-a08e-8c91c44cae12
+    name: Quantitative Analyst
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    - local:Write
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in economic calculations and data visualization using
+      Python.
+    role_prompt: "You are a Senior Quantitative Analyst. You will receive a table\
+      \ of nominal incomes and CPI values. \n\n1. Use Python to calculate the Real\
+      \ Median Household Income for both the US and Indiana, adjusted to 2023 dollars.\
+      \ Formula: Real_Value = Nominal_Value * (CPI_2023 / CPI_year).\n2. Calculate\
+      \ the total percentage change in real income from 2015 to 2023 for both entities:\
+      \ ((Real_2023 - Real_2015) / Real_2015) * 100.\n3. Produce a CSV file ('income_comparison.csv')\
+      \ containing: Year, US_Nominal, US_Real, IN_Nominal, IN_Real.\n4. Produce a\
+      \ PNG bar chart ('income_chart.png') showing the Real Median Household Income\
+      \ for US vs Indiana from 2015-2023. Use a grouped bar format. Ensure axes are\
+      \ labeled and a legend is provided.\n5. Output a markdown table of the results\
+      \ for the reviewer."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Transform nominal data into real 2023 dollars and generate the required
+      CSV and PNG artifacts.
+    skills:
+    - Economic inflation adjustment
+    - Python (pandas, matplotlib)
+    - Data visualization
+    outputs:
+    - artifact: Calculated Results Table
+      format: 'table: Year | US Nominal | US Real | IN Nominal | IN Real'
+    - artifact: Income Data CSV
+      format: 'csv: income_comparison.csv'
+    - artifact: Income Comparison Chart
+      format: 'png: income_chart.png'
+    success_criteria:
+    - Real values for 2023 must equal nominal values for 2023.
+    - CSV contains all required columns.
+    - PNG chart is clear, labeled, and accurately reflects the calculated real values.
+    constraints:
+    - Must use the 2023 CPI as the base for all adjustments.
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: file writing
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  1826e6af-53a8-492d-a6ac-abc61b3b60c6:
+    agent_id: 1826e6af-53a8-492d-a6ac-abc61b3b60c6
+    name: Quality Assurance Lead
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert auditor for economic data and mathematical accuracy.
+    role_prompt: "You are a QA Lead. Your job is to audit the work of the Researcher\
+      \ and Analyst. \n\n1. Compare the nominal values used by the Analyst against\
+      \ the source URLs provided by the Researcher. Ensure no transcription errors\
+      \ occurred.\n2. Pick two years (e.g., 2015 and 2019) and manually calculate\
+      \ the real income using the provided CPI values to ensure the Python script\
+      \ worked correctly.\n3. Verify the percentage change calculation: ((Real_2023\
+      \ - Real_2015) / Real_2015) * 100.\n4. Output a memo stating 'VERIFIED' or listing\
+      \ the specific errors found."
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Verify that the data is sourced correctly and the calculations are mathematically
+      sound.
+    skills:
+    - Data auditing
+    - Mathematical verification
+    outputs:
+    - artifact: Verification Report
+      format: 'memo: verification_status'
+    success_criteria:
+    - Zero discrepancies between source data and calculated inputs.
+    - Calculations verified as correct.
+    constraints:
+    - Must be a different person than the Analyst.
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  f5d38c16-97c8-44e2-9d83-c861391be365:
+    agent_id: f5d38c16-97c8-44e2-9d83-c861391be365
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Final editor and assembler of the project deliverables.
+    role_prompt: "You are the Delivery Lead. Assemble the final response. \n\n1. Start\
+      \ by stating the survey used (U.S. Census Bureau ACS) and the price index used\
+      \ (BLS CPI-U), and justify why these are the official standards for this task.\n\
+      2. Present the final data in a clear markdown table: Year, US Nominal, US Real,\
+      \ IN Nominal, IN Real.\n3. State the percentage change for both the US and Indiana\
+      \ from 2015 to 2023.\n4. Provide the citations for every figure used, referencing\
+      \ the URLs provided by the researcher.\n5. Include the generated CSV and PNG\
+      \ files in the final delivery."
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble the final report, justifications, and files into the requested
+      format.
+    skills:
+    - Technical writing
+    - Report assembly
+    outputs:
+    - artifact: Final Report
+      format: 'memo: final_delivery'
+    success_criteria:
+    - All requirements (R1-R10) are met.
+    - The report is professional and all citations are present.
+    constraints:
+    - Must not perform new analysis; only assemble and edit.
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 4d6784f9-a34a-46e1-b700-87ca80b68892
+  dst: 15a068f6-4a7c-4491-a08e-8c91c44cae12
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 4d6784f9-a34a-46e1-b700-87ca80b68892
+  dst: 1826e6af-53a8-492d-a6ac-abc61b3b60c6
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 15a068f6-4a7c-4491-a08e-8c91c44cae12
+  dst: 1826e6af-53a8-492d-a6ac-abc61b3b60c6
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 15a068f6-4a7c-4491-a08e-8c91c44cae12
+  dst: f5d38c16-97c8-44e2-9d83-c861391be365
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 1826e6af-53a8-492d-a6ac-abc61b3b60c6
+  dst: f5d38c16-97c8-44e2-9d83-c861391be365
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 4d6784f9-a34a-46e1-b700-87ca80b68892
+exit: f5d38c16-97c8-44e2-9d83-c861391be365
+plan:
+- index: 0
+  agent_ids:
+  - 4d6784f9-a34a-46e1-b700-87ca80b68892
+  text: '[Economic Data Researcher]: Data Extraction'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R10
+  depends_on: []
+  do: '
+
+    - Search for US and Indiana median household income (2015-2023) via Census Bureau
+    ACS.
+
+    - Search for annual average CPI-U (2015-2023) via BLS.
+
+    - Compile a table of nominal values and CPI with source URLs.'
+  output: 'table: Year | US Nominal Income | IN Nominal Income | CPI-U | Source URL'
+  done_when: All 9 years of data for all 3 variables are retrieved with citations.
+- index: 1
+  agent_ids:
+  - 15a068f6-4a7c-4491-a08e-8c91c44cae12
+  text: '[Quantitative Analyst]: Inflation Adjustment and Visualization'
+  kind: work
+  covers:
+  - R4
+  - R5
+  - R8
+  - R9
+  depends_on:
+  - 1
+  do: '
+
+    - Use Python to calculate real income for US and IN (base year 2023).
+
+    - Calculate % change from 2015 to 2023.
+
+    - Generate ''income_comparison.csv''.
+
+    - Generate ''income_chart.png'' (grouped bar chart).'
+  output: 'table: Year | US Nominal | US Real | IN Nominal | IN Real; csv: income_comparison.csv;
+    png: income_chart.png'
+  done_when: CSV and PNG are created and the results table is produced.
+- index: 2
+  agent_ids:
+  - 1826e6af-53a8-492d-a6ac-abc61b3b60c6
+  text: '[Quality Assurance Lead]: Data and Math Audit'
+  kind: verify
+  covers:
+  - R4
+  - R5
+  - R6
+  depends_on:
+  - 1
+  - 2
+  do: '
+
+    - Verify nominal values against source URLs.
+
+    - Manually calculate real income for two sample years to verify the Python logic.
+
+    - Verify the % change calculation.'
+  output: 'memo: verification_status'
+  done_when: The verification report confirms the accuracy of the data and calculations.
+- index: 3
+  agent_ids:
+  - f5d38c16-97c8-44e2-9d83-c861391be365
+  text: '[Delivery Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R6
+  - R7
+  - R8
+  - R9
+  - R10
+  depends_on:
+  - 2
+  - 3
+  do: '
+
+    - Write the justification for the ACS and CPI-U.
+
+    - Assemble the final table of nominals, reals, and % changes.
+
+    - Include all citations.
+
+    - Attach the CSV and PNG.'
+  output: 'memo: final_delivery'
+  done_when: All deliverables (Report, CSV, PNG) are provided and all requirements
+    are met.
+requirements:
+  R1: Gather nominal median household income for Indiana (2015-2023) from U.S. Census
+    Bureau survey estimates.
+  R2: Gather nominal median household income for the United States (2015-2023) from
+    U.S. Census Bureau survey estimates.
+  R3: Gather an official price index from the BLS for inflation adjustment (2015-2023).
+  R4: Calculate real median household income for Indiana and the US, expressed in
+    2023 dollars.
+  R5: Calculate the percentage change in real income from 2015 to 2023 for both Indiana
+    and the US.
+  R6: Report nominal values, adjusted values, and percentage change.
+  R7: State and justify which survey and which price index were used.
+  R8: Deliver a CSV file containing all figures.
+  R9: Deliver a bar chart (PNG) comparing the real incomes.
+  R10: Cite every figure used.
+max_inner_turns: 3
+meta:
+  task_id: probe-h2-income
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: web_search
+    for_role: Economic Data Researcher
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Economic Data Researcher
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: python_interpreter
+    for_role: Quantitative Analyst
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: file writing
+    for_role: Quantitative Analyst
+    canonical: file writing
+    status: filled
+    reason: ''

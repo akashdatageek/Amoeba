@@ -1,0 +1,25 @@
+# D96: the local OpenShell gateway that runs agents' local tools out of the harness process (docker compute driver).
+# Single-player, loopback only (docker-compose.yml publishes 127.0.0.1:17680). Sandboxes authenticate with
+# gateway-minted launch JWTs (signing bundle in OPENSHELL_LOCAL_TLS_DIR); the local harness calls the API without a
+# user credential (allow_unauthenticated_users, the documented local-development setting).
+[openshell]
+version = 2
+
+[openshell.gateway]
+bind_address        = "0.0.0.0:8080"
+health_bind_address = "127.0.0.1:8081"
+log_level           = "info"
+compute_driver      = "docker"
+disable_tls         = true
+
+[openshell.gateway.auth]
+allow_unauthenticated_users = true
+
+[openshell.drivers.docker]
+default_image         = "amoeba-sandbox:local"
+sandbox_runtime_image = "ghcr.io/nvidia/openshell/sandbox:latest"
+supervisor_image      = "ghcr.io/nvidia/openshell/supervisor:latest"
+image_pull_policy     = "if_not_present"
+sandbox_label         = "openshell"
+grpc_endpoint         = "http://127.0.0.1:17680"   # the supervisor runs on the host network; the workload has network=none
+app_armor_profile     = "Unconfined"

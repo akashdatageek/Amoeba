@@ -1,0 +1,197 @@
+{
+  "version": 3,
+  "diff": {
+    "steps_added": [
+      6,
+      7
+    ],
+    "steps_rewritten": [
+      4,
+      5
+    ],
+    "steps_dropped": [],
+    "reassigned": null,
+    "role_added": null,
+    "requests": []
+  },
+  "roles": [
+    {
+      "name": "Economic Data Researcher",
+      "tools": [
+        "web_search",
+        "fetch_url"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Quantitative Analyst",
+      "tools": [
+        "local:Bash",
+        "local:Write"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Quality Assurance Lead",
+      "tools": [
+        "calc"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Delivery Lead",
+      "tools": [],
+      "missing_tools": []
+    }
+  ],
+  "steps": [
+    {
+      "number": 1,
+      "roles": [
+        "Economic Data Researcher"
+      ],
+      "text": "[Economic Data Researcher]: Data Extraction",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R10"
+      ],
+      "depends_on": [],
+      "do": "\n- Search for US and Indiana median household income (2015-2023) via Census Bureau ACS.\n- Search for annual average CPI-U (2015-2023) via BLS.\n- Compile a table of nominal values and CPI with source URLs.",
+      "output": "table: Year | US Nominal Income | IN Nominal Income | CPI-U | Source URL",
+      "done_when": "All 9 years of data for all 3 variables are retrieved with citations.",
+      "status": "partial"
+    },
+    {
+      "number": 2,
+      "roles": [
+        "Economic Data Researcher"
+      ],
+      "text": "[Economic Data Researcher]: Nominal Income Retrieval",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R10"
+      ],
+      "depends_on": [
+        1
+      ],
+      "do": "Use `web_search` to retrieve nominal median household income for the United States and Indiana for each year from 2015 to 2023. To avoid the table-link issue encountered in Step 1, target `censusreporter.org` or perform individual searches for each year (e.g., \"2015 US median household income Census Bureau\") to extract raw values directly from search snippets or simplified data pages.",
+      "output": "A table of nominal median household incomes for the US and Indiana (2015-2023) with direct citations.",
+      "done_when": "Nominal income values for both entities for all years (2015-2023) are collected and cited.",
+      "status": "done"
+    },
+    {
+      "number": 3,
+      "roles": [
+        "Quantitative Analyst"
+      ],
+      "text": "[Quantitative Analyst]: Inflation Adjustment and Visualization",
+      "kind": "work",
+      "covers": [
+        "R4",
+        "R5",
+        "R8",
+        "R9"
+      ],
+      "depends_on": [
+        1,
+        2
+      ],
+      "do": "Use `local:Bash` to execute a Python script that: 1) Combines the nominal incomes from Step 2 and the CPI-U data from Step 1; 2) Calculates the real median household income for 2015-2023 expressed in 2023 dollars; 3) Calculates the percentage change in real income from 2015 to 2023 for both Indiana and the US; 4) Uses `local:Write` to save these figures into a CSV file; 5) Generates a bar chart (PNG) comparing the real incomes.",
+      "output": "A CSV file, a PNG bar chart, and a summary table of real income values and percentage changes.",
+      "done_when": "The CSV and PNG files are created and the real income calculations are complete.",
+      "status": "done"
+    },
+    {
+      "number": 4,
+      "roles": [
+        "Economic Data Researcher"
+      ],
+      "text": "[Economic Data Researcher]: Targeted Nominal Income Retrieval",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R10"
+      ],
+      "depends_on": [
+        1,
+        2
+      ],
+      "do": "Use `web_search` to retrieve the nominal median household income for Indiana and the United States for each year from 2015 to 2023 individually (e.g., \"Indiana median household income 2015 Census Bureau\", \"Indiana median household income 2016 Census Bureau\", etc.) to ensure specific values are captured instead of table links.",
+      "output": "A complete table of nominal median household incomes for Indiana and the US (2015-2023) with direct citations.",
+      "done_when": "All nominal values for both Indiana and the US for every year from 2015 to 2023 are found and cited.",
+      "status": "not run"
+    },
+    {
+      "number": 5,
+      "roles": [
+        "Quantitative Analyst"
+      ],
+      "text": "[Quantitative Analyst]: Final Inflation Adjustment and Visualization",
+      "kind": "work",
+      "covers": [
+        "R4",
+        "R5",
+        "R8",
+        "R9"
+      ],
+      "depends_on": [
+        1,
+        4
+      ],
+      "do": "Use `local:Bash` to execute a Python script that takes the complete nominal income data from Step 4 and the CPI-U data from Step 1 to calculate real median household incomes (expressed in 2023 dollars) and the percentage change from 2015 to 2023. Generate the final `income_comparison.csv` and `income_chart.png`.",
+      "output": "Updated `income_comparison.csv` and `income_chart.png` containing complete data.",
+      "done_when": "The CSV and PNG are generated using the full 2015-2023 dataset.",
+      "status": "not run"
+    },
+    {
+      "number": 6,
+      "roles": [
+        "Quality Assurance Lead"
+      ],
+      "text": "[Quality Assurance Lead]: Data and Math Audit",
+      "kind": "verify",
+      "covers": [
+        "R4",
+        "R5",
+        "R6"
+      ],
+      "depends_on": [
+        4,
+        5
+      ],
+      "do": "Use `calc` to verify the real income calculations for a sample of years for both Indiana and the US, and ensure all figures in the final dataset are correctly cited.",
+      "output": "Audit report confirming mathematical accuracy and citation completeness.",
+      "done_when": "Calculations are verified and citations are confirmed.",
+      "status": "not run"
+    },
+    {
+      "number": 7,
+      "roles": [
+        "Delivery Lead"
+      ],
+      "text": "[Delivery Lead]: Final Assembly",
+      "kind": "work",
+      "covers": [
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10"
+      ],
+      "depends_on": [
+        5,
+        6
+      ],
+      "do": "Assemble the final report. Include the nominal and real income tables, the percentage change, the justification for using the ACS survey and the CPI-U index, and attach the CSV and PNG files.",
+      "output": "Final response meeting all requirements.",
+      "done_when": "All requirements (R1-R10) are fulfilled in the final delivery.",
+      "status": "not run"
+    }
+  ]
+}

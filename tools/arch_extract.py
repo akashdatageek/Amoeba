@@ -96,18 +96,28 @@ BOXES: list[dict] = [
                "These files are the raw material later phases will learn from."],
          proposes="Nothing.", disposes="Plain code writes the files, even when drafting fails.",
          anchors=["scripts/run_task.py::run_one"], guard_anchors=[]),
-    dict(id="ov_adapt", view="overview", title="4–9 · Adaptation loop (Phase 2)", kind="top", opens="adapt",
-         plan=None,
-         sentence="A stream of tasks per kind; one typed change to that kind's team recipe is tested old against new on "
-                  "held-out tasks, and plain code keeps it only if the gain is real.",
-         what=["Phase 2 (spec/BUILD_SPEC_PHASE2.md). Week 1 builds the measuring half: the task stream, the team recipe "
-               "and its hook into Boxes 2–3, the Experimenter and the Gate.",
-               "A hand-written change goes through the Experimenter and the Gate before any AI may propose one.",
-               "Only Amoeba's plan runner gets recipes; the two baselines never do. Nothing in Boxes 7–8 calls an AI."],
-         proposes="Nothing yet: in week 1 the change is written by hand.",
-         disposes="Plain code runs both arms, measures the noise floor and accepts or rejects with recorded reasons.",
-         anchors=[], guard_anchors=[]),
-    # ---------------------------------------------------------------- task view
+    dict(id="ov_adapt", view="overview", title="4 · Adapt within the task", kind="top", opens="adapt", plan=None,
+         sentence="D117: the offline learning loop is gone; adaptation happens inside one task, when a Box 3 step gets stuck.",
+         what=[
+               "Stage B (built): after each step attempt plain code looks for the stuck signals, marks the step "
+               "STUCK, diagnoses one cause and logs it.",
+               "Stage C (built): code fixes, cheapest first — pass a missing input or re-run its upstream step once, "
+               "more turns or retry turns or a larger input, attach the missing tool from the pool shortlist.",
+               "Stage D (built): when the code fixes are used up or not allowed, the fix proposer (one AI call) "
+               "proposes one edit; plain code checks and applies it. Within limits; when nothing recovers the step "
+               "the task stops with a report.",
+               "Every stuck event, fix and stop goes to the run's hash-chained event log.",
+               "Nothing carries over between tasks."],
+         proposes="See inside.",
+         disposes="See inside.",
+         anchors=["amoeba/adapt/stuck.py::diagnose"], guard_anchors=[]),
+    dict(id="ov_around", view="overview", title="Around every box", kind="top", opens="around", plan=None,
+         sentence="The model router behind every AI call and the niche profile every run obeys.",
+         what=[
+               "Model router (D97–D98), niche profiles (D102)."],
+         proposes="See inside.",
+         disposes="See inside.",
+         anchors=["amoeba/llm/router.py::ModelRouter"], guard_anchors=[]),
     dict(id="toy_source", view="task", title="Toy task source", kind="code", plan="Toy task source",
          sentence="Makes practice jobs with known answers (sums, reversed words, vowel counts), the same for the same seed.",
          what=["Generates practice jobs from a seed number, cycling through three kinds of job.",
@@ -146,7 +156,8 @@ BOXES: list[dict] = [
                "A job with a rubric and no known answer gets the fraction of rubric items it passes: each deliverable "
                "and constraint found by pattern, each number found with its unit within a tolerance (10 TB and "
                "9.1 TiB are the same amount), and nothing it must not do (such as a price with no source nearby).",
-               "No AI judges the answer in Phase 1; a hook can store a judge's view beside the score, never in it."],
+               "No AI judges the answer in Phase 1; a hook can store a judge's view beside the score, never in it.",
+               "D94: a rubric item can also check content, not just a heading: it passes only when the section its pattern finds has a body that names one of the item's entities (section_entity; \"**Assumptions:** no resale value\" counts, an empty Assumptions heading does not)."],
          proposes="The answer text (from the team).", disposes="Plain code decides match or no match.",
          anchors=["amoeba/task/evaluate.py::normalise", "amoeba/task/evaluate.py::score",
                   "amoeba/task/evaluate.py::rubric_score", "amoeba/task/evaluate.py::number_found",
@@ -178,7 +189,7 @@ BOXES: list[dict] = [
          anchors=[("amoeba/task/draft.py::draft_team", None, "# state 1"),
                   "amoeba/task/parsers.py::parse_open_questions", "scripts/run_task.py::ask_user",
                   "amoeba/task/draft.py::toolbox_text"]),
-    dict(id="interpret", view="plan", title="Task interpretation (D77)", kind="llm", plan=None, ai="interpreter",
+    dict(id="interpret", view="plan", title="Task interpretation and family (D77, D101)", kind="llm", plan=None, ai="interpreter",
          sentence="Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a "
                   "clear winner, asks the user one question, or makes the answer state its assumption.",
          what=["One call reads the task (and the read-only user context from --context: location, organisation, role) "
@@ -192,7 +203,8 @@ BOXES: list[dict] = [
                "in all three runners read it; an open question the Planner writes about one of these names is answered "
                "from it, not by its guess.",
                "After the run, when the reading was assumed, plain code makes the answer open with \"I read X as Y; if "
-               "you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing."],
+               "you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing.",
+               "D116: with --ask-assumed on (the CLI default) every reading that would be assumed, a tie included, is asked about before planning, one question each, least certain first; with nobody to ask the run stops with needs_clarification and writes clarification.json, and --clarify ENTITY=READING answers ahead of time; off keeps the behaviour above, and experiment runs pass off."],
          proposes="The entities, their readings, a reason and a confidence for each.",
          disposes="Plain code decides whether a reading is clear, whether to ask, and checks the answer's opening line.",
          prompts=["interpret"],
@@ -384,7 +396,8 @@ BOXES: list[dict] = [
                "With --equal-tools on (D62) the writer holds every tool the team was given and may call them first "
                "(Action / ActionInput lines, at most 5 calls); reviewers may call their own tools the same way.",
                "D70: a reply that is only a tool request is no answer: the writer is asked once more for its "
-               "answer, and a run whose last answer is still a tool request ends with error 'no_answer'."],
+               "answer, and a run whose last answer is still a tool request ends with error 'no_answer'.",
+               "D102: a tool the run's niche profile does not allow is refused before it runs (refused: <tool>) and logged as niche_refused; general allows every tool."],
          proposes="The answer text (and, with D62, tool calls).",
          disposes="Plain code decides when it is asked again and takes its last answer as the result.",
          prompts=["agentverse_solver_prepend", "agentverse_solver_append"],
@@ -469,7 +482,12 @@ BOXES: list[dict] = [
                "producer whose only problem is a missing capability is not sent back (rework_skipped).",
                "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, "
                "through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no "
-               "re-checking tool call on code, files or cited figures is an unverified check and makes it partial."],
+               "re-checking tool call on code, files or cited figures is an unverified check and makes it partial.",
+               "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
+               "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
+               "D109 (resolver): plain code pairs the verifier's blind figures with the worker's by label (5% tolerance); one fresh resolver call settles each disagreement by source text or a re-run, plain code checks its evidence, a settled value replaces the wrong one, and an unresolved one keeps the step from PASS and goes into Limitations.",
+               "D110 (part of D105's final-answer check): every web-sourced figure of the final answer must carry its source's date (line or source entry); undated ones share the refine turn, and those still undated are listed in Limitations.",
+               "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",
@@ -497,7 +515,8 @@ BOXES: list[dict] = [
                "team too large, a loop, or a new step that depends on a step that has not run. New capability "
                "requests go through the normal toolbox step; a dropped requirement is listed as not met.",
                "At most 2 re-plans and 3 added steps per run; an unreadable or invalid reply counts as CONTINUE. "
-               "Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change."],
+               "Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change.",
+               "D108: a step a re-plan adds or rewrites for a failed step must state a different tool, source type, site or a split query, else the decision is rejected and logged; the observer is shown each failed step's tools, sources and queries."],
          proposes="One typed decision and its reason.",
          disposes="Plain code decides when to call, validates the decision, applies it and records every version.",
          prompts=["plan_replan"],
@@ -581,7 +600,9 @@ BOXES: list[dict] = [
          what=["Summarises the run in one record saved as result.json.",
                "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
                "It also lists the steps that answered BLOCKED and every capability request, and counts how many "
-               "requests round 1 made and how many the checkers talked the planner out of."],
+               "requests round 1 made and how many the checkers talked the planner out of.",
+               "D105 + D110: after the summariser, plain code checks each Box 2 requirement and each promised file against the final answer and the workspace (and the dates of web figures); missing → one refine turn, then Limitations, and no_deliverable when a core deliverable is missing; requirement_status records the final-answer result.",
+               "D116: status needs_clarification when the run stopped before planning to ask the user about a reading it would otherwise have assumed; result.json then lists the open questions (interpretation.pending)."],
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,
@@ -593,7 +614,8 @@ BOXES: list[dict] = [
                "page length and time are capped, and a failure comes back as an error line, never a crash.",
                "Pool tools (D56) are remote MCP servers registered as pool:<name> for the helper that asked; they "
                "run here too, with the same caps, [S#] source ids and error lines.",
-               "This is the single place any tool is ever run."],
+               "This is the single place any tool is ever run.",
+               "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#]."],
          proposes="A tool name and its input (from a helper).",
          disposes="Plain code checks the name and the arithmetic before anything runs.",
          anchors=["amoeba/tools/registry.py::ToolRegistry", "amoeba/tools/registry.py::calc",
@@ -601,7 +623,7 @@ BOXES: list[dict] = [
                   "amoeba/tools/web.py::TavilyProvider", "amoeba/tools/web.py::web_registry"]),
     dict(id="toolbox", view="run", title="Stock the toolbox", kind="code", plan=None,
          sentence="Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI "
-                  "pick per request, everything else plain code.",
+                  "pick per request, everything else plain code. D117: the in-task capability fix calls it again with no AI pick.",
          what=["Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's "
                "guess; the kind asked and the kind picked are logged), are ranked by the words they share with the "
                "request (its standard name and aliases, name, what it does, input and output); the best 5 "
@@ -629,37 +651,26 @@ BOXES: list[dict] = [
                "D69: a request that names a document format (xlsx, docx, pptx, pdf) gets the vetted local skill for "
                "it, chosen by plain code with no AI pick; an outside service that creates things stays refused.",
                "D70: with --picks-file every run of a task reuses the task's first pick for a request (all three "
-               "architectures), when it passes vetting again; --picks-only makes the picks in a pre-pass."],
-         proposes="The picker names one candidate (or NONE).",
+               "architectures), when it passes vetting again; --picks-only makes the picks in a pre-pass.",
+               "D117 Stage C: when a stuck step lacks a capability and the pool or local tools are on, the plan runner "
+               "runs this step again for it with code_pick: plain code takes the first vetted candidate not given to "
+               "that step before (no AI call, no shared pick); with both off the rung is skipped."],
+         proposes="The picker names one candidate (or NONE); never for an in-task fix (code_pick).",
          disposes="Plain code ranks the candidates, rejects anything unsafe or over the caps, and attaches.",
          anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
                   "amoeba/pool/match.py::rank", "amoeba/pool/mcp.py::PoolTools", "amoeba/pool/mcp.py::SdkConnector",
                   "amoeba/pool/match.py::document_format", "amoeba/pool/stock.py::SharedPicks"]),
-    dict(id="localtools", view="run", title="Local toolbox (sandboxed)", kind="code", plan=None,
-         sentence="With --local-tools on, the team may borrow Claude Code's own tools and skills through `claude mcp "
-                  "serve`, inside a workspace folder of the run.",
-         what=["Starts `claude mcp serve` once per run over stdio (MCP Python SDK), lists its tools and closes it at "
-               "the end; only Bash, Read, Write, Edit, Glob and Grep are allowed, every other listed tool is refused "
-               "and logged once. They become local:<Name> tools of the run.",
-               "Needs AMOEBA_SANDBOX=1. Every path must resolve inside runs/<id>/workspace/ (else outside_workspace); "
-               "a Bash command runs from there, network commands are refused (network_command) and destructive or "
-               "escaping ones too (unsafe_command).",
-               "Limits (localtools.yaml): 60 s per call, 8,000 characters of output, 20 calls per step and 60 "
-               "per run; a trace line for every call and "
-               "every refusal.",
-               "Skills are listed only from the kept anthropics/skills clone (D60: not the user's ~/.claude/skills); an attached "
-               "skill's folder is copied to workspace/skills/<name>/ and its SKILL.md (frontmatter and first 5,000 "
-               "characters) goes on the helper's card.",
-               "Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first; any other "
-               "local item goes first only if it matches at least as well as the best internet one (D61).",
-               "A successful call's result gets a source id [S#] in the run's one source list (D61); a command "
-               "written inside a code fence runs without the fence.",
-               "A step that says it saved a file the workspace does not hold ends incomplete (claimed_file_missing); "
-               "result.json lists files_created, local_tool_calls, local_refusals and skills_attached, and the "
-               "workspace is copied to artifacts/files/.",
-               "D71: LibreOffice Calc headless (scripts/setup_office.sh) recalculates spreadsheet formulas with a "
-               "fresh profile and HOME; when the xlsx skill is attached, plain code checks once that a two-cell "
-               "workbook comes back with its value, and if not the helper's card says recalc.py will fail."],
+    dict(id="localtools", view="run", title="Local toolbox (OpenShell sandbox, D96)", kind="code", plan=None,
+         sentence="With --local-tools on, Claude Code's tools and skills run in a fresh OpenShell sandbox per run: no network, only the workspace writable.",
+         what=[
+               "D96: `claude mcp serve` and every command run inside a fresh OpenShell sandbox per run (image amoeba-sandbox:local, gateway on 127.0.0.1:17680): no network, Landlock lets only /sandbox, /tmp and /dev/null be written, skills are read-only under /opt/skills, no secrets, runs as user sandbox; the sandbox is deleted at the end.",
+               "The harness gate refuses first what it can see: network commands, paths outside the workspace, writes to MCP configs, hooks, settings, CLAUDE.md or skills (protected_config); what a command hides is stopped by the sandbox. Files are copied back to runs/<id>/workspace/ after each call.",
+               "Limits: 300 s per command (D96a), 1 CPU, 1 GiB, one hour per run, 8,000 characters of output, 20 calls per step and 60 per run; a niche profile can set its own sandbox limits (D102).",
+               "--local-tools-mode sandbox is the default; inprocess (the earlier host process) runs only when asked for and needs AMOEBA_SANDBOX=1. Every allow and deny decision goes to the trace and from there to events.jsonl (tool_decisions); a live test shows the agent cannot reach the OpenShell gateway API.",
+               "Skills are listed only from the kept anthropics/skills clone; an attached skill's SKILL.md goes on the helper's card. Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first (D61).",
+               "D103: in the sandbox a pool skill maps to /opt/skills/<name> (the entry's root is a label; its folder is root_path), and Bash may name /opt/skills read-only so the skill's scripts run; writing there is refused.",
+               "D107: every page and data file the web tools read is saved read-only under sources/ in the workspace (and uploaded into the sandbox), with sources/index.json giving each file's [S#], url and time; writes there are refused and the files never count as made.",
+               "D112: a Python program sent to local:Bash (a ```python block, or a first line that starts like Python) runs as python3 from a quoted heredoc; the rewrite is logged and the gate still screens it."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",
@@ -683,10 +694,10 @@ BOXES: list[dict] = [
     dict(id="client", view="run", title="AI connection", kind="code", plan=None,
          sentence="The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
          what=["Sends the messages to the AI service and returns the reply with its token counts.",
-               "Waits out rate limits (HTTP 429/503: up to 5 retries, Retry-After honoured, each wait logged), dropped "
+               "Waits out rate limits (HTTP 429/503: up to five retries, Retry-After honoured, each wait logged), dropped "
                "connections and timeouts too; an error still there after that ends the run with error 'api: …' "
                "and its records are still written. It can space calls out, fold the system message into the user "
-               "message and set the reasoning effort.",
+               "message, set the reasoning effort and count hidden reasoning tokens.",
                "With --llm-cache every reply is stored and can be replayed without a call; --max-tokens-per-run / "
                "--max-calls-per-run stop a run cleanly; every run prints its tokens and estimated cost.",
                "A named profile (amoeba/config/models.yaml, default gemma-api) sets the service, the model and how to "
@@ -694,7 +705,9 @@ BOXES: list[dict] = [
                "and reply length. Every log line names the profile, and each AI line the exact model the service "
                "returned.",
                "Temperature is set once for the connection, not per helper.",
-               "Every call from every box goes through here, wrapped so it is logged."],
+               "Every call from every box goes through here, wrapped so it is logged.",
+               "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
+               "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error, no_deliverable or needs_clarification."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
@@ -709,147 +722,129 @@ BOXES: list[dict] = [
          proposes="Scripted replies.", disposes="Everything downstream treats it exactly like a real AI.",
          anchors=["amoeba/llm/toy_mock.py::toy_mock_client", "amoeba/llm/client.py::MockLLMClient"]),
     # ---------------------------------------------------------------- adaptation loop (Phase 2)
-    dict(id="stream", view="adapt", title="0 · Task stream (D80)", kind="code", plan=None,
-         sentence="Tasks arrive in a fixed order per kind of task; held-out tasks are kept apart for testing, and the "
-                  "loop learns only the names of the rubric items a practice run failed.",
-         what=["tasks/stream_<name>.jsonl: each task has its kind (family), its D30 rubric, whether it is practice or "
-               "held-out, whether it comes before or after its kind's shift, and (practice only) its place in the order.",
-               "tasks/stream_<name>.shifts.yaml: a feedback shift (the later rubrics ask for something new that the "
-               "prompts never mention) or a tool shift (code takes a tool out of that kind's runs, --disable-tools).",
-               "Plain code checks the file when it is loaded: the new item is in every post rubric and no pre one, no "
-               "prompt mentions it, order and phase agree.",
-               "The loop only ever gets practice tasks; held-out ones are for the Experimenter. The feedback it keeps "
-               "is the failed item names, never patterns or expected numbers.",
-               "The leakage screen refuses an edit text holding an 8-word run of a held-out prompt, a held-out "
-               "expected number or a held-out task id."],
+    dict(id="evidence", view="adapt", title="Event log and evidence branch (kept from D95)", kind="code", plan=None,
+         sentence="An append-only, hash-chained log written only by the harness, with a fingerprint of every run folder "
+                  "it names, and an off-container copy on the repository's evidence branch.",
+         what=["Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; "
+               "scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
+               "Finished runs that pass the key scan are shipped as fast-forward commits to the orphan `evidence` "
+               "branch, at most one commit per 10 minutes plus a final one; each commit message carries the chain "
+               "head. Shipping runs in the harness only; agents never get git credentials or cloud credentials.",
+               "D117: the loop that wrote it is gone; the log is kept for in-task adaptation: every stuck step, "
+               "diagnosis, fix tried and stop is a row (settings read through amoeba/adapt/config.py)."],
          proposes="Nothing: no AI works here.",
-         disposes="Plain code orders the tasks, applies the shifts and filters what the loop may see.",
+         disposes="Plain code writes, chains and verifies the log.",
          anchors=[]),
-    dict(id="recipe", view="adapt", title="Team recipe, edit menu and hook (D81–D82)", kind="code", plan=None,
-         sentence="Per kind of task, a small piece of data says what to tell the Planner, how code reshapes the drafted "
-                  "plan and which run settings to use; one typed edit makes the next version.",
-         what=["A recipe holds planner rules (lessons shown in Box 2), transforms (applied by code to the final draft) "
-               "and run options (whitelisted plan-runner settings). Every kind starts from an empty recipe, and an "
-               "empty recipe changes nothing.",
-               "The edit menu: add or remove a planner rule, add a check step after selected steps, add a clause to "
-               "selected steps' done-when, grant or revoke a tool on selected roles, add a rule to selected roles' "
-               "cards, set one run option. Each edit is a pure function that makes version N+1 with parent N.",
-               "Validation by plain code (V1–V5): tools are in the registry and not outside actions; run options are "
-               "whitelisted and in range; the number of rules and transforms and the length of each text "
-               "are capped (amoeba/config/adapt.yaml); no wording that tells the team to skip checks, citations or the sandbox; and "
-               "the step graph still passes the plan checks after the transforms.",
-               "The hook (D82): run_task --recipes DIR loads the family's current recipe (plan runner only; the "
-               "baselines never get one). Its rules fill the lessons slot of the Planner's and both checkers' "
-               "prompts, with one more check item for the plan checker; code applies its transforms to the final draft "
-               "(draft.json keeps Box 2's own draft) and records what each changed; its run options overlay the run "
-               "settings unless the command line set them. With a reused draft only transforms and run options apply."],
-         proposes="Nothing yet: in week 1 an edit is written by hand (the Architect proposes them in week 2).",
-         disposes="Plain code applies the edit, applies the transforms and refuses a recipe that breaks V1–V5.",
+    dict(id="router", view="around", title="Model router (D97)", kind="code", plan=None,
+         sentence="Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters "
+                  "that are never relaxed, then a preference for the role (none is set since D117), the role's default or the cheapest of the right size.",
+         what=["Every call states its role, step, size, needed features and data class; the router keeps the models "
+               "that are allowed (niche profile, --allowed-models) and available (key present, not cooling down, not "
+               "failing), drops those whose context, features, privacy, budget or verifier-independence rule fails, "
+               "then chooses.",
+               "One token bucket per model, shared by every process, keeps calls inside the model's per-minute limits; "
+               "a 429 cools a model down and the next one of the same size is used (with one model: wait).",
+               "Every decision — candidates, what was filtered and why, the choice, fallbacks and waits — is logged; "
+               "result.json gets calls, tokens and US dollars per model. A new model is a registry entry only.",
+               "The router still takes a per-role model preference (begin_run); since D117 removed D98's prefer_model edit, nothing sets it.",
+               "D102: the niche profile's model allowlist and verifier-independence setting feed the router; a model outside the profile is filtered out with reason profile."],
+         proposes="Nothing: no AI takes part in the decision.",
+         disposes="Plain code picks the model; no call is made when no model passes the filters (no_model).",
+         anchors=["amoeba/llm/router.py::ModelRouter"]),
+    dict(id="niche", view="around", title="Niche profiles (D102)", kind="code", plan=None,
+         sentence="One file per environment says which tools and models are allowed, the limits, what counts as done, "
+                  "the domain's rules and words, and which domain checks run; plain code enforces it.",
+         what=["--niche <name> loads profiles/<name>.yaml; the default, general, changes nothing.",
+               "The prompts stay generic: one Environment section in Box 1's and Box 2's prompts is filled from the "
+               "profile, asking the team to assess the environment first and plan only with what is allowed.",
+               "Box 3 refuses any tool outside the profile even when a plan or a replan asks for it, and logs the "
+               "refusal; the router refuses any model outside it; domain checks (amoeba/checks/) run after each step "
+               "and a failed one earns a retry turn.",
+               "D113: after a step that made a workbook, typed totals and typed derived cells (row or column sums, products of row cells) fail the domain_xlsx_formulas check with the cell names and earn the retry turn."],
+         proposes="Nothing: a person writes the profile.",
+         disposes="Plain code applies the profile's allowlists, limits, done clauses and checks.",
          anchors=[]),
-    dict(id="experimenter", view="adapt", title="7 · Experimenter (D83)", kind="code", plan=None,
-         sentence="Runs the old recipe against the old recipe plus one edit on the kind's held-out tasks, three times "
-                  "each, with the same seed, tools and model, and returns the score pairs.",
-         what=["For each held-out task (after-shift tasks first, then before-shift ones for the retention check) and each "
-               "repeat, arm A drafts afresh with the old recipe and runs it.",
-               "For a transform or run-option edit, arm B reuses arm A's saved draft, so the only difference between "
-               "the arms is the edit; for a planner-rule edit, arm B drafts with its own rules and draft variance is "
-               "part of the noise.",
-               "Arm A runs are cached per recipe version (by the recipe's hash), so a later hypothesis against the same "
-               "version runs arm B only; the noise-floor calibration (A against A' with other seeds) fills that cache.",
-               "Each pair records both scores, tokens, honesty flags (made-up or mislabelled citations, claimed files "
-               "missing, checks that re-checked nothing, an error) and refusals. Runs go out as run_task processes, 8 "
-               "at once; a finished run is never redone, and a model-service crash is re-run once."],
-         proposes="Nothing: no AI decides here (the runs it starts call the model inside Boxes 1–3).",
-         disposes="Plain code builds both arms, runs them and writes the pairs.",
-         anchors=[]),
-    dict(id="gate", view="adapt", title="8 · Gate and ledger (D84)", kind="code", plan=None,
-         sentence="Keeps a recipe change only when its gain on held-out tasks beats the measured noise, was predicted, is "
-                  "worth its cost, keeps the team honest and loses nothing on the tasks that already worked.",
-         what=["Noise floor, once per kind and recipe version: the recipe against itself with other seeds on the "
-               "held-out after-shift tasks; noise = 2 × the spread of those score differences / √(pairs).",
-               "In order, every failing rule is recorded: 1 the recipe validates and the edit leaks nothing from "
-               "held-out tasks; 2 the mean gain beats the noise (and a floor), and a one-sided paired test, corrected "
-               "for every hypothesis tried since the last accept, is significant; 3 the gain has the predicted sign; "
-               "4 the token cost is justified; 5 the share of runs with an honesty signal grows by no more than 0.2, "
-               "and no new refusals; 5b the share of runs ending in an error grows by no more than 0.2; 6 no loss on the "
-               "before-shift tasks beyond the noise (Gate v2, D84b; Stage A decided under v1, which summed tags per run).",
-               "Every event is a ledger line (calibration, hypothesis, decision with its numbers and reasons); an "
-               "accepted recipe becomes the kind's current version. After an accept, a rollback watch reverts to the "
-               "parent version if the next practice tasks fall below the alarm window minus the noise.",
-               "Thresholds are in amoeba/config/adapt.yaml; nothing here calls an AI."],
+    dict(id="diag_edits", view="adapt", title="Cause → allowed edits (adapt.yaml)", kind="data", plan=None,
+         sentence="Which edits may answer which stuck cause; only edits a code fix or the fix proposer can apply.",
+         what=["missing_input, capability, tool_error, checks, max_turns and claimed_file_missing each have their "
+               "own allowed edits; a tie between causes is broken by the table order (missing_input first).",
+               "Code fixes: add_dependency, rerun_upstream, one run option (max_turns, check_retry_turns, "
+               "max_input_chars), grant_tool from the pool. Proposer edits: add_role_rule, add_helper_role, grant_tool, "
+               "split_step, replan_remaining, work_around.",
+               "`limits` in the same file: the proposer's text size and denied wording, and the ranges a code fix may "
+               "set a run option to."],
          proposes="Nothing: no AI works here.",
-         disposes="Plain code computes the noise floor, applies rules 1–6 and writes the ledger and the store.",
+         disposes="Plain code looks the cause up in the table.",
          anchors=[]),
-    dict(id="monitor", view="adapt", title="4 · Monitor (D85)", kind="code", plan=None,
-         sentence="Watches each kind of task's practice scores and raises an alarm when the last few drop below what was "
-                  "normal, or when a cause or a missing rubric item suddenly appears.",
-         what=["After every practice run it reads the run's score, the names of the rubric items it failed and the "
-               "step causes recorded by the step contract.",
-               "Score alarm: the mean of the last three scores falls below the reference mean minus twice its spread "
-               "(at least 0.10); the reference is the kind's practice runs since its last accepted change, before the "
-               "window, and there must be at least four.",
-               "Cause alarm: a cause or a failed item is in at least half of the last three runs after at most a fifth "
-               "of the reference runs.",
-               "No alarm while the kind is in its dwell period after an accept or cooling down after a reject."],
+    dict(id="stuck", view="adapt", title="Stuck watch and diagnosis (D117 Stage B)", kind="code", plan=None,
+         sentence="After each step attempt plain code marks a step that did not end done STUCK on any of six signals and names one cause.",
+         what=[
+               "Signals: a missing input (data an earlier step should have given, told from a missing tool by "
+               "classify_lacked); the same tool error twice in a row (digits masked); checks still failing after the "
+               "retry turn (unless the helpers ran out of turns); max turns; a capability or skill lacked or "
+               "requested and unfilled; a file owed and no file change between attempts.",
+               "Each signal names a cause; the first cause in the table order wins, with its allowed edits and at "
+               "most eight evidence lines.",
+               "The event goes to the trace, step_N.json, result.json (stuck) and the run's hash-chained "
+               "events.jsonl. --adapt on is the command-line default.",
+               "scripts/stuck_report.py runs the same functions over stored run folders, offline."],
          proposes="Nothing: no AI works here.",
-         disposes="Plain code computes the window and the reference and decides whether to raise an alarm.",
-         anchors=[]),
-    dict(id="diagnoser", view="adapt", title="5 · Diagnoser (D86)", kind="code", plan=None,
-         sentence="Counts what the runs of the alarm's window recorded and names the cause that rose most, with the "
-                  "edits that may answer it.",
-         what=["It reads the window's run folders: step causes recorded by the step contract (with the step's kind, "
-               "roles and their tools), blocked capabilities, unused tools, missing files, unverified checks, made-up "
-               "or mislabelled citations and the names of the failed rubric items.",
-               "The cause is the one whose share of runs rose most from the reference runs to the window — a cause "
-               "that was always there does not explain an alarm — then the most frequent, then the table order.",
-               "The table in amoeba/config/adapt.yaml says which edits may answer which cause; up to two practice "
-               "examples (never held-out tasks) go to the Architect with the evidence lines.",
-               "With --diagnoser none the Architect gets the alarm only and every edit is allowed (the ablation)."],
+         disposes="Plain code marks the step and logs the diagnosis; no fix is made yet.",
+         anchors=["amoeba/adapt/stuck.py::step_signals", "amoeba/adapt/stuck.py::diagnose",
+                  "amoeba/interp/plan_runner.py::PlanRunner.watch"], guard_anchors=[]),
+    dict(id="fixes", view="adapt", title="Code fixes for a stuck step (D117 Stage C)", kind="code", plan=None,
+         sentence="Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
+         what=[
+               "missing_input: an upstream step that is done and holds the data is added to depends_on or passed in "
+               "full; an upstream output without it is re-run once with the item in its done_when (the only redo of "
+               "a completed step), then the stuck step.",
+               "Rung 1: more turns (tool_error, max_turns), more retry turns then a larger input (checks).",
+               "Rung 2: the missing tool or skill from the pool shortlist, first vetted candidate not given before "
+               "(no AI pick); with the pool and local tools off it is skipped: \"capability fix unavailable: pool off\".",
+               "When no code fix is left for the step (used up, not allowed for the cause, or skipped), the fix "
+               "proposer (Stage D) is the next and last rung.",
+               "Limits from adapt.yaml (adapt): three fixes per step and eight per task, the proposer's included, a "
+               "token and dollar cap; a fix is never repeated. When nothing recovers the step the task stops: "
+               "adapt_report.md says what was stuck, the cause, each fix and why it failed."],
          proposes="Nothing: no AI works here.",
-         disposes="Plain code counts the records, names the cause and limits the edits.",
-         anchors=[]),
-    dict(id="architect", view="adapt", title="6 · Architect (D87)", kind="llm", plan=None, ai="architect",
-         sentence="An AI reads the diagnosis, the current recipe and the changes already rejected, and proposes one "
-                  "typed change with a reason and a predicted gain; plain code checks it before anything is tested.",
-         what=["The only box of the loop that calls a model (Gemma). It sees the diagnosis, the recipe, the edits the "
-               "diagnosis allows with their exact parameter shapes, the kind's rejected changes with their results, "
-               "and up to two practice examples — never a held-out task.",
-               "It must reply with one JSON object: one edit, a short reason, a signed predicted change in score.",
-               "Plain code checks the reply: it parses strictly, the edit is allowed and valid, the new recipe passes "
-               "V1–V5, it repeats no rejected change, it holds no text, number or id from a held-out task, and the "
-               "prediction is between −1 and 1. A refused reply gets one retry with the problems shown.",
-               "At most three proposals per alarm; after that the alarm waits for a person in human_queue.jsonl."],
-         proposes="One typed edit, a rationale and a predicted change in score.",
-         disposes="Plain code checks the proposal; the Experimenter and the Gate decide whether it is kept.",
-         prompts=["architect"], anchors=[]),
-    dict(id="memory", view="adapt", title="9 · Recipe store (D88)", kind="code", plan=None,
-         sentence="Keeps every kind of task's recipe versions, which one is current, and a log of every decided change; "
-                  "only the Gate writes it.",
-         what=["A folder per stream: one YAML file per recipe version of each kind, an index naming the current version "
-               "with the full history (parent, the hypothesis that made it, when it was accepted or reverted), and an "
-               "experience log with one line per decided hypothesis.",
-               "A run reads the current recipe of its kind with --recipes; --recipes-from is a second, read-only store "
-               "used when the first has none (a warm start from another stream).",
-               "Only a Gate accept writes a version (a post-hoc decision never does); the rollback watch can send a kind "
-               "back to its parent version."],
+         disposes="Plain code picks, applies and judges each fix (success: the step ends done).",
+         anchors=["amoeba/adapt/fixes.py::candidates", "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
+                  "amoeba/interp/plan_runner.py::PlanRunner.apply_fix"], guard_anchors=[]),
+    dict(id="proposer", view="adapt", title="Fix proposer (D117 Stage D)", kind="ai", plan=None,
+         sentence="The last rung: one AI call proposes one edit for the stuck step; plain code checks it, applies it to the live plan and re-runs the step.",
+         what=[
+               "Called only when the code fixes for the step are used up or not allowed (including \"capability fix "
+               "unavailable: pool off\").",
+               "It sees the task, the step's card and done_when, the cause and evidence, the last attempt's errors and "
+               "checks (trimmed), the team (one line per role), the tools and skills of this run, the edits the cause "
+               "allows and the fixes already tried.",
+               "It returns one JSON edit with a short reason: add_role_rule, add_helper_role (the Planner's role "
+               "card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the "
+               "Planner's plan format, for the part not done) or work_around (capability only, after a grant_tool or "
+               "add_helper_role was tried for the step; stated under Limitations; counted as finished with "
+               "limitation, never recovered). At most two added helpers per task.",
+               "Plain code checks, all in proposer.py and the plan runner: allowed for the cause, the schema, tools "
+               "this run has (no outside action, not paid), text sizes and denied wording (adapt.yaml limits), team "
+               "size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second "
+               "failure is no fix. The adaptation limits apply; success is the step ending done."],
+         proposes="One edit with a reason (fix_proposer prompt).",
+         disposes="Plain code refuses, or applies the edit and judges the step by its checks and contract.",
+         prompts=["fix_proposer"],
+         anchors=["amoeba/adapt/proposer.py::fix_problems", "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
+                  "amoeba/interp/plan_runner.py::PlanRunner._d_live"], guard_anchors=[]),
+    dict(id="stage_e", view="adapt", title="Stage E: --adapt off vs on (pairs and report)", kind="code", plan=None,
+         sentence="Runs each task and seed with --adapt off, then on with the off run's draft and pool picks, and reports the two arms side by side.",
+         what=[
+               "The on arm reuses the off run's plan.json (--drafts-from) and both share one --picks-file: the arms "
+               "differ only in Box 3. A pair whose arm already has a result is not run again.",
+               "The report: outcome per run (done, done with limitation, stuck-stopped, failed), stuck steps by cause "
+               "(the off arm read offline by the same watch), recovered steps by rung, work-arounds apart, rubric "
+               "scores, billed tokens, the adaptation's tokens and $, wall time, searches, and what broke.",
+               "Three recovered steps per arm, picked at random with a fixed seed, are shown with their trace lines and "
+               "their output before and after."],
          proposes="Nothing: no AI works here.",
-         disposes="Plain code writes versions on the Gate's accept and reverts on the rollback watch.",
-         anchors=[]),
-    dict(id="loop", view="adapt", title="Loop driver (D89)", kind="code", plan=None,
-         sentence="Runs the stream's practice tasks in order with each kind's current recipe and, after an alarm, takes "
-                  "it through diagnosis, up to three proposals, the experiment and the Gate; it can stop and resume.",
-         what=["Calibrates the noise floor first, then runs every practice task with its kind's current recipe (shifts "
-               "apply: the later rubrics ask for more, a removed tool is taken out). Tasks before the shift may run in "
-               "one batch; later ones run one at a time, because each can trigger a change.",
-               "After each task: the rollback watch (after an accept), the Monitor, and on an alarm the Diagnoser, then "
-               "up to three Architect proposals, each measured by the Experimenter and decided by the Gate; an accept "
-               "goes to the recipe store and starts a dwell, three rejects leave the alarm for a person and start a "
-               "cool-down.",
-               "Everything it does is on disk — practice runs, experiments, ledger, recipes, proposals, diagnoses, "
-               "state — so a crash resumes where it stopped, and it writes summary.json and a plain report."],
-         proposes="Nothing itself; the Architect inside it proposes.",
-         disposes="Plain code orders the runs and calls every box in turn.",
-         anchors=[]),
+         disposes="Plain code runs the pairs and counts.",
+         anchors=["scripts/stage_e.py::run_pairs", "scripts/stage_e_report.py::run_record"], guard_anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and

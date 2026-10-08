@@ -1,5 +1,7 @@
 # Phase 2, week 1: the hand-edit check on Gemma (stream_m1, family calc)
 
+> **History.** This describes the offline learning loop (task streams, the Experimenter, the Gate, recipes) that D117 removed on Oct 6, 2026 (spec/BUILD_SPEC_PHASE1.md row D117; spec/BUILD_SPEC_PHASE2.md §17). The results are kept as they were; the scripts and files it names may no longer exist.
+
 *Run 2–3 October 2026 on Gemma 4 31B (`gemma-api`), run clock America/Chicago. Amoeba's plan runner only.*
 
 **Setup.**

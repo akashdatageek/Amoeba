@@ -4,7 +4,8 @@
     python tools/arch_update.py --force      # rebuild even if nothing changed (box text still costs 0 tokens then)
     python tools/arch_update.py --background # return at once; the rebuild runs detached (for hooks)
 
-Run by the git post-commit hook (tools/hooks/post-commit; `git config core.hooksPath tools/hooks`) and by the
+Every rebuild writes both pages: docs/arch/phase1.html and the lite one, docs/arch/asbuilt_lite.html (--lite, the
+published page). Run by the git post-commit hook (tools/hooks/post-commit; `git config core.hooksPath tools/hooks`) and by the
 Claude Code Stop hook (.claude/settings.json). It hashes every input of the page — the package, scripts, tests,
 spec, the extract/render tools, the plan page and the newest real run's trace — and compares with
 docs/arch/build_stamp.json. Same hash: nothing runs, no model is called. It never fails the caller: problems are
@@ -59,7 +60,8 @@ def rebuild(force: bool) -> int:
         print(f"arch_update: page up to date (inputs {now}); nothing run, 0 model tokens")
         return 0
     t0 = time.time()
-    for cmd in ([python(), "tools/arch_extract.py"], [python(), "tools/arch_render.py"]):
+    for cmd in ([python(), "tools/arch_extract.py"], [python(), "tools/arch_render.py"],
+                [python(), "tools/arch_render.py", "--lite"]):     # the lite page (published) follows the full one
         r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
         sys.stdout.write(r.stdout[-3000:])
         if r.returncode:

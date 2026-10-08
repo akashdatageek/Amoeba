@@ -1,5 +1,9 @@
 # Amoeba Build Spec — a self-reshaping multi-agent architecture
 
+> **Note (D117, Oct 6, 2026).** The learning layers below that keep and improve teams across tasks (the experiment
+> and gate loop, recipe memory, user memory) are not the current direction: D117 replaced them with adaptation inside
+> one task (spec/BUILD_SPEC_PHASE2.md §17). This document stays a naming reference only.
+
 **Audience:** Claude Code (implementer) and Mehar (owner).
 **Goal of this document:** a complete, buildable structure for the thesis system — every layer present, wired end to end, each layer allowed to be dumb at first. Pseudocode is derived from the actual repos of the papers the architecture uses (notes in `repo_notes/`; clones in `repos/`).
 **Date:** 2026-09-20.

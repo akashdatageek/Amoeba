@@ -14,18 +14,31 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 
+from amoeba.adapt.evidence import EvidenceLog
+from amoeba.adapt.fixes import POOL_OFF, candidates, fix_key, limits as fix_limits
+from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
+                                   parse_fix)
+from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, step_signals
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.citecheck import mislabelled_citations
+from amoeba.interp.dates import undated_figures
+from amoeba.task.deliverables import final_findings
+from amoeba.interp.disputes import disputed_figures, disputes_text, replace_figure, settle
+from amoeba.interp.replan_method import failed_method, failed_methods_text, method_change, replaces
 from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_values, numbers_in,
                                       strip_unverified)
 from amoeba.interp.freshness import stale_figure, time_sensitive
 from amoeba.interp.shorten import shorten
+from amoeba.llm.limits import estimate
 from amoeba.llm.profiles import role_group
+from amoeba.llm.router import NoModelAvailable
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.localtools.claims import claimed_files
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text, full_action_input
+from pydantic import ValidationError
+
 from amoeba.task.models import CapabilityRequest, DraftedRole, Episode, Task
 from amoeba.task.parsers import MissingSections, parse_json_objects, parse_plan_d24, parse_sections
 from amoeba.task.quality import VERIFY_WORDS
@@ -63,8 +76,43 @@ class PlanOptions:
     # a single planner call proposes one typed decision for the steps that have not run, and plain code validates
     # it before anything changes. The CLI default is off.
     replan: str = "off"
+    # D90: on = a verify step first works out its own result from the checked steps' inputs and its tools, without
+    # their outputs (a separate turn loop, plan_verify_own.txt); only then are the outputs shown and compared. Both
+    # are recorded in step_N.json. The CLI default is on; this library default keeps the earlier behaviour.
+    verify_first: str = "off"
+    # D109 (amended): on = plain code compares the verifier's own result (D90) with the checked outputs' figures by
+    # label; each disagreement goes to the resolver, one fresh call that settles it against the source text or a re-run
+    # (code checks the evidence); a settled value replaces the wrong one, an unresolved one makes the step partial and
+    # stays. A PASS never overrides it. The CLI default is on; this library default keeps the earlier behaviour.
+    disputes: str = "off"
+    # D108: on = a step a re-plan adds or rewrites for a failed step must change the method (a different tool, source
+    # type or a decomposed query, stated in the step); the observer is shown each failed step's method. The CLI
+    # default is on; this library default keeps the earlier behaviour.
+    replan_method: str = "off"
+    # D110: on = every web-sourced figure of the final answer must carry its source's date (publication or data
+    # period); missing → the refine turn, then listed in Limitations. The CLI default is on; this library default
+    # keeps the earlier behaviour.
+    dated: str = "off"
+    # D105 (amended): on = after the summariser, plain code checks each Box 2 requirement and each promised file
+    # against the FINAL answer and the workspace (with D110's dates: one final-answer requirement check); missing →
+    # the refine turn, then Limitations, and no_deliverable when a core deliverable is missing. CLI default on.
+    final_check: str = "off"
+    # D104: on = the citation check (D74) leaves out calculation results shown on the line, powers and year ranges.
+    # The CLI default is on; this library default keeps the earlier behaviour.
+    cite_arithmetic: str = "off"
+    # D113: on = after a step that made an .xlsx file, plain code checks that totals and derived cells are formulas,
+    # not typed numbers (amoeba/checks/xlsx_formulas.py); a typed one fails the check. The CLI default is on; this
+    # library default keeps the earlier behaviour.
+    xlsx_formulas: str = "off"
+    # D117 Stage B: on = after each step attempt plain code looks for the stuck signals (amoeba/adapt/stuck.py); a
+    # step that did not end done with a signal is STUCK: one cause is diagnosed from adapt.yaml, the event goes to the
+    # trace, step_N.json and the run's hash-chained events.jsonl. Stage C: a stuck step then gets code fixes, cheapest
+    # first (amoeba/adapt/fixes.py), within the limits of adapt.yaml `adapt`; when they all fail the task stops with a
+    # report. The CLI default is on; this library default keeps the earlier behaviour.
+    adapt: str = "off"
     max_replans: int = 2             # D63: observer calls per run
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
+    domain_checks: tuple = ()        # D102: the niche profile's checks (amoeba/checks/<name>.py) after each step
 
 
 class PlanGraphError(ValueError):
@@ -172,12 +220,28 @@ FRESH_NOTE = """
 This task asks for today's, the current or the latest value. Find the most recent official figure and write its date
 next to it ("as of <date>"). If the figure you found is dated before today, make one more search for a newer value
 before you use it, and say which date you settled on."""
+RESEARCH_NOTE = """
+
+Research (plain code helps here): search one entity, one year or period and one data series at a time — never pack
+several places, years or series into one web_search (plain code splits a packed query anyway). Each search also
+shows excerpts of its top results, official sources first, and the tables of any data files (.csv, .xlsx, .json)
+they link, each with its own [S#]. Prefer the official source and the data file over a news story or a snippet;
+when a figure rests only on a search snippet, say so."""
+SOURCES_NOTE = """
+
+Fetched data is in your workspace: every page and data file the web tools have read so far is saved read-only under
+sources/ (data tables as CSV, pages as text); sources/index.json lists each file with its [S#], url and date. Read
+and compute from these files with your local tools, and cite a figure from a file by that file's [S#]: {files}"""
 LAST_TURN_NOTE = ("THIS IS YOUR LAST TURN. No more tool calls: choose Final Output and write your conclusion from what "
                   "you have found so far, with the [S#] of what supports each fact, and say plainly what you could not "
                   "confirm.")
 LAST_TURN_AGAIN = ("Your last turn must be Final Output with a written conclusion (not a search query or a tool "
                    "request). Answer now from what you have.")
 
+VERIFY_COMPARE_NOTE = """
+Your inputs end with your own result, which you worked out before you saw the steps' outputs. Compare the outputs with
+it: where they differ, find out which one is right (re-check with your tools) and list each difference that would
+change a number or a conclusion as an issue. Name the differences you found, and which side was right."""
 REWORK_NOTE = """
 
 REWORK: verification step {by} found issues with this step's earlier output. Fix them and give the whole corrected
@@ -270,6 +334,30 @@ def cap_key(name: str) -> str:
 def names_match(a: str, b: str) -> bool:
     ka, kb = cap_key(a), cap_key(b)
     return bool(ka and kb) and (ka == kb or (min(len(ka), len(kb)) >= 4 and (ka in kb or kb in ka)))
+
+
+# box: step_check
+def compare_figures(own: str, outputs: dict[int, str]) -> dict:
+    """D90: plain code's comparison of the verifier's own result with the outputs it checks: the figures of its own
+    result (labels and [S#] tags left out) that some checked output states too — equal at the coarser of the two
+    precisions written (41.60 = 41.6, 1230 ≠ 1229) — and the ones none does."""
+    def floats(text):
+        out = []
+        for tok in claim_numbers(text):
+            bare = tok.replace(",", "").strip("$€£%")
+            try:
+                out.append((tok, float(bare), len(bare.partition(".")[2])))
+            except ValueError:
+                pass
+        return out
+    theirs = [(v, d) for text in outputs.values() for _, v, d in floats(text)]
+    same = lambda a, da, b, db: abs(round(a, min(da, db)) - round(b, min(da, db))) < 1e-9
+    matched, own_only = [], []
+    for tok, v, d in sorted(floats(own), key=lambda x: x[1]):
+        (matched if any(same(v, d, x, dx) for x, dx in theirs) else own_only).append(tok)
+    total = len(matched) + len(own_only)
+    return {"own_figures": total, "matched": matched[:30], "own_only": own_only[:30],
+            "agreement": round(len(matched) / total, 3) if total else None}
 
 
 class _Work:
@@ -499,6 +587,7 @@ class PlanRunner:
         self.artifacts: dict[int, dict] = {}     # step number -> {"text", "meta"}
         self.reworked: set[int] = set()          # D34: at most one rework per step
         self.ledger: dict[str, dict] = {}        # D43: figure -> its first status and the step that first wrote it
+        self.own_results: dict[int, dict] = {}   # D90: each verify step's own result, made once
         self.inferred_logged: set[int] = set()   # D37: steps whose verifier status came from the keyword fallback
         self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
         self.web = getattr(interp.tools, "web", None)
@@ -514,7 +603,23 @@ class PlanRunner:
         self.triggered: set[tuple] = set()                # (kind, step or item) already shown to the observer
         self.unmet: dict[str, str] = {}                   # requirement id -> why a re-plan left it unmet
         self.mislabelled: dict[int, list] = {}            # D74: step -> its mislabelled citations (latest version)
+        self.disputes: dict[int, list] = {}               # D109: verify step -> its disagreements still open
+        self.undated: list[dict] = []                     # D110: web-sourced figures of the answer without a date
+        self.final: dict = {}                             # D105 + D110: the final-answer requirement check
         self.max_num = max((number(s) for s in cfg.plan), default=0)
+        self.stuck: list[dict] = []                       # D117: every stuck event of this run, in order
+        self.step_opts: dict[int, dict] = {}              # D117 Stage C: run options a fix changed, per step
+        self.capped: dict[int, set] = {}                  # D117 Stage C: step -> the inputs shortened for it
+        self.fixes: list[dict] = []                       # D117 Stage C: every fix tried in this task, in order
+        self.fix_keys: set[str] = set()                   # a fix is never tried twice
+        self.fix_notes: set[tuple] = set()                # (step, note) of rungs skipped, logged once
+        self.upstream_rerun: set[int] = set()             # steps re-run once for a missing input
+        self.attached_ids: dict[int, list] = {}           # step -> pool ids a grant gave it
+        self.adapt_tokens, self.adapt_spans = 0, []       # what the fix attempts used
+        self.exhausted: dict | None = None                # the stuck step no fix recovered (the task stops)
+        self.proposer_gave_up: dict[int, str] = {}        # D117 Stage D: step -> why the fix proposer gave no fix
+        self.workarounds: list[dict] = []                 # D117 Stage D: accepted work-arounds (for Limitations)
+        self.helpers_added = 0                            # D117 Stage D: helpers the fix proposer added (capped)
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
     # box: step_check
@@ -750,9 +855,18 @@ class PlanRunner:
             deps = dependencies(self.cfg.plan)
             for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
                 self.run_step(self.steps[n], w, deps[n])
+                fixed = self.fix_stuck(n, w) if self.opt.adapt == "on" else None   # D117 Stages C–D
+                if fixed == "stop":                                                 # no fix recovered it
+                    return self.stop_report(n)
+                if fixed == "replanned":                  # D117 Stage D: the plan changed; recompute the waves
+                    break
             if replan:
                 self.action_observer(w)
         ws = waves(self.cfg.plan)
+        if self.opt.adapt == "on":
+            self.ep.adaptation = self.adapt_summary()
+            if self.stuck:                                    # D117 Stage D: the report, also when nothing stopped
+                self.write_adapt_report()
         if replan:
             self.ep.replan = self.replan_summary()
         self.ep.figure_ledger = self.ledger
@@ -808,10 +922,49 @@ class PlanRunner:
         if len(text) <= limit:
             return text
         out = shorten(text, limit)
+        self.capped.setdefault(step, set()).add(source)                           # D117 Stage C: larger input
         self.i.trace.event("input_truncated", {"amoeba.step": step, "amoeba.from_step": source, "amoeba.limit": limit,
                                                "amoeba.chars": len(text), "amoeba.what": what,
                                                "amoeba.chars_passed": len(out)})
         return f"{out}\n[shortened by plain code from {len(text):,} characters: head, result lines and tail kept]"
+
+    # box: step_check
+    def blind_inputs_text(self, deps: list[int], n: int) -> tuple[str, list[int]]:
+        """D90: what a verify step sees before its own result: each step it checks (its instruction, not its output)
+        and the outputs that step was given, except those of other steps it checks. Returns the text and the steps
+        whose outputs it shows."""
+        checked = set(deps)
+        all_deps = dependencies(self.cfg.plan)
+        given = [d for d in sorted({g for c in deps for g in all_deps.get(c, [])} - checked) if d in self.artifacts]
+        parts = []
+        for c in deps:
+            gets = all_deps.get(c, [])
+            names = ", ".join(f"step {g}" + (" (one you check: output not shown)" if g in checked else "")
+                              for g in gets) or "the task alone"
+            parts.append(f"## Step {c} ({', '.join(self.agents[a].name for a in self.steps[c].agent_ids)}): you check "
+                         f"it; its output is not shown yet\n{step_detail(self.steps[c])}\nGiven: {names}")
+        for g in given:
+            body = self.cap(self.artifacts[g]["text"], self.opt.max_input_chars, n, g, "blind_input")
+            parts.append(f"## Output of step {g} (an input of the steps you check)\n{body}")
+        return "\n\n".join(parts), given
+
+    # box: step_check
+    def own_result(self, step: PlanStep, n: int, deps: list[int], writers: list[AgentSpec], extra: str) -> dict:
+        """D90: the verifier's own result, made in a fresh turn loop that never sees the checked steps' outputs (nor
+        the team's history). Made once per verify step: a re-check after rework reuses it."""
+        if n in self.own_results:
+            return {**self.own_results[n], "reused": True}
+        inputs, given = self.blind_inputs_text(deps, n)
+        w0 = _Work(max_turns=writers[0].limits.max_turns)
+        self._loop(step, n, writers, inputs, extra, w0, PROMPT.plan_verify_own)
+        text = self._text(writers, w0)
+        rec = {"text": text, "turns": w0.turn, "tool_calls": w0.calls, "tool_results": w0.tool_results,
+               "outputs_shown": given, "outputs_hidden": list(deps), "input_chars": len(inputs), "reused": False}
+        self.own_results[n] = rec
+        self.i.trace.event("verifier_own", {"amoeba.step": n, "amoeba.turns": w0.turn,
+                                            "amoeba.tool_calls": len(w0.calls), "amoeba.chars": len(text),
+                                            "amoeba.outputs_hidden": list(deps), "amoeba.outputs_shown": given})
+        return rec
 
     def inputs_text(self, deps: list[int], n: int | None = None, evidence: bool = False) -> str:
         if not deps:
@@ -820,7 +973,8 @@ class PlanRunner:
         for d in deps:
             a = self.artifacts[d]
             m = a["meta"]
-            body = self.cap(a["text"], self.opt.max_input_chars, n or 0, d, "input")
+            body = a["text"] if d in self.step_opts.get(n, {}).get("full_from", ()) else \
+                self.cap(a["text"], self.so(n, "max_input_chars"), n or 0, d, "input")     # D117: a fix may widen it
             stale = f", STALE (built on step(s) {', '.join(map(str, m['stale_because']))} before their rework)" \
                 if m.get("stale") else ""
             parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{stale}\n{body}")
@@ -828,10 +982,17 @@ class PlanRunner:
                 parts[-1] += "\n\n" + self.evidence_text(d)
         return "\n\n".join(parts)
 
+    # box: fixes
+    def so(self, n: int | None, name: str):
+        """D117 Stage C: a run option for step n — the value a fix set for it, else the run's."""
+        v = self.step_opts.get(n, {}).get(name) if n is not None else None
+        return getattr(self.opt, name) if v is None else v
+
     # box: plan_step
     def run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None = None,
-                 reverify: dict | None = None, rerun: dict | None = None) -> dict:
+                 reverify: dict | None = None, rerun: dict | None = None, fixing: dict | None = None) -> dict:
         n = number(step)
+        previous = (self.artifacts.get(n) or {}).get("meta")                     # D117: the attempt before, if any
         agents = [self.agents[a] for a in step.agent_ids]
         summarising = self.is_summary_step(step)                                  # D35
         verifier = self.is_verification(step) and not summarising
@@ -860,15 +1021,32 @@ class PlanRunner:
         if not summarising and time_sensitive(self.task.prompt) and any(set(WEB_TOOLS) & set(a.tools)
                                                                        for a in agents):
             extra += FRESH_NOTE                                                    # D67: the latest figure, dated
+        if not summarising and getattr(self.web, "research", False) and any(set(WEB_TOOLS) & set(a.tools)
+                                                                            for a in agents):
+            extra += RESEARCH_NOTE                                                 # D106: one entity per search
+        inputs_saved = getattr(self.local, "inputs", None) or []
+        if not summarising and inputs_saved and any(t.startswith("local:") for a in agents for t in a.tools):
+            extra += SOURCES_NOTE.format(files=", ".join(f"{x['file']} [{x['source']}]" for x in inputs_saved[-12:]))   # D107
         if self.opt.replan == "on" and deps and not summarising:                  # D63: a missing input is a trigger
             extra += MISSING_INPUT_NOTE
+        mine = None
+        if verifier and self.opt.verify_first == "on":        # D90: the verifier's own result before the outputs
+            own_writers = agents[:1] if self.opt.collab == "critique" and len(agents) > 1 else agents
+            mine = self.own_result(step, n, deps, own_writers, extra.replace(VERIFY_NOTE, "").replace(VERIFY_TOOLS_NOTE, ""))
+            inputs += ("\n\n## Your own result (you worked it out before you saw the outputs above)\n"
+                       + (mine["text"].strip() or "(you wrote no result)"))
+            extra += VERIFY_COMPARE_NOTE
         if reverify:
             extra += REVERIFY_NOTE.format(steps=", ".join(map(str, reverify["reworked"])),
                                           issues=reverify["first_issues"].strip())
         if rework:
             extra += REWORK_NOTE.format(by=rework["by_step"], issues=rework["issues"].strip(),
                                         previous=self.artifacts[n]["text"].strip())
-        w = _Work(max_turns=agents[0].limits.max_turns)
+        if fixing and fixing.get("note"):                                       # D117 Stage C: what the fix changed
+            extra += "\n\n" + fixing["note"]
+        w = _Work(max_turns=self.step_opts.get(n, {}).get("max_turns") or agents[0].limits.max_turns)
+        if mine and not mine["reused"]:          # D90: the re-checks of the verifier's own result are its tool calls too
+            w.calls, w.tool_results = list(mine["tool_calls"]), list(mine["tool_results"])
         template = PROMPT.plan_summarise if summarising else PROMPT.plan_step
         # D51: with critique, the first role drafts and the others review; the step's output is the drafter's
         writers = agents[:1] if self.opt.collab == "critique" and len(agents) > 1 else agents
@@ -885,12 +1063,18 @@ class PlanRunner:
         text, removed = strip_unverified(self._text(agents, w), exact)
         checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
         checks += conclusion_check(text, w)                                       # D76
+        checks += self.domain_checks(n, text, inputs, w, answer_step)             # D102
+        checks += self.xlsx_checks(n, text)                                       # D113
         own, visible = self._sources(n, deps)
         prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,   # D33
                                 self.computed_results(w), self.web_ids())
         found = self.contract_check(contract, w, text) if contract else None                # D61 (G1, G2)
         produced = self.answer_gaps(n, text) if on and answer_step else None               # D61 (G5)
         items = (self.contract_findings(found) if found else []) + (self.answer_findings(produced) if produced else [])
+        final = answer_step and (self.opt.final_check == "on" or self.opt.dated == "on")
+        if final and (missing := final_findings(self.final_answer_check(text))):  # D105 + D110: earns the refine turn
+            items = items + missing
+        files_before = file_sig(self.files_of(n))                                  # D117: across the refine turn
         refine = self.refine(step, n, agents, inputs, extra, w, template, checks, prov, items)   # D42 / D50 / D61
         if refine:
             exact = computed_values(self.computed_results(w))
@@ -898,6 +1082,8 @@ class PlanRunner:
             removed += again
             checks = step_checks(step, text, deps, self.artifacts, verifier)
             checks += conclusion_check(text, w)
+            checks += self.domain_checks(n, text, inputs, w, answer_step)
+            checks += self.xlsx_checks(n, text)
             own, visible = self._sources(n, deps)
             prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,
                                     self.computed_results(w), self.web_ids())
@@ -910,6 +1096,17 @@ class PlanRunner:
                                           "amoeba.findings": len(refine["findings"]),
                                           **{f"amoeba.before.{k}": v for k, v in refine["before"].items()},
                                           **{f"amoeba.after.{k}": v for k, v in refine["after"].items()}})
+        if final:                                       # still missing after the refine turn → Limitations
+            self.final = self.final_answer_check(text)
+            self.undated = self.final["undated"]
+            self.ep.final_check = self.final
+            self.i.trace.event("final_check", {"amoeba.step": n, "amoeba.unmet": self.final["unmet"],
+                                               "amoeba.files_missing": self.final["files_missing"],
+                                               "amoeba.undated": len(self.undated),
+                                               "amoeba.core_missing": self.final["core_missing"]})
+            if self.undated:
+                self.i.trace.event("undated_figures", {"amoeba.step": n, "amoeba.count": len(self.undated),
+                                                       "amoeba.figures": self.undated[:10]})
         failed = [c["name"] for c in checks if not c["pass"]]
         retried = bool(refine)
         # D36: what the step could not do for lack of a capability — BLOCKED as an action or marked in the output.
@@ -943,7 +1140,8 @@ class PlanRunner:
             reason = "; ".join(x for x in (reason, "unverified check: PASS with no re-checking tool call on "
                                                    + self.checkable(n)) if x)
         mislabelled = mislabelled_citations(text, self.source_texts(), self.citation_exempt(),     # D74
-                                            computed_values(self.computed_results(w)))
+                                            computed_values(self.computed_results(w)),
+                                            arithmetic=self.opt.cite_arithmetic == "on")   # D104
         if mislabelled:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "mislabelled citation: " + "; ".join(
@@ -951,6 +1149,20 @@ class PlanRunner:
             self.i.trace.event("mislabelled_citation", {"amoeba.step": n, "amoeba.count": len(mislabelled),
                                                         "amoeba.citations": mislabelled[:10]})
         self.mislabelled[n] = mislabelled
+        disputes, resolutions, unresolved = [], [], []
+        if verifier and mine is not None and self.opt.disputes == "on":           # D109: blind result vs outputs
+            disputes = disputed_figures(mine["text"], {d: self.artifacts[d]["text"] for d in deps if d in self.artifacts})
+            if disputes:
+                self.i.trace.event("disputed", {"amoeba.step": n, "amoeba.disputes": disputes})
+                resolutions = self.resolve_disputes(step, n, writers, disputes)
+                unresolved = [d for d, r in zip(disputes, resolutions) if r["verdict"] == "unresolved"]
+            if unresolved:                              # never PASS: partial, and both values go to Limitations
+                status = "partial" if status == "done" else status
+                reason = "; ".join(x for x in (reason, "disputed, unresolved: " + "; ".join(
+                    f"{x['label']}: step {x['step']} {x['worker']} vs check {x['verifier']}" for x in unresolved[:4])) if x)
+                self.disputes[n] = unresolved
+            else:
+                self.disputes.pop(n, None)
         if on:
             text = strip_not_needed(text) or text
         if found is not None:
@@ -985,6 +1197,8 @@ class PlanRunner:
                 "refine_reason": refine["reason"] if refine else "",
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
                 "stale": False, "stale_because": [],
+                "missing_inputs": missing_input_marks(text),                       # D63 marks, read by D117
+                "fix_of": {k: v for k, v in fixing.items() if k != "note"} if fixing else None,
                 "contributions": w.contributions}
         if claimed is not None:
             meta["claimed_files"], meta["claimed_files_missing"] = claimed, missing
@@ -1001,6 +1215,18 @@ class PlanRunner:
                          "unverified_check": bool(unchecked)})
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
+            if mine is not None:                                                   # D90: both sides, recorded
+                meta["verifier_own"] = {k: v for k, v in mine.items() if k != "tool_results"}
+                meta["comparison"] = {"verdict": meta["verdict"], "issues": meta["issues"],
+                                      "figures": compare_figures(mine["text"], {d: self.artifacts[d]["text"]
+                                                                              for d in deps if d in self.artifacts})}
+                if self.opt.disputes == "on":                                      # D109
+                    meta["comparison"]["disputes"] = disputes
+                    if disputes:
+                        meta["dispute"] = {"state": "unresolved" if unresolved else "resolved", "figures": disputes,
+                                           "resolutions": resolutions}
+                    if unresolved and meta["verdict"] == "PASS":
+                        meta["verdict_model"], meta["verdict"] = "PASS", "DISPUTED"   # a PASS never overrides it
             # D38: both verdicts are kept; `verdict` is always the latest one
             meta["verdict_first"] = reverify["first_verdict"] if reverify else meta["verdict"]
             meta["verdict_after_rework"] = meta["verdict"] if reverify else None
@@ -1012,6 +1238,10 @@ class PlanRunner:
             if produced is not None:
                 meta["summary_check"].update({"files_listed_by_code": [f["path"] for f in produced["files"]],
                                               "cited_figures_left_out": [g["figure"] for g in produced["figures"]]})
+        if self.opt.domain_checks:                    # D102: the run's calc results, for later domain checks
+            meta["computed"] = self.computed_results(w)
+        if self.opt.adapt == "on":                    # D117 Stage B: watch and diagnose, no fix yet
+            self.watch(n, meta, previous, file_sig(self.files_of(n)) == files_before if refine else None)
         self._save(n, wave, text, meta, prov)
         if verifier and meta["verdict"] == "FAIL" and not reverify:
             reworked = self.rework_producers(n, deps, meta["issues"])
@@ -1021,6 +1251,42 @@ class PlanRunner:
                                                           "first_issues": meta["issues"], "reworked": reworked})
                 self.mark_stale(reworked, verifier_step=n)                           # D39
         return self.artifacts[n]
+
+    # box: niche
+    def domain_checks(self, n: int, text: str, inputs: str, w: "_Work", answer_step: bool) -> list[dict]:
+        """D102: the niche profile's domain checks over this step's output and evidence (the task, the step's inputs,
+        every calc and local-tool result of the run so far)."""
+        if not self.opt.domain_checks:
+            return []
+        from amoeba.checks import run_checks
+        done = [r for m in self.ep.steps for r in m.get("computed", [])]
+        ev = {"task": self.task.prompt, "inputs": inputs, "computed": done + self.computed_results(w),
+              "answer_step": answer_step, "step": n}
+        return run_checks(self.opt.domain_checks, text, ev)
+
+    # box: niche
+    def xlsx_checks(self, n: int, text: str) -> list[dict]:
+        """D113: totals and derived cells of the workbooks this step made must be formulas."""
+        if self.opt.xlsx_formulas != "on" or self.local is None:
+            return []
+        books = [str(self.local.workspace / f["path"]) for f in self.files_of(n)
+                 if f["path"].lower().endswith((".xlsx", ".xlsm"))]
+        if not books:
+            return []
+        from amoeba.checks import run_checks
+        return run_checks(["xlsx_formulas"], text, {"xlsx_files": books, "task": self.task.prompt, "step": n})
+
+    # box: plan_summary
+    def final_answer_check(self, text: str) -> dict:
+        """D105 + D110 (amended): the final answer against Box 2's requirements, the promised files against the
+        workspace, and the dates of its web-sourced figures."""
+        from amoeba.task.deliverables import final_check
+        texts = {**{f"step {number(s)} output": s.output for s in self.cfg.plan if s.output},
+                 **{f"requirement {k}": v for k, v in (self.cfg.requirements or {}).items()}}
+        made = [Path(f["path"]).name for f in self.files_of()] if self.local is not None else None
+        undated = undated_figures(text, self.web_ids()) if self.opt.dated == "on" else []
+        return final_check(text, self.cfg.requirements or {}, texts, made, undated,
+                           check_requirements=self.opt.final_check == "on")
 
     @staticmethod
     def computed_results(w: "_Work") -> list[str]:
@@ -1092,7 +1358,7 @@ class PlanRunner:
             lines = "\n".join(f"- {who}: {i}. {x}" for who, items in asks for i, x in enumerate(items, 1))
             w.completed += REVISION_NOTE.format(issues=lines)
             w.done.clear()
-            w.max_turns = w.turn + self.opt.check_retry_turns
+            w.max_turns = w.turn + self.so(n, "check_retry_turns")
             self._loop(step, n, [drafter], inputs, extra, w, template)
             revisions += 1
         return {"mode": "critique", "drafter": drafter.name, "reviewers": [r.name for r in reviewers],
@@ -1154,7 +1420,7 @@ class PlanRunner:
         if check_items:
             self.i.trace.event("check_retry", {"amoeba.step": n, "amoeba.failed_checks": [c["name"] for c in checks
                                                                                          if not c["pass"]],
-                                               "amoeba.retry_turns": self.opt.check_retry_turns})
+                                               "amoeba.retry_turns": self.so(n, "check_retry_turns")})
         if reason == "self_review":
             criteria = "; ".join(c for a in agents for c in a.success_criteria) or "none written"
             note = SELF_REVIEW_NOTE.format(done_when=step.done_when or "none written", criteria=criteria)
@@ -1163,7 +1429,7 @@ class PlanRunner:
         else:
             note = REFINE_NOTE.format(findings="\n".join(f"{i}. {x}" for i, x in
                                                           enumerate(check_items + prov_items + contract_items, 1)))
-        w.max_turns = w.turn + self.opt.check_retry_turns
+        w.max_turns = w.turn + self.so(n, "check_retry_turns")
         w.completed += note
         w.done.clear()
         self._loop(step, n, agents, inputs, extra, w, template)
@@ -1330,6 +1596,26 @@ class PlanRunner:
                     where = f"; it is in {', '.join(x['found_in'])}" if x["found_in"] else ""
                     lines.append(f"- Mislabelled citation: step {d} cites {x['source']} for {x['claim']!r}, which "
                                  f"{x['source']} does not contain{where} (added by plain code)")
+        for r in getattr(self, "final", {}).get("unmet", []):                    # D105: checked on the final answer
+            x = self.final["requirements"][r]
+            if not re.search(rf"\b{re.escape(r)}\b[^\n]*not met", section, re.I):
+                why = "marked BLOCKED" if x["status"] == "blocked" else \
+                    f"file not made: {', '.join(x['files_missing'])}" if x["files_missing"] else "the final answer does not cover it"
+                lines.append(f"- NOT MET: {r} — {x['text'][:160]} ({why}; checked by plain code on the final answer)")
+        for f in getattr(self, "final", {}).get("files_missing", []):
+            if f.lower() not in section:
+                lines.append(f"- MISSING FILE: {f} (promised by the plan, not in the workspace; checked by plain code)")
+        if "undated" not in section:                                             # D110: no date after the refine
+            for u in self.undated[:8]:
+                lines.append(f"- UNDATED: {u['figure']} [{', '.join(u['sources'])}] — the source's date (publication or "
+                             f"data period) is not stated (added by plain code)")
+        if "disput" not in section:                                              # D109: both values, never dropped
+            for d, items in sorted(self.disputes.items()):
+                for x in items[:5]:
+                    lines.append(f"- DISPUTED: {x['label']} — step {x['step']} gives {x['worker']}; the check in step "
+                                 f"{d}, worked out independently, gives {x['verifier']}. Neither a source quote nor a "
+                                 f"re-run settled it (added by plain code)")
+        lines += [x for x in self.adapt_limitations() if x.split(":")[0][2:] not in section.upper()]   # D117 D
         stale = None
         if time_sensitive(self.task.prompt):                                     # D67: possibly not the latest
             stale = stale_figure([a["text"] for a in self.artifacts.values()] + [text or ""],
@@ -1361,6 +1647,34 @@ class PlanRunner:
             self.inferred_logged.add(number(step))
             self.i.trace.event("verification_inferred", {"amoeba.step": number(step), "amoeba.text": step.text[:120]})
         return inferred
+
+    # box: step_check
+    def resolve_disputes(self, step: PlanStep, n: int, writers: list[AgentSpec], disputes: list[dict]) -> list[dict]:
+        """D109 (amended): one fresh call (the verify step's first helper, plan_resolve.txt) settles each disputed
+        figure against the source text, a fetch, a calculation or a re-run; plain code checks the evidence. A value it
+        accepts that differs from the worker's replaces it in the producer's output. Every resolution is logged."""
+        sources = self.source_texts()
+        w = _Work(max_turns=writers[0].limits.max_turns)
+        self._loop(step, n, writers[:1], disputes_text(disputes, sources), "", w, PROMPT.plan_resolve)
+        records = settle(self._text(writers[:1], w), disputes, self.source_texts(), w.tool_results)
+        for d, r in zip(disputes, records):
+            r["replaced"] = False
+            if r["verdict"] in ("verifier", "corrected") and r["step"] in self.artifacts:
+                art = self.artifacts[r["step"]]
+                new, done = replace_figure(art["text"], d["worker_line"], d["worker"], r["value"])
+                if done:
+                    art["text"], r["replaced"] = new, True
+                    art["meta"].setdefault("resolved_figures", []).append({**r, "by_step": n})
+                    if self.dir:
+                        (self.dir / f"step_{r['step']}.md").write_text(new + "\n", encoding="utf-8")
+                        self._write(r["step"])
+            self.i.trace.event("dispute_resolution", {"amoeba.step": n, "amoeba.producer": r["step"],
+                                                      "amoeba.label": r["label"], "amoeba.worker": r["worker"],
+                                                      "amoeba.check": r["verifier"], "amoeba.value": r["value"],
+                                                      "amoeba.verdict": r["verdict"], "amoeba.evidence": r["evidence"],
+                                                      "amoeba.evidence_kind": r["evidence_kind"],
+                                                      "amoeba.replaced": r["replaced"]})
+        return records
 
     # box: step_check
     def rework_producers(self, n: int, deps: list[int], issues: str) -> list[int]:
@@ -1423,6 +1737,512 @@ class PlanRunner:
         return "\n\n".join(f"### {a.name}\n{written[a.agent_id]}" for a in agents
                            if a.agent_id in written) or w.last_message
 
+    # box: stuck
+    def watch(self, n: int, meta: dict, previous: dict | None, files_unchanged: bool | None) -> dict | None:
+        """D117 Stage B: the stuck watch after one step attempt. A stuck step gets `meta["stuck"]` (cause, signals,
+        allowed edits, evidence lines), a `stuck` trace event and a row in the run's hash-chained events.jsonl."""
+        roles = set(meta.get("roles") or [])
+        unfilled = [q for q in self.cfg.meta.get("capability_requests", []) if q.get("status") == "unfilled"]
+        unfilled += [{**q.model_dump(), "status": "unfilled", "reason": "raised_during_run"}
+                     for q in self.ep.requested_capabilities if q.for_role in roles and self.pool is not None]
+        plan = {number(s): {"output": s.output, "roles": [self.agents[a].name for a in s.agent_ids],
+                            "status": (self.artifacts.get(number(s)) or {}).get("meta", {}).get("status")}
+                for s in self.cfg.plan}
+        signals = step_signals(meta, previous=previous, unfilled=unfilled, files_unchanged=files_unchanged, plan=plan)
+        if not is_stuck(meta, signals):
+            return None
+        d = {"step": n, "attempt": len([s for s in self.stuck if s["step"] == n]) + 1, **diagnose(signals)}
+        meta["stuck"] = d
+        self.stuck.append(d)
+        self.ep.stuck = list(self.stuck)
+        self.i.trace.event("stuck", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.signals": d["signals"],
+                                     "amoeba.allowed_edits": d["allowed_edits"], "amoeba.evidence": d["evidence"]})
+        if self.run_dir is not None:
+            EvidenceLog(self.run_dir).append("stuck", {k: d[k] for k in ("step", "attempt", "cause", "signals",
+                                                                        "evidence")})
+        return d
+
+    # ---- D117 Stage C: code fixes for a stuck step ------------------------------------------------------------
+    # box: fixes
+    def fix_stuck(self, n: int, wave: int) -> str | None:
+        """D117 Stage C: while step n is stuck, try the next code fix for its cause (cheapest first, allowed by the
+        table, never one already tried, within the limits), re-run only step n and re-check it. Stage D: when the code
+        fixes are used up or not allowed, the fix proposer is the last rung. "stop" when the step is still stuck and
+        nothing is left (stop_when_exhausted); "replanned" when an accepted edit changed the plan (its steps run
+        next); None otherwise."""
+        d = self.artifacts[n]["meta"].get("stuck")
+        if not d:
+            return None
+        lim, why = fix_limits(), ""
+        while d:
+            usd = self.adapt_usd()
+            if sum(f["step"] == n for f in self.fixes) >= int(lim["max_fixes_per_step"]):
+                why = f"limit: {lim['max_fixes_per_step']} fixes per step"
+            elif len(self.fixes) >= int(lim["max_fixes_per_task"]):
+                why = f"limit: {lim['max_fixes_per_task']} fixes per task"
+            elif self.adapt_tokens >= int(lim["max_tokens_per_task"]):
+                why = f"limit: adaptation tokens {self.adapt_tokens:,} of {int(lim['max_tokens_per_task']):,}"
+            elif usd is not None and usd >= float(lim["max_usd_per_task"]):
+                why = f"limit: adaptation cost ${usd:.2f} of ${float(lim['max_usd_per_task']):.2f}"
+            if why:
+                break
+            cands, notes = candidates(d, n, self.fix_ctx(n))
+            for note in notes:
+                if (n, note) not in self.fix_notes:
+                    self.fix_notes.add((n, note))
+                    self.i.trace.event("fix_skipped", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.why": note})
+                    self.log_event("fix_skipped", {"step": n, "cause": d["cause"], "why": note})
+            fix = next((f for f in cands if fix_key(f) not in self.fix_keys), None)
+            if fix is None:                               # Stage D: the fix proposer is the last rung
+                done = self.propose_fix(n, wave, d) if n not in self.proposer_gave_up else "none"
+                if done == "replanned":
+                    self.ep.adaptation = self.adapt_summary()
+                    return "replanned"
+                if done == "none":
+                    parts = list(notes) or [f"no code fix left for {d['cause']}"]
+                    why = "; ".join(parts + ([self.proposer_gave_up[n]] if n in self.proposer_gave_up else []))
+                    break
+            else:
+                self.apply_fix(n, wave, d, fix)
+            meta = self.artifacts[n]["meta"]
+            if meta["status"] == "done":
+                break
+            d = meta.get("stuck")
+        meta = self.artifacts[n]["meta"]
+        self.ep.adaptation = self.adapt_summary()
+        if meta["status"] == "done" or not meta.get("stuck"):
+            return None
+        self.exhausted = {"step": n, "cause": meta["stuck"]["cause"], "why": why,
+                          "evidence": meta["stuck"]["evidence"]}
+        self.ep.adaptation = self.adapt_summary()
+        return "stop" if lim["stop_when_exhausted"] else None
+
+    # box: fixes
+    def fix_ctx(self, n: int) -> dict:
+        agents = [self.agents[a] for a in self.steps[n].agent_ids]
+        return {"deps": dependencies(self.cfg.plan).get(n, []),
+                "steps": {k: {"status": a["meta"]["status"], "text": a["text"]} for k, a in self.artifacts.items()},
+                "opts": {"max_turns": self.step_opts.get(n, {}).get("max_turns") or agents[0].limits.max_turns,
+                         "check_retry_turns": self.so(n, "check_retry_turns"),
+                         "max_input_chars": self.so(n, "max_input_chars")},
+                "capped": bool(self.capped.get(n)), "stock": getattr(self.i, "stock", None) is not None,
+                "upstream_rerun": set(self.upstream_rerun), "attached": self.attached_ids.get(n, [])}
+
+    # box: fixes
+    def apply_fix(self, n: int, wave: int, d: dict, fix: dict) -> dict:
+        """Apply one code fix to the live plan, re-run step n (and, for rerun_upstream, its upstream step first),
+        record what happened: the fix, its tokens, the status after and why it failed."""
+        self.fix_keys.add(fix_key(fix))
+        t0, s0 = self.i.trace.total_tokens, len(self.i.trace.spans("chat"))
+        rec = {"step": n, "try": sum(f["step"] == n for f in self.fixes) + 1, "cause": d["cause"], "kind": fix["kind"],
+               "rung": fix["rung"], "target": fix["target"], "params": fix.get("params", {}),
+               "evidence": d["evidence"][:4]}
+        self.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.fix": fix["kind"],
+                                       "amoeba.rung": fix["rung"], "amoeba.target": fix["target"],
+                                       "amoeba.params": json.dumps(fix.get("params", {}), default=str)})
+        note, kind, p = "", fix["kind"], fix.get("params", {})
+        if kind.startswith("set_run_option:"):
+            self.step_opts.setdefault(n, {}).update(p)
+        elif kind == "add_dependency":
+            u = p["from"]
+            if p["mode"] == "added":
+                if not any(s.depends_on for s in self.cfg.plan):     # a chain plan: keep its implicit order
+                    for s, ds in zip(self.cfg.plan, [dependencies(self.cfg.plan)[number(x)] for x in self.cfg.plan]):
+                        s.depends_on = list(ds)
+                self.steps[n].depends_on = sorted(set(self.steps[n].depends_on) | {u})
+            self.step_opts.setdefault(n, {}).setdefault("full_from", set()).add(u)
+            note = FIX_INPUT_NOTE.format(items="; ".join(x.partition(" — ")[0] for x in fix.get("items", [])), step=u)
+        elif kind == "rerun_upstream":
+            u, up = fix["target"], self.steps[fix["target"]]
+            up.done_when = "; ".join(x for x in (up.done_when, "it must include: " + p["add_done_when"]) if x)
+            self.upstream_rerun.add(u)
+            self.keep_try(u)
+            self.run_step(up, self.artifacts[u]["meta"]["wave"], dependencies(self.cfg.plan)[u],
+                          fixing={**fix, "note": FIX_UPSTREAM_NOTE.format(items=p["add_done_when"], step=n)})
+            rec["upstream_status"] = self.artifacts[u]["meta"]["status"]
+            rec["left_on_old_output"] = sorted(k for k, a in self.artifacts.items() if k not in (n, u)
+                                               and u in dependencies(self.cfg.plan).get(k, []))
+            self.step_opts.setdefault(n, {}).setdefault("full_from", set()).add(u)
+        elif kind == "grant_tool":
+            rec["attached"] = self.attach_missing(n, fix)
+            if not rec["attached"]:                     # nothing to give: the step is not re-run
+                rec.update({"status_after": self.artifacts[n]["meta"]["status"],
+                            "result": "failed: the pool shortlist had nothing to attach for "
+                                      + ", ".join(p.get("items") or []) + " (no candidate passed the checks)"})
+                return self._fix_done(rec, t0, s0)
+        self.keep_try(n)
+        self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n], fixing={**fix, "note": note})
+        m = self.artifacts[n]["meta"]
+        rec["status_after"] = m["status"]
+        rec["result"] = "recovered" if m["status"] == "done" else \
+            f"failed: still stuck ({m['stuck']['cause']}: {'; '.join(m['stuck']['evidence'][:2])[:200]})" \
+            if m.get("stuck") else f"failed: not stuck but {m['status']} ({m['status_reason'][:160]})"
+        return self._fix_done(rec, t0, s0)
+
+    # box: fixes
+    def _fix_done(self, rec: dict, t0: int, s0: int) -> dict:
+        spans = self.i.trace.spans("chat")[s0:]
+        rec["tokens"] = self.i.trace.total_tokens - t0
+        self.adapt_tokens += rec["tokens"]
+        self.adapt_spans += spans
+        self.fixes.append(rec)
+        self.i.trace.event("fix_done", {"amoeba.step": rec["step"], "amoeba.fix": rec["kind"],
+                                        "amoeba.result": rec["result"], "amoeba.tokens": rec["tokens"]})
+        self.log_event("fix", {k: rec[k] for k in ("step", "try", "cause", "kind", "target", "params", "result",
+                                                   "tokens") if k in rec})
+        self.ep.adaptation = self.adapt_summary()
+        return rec
+
+    # box: fixes
+    def keep_try(self, n: int) -> None:
+        """Keep the attempt a fix replaces as step_N.tryK.md / .json next to the new one."""
+        if self.dir and (self.dir / f"step_{n}.json").exists():
+            k = 1 + len(list(self.dir.glob(f"step_{n}.try*.json")))
+            for ext in ("md", "json"):
+                if (self.dir / f"step_{n}.{ext}").exists():
+                    (self.dir / f"step_{n}.{ext}").rename(self.dir / f"step_{n}.try{k}.{ext}")
+
+    # box: fixes
+    def attach_missing(self, n: int, fix: dict) -> list[str]:
+        """Rung 2: give step n's helpers what they lacked. A tool the run's registry already has is granted; anything
+        else goes through the toolbox step (pool and local tools) with the first vetted candidate of the shortlist
+        that was not given before (plain code picks, no AI call)."""
+        writers = [self.agents[a] for a in self.steps[n].agent_ids]
+        got, reqs = [], []
+        for item in fix["params"].get("items") or []:
+            canon = normalise(item)[0]
+            have = next((x for x in (item, canon) if x in self.i.tools), None)
+            if have:
+                for a in writers:
+                    if have not in a.tools:
+                        a.tools.append(have)
+                    a.missing_tools = [t for t in a.missing_tools if t not in (item, canon)]
+                got.append(have)
+            else:
+                reqs.append(CapabilityRequest(name=item, kind="skill" if "skill" in item.lower() else "tool",
+                                              for_role=writers[0].name, source="planner"))
+        if reqs:
+            cfg = self.cfg.model_copy(update={"agents": self.agents})
+            reg, summary = self.i.stock(reqs, cfg, self.i.tools, code_pick=True,
+                                        exclude=set(fix["params"].get("exclude") or []))
+            self.i.tools = reg
+            self.pool = getattr(reg, "pool", None)
+            self.local = getattr(reg, "local", None)
+            for x in summary.get("attached", []):
+                got.append(x["as"])
+                self.attached_ids.setdefault(n, []).append(x["id"])
+            for q in reqs:
+                self.cfg.meta.setdefault("capability_requests", []).append(
+                    {"name": q.name, "for_role": q.for_role, "canonical": q.canonical, "status": q.status,
+                     "reason": q.reason, "source": "adapt"})
+        if self.web is not None:
+            self.grant_web_tools()
+        return got
+
+    # box: fixes
+    def adapt_usd(self) -> float | None:
+        if not self.adapt_spans:
+            return 0.0
+        return estimate(self.adapt_spans, getattr(self.i.llm, "model", "") or "").get("cost_usd")
+
+    # box: fixes
+    def adapt_summary(self) -> dict:
+        for f in self.fixes:                      # D117 Stage D: a plan change is judged by the steps it made
+            if f.get("replaced_by") and f["result"].startswith("applied"):
+                st = {k: (self.artifacts.get(k) or {}).get("meta", {}).get("status") for k in f["replaced_by"]}
+                if all(v is not None for v in st.values()):
+                    f["result"] = "recovered" if all(v == "done" for v in st.values()) else \
+                        "failed: replacement step(s) not done: " + ", ".join(f"{k} {v}" for k, v in st.items()
+                                                                                  if v != "done")
+        recovered = sorted({f["step"] for f in self.fixes if f["result"] == "recovered"})
+        limited = sorted({f["step"] for f in self.fixes if f["result"] == "finished with limitation"})
+        return {"fixes": self.fixes, "recovered_steps": recovered, "finished_with_limitation_steps": limited,
+                "stuck_steps": sorted({s["step"] for s in self.stuck}), "tokens": self.adapt_tokens,
+                "cost_usd": self.adapt_usd(), "skipped": [{"step": s, "why": w} for s, w in sorted(self.fix_notes)],
+                "stopped": self.exhausted, "workarounds": self.workarounds,
+                "left_on_old_output": self.left_on_old_output()}
+
+    # box: fixes
+    def log_event(self, event: str, data: dict) -> None:
+        if self.run_dir is not None:
+            EvidenceLog(self.run_dir).append(event, data)
+
+    # box: fixes
+    def adapt_report(self, stopped: int | None = None) -> str:
+        """The adaptation report: each stuck step, its cause and evidence, each fix tried (code or fix proposer) and
+        why it failed, the rungs not tried, the work-arounds and the steps built on an upstream output from before
+        its re-run. With `stopped`, it opens with the step that stopped the task."""
+        x = self.exhausted or {}
+        lines = []
+        if stopped is not None:
+            title = re.sub(r"^\s*\[.*?\]\s*:\s*", "", self.steps[stopped].text).strip()[:300] \
+                if stopped in self.steps else ""
+            lines += ["# The task stopped: a step stayed stuck", "", f"**Stuck step:** {stopped} — {title}",
+                      f"**Cause:** {x.get('cause')}", "", "**Evidence:**", *[f"- {e}" for e in x.get("evidence", [])],
+                      "", f"**Why it stopped:** {x.get('why') or 'no fix recovered the step'}", ""]
+        else:
+            lines += ["# Adaptation report", ""]
+        for k in sorted({s["step"] for s in self.stuck} | {f["step"] for f in self.fixes}):
+            tried = [f for f in self.fixes if f["step"] == k]
+            causes = list(dict.fromkeys(s["cause"] for s in self.stuck if s["step"] == k))
+            lines += [f"## Step {k} — cause {', '.join(causes) or '?'}", "", "**Fixes tried:**"]
+            lines += [f"{i}. {f['kind']} (rung {f['rung']}, on step {f['target']}"
+                      f"{', ' + json.dumps(f['params'], default=str)[:300] if f.get('params') else ''})"
+                      f"{' — ' + f['reason'] if f.get('reason') else ''}: {f['result']} — {f.get('tokens', 0):,} tokens"
+                      for i, f in enumerate(tried, 1)] or ["- none"]
+            skipped = sorted(w for s, w in self.fix_notes if s == k)
+            if skipped:
+                lines += ["", "**Not tried:**", *[f"- {w}" for w in skipped]]
+            lines.append("")
+        if self.workarounds:
+            lines += ["**Work-arounds (in the answer's Limitations):**",
+                      *[f"- step {w['step']}: no {w['capability']}; {w['method'][:160]}. {w['limitation'][:200]}"
+                        for w in self.workarounds], ""]
+        old = self.left_on_old_output()
+        lines += ["**Steps built on an upstream output from before its re-run:**",
+                  *([f"- step {o['step']} used step {o['upstream']}'s earlier output (not redone)" for o in old]
+                    or ["- none"]), ""]
+        lines.append(f"Adaptation used {self.adapt_tokens:,} tokens"
+                     + (f" (${self.adapt_usd():.4f})" if self.adapt_usd() else "") + ".")
+        if stopped is not None:
+            lines += ["", "**Steps finished before it:** " + (", ".join(str(k) for k, a in sorted(self.artifacts.items())
+                                                                    if a["meta"]["status"] == "done") or "none"),
+                      "", "Nothing after this step was run."]
+        return "\n".join(lines) + "\n"
+
+    # box: fixes
+    def write_adapt_report(self, stopped: int | None = None) -> str:
+        text = self.adapt_report(stopped)
+        if self.run_dir is not None:
+            self.run_dir.mkdir(parents=True, exist_ok=True)
+            (self.run_dir / "adapt_report.md").write_text(text, encoding="utf-8")
+        return text
+
+    # box: fixes
+    def stop_report(self, n: int) -> tuple[str, str]:
+        """All fixes failed (or none was left): the task stops. The report says what was stuck, the cause, each fix
+        tried and why it failed; it is the run's answer and <run>/adapt_report.md."""
+        x = self.exhausted or {}
+        tried = [f for f in self.fixes if f["step"] == n]
+        text = self.write_adapt_report(stopped=n)
+        self.i.trace.event("adapt_stop", {"amoeba.step": n, "amoeba.cause": x.get("cause"), "amoeba.why": x.get("why"),
+                                          "amoeba.fixes": len(tried)})
+        self.log_event("adapt_stop", {"step": n, "cause": x.get("cause"), "why": x.get("why"), "fixes": len(tried)})
+        self.ep.adaptation = self.adapt_summary()
+        return text, f"stuck: step {n} ({x.get('cause')}) — {x.get('why') or 'no fix recovered it'}"
+
+    # ---- D117 Stage D: the fix proposer ------------------------------------------------------------------------
+    # box: proposer
+    def propose_fix(self, n: int, wave: int, d: dict) -> str:
+        """The last rung for a stuck step: one fix-proposer call (one retry on an invalid reply), plain code's checks,
+        then the edit is applied. "applied" (step n was re-run), "replanned" (the plan changed; its steps run next)
+        or "none" (no edit allowed, or no valid reply twice: recorded in proposer_gave_up)."""
+        tried_here = {f["kind"] for f in self.fixes if f["step"] == n}
+        allowed = [a for a in d.get("allowed_edits") or [] if a in D_OPS
+                   and not (a == "work_around" and not tried_here & set(WORKAROUND_AFTER))     # user rule (Oct 6)
+                   and not (a == "add_helper_role" and self.helpers_added >= int(fix_limits()["max_added_helpers"]))]
+        if not allowed:
+            self.proposer_gave_up[n] = f"fix proposer: no edit allowed for {d['cause']}"
+            return "none"
+        t0, s0 = self.i.trace.total_tokens, len(self.i.trace.spans("chat"))
+        tools = self.i.tools.descriptions() if hasattr(self.i.tools, "descriptions") else {}
+        roles = [self.agents[a].name for a in self.steps[n].agent_ids]
+        refused, reply, change, replies = None, None, None, []
+        for attempt in (1, 2):
+            raw = self._proposer_call(n, d, allowed, refused)
+            try:
+                reply = parse_fix(raw)
+                problems = fix_problems(reply, d["cause"], allowed, tools, self.fix_keys, roles, tried_here)
+                if not problems:
+                    problems, change = self._d_live(reply, n)
+            except (ValueError, ValidationError) as e:
+                reply, problems = None, [f"unreadable reply: {e}"[:400]]
+            replies.append({"attempt": attempt, "op": reply.edit.op if reply else None, "problems": problems})
+            self.i.trace.event("proposer_reply", {"amoeba.step": n, "amoeba.attempt": attempt,
+                                                  "amoeba.op": reply.edit.op if reply else None,
+                                                  "amoeba.problems": problems[:6]})
+            if not problems:
+                break
+            refused, reply = problems, None
+        rec = {"step": n, "try": sum(f["step"] == n for f in self.fixes) + 1, "cause": d["cause"],
+               "kind": reply.edit.op if reply else "fix_proposer", "rung": "D", "target": n,
+               "params": reply.edit.params if reply else {}, "reason": reply.reason if reply else "",
+               "evidence": d["evidence"][:4], "proposer": replies}
+        if reply is None:
+            why = "fix proposer: no valid edit in two replies (" + "; ".join(refused or [])[:300] + ")"
+            self.proposer_gave_up[n] = why
+            rec.update(status_after=self.artifacts[n]["meta"]["status"], result=f"failed: {why}")
+            self._fix_done(rec, t0, s0)
+            return "none"
+        self.fix_keys.add(reply.edit.key())
+        self.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.fix": reply.edit.op,
+                                       "amoeba.rung": "D", "amoeba.target": n,
+                                       "amoeba.params": json.dumps(reply.edit.params, default=str)[:2000]})
+        op, p, note = reply.edit.op, reply.edit.params, ""
+        if op in ("split_step", "replan_remaining"):
+            self.artifacts.pop(n)                          # the stuck attempt is reopened; its files are kept
+            self.keep_try(n)
+            self.apply_decision({"reason": reply.reason}, change)
+            rec.update(replaced_by=sorted(s["number"] for s in change["steps"]),
+                       dropped=change["drop"], result="applied: the plan changed; judged when its steps have run")
+            self._fix_done(rec, t0, s0)
+            return "replanned"
+        writers = [self.agents[a] for a in self.steps[n].agent_ids]
+        if op == "add_role_rule":
+            a = next(x for x in writers if x.name == p["role"])
+            a.constraints = [*a.constraints, p["text"]]
+        elif op == "grant_tool":
+            a = next(x for x in writers if x.name == p["role"])
+            a.tools = [*a.tools, p["tool"]]
+            a.missing_tools = [t for t in a.missing_tools if t != p["tool"]]
+        elif op == "add_helper_role":
+            aid, _ = self.add_agent(change["role"])
+            ids = self.steps[n].agent_ids
+            self.steps[n].agent_ids = [aid, *ids] if p.get("lead") else [*ids, aid]
+            rec["helper"] = change["role"].name
+            self.helpers_added += 1
+        elif op == "work_around":
+            if p["done_when"].strip():
+                self.steps[n].done_when = p["done_when"].strip()
+            note = WORKAROUND_NOTE.format(cap=p["capability"], method=p["method"],
+                                          done_when=self.steps[n].done_when or "as written")
+        self.keep_try(n)
+        self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n],
+                      fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note})
+        m = self.artifacts[n]["meta"]
+        rec["status_after"] = m["status"]
+        done = "finished with limitation" if op == "work_around" else "recovered"   # never "recovered" (user)
+        rec["result"] = done if m["status"] == "done" else \
+            f"failed: still stuck ({m['stuck']['cause']}: {'; '.join(m['stuck']['evidence'][:2])[:200]})" \
+            if m.get("stuck") else f"failed: not stuck but {m['status']} ({m['status_reason'][:160]})"
+        if op == "work_around" and m["status"] == "done":
+            self.workarounds.append({"step": n, **p})
+        self._fix_done(rec, t0, s0)
+        return "applied"
+
+    # box: proposer
+    def _d_live(self, reply, n: int) -> tuple[list[str], dict | None]:
+        """The checks on the live plan: a new helper's card is complete, its name new and the team within its size;
+        a split or a re-plan keeps done steps as they are, names roles on the team and leaves a usable step graph
+        Returns the problems and what to apply."""
+        op, p = reply.edit.op, reply.edit.params
+        if op == "add_helper_role":
+            r = DraftedRole.model_validate(p["role"])
+            errors = [f"incomplete role card: no {k}" for k in ("name", "goal", "outputs", "success_criteria")
+                      if not getattr(r, k)] + ([] if (r.prompt or r.description) else ["incomplete role card: no prompt"])
+            if r.name in {a.name for a in self.agents.values()}:
+                errors.append(f"role {r.name!r} already exists")
+            cap = int(fix_limits()["max_added_helpers"])
+            if self.helpers_added >= cap:
+                errors.append(f"limit: {cap} added helpers per task")
+            if len(self.agents) + 1 > getattr(self.i, "max_agents", 5):
+                errors.append(f"team size: the team would have {len(self.agents) + 1} roles (at most "
+                              f"{getattr(self.i, 'max_agents', 5)})")
+            return errors, {"role": r}
+        if op not in ("split_step", "replan_remaining"):
+            return [], {}
+        if not any(s.depends_on for s in self.cfg.plan):       # a chain plan: write its order out first
+            for s, ds in zip(self.cfg.plan, [dependencies(self.cfg.plan)[number(x)] for x in self.cfg.plan]):
+                s.depends_on = list(ds)
+        stash = self.artifacts.pop(n)                          # the stuck step counts as not done while checking
+        try:
+            if op == "replan_remaining":
+                errors, change = self.validate_decision({"decision": "REVISE_REMAINING", "steps": p["plan"],
+                                                         "role": "", "requests": "", "reason": reply.reason,
+                                                         "unmet": ""})
+                return errors, change
+            return self._split_change(n, p["steps"])
+        finally:
+            self.artifacts[n] = stash
+
+    # box: proposer
+    def _split_change(self, n: int, subs: list[dict]) -> tuple[list[str], dict]:
+        ids = {a.name: a.agent_id for a in self.agents.values()}
+        errors = [f"sub-step {i} names unknown role(s) {[r for r in s['roles'] if r not in ids]}"
+                  for i, s in enumerate(subs, 1) if any(r not in ids for r in s["roles"])]
+        step = self.steps[n]
+        nums = [n] + [self.max_num + i for i in range(1, len(subs))]
+        deps = dependencies(self.cfg.plan)
+        waiting = [k for k in deps if n in deps[k] and k not in self.artifacts]
+        steps = [{"number": num, "roles": s["roles"], "text": f"[{', '.join(s['roles'])}]: {s['text']}",
+                  "fields": {"kind": "work", "covers": list(step.covers),
+                             "depends_on": list(deps.get(n, [])) if i == 0 else [nums[i - 1]],
+                             "do": s["do"], "output": s["output"], "done_when": s["done_when"]}}
+                 for i, (num, s) in enumerate(zip(nums, subs))]
+        if n == self.answer_n:
+            summ = {a.name for a in self.agents.values() if a.is_summariser}
+            if not summ & set(subs[-1]["roles"]):
+                errors.append("the stuck step writes the final answer: its last sub-step must be the summariser's")
+        added = len(subs) - 1
+        if self.added_steps + added > self.opt.max_added_steps:
+            errors.append(f"plan: {added} new step(s) would pass the cap of {self.opt.max_added_steps} added steps per "
+                          f"run ({self.added_steps} added so far)")
+        change = {"kind": "SPLIT", "new_role": None, "requests": [], "steps": steps, "drop": [], "reassign": None,
+                  "feeds": {nums[-1]: waiting}, "added": added,
+                  "summary": {"steps_added": nums[1:], "steps_rewritten": [n], "steps_dropped": [], "reassigned": None,
+                              "role_added": None, "requests": [], "split_of": n}}
+        if not errors:
+            try:
+                waves(self.proposed_plan(change, ids))
+            except PlanGraphError as e:
+                errors.append(f"plan: the new plan is unusable: {e}")
+        return errors, change
+
+    # box: proposer
+    def _proposer_call(self, n: int, d: dict, allowed: list[str], refused: list[str] | None) -> str:
+        """The proposer's input, kept small: the task, the step's card, the diagnosis, the last attempt's errors and
+        checks (trimmed), the team (one line per role), the tools and skills of this run, the allowed edits and the
+        fixes already tried in this task."""
+        step, m = self.steps[n], self.artifacts[n]["meta"]
+        roles = [self.agents[a].name for a in step.agent_ids]
+        card = "\n".join(x for x in (re.sub(r"^\s*\[.*?\]\s*:\s*", "", step.text).strip(), f"roles: {', '.join(roles)}",
+                                     f"depends_on: {', '.join(map(str, dependencies(self.cfg.plan).get(n, []))) or 'none'}",
+                                     f"do: {step.do}" if step.do else "", f"output: {step.output}" if step.output else "",
+                                     f"done_when: {step.done_when or 'none written'}") if x)
+        checks = [f"- check {c['name']}: {'pass' if c['pass'] else 'FAIL'} {('— ' + c.get('detail', '')[:150]) if not c['pass'] else ''}"
+                  for c in m.get("checks") or []][:10]
+        errors = [f"- {c.get('agent', '?')} {c.get('tool')}: {str(c.get('result') or '')[:150]}"
+                  for c in m.get("tool_calls") or [] if not c.get("ok", True)][-5:]
+        attempt = "\n".join([f"status: {m['status']} ({m['status_reason'][:300]})", f"turns used: {m.get('turns')}",
+                             *(["lacked: " + ", ".join(m["blocked"])] if m.get("blocked") else []),
+                             *(["failed tool calls:"] + errors if errors else []), *(["checks:"] + checks if checks else [])])
+        team = "\n".join(f"- {a.name}: {(a.description or a.goal or '').strip()[:120]}" for a in self.agents.values())
+        skills = sorted({p["name"] for a in self.agents.values() for p in a.pool if p["kind"] == "skill"}
+                        | {s.get("name", "") for s in (getattr(self.local, "skills", None) or [])[:20]} - {""})
+        tools = ", ".join(sorted(self.i.tools.names())) if hasattr(self.i.tools, "names") else "none"
+        tried = "\n".join(f"- {f['kind']} on step {f['target']} {json.dumps(f.get('params', {}), default=str)[:200]}: "
+                          f"{f['result'][:160]}" for f in self.fixes) or "None yet."
+        user = render(PROMPT.fix_proposer, task=self.task.prompt[:1500], step=str(n), card=card, cause=d["cause"],
+                      evidence="\n".join(f"- {e}" for e in d["evidence"]), attempt=attempt, team=team,
+                      tools=f"tools: {tools}\nskills: {', '.join(skills) or 'none'}",
+                      allowed=proposer_allowed(allowed, self.max_num + 1), tried=tried)
+        if refused:
+            user += ("\n\n# Your previous reply was refused by plain code\n" + "\n".join(f"- {x}" for x in refused)
+                     + "\nReply again with one valid edit.")
+        with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "fix_proposer", "amoeba.box": "proposer"}):
+            resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
+                                            agent_name="fix_proposer", max_tokens=2048, role="planner")
+        self.ep.total_tokens += resp.input_tokens + resp.output_tokens
+        self.ep.n_llm_calls += 1
+        return resp.content or ""
+
+    # box: proposer
+    def left_on_old_output(self) -> list[dict]:
+        """Steps that used an upstream output from before its case-b re-run (Stage C rerun_upstream): they were not
+        redone. Listed in the final answer's Limitations and in the adaptation report."""
+        return [{"step": k, "upstream": f["target"]} for f in self.fixes if f["kind"] == "rerun_upstream"
+                for k in f.get("left_on_old_output", [])]
+
+    # box: proposer
+    def adapt_limitations(self) -> list[str]:
+        out = [f"- WORKED AROUND: step {w['step']} had no {w['capability']}; it used {w['method'][:160]}"
+               + (f" and was judged against a narrower done_when ({w['done_when'][:160]})" if w["done_when"] else "")
+               + f". {w['limitation'][:240]} (added by plain code)" for w in self.workarounds]
+        out += [f"- OLD INPUT: step {x['step']} used step {x['upstream']}'s output from before step {x['upstream']} was "
+                f"re-run for a missing input; it was not redone, so it may not match step {x['upstream']}'s final "
+                f"output (added by plain code)" for x in self.left_on_old_output()]
+        return out
+
     # box: artifacts
     def _save(self, n: int, wave: int, text: str, meta: dict, prov: dict) -> None:
         self.artifacts[n] = {"text": text, "meta": meta}
@@ -1448,6 +2268,15 @@ class PlanRunner:
             (self.dir / f"step_{n}.json").write_text(json.dumps(self.artifacts[n]["meta"], indent=2, ensure_ascii=False),
                                                    encoding="utf-8")
 
+    # box: router
+    def route_ids(self, n: int, step: PlanStep) -> dict:
+        """D97: what the router needs to know about a step's call: its number and, for a verify step, the steps it
+        checks (verifier independence)."""
+        if not hasattr(self.i.llm, "llm") or not hasattr(self.i.llm.llm, "registry"):
+            return {}
+        checks = tuple(dependencies(self.cfg.plan).get(n, [])) if self.is_verification(step) else ()
+        return {"step": n, "checks": checks}
+
     # box: plan_step
     def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int,
               extra: str = "", template: str = "") -> tuple[str, str, str, str | None]:
@@ -1472,8 +2301,12 @@ class PlanRunner:
                                                 "amoeba.step": n}):
             before = self.i.trace.n_llm_calls
             group = role_group(is_summariser=agent.is_summariser, reviewing=self.is_verification(step))   # D54
-            raw, sec = self.i.llm.chat_sections(system, user, PLAN_SECTIONS, self.ep.seed, agent_id=agent.agent_id,
-                                              agent_name=agent.name, max_tokens=PLAN_MAX_TOKENS, role=group)
+            try:
+                raw, sec = self.i.llm.chat_sections(system, user, PLAN_SECTIONS, self.ep.seed,
+                                                  agent_id=agent.agent_id, agent_name=agent.name,
+                                                  max_tokens=PLAN_MAX_TOKENS, role=group, **self.route_ids(n, step))
+            except NoModelAvailable as e:                 # D97: no model passed the router's filters
+                return "no_model", f"BLOCKED: no_model — {str(e)[:200]}", "", "no_model"
             for rec in self.i.trace.spans("chat")[before:]:
                 self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                rec.get("gen_ai.usage.output_tokens", 0))
@@ -1484,7 +2317,8 @@ class PlanRunner:
                 before = self.i.trace.n_llm_calls
                 raw, sec = self.i.llm.chat_sections(system, f"{user}\n\n{LAST_TURN_AGAIN}", PLAN_SECTIONS,
                                                     self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
-                                                    max_tokens=PLAN_MAX_TOKENS, role=group)
+                                                    max_tokens=PLAN_MAX_TOKENS, role=group,
+                                                    **self.route_ids(n, step))
                 for rec in self.i.trace.spans("chat")[before:]:
                     self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                    rec.get("gen_ai.usage.output_tokens", 0))
@@ -1591,6 +2425,13 @@ class PlanRunner:
                               f"{self.opt.max_added_steps - self.added_steps} step(s) may still be added; "
                               f"{'no' if self.roles_added else 'one'} new role may still be added"),
                       next=str(self.max_num + 1))
+        failed = self.failed_steps() if self.opt.replan_method == "on" else {}
+        if failed:                                     # D108: what failed, so a new step can do it differently
+            user += ("\n\n# How the failed steps worked (plain code)\n" + failed_methods_text(failed) +
+                     "\nA step you add or rewrite for one of these must change the method, and its text must say how: "
+                     "a different tool, a different source type (a data file or table, an official source, an API, "
+                     "another named site) or one search per entity, year or series. A step that repeats the method is "
+                     "rejected.")
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "action_observer", "amoeba.box": "action_obs"}):
             resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
                                             agent_name="action_observer", max_tokens=PLAN_MAX_TOKENS, role="planner")
@@ -1726,6 +2567,7 @@ class PlanRunner:
             if kind == "REVISE_REMAINING":
                 change["drop"] = sorted(unrun - batch)
             change["added"] = added
+            errors += self.same_method(change["steps"], new_role)                 # D108
         elif kind == "REASSIGN_STEP":
             num, role = step_field(dec["steps"], "step"), (step_field(dec["steps"], "role", as_text=True) or "").strip()
             if num not in unrun:
@@ -1760,6 +2602,44 @@ class PlanRunner:
                              "role_added": new_role.name if new_role else None,
                              "requests": [q["name"] for q in requests]}
         return errors, change
+
+    # box: action_obs
+    def failed_steps(self) -> dict[int, dict]:
+        """D108: each finished step that failed (partial, incomplete, lacking a capability, or a verify step still
+        failing or disputed), with its method."""
+        out = {}
+        for n, a in sorted(self.artifacts.items()):
+            m = a["meta"]
+            if m["status"] in ("partial", "incomplete") or m.get("blocked") or m.get("verdict") in ("FAIL", "DISPUTED"):
+                held = {t for aid in self.steps[n].agent_ids for t in self.agents[aid].tools} if n in self.steps else set()
+                queries = [x["query"] for x in getattr(self.web, "sources", []) if n in x.get("steps", []) and x.get("query")]
+                out[n] = failed_method(m, held, list(dict.fromkeys(queries)))
+        return out
+
+    # box: action_obs
+    def same_method(self, steps: list[dict], new_role=None) -> list[str]:
+        """D108: an error for each proposed step that replaces a failed step without changing its method."""
+        if self.opt.replan_method != "on":
+            return []
+        failed = self.failed_steps()
+        errors = []
+        for st in steps:
+            n = replaces(st, failed)
+            if n is None:
+                continue
+            tools = {t for r in st["roles"] for a in self.agents.values() if a.name == r for t in a.tools}
+            if new_role is not None and new_role.name in st["roles"]:
+                tools |= set(getattr(new_role, "tools", []) or [])
+            how = method_change(st, failed[n], tools)
+            self.i.trace.event("replan_method", {"amoeba.step": st["number"], "amoeba.replaces": n,
+                                                 "amoeba.changes": how, "amoeba.failed_method": failed[n]})
+            if not how:
+                f = failed[n]
+                errors.append(f"step {st['number']} repeats the method of failed step {n} (tools "
+                              f"{', '.join(f['tools']) or 'none'}; sources {', '.join(f['sites'][:3]) or 'none'}): it "
+                              f"must name a different tool, a different source type or one search per entity, year "
+                              f"or series (D108)")
+        return errors
 
     def proposed_plan(self, change: dict, ids: dict[str, str]) -> list[PlanStep]:
         """The plan after `change` (steps sorted by number; a dropped step's dependants point at its dependencies)."""
@@ -1825,18 +2705,7 @@ class PlanRunner:
         ids = {a.name: a.agent_id for a in self.agents.values()}
         if change["new_role"] is not None:
             r = change["new_role"]
-            known = set(self.i.tools.names()) if hasattr(self.i.tools, "names") else set()
-            have, lack = [t for t in r.tools if t in known], [t for t in r.tools if t not in known]
-            template = next(iter(self.agents.values()))
-            aid = str(uuid4())
-            agent = template.model_copy(deep=True, update={
-                "agent_id": aid, "name": r.name, "tools": have, "missing_tools": lack, "is_summariser": False,
-                "goal": r.goal, "skills": list(r.skills), "outputs": list(r.outputs),
-                "success_criteria": list(r.success_criteria), "constraints": list(r.constraints),
-                "role_prompt": r.prompt or r.description, "description": r.description or r.prompt,
-                "suggestions": r.suggestions, "pool": [], "created_by": "drafter"})
-            self.agents[aid] = agent
-            self.cfg.agents[aid] = agent.model_copy(deep=True)
+            aid, lack = self.add_agent(r)
             ids[r.name] = aid
             self.roles_added += 1
             change["requests"] += [{"name": t, "kind": "tool", "for_role": r.name,
@@ -1859,6 +2728,24 @@ class PlanRunner:
                     if not any(r in s.covers for s in self.cfg.plan):
                         self.unmet.setdefault(r, f"step {n} was dropped by a re-plan: {dec['reason'][:160]}")
             self.save_plan_version(change["summary"])
+
+    # box: action_obs, proposer
+    def add_agent(self, r: DraftedRole) -> tuple[str, list[str]]:
+        """A new helper from a role card (D63's ADD_ROLE, D117's add_helper_role): its id and the tools it named
+        that the run does not have."""
+        known = set(self.i.tools.names()) if hasattr(self.i.tools, "names") else set()
+        have, lack = [t for t in r.tools if t in known], [t for t in r.tools if t not in known]
+        template = next(iter(self.agents.values()))
+        aid = str(uuid4())
+        agent = template.model_copy(deep=True, update={
+            "agent_id": aid, "name": r.name, "tools": have, "missing_tools": lack, "is_summariser": False,
+            "goal": r.goal, "skills": list(r.skills), "outputs": list(r.outputs),
+            "success_criteria": list(r.success_criteria), "constraints": list(r.constraints),
+            "role_prompt": r.prompt or r.description, "description": r.description or r.prompt,
+            "suggestions": r.suggestions, "pool": [], "created_by": "drafter"})
+        self.agents[aid] = agent
+        self.cfg.agents[aid] = agent.model_copy(deep=True)
+        return aid, lack
 
     def restock(self, requests: list) -> None:
         """D63: new capability requests go through the normal toolbox step (pool and local tools), mid-run."""
@@ -1918,6 +2805,10 @@ class PlanRunner:
             out[r] = {"status": "met" if done else "partly" if cover else "not met", "steps": done or cover}
             if not cover:
                 out[r]["why"] = "no step that ran covers it"
+        for r, x in (getattr(self, "final", {}).get("requirements") or {}).items():   # D105: the final answer decides
+            if r in out:
+                out[r] = {**out[r], "steps_claim": out[r]["status"],
+                          "status": "met" if x["status"] == "met" else "not met", "final_answer": x["status"]}
         return out
 
     def replan_summary(self) -> dict:
@@ -1934,6 +2825,13 @@ class PlanRunner:
                 "requirements": status}
 
 
+WORKAROUND_NOTE = """Plain code re-runs this step with a work-around: this run has no {cap}. Finish the step without it,
+using this method: {method}. The step is judged against: {done_when}. Write "NOT NEEDED: {cap} — worked around: <how>"
+and say in your output what the work-around does not cover; plain code states it in the final answer's Limitations."""
+FIX_INPUT_NOTE = """Plain code re-runs this step because it lacked an input: {items}. Step {step}'s output is now among your
+inputs in full; the data is there. Use it."""
+FIX_UPSTREAM_NOTE = """Plain code re-runs this step because a later step (step {step}) lacked data it should have got from
+it: {items}. Your output must include it."""
 MISSING_INPUT_NOTE = """
 
 If an input this step needs is missing from your inputs (a step you depend on did not deliver it), do what you can and

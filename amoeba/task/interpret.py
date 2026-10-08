@@ -18,13 +18,17 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Callable, Mapping
+
+import yaml
 
 from amoeba.config.prompts import PROMPT, render
 from amoeba.interp.trace import TracedLLM
 from amoeba.memory.context import context_text
 from amoeba.task.parsers import parse_sections
 
+FAMILIES = Path(__file__).resolve().parents[1] / "config" / "families.yaml"
 DOMINANCE_GAP = 0.3          # confidence lead a reading needs over the next to be taken without asking
 MAX_TOKENS = 4096
 OTHER = "other (type what you meant)"
@@ -76,9 +80,10 @@ def decide(entities: list[dict], gap: float = DOMINANCE_GAP) -> dict:
 
 # box: interpret
 def read_task(task_text: str, llm: TracedLLM, context: Mapping[str, str] | None = None, seed: int = 0,
-              gap: float = DOMINANCE_GAP) -> dict:
-    """The interpretation step: one call, then plain code decides."""
-    user = render(PROMPT.interpret, task=task_text, context=context_text(context or {}))
+              gap: float = DOMINANCE_GAP, environment: str = "") -> dict:
+    """The interpretation step: one call, then plain code decides. environment: D102's Environment section of the
+    niche profile ("" for general: the prompt is unchanged)."""
+    user = render(PROMPT.interpret, task=task_text, context=context_text(context or {})) + environment
     raw = llm.chat_messages([{"role": "user", "content": user}], seed=seed, max_tokens=MAX_TOKENS,
                             agent_name="interpreter", role="planner").content
     out = decide(parse_entities(raw), gap)
@@ -92,6 +97,39 @@ def read_task(task_text: str, llm: TracedLLM, context: Mapping[str, str] | None 
 
 
 # box: interpret
+def options_of(interp: dict, w: dict) -> list[str]:
+    """The choices put to the user for one entity: its readings, most confident first, then "other"."""
+    e = next(x for x in interp["entities"] if x["entity"] == w["entity"])
+    return [r["reading"] for r in e["readings"]] + [OTHER]
+
+
+# box: interpret
+def settle(interp: dict, w: dict, options: list[str], reply: str) -> dict:
+    """Reads one reply (an option number or the user's own words) and, when it names a reading, makes it the entity's
+    working reading ("user"). A blank reply or "other" without words leaves the assumption as it was."""
+    reply = (reply or "").strip()
+    chosen = None
+    if reply.isdigit() and 1 <= int(reply) <= len(options) - 1:
+        chosen = options[int(reply) - 1]
+    elif reply and not (reply.isdigit() and int(reply) == len(options)):
+        chosen = reply
+    q = {"entity": w["entity"], "options": options, "reply": reply, "chosen": chosen}
+    if chosen:
+        w.update(reading=chosen, settled="user", alternatives=[])
+        interp["ambiguous"] = [a for a in interp["ambiguous"] if a != w["entity"]]
+    return q
+
+
+# box: interpret
+def _ask(w: dict, options: list[str], ask: Callable[[str], str]) -> str:
+    lines = [f'What did you mean by "{w["entity"]}"?'] + [f"  {i}. {o}" for i, o in enumerate(options, 1)]
+    try:
+        return ask("\n".join(lines) + f"\nChoose 1-{len(options)} (or type your meaning): ")
+    except EOFError:
+        return ""
+
+
+# box: interpret
 def ask_one(interp: dict, ask: Callable[[str], str]) -> dict:
     """--interactive: ONE multiple-choice question about the least certain ambiguous entity (its readings + other),
     before planning. The answer becomes that entity's working reading ("user"); any other ambiguous entity stays an
@@ -100,23 +138,56 @@ def ask_one(interp: dict, ask: Callable[[str], str]) -> dict:
         return interp
     rows = [w for w in interp["working"] if w["settled"] == "assumed"]
     w = min(rows, key=lambda x: x["lead"])
-    e = next(x for x in interp["entities"] if x["entity"] == w["entity"])
-    options = [r["reading"] for r in e["readings"]] + [OTHER]
-    lines = [f'What did you mean by "{w["entity"]}"?'] + [f"  {i}. {o}" for i, o in enumerate(options, 1)]
-    try:
-        reply = ask("\n".join(lines) + f"\nChoose 1-{len(options)} (or type your meaning): ").strip()
-    except EOFError:
-        reply = ""
-    chosen = None
-    if reply.isdigit() and 1 <= int(reply) <= len(options) - 1:
-        chosen = options[int(reply) - 1]
-    elif reply and not (reply.isdigit() and int(reply) == len(options)):
-        chosen = reply
-    interp["question"] = {"entity": w["entity"], "options": options, "reply": reply, "chosen": chosen}
-    if chosen:
-        w.update(reading=chosen, settled="user", alternatives=[])
-        interp["ambiguous"] = [a for a in interp["ambiguous"] if a != w["entity"]]
+    options = options_of(interp, w)
+    interp["question"] = settle(interp, w, options, _ask(w, options, ask))
     return interp
+
+
+# box: interpret
+def ask_all(interp: dict, ask: Callable[[str], str]) -> dict:
+    """D116: every entity whose reading would be assumed (no reading leads the next by DOMINANCE_GAP, a tie
+    included) is asked about before planning, least certain first, one multiple-choice question each. A blank
+    reply keeps that one assumption, which the answer then states (D77)."""
+    rows = sorted((w for w in interp["working"] if w["settled"] == "assumed"), key=lambda x: x["lead"])
+    asked = []
+    for w in rows:
+        options = options_of(interp, w)
+        asked.append(settle(interp, w, options, _ask(w, options, ask)))
+    if asked:
+        interp["question"], interp["questions"] = asked[0], asked
+    return interp
+
+
+# box: interpret
+def apply_clarify(interp: dict, answers: Mapping[str, str]) -> dict:
+    """D116 --clarify ENTITY=READING: answers given on the command line (an option number or words) settle those
+    entities as the user's choice, with no question; entity names match case-insensitively."""
+    given = {k.strip().strip('"').lower(): v for k, v in answers.items()}
+    done = []
+    for w in interp["working"]:
+        reply = given.get(w["entity"].lower())
+        if reply is not None and w["settled"] == "assumed":
+            done.append(settle(interp, w, options_of(interp, w), reply))
+    if done:
+        interp["clarified"] = done
+    return interp
+
+
+# box: interpret
+class NeedsClarification(Exception):
+    """D116: a reading would be assumed and nobody can be asked (no terminal, no --interactive); the run stops before
+    Box 2 instead of guessing. `questions` are what the user is asked to answer with --clarify."""
+
+    def __init__(self, questions: list[dict]):
+        self.questions = questions
+        super().__init__("; ".join(f'"{q["entity"]}": ' + " | ".join(q["options"][:-1]) for q in questions))
+
+
+# box: interpret
+def open_questions(interp: dict) -> list[dict]:
+    """D116: the questions a run that cannot ask leaves for the user, least certain first."""
+    rows = sorted((w for w in interp["working"] if w["settled"] == "assumed"), key=lambda x: x["lead"])
+    return [{"entity": w["entity"], "options": options_of(interp, w), "lead": w["lead"]} for w in rows]
 
 
 # box: interpret
@@ -197,3 +268,51 @@ def enforce_opening(answer: str | None, interp: dict | None) -> tuple[str | None
         answer = f"{answer.rstrip()}\n\n{body}\n" if m else f"{answer.rstrip()}\n\n## Limitations\n{body}\n"
         added["alternatives_added"] = [a for _, a in missing]
     return answer, added
+
+
+# ---- D101: the task family of a free-text task (warm start) ---------------------------------------------------------
+# box: interpret
+def load_families(path: str | Path = FAMILIES) -> dict[str, dict]:
+    return (yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}).get("families") or {}
+
+
+# box: interpret
+def family_by_rule(text: str, families: dict[str, dict]) -> tuple[str | None, list[str]]:
+    """The family whose keywords match the task most often (whole words, case-insensitive); a tie or no match is
+    None. Returns (family, the keywords that matched it)."""
+    hits = {}
+    for name, f in families.items():
+        found = [k for k in f.get("keywords") or [] if re.search(rf"(?<![\w-]){k}(?![\w-])", text, re.I)]
+        if found:
+            hits[name] = found
+    if not hits:
+        return None, []
+    best = max(len(v) for v in hits.values())
+    top = [n for n, v in hits.items() if len(v) == best]
+    return (top[0], hits[top[0]]) if len(top) == 1 else (None, sorted(k for n in top for k in hits[n]))
+
+
+# box: interpret
+def classify_family(task_text: str, llm: TracedLLM | None, families: dict[str, dict] | None = None,
+                    seed: int = 0) -> dict:
+    """Box 1 (D101): {family, how, ...} for a free-text task. Rules first; only if none decides, one routed call
+    (role family_classifier) choosing from the list or "new", validated by code (anything else → "new")."""
+    families = load_families() if families is None else families
+    fam, kws = family_by_rule(task_text, families)
+    if fam:
+        return {"family": fam, "how": "rule", "keywords": kws}
+    if llm is None:
+        return {"family": "new", "how": "no_rule_no_call", "keywords": kws}
+    listing = "\n".join(f"- {n}: {f.get('description', '')}" for n, f in families.items()) + \
+        "\n- new: none of the above fits"
+    raw = llm.chat_messages([{"role": "user", "content": render(PROMPT.family_classify, task=task_text,
+                                                                families=listing)}],
+                            seed=seed, max_tokens=200, agent_name="family_classifier", role="planner").content
+    m = re.search(r"\{[\s\S]*\}", raw or "")
+    try:
+        answer = str(json.loads(m.group(0)).get("family", "")).strip() if m else ""
+    except (json.JSONDecodeError, AttributeError):
+        answer = ""
+    if answer in families or answer == "new":
+        return {"family": answer, "how": "llm", "keywords": kws}
+    return {"family": "new", "how": "llm_invalid", "answer": answer[:80], "keywords": kws}

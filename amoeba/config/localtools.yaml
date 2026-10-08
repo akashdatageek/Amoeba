@@ -3,9 +3,10 @@
 
 command: [claude, mcp, serve]      # started over stdio, cwd = runs/<id>/workspace, closed at the end of the run
 allowed_tools: [Bash, Read, Write, Edit, Glob, Grep]   # everything else the server lists is refused (logged once each)
+bash_python: true                    # D112: Python sent to local:Bash (a ```python block, or code that starts like Python) runs with python3
 
 limits:
-  timeout_s: 60                    # one call
+  timeout_s: 300                   # one call (D96a: 300 s; per niche profile, D102)
   max_output_chars: 8000           # of one call's result, passed to the helper
   max_calls_per_step: 20
   max_calls_per_run: 60
@@ -25,3 +26,19 @@ aliases:
   "skill:pptx": [presentation, powerpoint, pptx]
   "skill:docx": [word document, word doc, docx]
   "skill:pdf": [pdf reader, pdf]
+
+# D96: where the local-tool server and every command it runs execute. openshell = a fresh NVIDIA OpenShell sandbox per
+# run (gateway and image: amoeba/config/sandbox/; deny by default: no network, only the sandbox's own home and /tmp
+# writable, skills and Claude Code's managed settings baked in read-only, no secrets, limits below), deleted at the end
+# of the run; process = the D59 server on this host (needs AMOEBA_SANDBOX=1). The policy is fixed here and in the
+# gateway; the agent cannot change it.
+sandbox:
+  isolation: openshell
+  endpoint: "127.0.0.1:17680"
+  image: "amoeba-sandbox:local"
+  read_only: [/usr, /lib, /lib64, /bin, /sbin, /etc, /opt/skills, /proc, /dev/urandom]
+  read_write: [/sandbox, /tmp, /dev/null]
+  readable_roots: [/opt/skills]    # paths outside the workspace that Read/Glob/Grep may name (read-only)
+  cpu: "1"
+  memory: "1Gi"
+  run_timeout_s: 3600

@@ -21,7 +21,8 @@ PROFILE_KEYS = {"base_url", "model", "api_key_env", "merge_system", "reasoning_e
 ROLE_KEYS = {"model", "max_tokens"}
 BOX2_GROUPS = {"planner": "planner", "agent_observer": "observers", "plan_observer": "observers",
                "interpreter": "planner",   # D77: the task interpretation step
-               "architect": "planner"}     # D87: the Architect (Box 6) uses the planner's model
+               "architect": "planner",     # D87's Architect (removed by D117); kept so old traces still map
+               "fix_proposer": "planner"}  # D117 Stage D: the fix proposer uses the planner's model
 
 
 @dataclass

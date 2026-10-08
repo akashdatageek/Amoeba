@@ -64,8 +64,10 @@ ALLOWED_ABS = ("/dev/null", "/dev/stdout", "/dev/stderr", "/dev/stdin")
 
 
 # box: localtools
-def screen_command(command: str, workspace: Path) -> tuple[str, str] | None:
-    """(reason, what matched) for a Bash command that must not run, or None."""
+def screen_command(command: str, workspace: Path, readonly: dict | None = None) -> tuple[str, str] | None:
+    """(reason, what matched) for a Bash command that must not run, or None. readonly: in the sandbox, the config
+    whose readable_roots (the baked-in skills, /opt/skills) a command may name — D103: a helper runs a skill's scripts
+    from there; writing there fails in the sandbox (read-only mount) and protected_command refuses it first."""
     if not isinstance(command, str) or not command.strip():
         return "unsafe_command", "empty command"
     m = NETWORK.search(command)
@@ -78,6 +80,8 @@ def screen_command(command: str, workspace: Path) -> tuple[str, str] | None:
     for p in ABS_PATH.findall(command):
         if p in ALLOWED_ABS or p == ws or p.startswith(ws + "/"):
             continue
+        if readonly is not None and readonly_root(p, readonly):
+            continue
         if inside(p, workspace) is None:
             return "unsafe_command", f"path outside the workspace: {p[:80]}"
     return None
@@ -87,3 +91,38 @@ def screen_command(command: str, workspace: Path) -> tuple[str, str] | None:
 def in_workspace(command: str, workspace: Path) -> str:
     """The command as it is sent: always started from the workspace (the server's shell keeps its last cwd)."""
     return f"cd {shlex.quote(str(workspace.resolve()))} && {command}"
+
+
+# ---- D96: protected configs and read-only roots ------------------------------------------------------------------------
+PROTECTED_PARTS = {".claude", ".mcp.json", "CLAUDE.md", "skills", "managed-settings.json", ".git",
+                   "sources"}                         # D107: the read-only input files
+PROTECTED_COMMAND = re.compile(r"\.claude\b|\.mcp\.json|managed-settings|claude-code/|CLAUDE\.md"
+                               r"|>>?\s*[^\s|;&]*\b(?:skills|sources)/"
+                               r"|\b(mv|rm|tee|sed\s+-i|chmod|chown|ln|touch|truncate)\b[^|;&]*\b(?:skills|sources)/"
+                               r"|\b(cp|install)\b[^|;&]*\s[^\s|;&]*\b(?:skills|sources)/[^\s|;&]*\s*(?:$|[|;&])",   # D107: copying FROM is fine
+                               re.I)
+
+
+# box: localtools
+def protected_path(p: Path, workspace: Path) -> bool:
+    """D96: a write to an MCP config, a hook or settings file, CLAUDE.md, a skill folder or .git is refused."""
+    try:
+        rel = p.resolve().relative_to(workspace.resolve())
+    except ValueError:
+        return True
+    return any(part in PROTECTED_PARTS for part in rel.parts)
+
+
+# box: localtools
+def protected_command(command: str) -> tuple[str, str] | None:
+    """D96: a Bash command that names Claude Code's settings, MCP configs or hooks, or writes into a skill folder."""
+    m = PROTECTED_COMMAND.search(command or "")
+    return ("protected_config", m.group(0).strip()[:80]) if m else None
+
+
+# box: localtools
+def readonly_root(path: str, cfg: dict) -> bool:
+    """D96: a path under a read-only root the sandbox exposes (the baked-in skills, /opt/skills)."""
+    p = Path(path)
+    return p.is_absolute() and ".." not in p.parts and any(
+        str(p) == r or str(p).startswith(r.rstrip("/") + "/") for r in cfg.get("readable_roots", ["/opt/skills"]))

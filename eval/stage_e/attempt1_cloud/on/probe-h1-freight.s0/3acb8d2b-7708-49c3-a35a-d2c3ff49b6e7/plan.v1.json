@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "diff": null,
+  "roles": [
+    {
+      "name": "Optimization Engineer",
+      "tools": [
+        "local:Read",
+        "local:Bash",
+        "local:Write",
+        "local:Edit"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "QA Engineer",
+      "tools": [
+        "calc"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Delivery Lead",
+      "tools": [],
+      "missing_tools": []
+    }
+  ],
+  "steps": [
+    {
+      "number": 1,
+      "roles": [
+        "Optimization Engineer"
+      ],
+      "text": "[Optimization Engineer]: Solve and Model",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4"
+      ],
+      "depends_on": [],
+      "do": "\n- Write Python script using a solver to find the minimum cost assignment.\n- Extract the load-to-truck mapping and total cost.\n- Document the solver's optimality proof.",
+      "output": "table: optimal_assignment, memo: optimality_proof",
+      "done_when": "Optimal assignment is found and optimality is proven.",
+      "status": "not run"
+    },
+    {
+      "number": 2,
+      "roles": [
+        "Optimization Engineer"
+      ],
+      "text": "[Optimization Engineer]: Generate Formula-based XLSX",
+      "kind": "work",
+      "covers": [
+        "R5"
+      ],
+      "depends_on": [
+        1
+      ],
+      "do": "\n- Use `openpyxl` to create a spreadsheet.\n- Input the assignment data.\n- Write Excel formulas for the weight sums, mileage sums, and the final cost calculation per truck and total.",
+      "output": "xlsx: cost_plan_xlsx",
+      "done_when": ".xlsx file is created and contains active formulas.",
+      "status": "not run"
+    },
+    {
+      "number": 3,
+      "roles": [
+        "QA Engineer"
+      ],
+      "text": "[QA Engineer]: Constraint and Cost Verification",
+      "kind": "verify",
+      "covers": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "depends_on": [
+        1,
+        2
+      ],
+      "do": "\n- Verify weight constraints for each truck.\n- Verify mileage constraints for each truck.\n- Recalculate total cost from the assignment.",
+      "output": "list: verification_report",
+      "done_when": "All constraints are verified as met and cost is confirmed.",
+      "status": "not run"
+    },
+    {
+      "number": 4,
+      "roles": [
+        "Delivery Lead"
+      ],
+      "text": "[Delivery Lead]: Final Assembly",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5"
+      ],
+      "depends_on": [
+        1,
+        2,
+        3
+      ],
+      "do": "\n- Combine the assignment table, total cost, and optimality proof into the final response.\n- Attach the .xlsx file.",
+      "output": "memo: final_delivery",
+      "done_when": "All requirements R1-R5 are delivered.",
+      "status": "not run"
+    }
+  ]
+}

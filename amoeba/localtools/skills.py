@@ -43,10 +43,34 @@ def list_skills(config: dict, pool_dir: Path) -> list[dict]:
             files = [f for f in base.rglob("*") if f.is_file()]
             out.append({"id": f"local:skill:{label}/{base.name}", "name": base.name, "title": str(front.get("name") or ""),
                         "description": " ".join(str(front.get("description") or "").split()), "kind": "skill",
-                        "source": "local", "root": label, "path": str(base),
+                        "source": "local", "root": label, "root_path": str(root), "path": str(base),
                         "has_scripts": any(f.suffix in (".py", ".sh", ".js") or "scripts" in f.relative_to(base).parts[:-1]
                                            for f in files)})
     return out
+
+
+# box: localtools
+def skill_root_path(entry: dict) -> Path | None:
+    """D103: the folder of the root a skill entry was listed from. `root` is the root's label (the clone's folder
+    name, e.g. anthropics_skills), not a path: an entry made before D103 has no `root_path`, so the label is found
+    among the skill path's parents."""
+    if entry.get("root_path"):
+        return Path(entry["root_path"])
+    path = Path(entry.get("path") or "")
+    return next((p for p in path.parents if p.name == entry.get("root")), None)
+
+
+# box: localtools
+def sandbox_skill_path(entry: dict, image_root: str = "/opt/skills", baked: str = "anthropics_skills") -> Path | None:
+    """D103: where a skill sits in the sandbox image (the `baked` clone is copied to `image_root`), or None when the
+    image does not hold it."""
+    root = skill_root_path(entry)
+    if entry.get("root") != baked or root is None:
+        return None
+    try:
+        return Path(image_root) / Path(entry["path"]).resolve().relative_to(root.resolve())
+    except ValueError:
+        return None
 
 
 # box: localtools

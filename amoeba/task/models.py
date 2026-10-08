@@ -10,10 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serial
 
 
 class RubricItem(BaseModel):
-    """A deliverable or constraint: passes when any regex in any_of (case-insensitive) matches the answer."""
+    """A deliverable or constraint: passes when any regex in any_of (case-insensitive) matches the answer. D94: with
+    `entities`, any_of finds a section's heading and the item passes only if the section's body (up to the next
+    heading) names at least one of these task-specific entities; an empty heading fails."""
 
     name: str
     any_of: list[str] = Field(default_factory=list)
+    entities: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _default_pattern(self):
@@ -96,6 +99,9 @@ class Episode(BaseModel):
     answer_assembled_by_code: list[int] = Field(default_factory=list)   # D41: the final steps code put together
     figure_ledger: dict[str, dict] = Field(default_factory=dict)        # D43: figure -> first status and step
     replan: dict = Field(default_factory=dict)   # D63 --replan on: observer calls, decisions, requirement status
+    final_check: dict = Field(default_factory=dict)   # D105 + D110: the final-answer requirement check
+    stuck: list[dict] = Field(default_factory=list)   # D117 --adapt on: every stuck step event (cause, evidence)
+    adaptation: dict = Field(default_factory=dict)    # D117 Stage C: fixes tried, steps recovered, tokens, stop
 
 
 class Answer(BaseModel):
@@ -273,6 +279,37 @@ class Draft(BaseModel):
         return out
 
 
+# D111: errors that are not the team's doing — the model service (after its retries), a connection or proxy failure,
+# a replay-cache miss, a runner that left no result. An API error the request itself caused (400 bad request, 413 too
+# large, 422 unprocessable: what the team sent) stays the team's.
+INFRA_PREFIXES = ("api:", "cache_miss", "runner:")
+TEAM_API_STATUS = (400, 413, 422)
+
+
+# box: runresult
+def run_status(error: str | None) -> str:
+    """D111: ok | infra_error | agent_error, from a run's error (D105 adds no_deliverable at the end of a plan run,
+    D116 needs_clarification when it stopped to ask, D117 stuck when no fix recovered a stuck step)."""
+    if not error:
+        return "ok"
+    e = str(error)
+    if e.startswith("no_deliverable"):
+        return "no_deliverable"
+    if e.startswith("needs_clarification"):                 # D116: stopped before planning to ask the user
+        return "needs_clarification"
+    if e.startswith("stuck:"):                              # D117 Stage C: a stuck step no fix recovered
+        return "stuck"
+    if e.startswith("api:"):
+        m = re.match(r"api: \w+ (\d{3})\b", e)
+        return "agent_error" if m and int(m.group(1)) in TEAM_API_STATUS else "infra_error"
+    return "infra_error" if e.startswith(INFRA_PREFIXES) else "agent_error"
+
+
+# box: runresult
+def infra_error(error: str | None) -> bool:
+    return run_status(error) == "infra_error"
+
+
 # box: runresult
 class RunResult(BaseModel):
     interpretation: dict = Field(default_factory=dict)   # D77: the task interpretation step and what it settled
@@ -316,4 +353,10 @@ class RunResult(BaseModel):
     rubric: dict | None = None   # D30: rubric_score of the answer (per item + fraction) when the task has a rubric
     # Phase 2 fields, left out of result.json when None (a Phase 1 run's record is unchanged)
     disabled_tools: list[str] | None = None   # D80 --disable-tools: tools taken out of this run
-    recipe: dict | None = None   # D82 --recipes: the family's recipe, the transforms applied and the run options
+    family: dict | None = None   # D101: the family assigned to a free-text task and how ({family, how, keywords})
+    deliverables: dict | None = None   # D105 (plan, --deliverable-check on): answer content and promised files
+    requirement_status: dict | None = None   # D105 (amended): each Box 2 requirement as checked on the FINAL answer
+    stuck: list[dict] | None = None   # D117 --adapt on: each stuck step event (cause, signals, evidence)
+    adaptation: dict | None = None    # D117 Stage C --adapt on: fixes tried and their results, tokens, stop
+    status: str | None = None    # D111: ok | infra_error | agent_error (D105: no_deliverable); run_status
+    routing: dict | None = None  # D97: the router's per-model calls, tokens and USD, and its decision counts
