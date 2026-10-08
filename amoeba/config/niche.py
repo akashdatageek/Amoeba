@@ -135,8 +135,8 @@ def add_done_clauses(draft, prof: NicheProfile):
     """The profile's default done_when clauses, added by code to the answer step(s) of the final draft."""
     if not prof.done_when:
         return draft, []
-    from amoeba.adapt.recipe import _answer_steps
-    steps = _answer_steps(draft)
+    from amoeba.adapt.config import answer_steps
+    steps = answer_steps(draft)
     plan = []
     for s in draft.plan:
         if s.index + 1 in steps:

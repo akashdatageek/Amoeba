@@ -120,10 +120,10 @@ diagnosis in plain code; (C) code fixes, cheapest first; (D) a small fix-propose
 
 - the step contract's causes (capability, checks, max_turns, unused_tool, claimed_file_missing), which become stuck
   signals;
-- the cause → allowed-edit table (`amoeba/config/adapt.yaml`);
-- the single-edit JSON format and its checks (`amoeba/adapt/architect.py`) with the edit menu, the transforms and
-  V1–V6 (`amoeba/adapt/recipe.py`);
+- the cause → allowed-edit table (`amoeba/config/adapt.yaml`, read by `amoeba/adapt/config.py`);
 - the hash-chained event log and the evidence branch (`amoeba/adapt/evidence.py`, below).
+
+The recipe module with its V1–V6 validator and the Architect's single-edit format were kept at first and removed in the D117 cleanup; the proposer's own checks — a rule, goal or done_when at most 300 characters (adapt.yaml `limits`), no denylisted wording, and only tools available in this run that act nowhere outside it and are not paid — live in `amoeba/adapt/proposer.py`.
 
 **Stage B: the stuck watch (built).** After each step attempt, with `--adapt on` (the command-line default),
 `PlanRunner.watch` reads what the step recorded and looks for five signals (`amoeba/adapt/stuck.py`):

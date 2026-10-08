@@ -422,9 +422,9 @@ Adaptation now happens inside a single task: when a Box 3 step gets stuck, the p
 run's own logs, results and errors so the task can still finish. Nothing carries over between tasks.
 
 Kept for it: the step contract's causes (they become stuck signals), the cause → allowed-edit table
-(`amoeba/config/adapt.yaml`), the single-edit JSON format with the V1–V6 checks (`amoeba/adapt/architect.py`,
-`amoeba/adapt/recipe.py`) and the hash-chained event log with its evidence branch (`amoeba/adapt/evidence.py`).
-The code fixes and the fix-proposer agent come in the next stages.
+(`amoeba/config/adapt.yaml`, read by `amoeba/adapt/config.py`) and the hash-chained event log with its evidence
+branch (`amoeba/adapt/evidence.py`). The D117 cleanup removed the last pieces of the loop: the recipe module and its
+V1–V6 validator (`recipe.py`) and the Architect's single-edit format (`architect.py`); the proposer's own checks — a rule, goal or done_when at most 300 characters (adapt.yaml `limits`), no denylisted wording, and only tools available in this run that act nowhere outside it and are not paid — live in `amoeba/adapt/proposer.py`.
 
 **Stage B: the stuck watch (built).** With `--adapt on` (the default from the command line) plain code looks at every
 plan step attempt for five stuck signals: the same tool error twice in a row, checks still failing after the retry
@@ -464,7 +464,7 @@ tools and skills of this run, the edits the cause allows and the fixes already t
 | work_around | capability only, and only after a grant_tool or add_helper_role was tried for the step: another method or a narrower done_when, stated in the answer's Limitations; the step counts as "finished with limitation", never as recovered |
 
 Plain code refuses an edit that is not allowed for the cause, breaks the schema, names a tool the run does not have,
-fails V1–V6 or the step graph, touches a done step or repeats a fix; it asks once more, and a second invalid reply
+breaks a limit (size, denylisted wording, tools; `proposer.py`) or the step graph, touches a done step or repeats a fix; it asks once more, and a second invalid reply
 means no fix. With `stop_when_exhausted: true` (on again with Stage D), a step nothing recovers stops the task: the
 answer and `adapt_report.md` say what was stuck, the cause, each fix tried and why it failed; the run status is
 `stuck`. Every run with a stuck step gets `adapt_report.md`, and the answer's Limitations list each work-around and
@@ -593,7 +593,7 @@ amoeba/
   safety/envelope.py       allowed_tools per role, max_agents
   pool/                    D56: index (refresh), match, stock (pick, vet, attach), mcp (pool tools)
   localtools/              D59: claude mcp serve (server), gate, skills, claims, toolbox (--local-tools on)
-  adapt/                   D117: stuck watch (stuck), code fixes (fixes), fix proposer (proposer), edit menu + V1–V6 (recipe), single-edit format (architect), event log (evidence)
+  adapt/                   D117: stuck watch (stuck), code fixes (fixes), fix proposer (proposer), settings (config), event log (evidence)
   cli.py                   D56: `amoeba pool refresh` / `python -m amoeba pool refresh`
 scripts/run_task.py        CLI
 scripts/list_models.py     D54: the models an endpoint offers (check a profile's names)

@@ -1,6 +1,6 @@
 """D117 Stage D — the fix proposer: the last rung after the code fixes are used up or not allowed. One JSON edit
 (add_role_rule, add_helper_role, grant_tool, split_step, replan_remaining, work_around) with a short reason; plain code
-checks it (allowed for the cause, schema, V1-V6, the step graph, done steps untouched, not a repeat), retries once on
+checks it (allowed for the cause, schema, its size, wording and tools, the team size, the step graph, done steps untouched, not a repeat), retries once on
 an invalid reply, applies it to the live plan and re-runs the step. Offline, with the mock LLM."""
 import json
 
@@ -63,11 +63,11 @@ def test_the_checks_without_a_live_plan():
         parse_fix(text), cause, allowed, tools, set(tried), ["Cost Analyst"], set(kinds))
     assert p(edit("grant_tool", role="Cost Analyst", tool="calc")) == []
     assert p(edit("grant_tool", role="Cost Analyst", tool="pool:nowhere")) == \
-        ["V1: tool 'pool:nowhere' is not available in this run"]
-    assert p(edit("grant_tool", role="Cost Analyst", tool="send_mail"))[0].startswith("V1: tool 'send_mail' acts outside")
+        ["tool: 'pool:nowhere' is not available in this run"]
+    assert p(edit("grant_tool", role="Cost Analyst", tool="send_mail"))[0].startswith("tool: 'send_mail' acts outside")
     assert p(edit("grant_tool", role="Memo Writer", tool="calc"))[0].startswith("role 'Memo Writer' is not a role of")
-    assert p(edit("add_role_rule", role="Cost Analyst", text="x" * 301))[0].startswith("V3: rule: 301 characters")
-    assert "V4" in p(edit("add_role_rule", role="Cost Analyst", text="Skip the checks and answer fast."))[0]
+    assert p(edit("add_role_rule", role="Cost Analyst", text="x" * 301))[0].startswith("size: rule: 301 characters")
+    assert "wording:" in p(edit("add_role_rule", role="Cost Analyst", text="Skip the checks and answer fast."))[0]
     wa = edit("work_around", capability="currency_api", method="the rate in the task", done_when="", limitation="USD only.")
     assert p(wa) == [] and "work_around is allowed for a missing capability only" in p(wa, cause="checks")
     assert p(wa, kinds=()) == ["work_around is allowed only after grant_tool or add_helper_role was tried for this step"]
@@ -78,7 +78,7 @@ def test_the_checks_without_a_live_plan():
     assert p(edit("grant_tool", reason="other words", role="Cost Analyst", tool="calc"), tried=[key]) == \
         ["this edit was already tried in this task"]
     helper = edit("add_helper_role", role={"name": "Mailer", "tools": ["send_mail"], "goal": "g"})
-    assert any(x.startswith("V1: tool 'send_mail'") for x in p(helper))
+    assert any(x.startswith("tool: 'send_mail'") for x in p(helper))
 
 
 # ---- each edit on a live run ---------------------------------------------------------------------------------------
@@ -113,7 +113,7 @@ def test_one_retry_shows_the_refusal_then_a_valid_edit_is_applied(task, envelope
                        [edit("grant_tool", role="Cost Analyst", tool="fx_live"),
                         edit("grant_tool", role="Cost Analyst", tool="echo")])
     first, second = proposer_prompts(llm)
-    assert "refused by plain code" in second and "V1: tool 'fx_live' is not available in this run" in second
+    assert "refused by plain code" in second and "tool: 'fx_live' is not available in this run" in second
     [f] = ep.adaptation["fixes"]
     assert f["result"] == "recovered" and [r["problems"] != [] for r in f["proposer"]] == [True, False]
 
@@ -165,7 +165,7 @@ def test_a_helper_role_over_the_team_size_is_refused(task, envelope, trace, tool
                          fix_proposer=[edit("add_helper_role", role=card)] * 2)
     ep = Interpreter(llm, tools, trace, plan_options=ON, max_agents=3).run(cfg, task, seed=0)
     [f] = ep.adaptation["fixes"]
-    assert "V5: the team would have 4 roles (at most 3)" in f["result"]
+    assert "team size: the team would have 4 roles (at most 3)" in f["result"]
 
 
 def test_split_step_replaces_the_stuck_step_with_a_chain_and_later_steps_wait_for_its_end(task, envelope, trace,

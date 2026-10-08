@@ -742,8 +742,8 @@ team using that run's own logs, results and errors, so the task can still finish
 pruning, recipe memory (`memory/recipes.py`, `--recipes`, `--recipes-from`), user-memory proposals
 (`approve_memory.py`), the human queue, the ledger, the Monitor, the loop's Diagnoser, the Architect's proposal loop,
 `run_loop` and `run_experiment`. Kept and reused: the step-contract causes (stuck signals), the cause → allowed-edit
-table in `adapt.yaml`, the Architect's single-edit JSON format and V1–V6 validation, the hash-chained event log and
-the evidence branch.
+table in `adapt.yaml`, the Architect's single-edit JSON format and V1–V6 validation (both removed later, see the
+D117 cleanup note at the end of this section), the hash-chained event log and the evidence branch.
 
 **Stage B, watch and diagnose (code only).** After each Box 3 step attempt, plain code marks the step STUCK when the
 same error appears twice in a row, checks still fail after the retries, max turns was reached, a requested capability
@@ -807,15 +807,15 @@ output is exactly one JSON edit with a short reason: add_role_rule, add_helper_r
 grant_tool (only tools available in this run), split_step (2–3 sub-steps, a valid step graph), replan_remaining
 (replacement steps for the part not done, the Planner's plan format) or work_around (capability only: another
 method or a narrower done_when, stated in the final answer under Limitations). Code checks: allowed for the cause,
-schema, V1–V6, the plan graph, never redo done steps, not a repeat; one retry on an invalid reply, a second failure
+schema, size, wording and tools, the plan graph, never redo done steps, not a repeat; one retry on an invalid reply, a second failure
 is no fix; all limits apply. After Stage D the final report and the answer list the steps that used an upstream
 output from before a case-b re-run.
 
 *As built (D).* `amoeba/adapt/proposer.py`: `FixReply` (strict: `edit` {op, params} and `reason` ≤ 300 characters),
-one params model per op, `parse_fix`, `fix_problems` — allowed for the cause, work_around for capability only, V3
-(a rule, goal or done_when ≤ 300 characters, a role prompt ≤ 1,500, a sub-step's text ≤ 600), V4 (the denylist),
-V1 (a granted tool or a new helper's tool is in this run's registry, acts nowhere outside, is not paid), the role is
-one of the stuck step's, not a repeat (`FixEdit.key`). V2 and V6 have no edit in this menu. Prompt:
+one params model per op, `parse_fix`, `fix_problems` — allowed for the cause, work_around for capability only, size
+(a rule, goal or done_when ≤ 300 characters, a role prompt ≤ 1,500, a sub-step's text ≤ 600), wording (the
+denylist), tools (a granted tool or a new helper's tool is in this run's registry, acts nowhere outside, is not
+paid), the role is one of the stuck step's, not a repeat (`FixEdit.key`). Prompt:
 `amoeba/config/prompts/fix_proposer.txt` (ours). `PlanRunner.propose_fix` is the rung after `candidates` is empty:
 it calls the proposer (agent `fix_proposer`, router role planner, 2,048 reply tokens) with the task (≤ 1,500
 characters), the step's card (text, roles, depends_on, do, output, done_when), the cause and evidence, the last
@@ -851,8 +851,8 @@ missing tool or skill from the pool shortlist. Apply, re-run only the stuck step
 
 **Stage D, fix-proposer agent.** Used only when the code fixes fail. It sees the stuck step, its logs and errors, the
 current team, the edits allowed for the cause and the fixes already tried in this task, and returns exactly one JSON
-edit: add_role_rule | add_helper_role | grant_tool | split_step | replan_remaining. Code validates it (V1–V6, allowed
-for the cause, not a repeat), applies it to the live plan and re-runs the step. Success = the step contract passes
+edit: add_role_rule | add_helper_role | grant_tool | split_step | replan_remaining. Code validates it (size, wording and tools,
+allowed for the cause, not a repeat), applies it to the live plan and re-runs the step. Success = the step contract passes
 (done_when + checks); no rubric.
 
 **Limits (code-enforced, configurable).** At most 3 fixes per step and a cap per task; a token/dollar cap for
@@ -862,3 +862,12 @@ with a report for the user (what was stuck, the cause, each fix tried, why each 
 **Stage E, test.** `--adapt on|off` (default on); the same tasks with it off and on (H1–H3 and tasks that failed
 before): tasks finished, stuck steps recovered, extra tokens and cost per task.
 
+**D117 cleanup (Oct 8).** The pieces of the loop Stage A had kept but the runtime never called are removed:
+`amoeba/adapt/recipe.py` (Recipe, Edit, the edit menu, transforms and the V1–V6 validator), `amoeba/adapt/architect.py`
+(the Architect's single-edit format and checks), the D98 `prefer_model` edit and D114's recipe run options as recipe
+edits (the run options stay as code fixes), and their tests. `adapt_config()` and the answer-step helper moved to
+`amoeba/adapt/config.py`. V1–V6 are no longer claimed for adaptation: the proposer's own checks — a rule, goal or done_when at most 300 characters (adapt.yaml `limits`), no denylisted wording, and only tools available in this run that act nowhere outside it and are not paid — live in `amoeba/adapt/proposer.py` (formerly V1, V3 and V4), and the
+team-size and step-graph checks in `PlanRunner.propose_fix`. In `adapt.yaml` the `recipe:` section is renamed
+`limits:`, and `diagnoser.allowed_edits` lists only edits a code fix or the proposer can apply; the causes feedback,
+honesty and unused_tool are gone (no stuck signal maps to them). `amoeba/config/validate.py`'s V1–V6 are Phase 1's
+TeamConfig checks and unrelated.

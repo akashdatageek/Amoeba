@@ -1,55 +1,33 @@
-# D117: what plain code reads for in-task adaptation. The offline learning loop (experimenter, gate, monitor,
-# retention) is gone; kept: the edit limits and validation (V1-V6), the cause -> allowed-edit table, the evidence log.
+# D117: what plain code reads for in-task adaptation (amoeba/adapt/config.py). The offline learning loop is gone.
 # Nothing here is read by a model. Quote on/off: YAML would read them as booleans.
 
-recipe:                       # D81: the edit menu's limits and checks (validate_recipe), used by the fix checks
-  max_rules: 8                # V3
-  max_transforms: 8           # V3
-  max_text_chars: 300         # V3: a rule, a done_when clause or a role rule
-  # V4: no rule or transform text may tell the team to skip checks, citations, the sandbox or the contract.
-  # Matched case-insensitively as a substring; a hit is reviewed by hand.
+limits:                       # checks the fix proposer's edit must pass (amoeba/adapt/proposer.py) and fix ranges
+  max_text_chars: 300         # a rule, a goal, a done_when or a limitation sentence the proposer writes
+  # No text the proposer writes may tell the team to skip checks, citations, the sandbox or the contract.
+  # Matched case-insensitively as a substring.
   denylist: ["skip", "ignore", "without verif", "no citation", "no source", "disable", "bypass", "turn off",
              "no sandbox", "outside the sandbox", "no check", "don't check", "do not check", "unverified is fine"]
-  # V1: tools a grant may name besides the envelope's registry tools (Box 3 hands these out at run time); a tool
-  # whose name or description is an outside action (pool side_effect screen: write, edit, send…) is refused anyway
-  grantable_extra: ["web_search", "fetch_url", "local:Bash", "local:Read"]
-  # V2: the run options a code fix or an edit may set, and their ranges
+  # The values a code fix may set a step's run option to (amoeba/adapt/fixes.py, rung 1)
   run_options:
-    replan: {values: ["on", "off"]}
-    self_refine: {values: ["off", "on-issues", "always"]}
-    collab: {values: ["concat", "critique"]}
     max_turns: {min: 3, max: 8}
     check_retry_turns: {min: 1, max: 3}
-    max_input_chars: {min: 3000, max: 20000}           # D114: characters of one input a step is shown (default 6000)
-    max_summary_input_chars: {min: 15000, max: 60000}  # D114: characters of all outputs the summariser is shown (30000)
-  allow_model_edits: false    # D98: prefer_model edits (built, off: one real model; --allow-model-edits turns it on)
-  checker_role:               # add_verify_step: the role added when the team has no checker
-    name: "Checker"
-    tools: ["calc"]
+    max_input_chars: {min: 3000, max: 20000}           # characters of one input a step is shown (default 6000)
 
-diagnoser:                    # the cause -> allowed-edit table (kept from D86 by D117; edit it here)
-  # tie order when two causes are found at once
-  # D117: tool_error (the same tool error twice in a row) is a stuck cause of its own, after capability;
-  # missing_input (data an earlier step should have given) comes first: a mixed step is fixed for it, then re-checked
-  causes: [missing_input, capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback,
-           honesty]
-  # "set_run_option:<name>" allows that one run option only
+diagnoser:                    # the stuck causes and the edits each allows (amoeba/adapt/stuck.py)
+  # tie order when two causes are found at once: missing_input first (a mixed step is fixed for it, then re-checked)
+  causes: [missing_input, capability, tool_error, checks, max_turns, claimed_file_missing]
+  # Only edits something can apply: code fixes (add_dependency, rerun_upstream, "set_run_option:<name>" for that one
+  # option, grant_tool from the pool) and the fix proposer's edits (add_role_rule, add_helper_role, grant_tool,
+  # split_step, replan_remaining, work_around). Code fixes come first, the proposer only after them.
   allowed_edits:
-    capability: [grant_tool, add_planner_rule, "set_run_option:replan", prefer_model, add_helper_role, work_around,
-                 split_step, replan_remaining]
-    # D117 Stage D adds the fix proposer's edits (add_role_rule, add_helper_role, grant_tool, split_step,
-    # replan_remaining, work_around); code fixes come first, the proposer only after them
     missing_input: [add_dependency, rerun_upstream, "set_run_option:max_input_chars", add_role_rule, split_step,
-                    replan_remaining]                                                            # D117 C + D
-    tool_error: [add_role_rule, grant_tool, "set_run_option:max_turns", add_helper_role, replan_remaining]   # D117
-    checks: [add_verify_step, tighten_done_when, add_role_rule, "set_run_option:check_retry_turns", prefer_model,
-             "set_run_option:max_input_chars", split_step, add_helper_role]                      # D114, D117
-    max_turns: [add_planner_rule, "set_run_option:max_turns", prefer_model, split_step, add_role_rule]
-    unused_tool: [revoke_tool, add_role_rule]
-    claimed_file_missing: [add_role_rule, add_verify_step, grant_tool, split_step]
-    feedback: [add_planner_rule, tighten_done_when, add_role_rule, "set_run_option:max_input_chars",
-               "set_run_option:max_summary_input_chars"]                                         # D114
-    honesty: [add_verify_step, add_role_rule, tighten_done_when]
+                    replan_remaining]
+    capability: [grant_tool, add_helper_role, work_around, split_step, replan_remaining]
+    tool_error: [add_role_rule, grant_tool, "set_run_option:max_turns", add_helper_role, replan_remaining]
+    checks: ["set_run_option:check_retry_turns", "set_run_option:max_input_chars", add_role_rule, split_step,
+             add_helper_role]
+    max_turns: ["set_run_option:max_turns", split_step, add_role_rule]
+    claimed_file_missing: [add_role_rule, grant_tool, split_step]
   max_evidence: 8             # evidence lines kept per diagnosis
 
 adapt:                        # D117 Stage C: in-task code fixes (--adapt on); all limits are enforced by plain code
@@ -57,7 +35,7 @@ adapt:                        # D117 Stage C: in-task code fixes (--adapt on); a
   max_fixes_per_task: 8       # fixes tried in one task
   max_tokens_per_task: 200000 # tokens all fix attempts of one task may use (checked before each fix)
   max_usd_per_task: 1.0       # the same in dollars, when the model has a price (amoeba/config/prices.yaml)
-  more_turns: 3               # rung 1: turns added by a "more turns" fix (capped by recipe.run_options.max_turns)
+  more_turns: 3               # rung 1: turns added by a "more turns" fix (capped by limits.run_options.max_turns)
   more_retry_turns: 1         # rung 1: retry turns added (capped by check_retry_turns)
   input_factor: 2             # rung 1: a shortened input's limit is multiplied by this (capped by max_input_chars)
   max_added_helpers: 2        # D117 D (user): helpers the fix proposer may add (add_helper_role) in one task

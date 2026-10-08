@@ -2124,7 +2124,7 @@ class PlanRunner:
     def _d_live(self, reply, n: int) -> tuple[list[str], dict | None]:
         """The checks on the live plan: a new helper's card is complete, its name new and the team within its size;
         a split or a re-plan keeps done steps as they are, names roles on the team and leaves a usable step graph
-        (V5). Returns the problems and what to apply."""
+        Returns the problems and what to apply."""
         op, p = reply.edit.op, reply.edit.params
         if op == "add_helper_role":
             r = DraftedRole.model_validate(p["role"])
@@ -2136,7 +2136,7 @@ class PlanRunner:
             if self.helpers_added >= cap:
                 errors.append(f"limit: {cap} added helpers per task")
             if len(self.agents) + 1 > getattr(self.i, "max_agents", 5):
-                errors.append(f"V5: the team would have {len(self.agents) + 1} roles (at most "
+                errors.append(f"team size: the team would have {len(self.agents) + 1} roles (at most "
                               f"{getattr(self.i, 'max_agents', 5)})")
             return errors, {"role": r}
         if op not in ("split_step", "replan_remaining"):
@@ -2175,7 +2175,7 @@ class PlanRunner:
                 errors.append("the stuck step writes the final answer: its last sub-step must be the summariser's")
         added = len(subs) - 1
         if self.added_steps + added > self.opt.max_added_steps:
-            errors.append(f"V5: {added} new step(s) would pass the cap of {self.opt.max_added_steps} added steps per "
+            errors.append(f"plan: {added} new step(s) would pass the cap of {self.opt.max_added_steps} added steps per "
                           f"run ({self.added_steps} added so far)")
         change = {"kind": "SPLIT", "new_role": None, "requests": [], "steps": steps, "drop": [], "reassign": None,
                   "feeds": {nums[-1]: waiting}, "added": added,
@@ -2185,7 +2185,7 @@ class PlanRunner:
             try:
                 waves(self.proposed_plan(change, ids))
             except PlanGraphError as e:
-                errors.append(f"V5: the new plan is unusable: {e}")
+                errors.append(f"plan: the new plan is unusable: {e}")
         return errors, change
 
     # box: proposer

@@ -302,7 +302,7 @@ class Shipper:
 def gcs_uploader(bucket: str, credentials_file: str | None = None) -> Callable[[Path, str], None]:
     """The bucket copy (kept, disabled: adapt.yaml evidence.gcs.enabled is false; the evidence goes to the git branch).
     Uploads with if_generation_match=0, so an object is never overwritten (object-create-only rights suffice)."""
-    from amoeba.adapt.recipe import adapt_config
+    from amoeba.adapt.config import adapt_config
     if not (adapt_config().get("evidence", {}).get("gcs", {}) or {}).get("enabled"):
         raise RuntimeError("the GCS uploader is disabled (adapt.yaml evidence.gcs.enabled: false)")
     from google.cloud import storage            # optional dependency, only when enabled
@@ -453,7 +453,7 @@ class GitShipper:
 def make_shipper(root: Path, stream: str, secrets: list[str] = (), pending: list[dict] | None = None,
                  state: dict | None = None, repo: Path | None = None):
     """The configured shipper (adapt.yaml evidence): GitShipper to the evidence branch, or a queue that ships nothing."""
-    from amoeba.adapt.recipe import adapt_config
+    from amoeba.adapt.config import adapt_config
     c = adapt_config().get("evidence", {}) or {}
     clean = [{k: v for k, v in p.items() if k != "error"} for p in pending or []]
     repo = Path(repo or Path(__file__).resolve().parents[2])

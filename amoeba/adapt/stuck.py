@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import re
 
-from amoeba.adapt.recipe import adapt_config
+from amoeba.adapt.config import adapt_config
 
 SIGNAL_CAUSE = {"missing_input": "missing_input", "capability_unfilled": "capability", "repeated_error": "tool_error",
                 "max_turns": "max_turns", "checks_after_retry": "checks", "no_file_change": "claimed_file_missing"}
@@ -169,7 +169,7 @@ def is_stuck(meta: dict, signals: list[dict]) -> bool:
     return bool(signals) and meta.get("status") != "done"
 
 
-# box: stuck
+# box: stuck, ov_adapt
 def diagnose(signals: list[dict], config: dict | None = None) -> dict:
     """One cause for a stuck step: the first cause in `diagnoser.causes` that a signal names; its allowed edits
     from `diagnoser.allowed_edits`; the evidence lines of every signal (at most MAX_EVIDENCE)."""
@@ -179,8 +179,6 @@ def diagnose(signals: list[dict], config: dict | None = None) -> dict:
     cause = next((c for c in order if c in named), named[0] if named else None)
     evidence = [e for s in signals for e in s["evidence"]][:int(d.get("max_evidence", MAX_EVIDENCE))]
     allowed = list((d.get("allowed_edits") or {}).get(cause, [])) if cause else []
-    if not adapt_config().get("recipe", {}).get("allow_model_edits"):
-        allowed = [a for a in allowed if a != "prefer_model"]
     out = {"cause": cause, "signals": [s["signal"] for s in signals], "allowed_edits": allowed, "evidence": evidence}
     for s in signals:
         if s["signal"] == "missing_input":

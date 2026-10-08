@@ -15,11 +15,14 @@ The fix proposer is a small agent called only when the code fixes for a stuck st
                     (capability only, and only after a grant_tool or add_helper_role was tried for the step; a step
                     it finishes is reported as "finished with limitation", never as recovered)
 
-`parse_fix` reads the reply strictly; `fix_problems` makes the checks that need no live plan: the edit is allowed for
-the cause, its texts pass V3 (sizes) and V4 (no wording that skips checks), its tools pass V1 (available in this run,
-no outside action, not paid), work_around is for capability only, and it is not a repeat. The plan runner adds the
-checks on the live plan (roles, team size, done steps, the step graph: V5) and applies the edit
-(PlanRunner.propose_fix). V2 (run options) and V6 (model preferences) have no edit here.
+`parse_fix` reads the reply strictly; `fix_problems` makes the checks that need no live plan, all of them here in
+plain code: the edit is allowed for the cause; its texts keep to the sizes in adapt.yaml `limits` (a rule, goal or
+done_when at most `max_text_chars`, 300) and use none of the denied wording (`limits.denylist`: nothing that tells the
+team to skip checks, citations, the sandbox or the contract); a tool it grants, or a new helper names, is one this run
+has, acts nowhere outside it and is not a paid endpoint; work_around is for capability only and comes after a grant or
+a helper; and it is not a repeat. The plan runner adds the checks on the live plan (roles, team size, done steps, the
+step graph) and applies the edit (PlanRunner.propose_fix). These were the V1, V3, V4 and V5 checks of the removed
+edit-menu validator (D81); only what is written here is checked now.
 """
 from __future__ import annotations
 
@@ -30,7 +33,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from amoeba.adapt.recipe import adapt_config
+from amoeba.adapt.config import adapt_config
 from amoeba.task.models import DraftedRole
 
 D_OPS = ("add_role_rule", "add_helper_role", "grant_tool", "split_step", "replan_remaining", "work_around")
@@ -137,7 +140,7 @@ class FixEdit(BaseModel):
 
     def texts(self) -> list[tuple[str, str, int]]:
         """(where, text, size limit) of every text the edit puts in front of the team."""
-        lim = int(adapt_config()["recipe"]["max_text_chars"])
+        lim = int(adapt_config()["limits"]["max_text_chars"])
         p = self.params
         if self.op == "add_role_rule":
             return [("rule", p["text"], lim)]
@@ -188,7 +191,7 @@ def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[st
     keys of the fixes already tried in this task; roles_of_step: the stuck step's role names; tried_kinds: the kinds of
     the fixes already tried for this step (work_around needs a grant_tool or add_helper_role among them)."""
     from amoeba.pool.stock import side_effect
-    cfg = adapt_config()["recipe"]
+    cfg = adapt_config()["limits"]
     e, p, out = reply.edit, reply.edit.params, []
     if e.op not in allowed:
         out.append(f"edit {e.op!r} is not allowed for the cause {cause}; allowed: {[a for a in allowed if a in D_OPS]}")
@@ -198,23 +201,23 @@ def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[st
         out.append("work_around is allowed only after grant_tool or add_helper_role was tried for this step")
     for where, text, lim in e.texts():
         if len(text) > lim:
-            out.append(f"V3: {where}: {len(text)} characters > {lim}")
+            out.append(f"size: {where}: {len(text)} characters > {lim}")
         hits = [w for w in cfg["denylist"] if w in text.lower()]
         if hits:
-            out.append(f"V4: {where}: denied wording {hits}")
+            out.append(f"wording: {where}: denied wording {hits}")
     if e.op in ("add_role_rule", "grant_tool") and p["role"] not in roles_of_step:
         out.append(f"role {p['role']!r} is not a role of the stuck step ({', '.join(roles_of_step)})")
     if e.op == "add_role_rule" and not p["text"].strip():
-        out.append("V3: rule: empty text")
+        out.append("size: rule: empty text")
     wanted = [p["tool"]] if e.op == "grant_tool" else list(DraftedRole.model_validate(p["role"]).tools) \
         if e.op == "add_helper_role" else []
     for t in wanted:
         if t not in tools:
-            out.append(f"V1: tool {t!r} is not available in this run")
+            out.append(f"tool: {t!r} is not available in this run")
         elif side_effect(t, tools.get(t, "")):
-            out.append(f"V1: tool {t!r} acts outside the run")
+            out.append(f"tool: {t!r} acts outside the run")
         elif "x402" in t.lower() or "paid" in t.lower():
-            out.append(f"V1: tool {t!r} is a paid endpoint")
+            out.append(f"tool: {t!r} is a paid endpoint")
     if e.key() in tried:
         out.append("this edit was already tried in this task")
     return out

@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import re
 
-from amoeba.adapt.recipe import adapt_config
+from amoeba.adapt.config import adapt_config
 
 GENERIC = {"step", "steps", "data", "input", "inputs", "output", "outputs", "missing", "file", "files", "raw",
            "provided", "previous", "earlier", "upstream", "results", "result", "the", "and", "from", "of", "for"}
@@ -79,7 +79,7 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
     check_retry_turns and max_input_chars, "capped": inputs shortened for this step, "stock": pool or local tools on,
     "upstream_rerun": steps already re-run once, "attached": pool ids a grant already gave this step}. Each fix: {kind, rung, target, params, ...}."""
     cfg = config or adapt_config()
-    lim, ranges = limits(cfg), (cfg.get("recipe") or {}).get("run_options") or {}
+    lim, ranges = limits(cfg), (cfg.get("limits") or {}).get("run_options") or {}
     opts, out, notes = ctx.get("opts") or {}, [], []
     cause = d.get("cause")
     if cause == "missing_input":

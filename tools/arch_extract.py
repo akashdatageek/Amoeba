@@ -106,12 +106,11 @@ BOXES: list[dict] = [
                "Stage D (built): when the code fixes are used up or not allowed, the fix proposer (one AI call) "
                "proposes one edit; plain code checks and applies it. Within limits; when nothing recovers the step "
                "the task stops with a report.",
-               "Kept for the fixes: the cause → edit table, the single-edit format with V1–V6, and the hash-chained "
-               "event log.",
+               "Every stuck event, fix and stop goes to the run's hash-chained event log.",
                "Nothing carries over between tasks."],
          proposes="See inside.",
          disposes="See inside.",
-         anchors=["amoeba/adapt/architect.py::check"], guard_anchors=[]),
+         anchors=["amoeba/adapt/stuck.py::diagnose"], guard_anchors=[]),
     dict(id="ov_around", view="overview", title="Around every box", kind="top", opens="around", plan=None,
          sentence="The model router behind every AI call and the niche profile every run obeys.",
          what=[
@@ -723,24 +722,6 @@ BOXES: list[dict] = [
          proposes="Scripted replies.", disposes="Everything downstream treats it exactly like a real AI.",
          anchors=["amoeba/llm/toy_mock.py::toy_mock_client", "amoeba/llm/client.py::MockLLMClient"]),
     # ---------------------------------------------------------------- adaptation loop (Phase 2)
-    dict(id="recipe", view="adapt", title="Edit menu, transforms and V1–V6 (kept from D81)", kind="code", plan=None,
-         sentence="The typed edits a fix may make, the code that applies them to a plan, and the plain-code validation every edit must pass.",
-         what=["The edit menu: add or remove a planner rule, add a check step after selected steps, add a clause to "
-               "selected steps' done-when, grant or revoke a tool on selected roles, add a rule to selected roles' "
-               "cards, set one run option, prefer a model (built, off). Each edit is a pure function that makes "
-               "version N+1 with parent N.",
-               "Transforms apply an edit to a Draft: add a verify step, tighten done_when, grant or revoke a tool, add "
-               "a role rule; each returns what it changed.",
-               "Validation by plain code (V1–V6): tools are in the registry and not outside actions; run options are "
-               "whitelisted and in range (max_turns 3–8, check_retry_turns 1–3, input sizes); at most 8 rules and 8 "
-               "transforms of at most 300 characters (amoeba/config/adapt.yaml); no wording that tells the team to "
-               "skip checks, citations or the sandbox; the step graph still passes the plan checks; a model preference "
-               "names a known role and model.",
-               "D117: there is no recipe store and no recipe hook any more; nothing carries over between tasks. A "
-               "Recipe is only the container one task's edits are checked in."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code applies an edit, applies the transforms and refuses one that breaks V1–V6.",
-         anchors=[]),
     dict(id="evidence", view="adapt", title="Event log and evidence branch (kept from D95)", kind="code", plan=None,
          sentence="An append-only, hash-chained log written only by the harness, with a fingerprint of every run folder "
                   "it names, and an off-container copy on the repository's evidence branch.",
@@ -765,7 +746,7 @@ BOXES: list[dict] = [
                "a 429 cools a model down and the next one of the same size is used (with one model: wait).",
                "Every decision — candidates, what was filtered and why, the choice, fallbacks and waits — is logged; "
                "result.json gets calls, tokens and US dollars per model. A new model is a registry entry only.",
-               "D98: a prefer_model edit (built, off) fills the router's per-role preference; it is used only when that model is still a candidate after every filter, and a verifier preference for the checked work's family is logged as verifier_same_family: recipe preference.",
+               "The router still takes a per-role model preference (begin_run); since D117 removed D98's prefer_model edit, nothing sets it.",
                "D102: the niche profile's model allowlist and verifier-independence setting feed the router; a model outside the profile is filtered out with reason profile."],
          proposes="Nothing: no AI takes part in the decision.",
          disposes="Plain code picks the model; no call is made when no model passes the filters (no_model).",
@@ -783,12 +764,15 @@ BOXES: list[dict] = [
          proposes="Nothing: a person writes the profile.",
          disposes="Plain code applies the profile's allowlists, limits, done clauses and checks.",
          anchors=[]),
-    dict(id="diag_edits", view="adapt", title="Cause → allowed edits (kept from D86)", kind="data", plan=None,
-         sentence="Which edits may answer which cause, from adapt.yaml.",
-         what=["missing_input, capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback "
-               "and honesty each have their own allowed edits; a tie between causes is broken by the table order.",
-               "prefer_model is offered only when model edits are on (D98) and never for feedback.",
-               "D117: the step contract's causes become stuck signals; this table limits what a fix may change."],
+    dict(id="diag_edits", view="adapt", title="Cause → allowed edits (adapt.yaml)", kind="data", plan=None,
+         sentence="Which edits may answer which stuck cause; only edits a code fix or the fix proposer can apply.",
+         what=["missing_input, capability, tool_error, checks, max_turns and claimed_file_missing each have their "
+               "own allowed edits; a tie between causes is broken by the table order (missing_input first).",
+               "Code fixes: add_dependency, rerun_upstream, one run option (max_turns, check_retry_turns, "
+               "max_input_chars), grant_tool from the pool. Proposer edits: add_role_rule, add_helper_role, grant_tool, "
+               "split_step, replan_remaining, work_around.",
+               "`limits` in the same file: the proposer's text size and denied wording, and the ranges a code fix may "
+               "set a run option to."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code looks the cause up in the table.",
          anchors=[]),
@@ -839,9 +823,10 @@ BOXES: list[dict] = [
                "Planner's plan format, for the part not done) or work_around (capability only, after a grant_tool or "
                "add_helper_role was tried for the step; stated under Limitations; counted as finished with "
                "limitation, never recovered). At most two added helpers per task.",
-               "Plain code checks: allowed for the cause, schema, V1 tools, V3 sizes, V4 wording, V5 team size and "
-               "step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second failure is no "
-               "fix. The adaptation limits apply; success is the step ending done."],
+               "Plain code checks, all in proposer.py and the plan runner: allowed for the cause, the schema, tools "
+               "this run has (no outside action, not paid), text sizes and denied wording (adapt.yaml limits), team "
+               "size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second "
+               "failure is no fix. The adaptation limits apply; success is the step ending done."],
          proposes="One edit with a reason (fix_proposer prompt).",
          disposes="Plain code refuses, or applies the edit and judges the step by its checks and contract.",
          prompts=["fix_proposer"],
@@ -860,18 +845,6 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code runs the pairs and counts.",
          anchors=["scripts/stage_e.py::run_pairs", "scripts/stage_e_report.py::run_record"], guard_anchors=[]),
-    dict(id="arch_check", view="adapt", title="Single-edit format and check (kept from D87)", kind="code", plan=None,
-         sentence="One proposed change is one strict JSON object; plain code parses it and checks it is allowed, valid and new.",
-         what=[
-               "The reply: exactly one JSON object with one typed edit, a short rationale (at most 400 characters) and "
-               "a predicted change between -1 and 1; any other key is refused.",
-               "Plain code checks that the edit is allowed for the cause (adapt.yaml), that the edited recipe passes "
-               "V1–V6, and that the same edit was not already tried.",
-               "D117: the loop's Architect, its prompt and its human queue are gone; the in-task fix proposer "
-               "(Stage D) follows the same contract with its own edit menu (amoeba/adapt/proposer.py)."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code accepts or refuses the edit.",
-         anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and
@@ -1928,8 +1901,7 @@ def data_types(F: Facts) -> dict:
             "Episode": "amoeba/task/models.py::Episode", "RunResult": "amoeba/task/models.py::RunResult",
             "_Msg": "amoeba/interp/runtime.py::_Msg", "ChatResponse": "amoeba/llm/client.py::ChatResponse",
             "CapabilityRequest": "amoeba/task/models.py::CapabilityRequest",
-            "DraftRound": "amoeba/task/models.py::DraftRound",
-            "Edit": "amoeba/adapt/recipe.py::Edit", "Recipe": "amoeba/adapt/recipe.py::Recipe"}
+            "DraftRound": "amoeba/task/models.py::DraftRound"}
     return {k: class_record(F, v) for k, v in keys.items() if v in F.defs}
 
 
