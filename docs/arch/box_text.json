@@ -823,170 +823,6 @@
    "It runs every round, even after it has once agreed."
   ]
  },
- "arch_check": {
-  "checked_at": "982eebb",
-  "facts": {
-   "anchors": [
-    {
-     "callees": [],
-     "doc": "The reply, parsed strictly: exactly these keys.",
-     "fields": [
-      [
-       "edit",
-       "Edit"
-      ],
-      [
-       "rationale",
-       "str"
-      ],
-      [
-       "predicted_delta",
-       "float"
-      ],
-      [
-       "metric",
-       "str"
-      ],
-      [
-       "hypothesis_id",
-       "str | None"
-      ],
-      [
-       "family",
-       "str | None"
-      ],
-      [
-       "diagnosis_ref",
-       "str | None"
-      ]
-     ],
-     "key": "amoeba/adapt/architect.py::ArchitectReply",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
-     ],
-     "doc": "An allowed entry is an op, or \"set_run_option:<name>\" for one run option only.",
-     "key": "amoeba/adapt/architect.py::_allowed_ok",
-     "signature": "_allowed_ok(edit: Edit, allowed: list[str]) -> bool"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append"
-     ],
-     "doc": "",
-     "key": "amoeba/adapt/architect.py::allowed_text",
-     "signature": "allowed_text(allowed: list[str]) -> str"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/architect.py::_allowed_ok",
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/proposer.py::FixEdit.key",
-      "amoeba/adapt/recipe.py::Edit.key",
-      "amoeba/adapt/recipe.py::apply_edit",
-      "amoeba/adapt/recipe.py::validate_recipe",
-      "amoeba/llm/cache.py::CachedLLM.key",
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/pool/stock.py::SharedPicks.get",
-      "amoeba/pool/stock.py::SharedPicks.key"
-     ],
-     "doc": "Plain code's checks of one proposal; empty when it may be applied. `allowed`: the edits the cause allows",
-     "key": "amoeba/adapt/architect.py::check",
-     "signature": "check(reply: ArchitectReply, allowed: list[str], recipe: Recipe, failed: list[dict], envelope=None, sample_draft=None) -> list[str]"
-    },
-    {
-     "callees": [
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
-     ],
-     "doc": "",
-     "key": "amoeba/adapt/architect.py::failed_text",
-     "signature": "failed_text(failed: list[dict]) -> str"
-    },
-    {
-     "callees": [
-      "amoeba/interp/citecheck.py::identifiers.take.sub",
-      "amoeba/llm/cache.py::CachedProvider.search",
-      "amoeba/tools/web.py::SearchProvider.search",
-      "amoeba/tools/web.py::TavilyProvider.search"
-     ],
-     "doc": "The first JSON object in the reply (a <thought> block or a code fence around it is allowed).",
-     "key": "amoeba/adapt/architect.py::parse_reply",
-     "signature": "parse_reply(text: str) -> ArchitectReply"
-    }
-   ],
-   "checks": [],
-   "guards": [
-    [
-     "correct",
-     "if any((SHAPES[a.partition(':')[0]].count('SELECTOR') for a in allowed))",
-     "add SELECTOR"
-    ],
-    [
-     "correct",
-     "if e.key() in keys",
-     "add 'this edit was already tried'"
-    ],
-    [
-     "correct",
-     "if not _allowed_ok(e, allowed)",
-     "add f'edit {e.op!r} is not allowed here; allowed: {allowed}'"
-    ],
-    [
-     "fallback",
-     "SHAPES[op] if not only else f'{{\"name\": \"{only}\", \"value\": <value>}}'",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "except ValueError",
-     "add str(x)"
-    ],
-    [
-     "filter",
-     "keep only if r.get('edit')",
-     "drop the rest"
-    ],
-    [
-     "reject",
-     "if not -1 <= v <= 1",
-     "raise ValueError"
-    ],
-    [
-     "reject",
-     "if not m",
-     "raise ValueError"
-    ],
-    [
-     "stop",
-     "if edit.op in allowed",
-     "return True"
-    ],
-    [
-     "stop",
-     "if not failed",
-     "return 'None yet.'"
-    ]
-   ],
-   "kind": "code",
-   "numbers": [],
-   "prompts": {},
-   "title": "Single-edit format and check (kept from D87)"
-  },
-  "facts_hash": "32b644b3b8e14968",
-  "seed_hash": "4c8cd27ec9649425",
-  "sentence": "One proposed change is one strict JSON object; plain code parses it and checks it is allowed, valid and new.",
-  "source": "hand",
-  "what": [
-   "The reply: exactly one JSON object with one typed edit, a short rationale (at most 400 characters) and a predicted change between -1 and 1; any other key is refused.",
-   "Plain code checks that the edit is allowed for the cause (adapt.yaml), that the edited recipe passes V1–V6, and that the same edit was not already tried.",
-   "D117: the loop's Architect, its prompt and its human queue are gone; the in-task fix proposer (Stage D) follows the same contract with its own edit menu (amoeba/adapt/proposer.py)."
-  ]
- },
  "artifacts": {
   "checked_at": "96a9a03",
   "facts": {
@@ -1223,7 +1059,7 @@
   ]
  },
  "checks": {
-  "checked_at": "982eebb",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
@@ -1293,7 +1129,6 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/proposer.py::FixEdit.key",
-      "amoeba/adapt/recipe.py::Edit.key",
       "amoeba/llm/cache.py::CachedLLM.key",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
@@ -1783,7 +1618,7 @@
    "prompts": {},
    "title": "Plain-code checks on the final draft"
   },
-  "facts_hash": "cd351337eb4b3e7b",
+  "facts_hash": "d06ee1ceeca2f92a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "77d490c5eaf21975",
   "sentence": "Throws out broken or nameless helper entries, records tools we lack instead of dropping them, flags the summariser, and drops steps that name nobody.",
@@ -2420,24 +2255,31 @@
   ]
  },
  "diag_edits": {
-  "checked_at": "5d474b1",
+  "checked_at": "2f077a6",
   "facts": {
-   "anchors": [],
+   "anchors": [
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/config.py::adapt_config",
+     "signature": "adapt_config() -> dict"
+    }
+   ],
    "checks": [],
    "guards": [],
    "kind": "data",
    "numbers": [],
    "prompts": {},
-   "title": "Cause → allowed edits (kept from D86)"
+   "title": "Cause → allowed edits (adapt.yaml)"
   },
-  "facts_hash": "2067c6ee57aa5767",
-  "seed_hash": "f5d1941bdd34c3e3",
-  "sentence": "Which edits may answer which cause, from adapt.yaml.",
+  "facts_hash": "9a2d8cbf9cf55fd6",
+  "seed_hash": "4cd04110b46bcc6c",
+  "sentence": "Which edits may answer which stuck cause; only edits a code fix or the fix proposer can apply.",
   "source": "hand",
   "what": [
-   "missing_input, capability, tool_error, checks, max_turns, unused_tool, claimed_file_missing, feedback and honesty each have their own allowed edits; a tie between causes is broken by the table order.",
-   "prefer_model is offered only when model edits are on (D98) and never for feedback.",
-   "D117: the step contract's causes become stuck signals; this table limits what a fix may change."
+   "missing_input, capability, tool_error, checks, max_turns and claimed_file_missing each have their own allowed edits; a tie between causes is broken by the table order (missing_input first).",
+   "Code fixes: add_dependency, rerun_upstream, one run option (max_turns, check_retry_turns, max_input_chars), grant_tool from the pool. Proposer edits: add_role_rule, add_helper_role, grant_tool, split_step, replan_remaining, work_around.",
+   "`limits` in the same file: the proposer's text size and denied wording, and the ranges a code fix may set a run option to."
   ]
  },
  "disagree": {
@@ -3314,9 +3156,11 @@
    "title": "Event log and evidence branch (kept from D95)"
   },
   "facts_hash": "cd2f9284dc17d810",
+  "rejected_hash": "7f2e2afa945433f9",
   "seed_hash": "e8c36a5bb5f26583",
   "sentence": "An append-only, hash-chained log written only by the harness, with a fingerprint of every run folder it names, and an off-container copy on the repository's evidence branch.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
    "Finished runs that pass the key scan are shipped as fast-forward commits to the orphan `evidence` branch, at most one commit per 10 minutes plus a final one; each commit message carries the chain head. Shipping runs in the harness only; agents never get git credentials or cloud credentials.",
@@ -3324,16 +3168,16 @@
   ]
  },
  "fixes": {
-  "checked_at": "6b13b69",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
      "callees": [
+      "amoeba/adapt/config.py::adapt_config",
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/fixes.py::_option",
       "amoeba/adapt/fixes.py::holds",
       "amoeba/adapt/fixes.py::limits",
-      "amoeba/adapt/recipe.py::adapt_config",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/toolbox.py::LocalSetup.limits",
       "amoeba/pool/stock.py::PoolSetup.limits",
@@ -3414,7 +3258,7 @@
     },
     {
      "callees": [
-      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/adapt/config.py::adapt_config",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -3549,10 +3393,11 @@
    "prompts": {},
    "title": "Code fixes for a stuck step (D117 Stage C)"
   },
-  "facts_hash": "b26a3fbb66b1de2d",
+  "facts_hash": "35623b44d3094120",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "7e8156707a200b60",
   "sentence": "Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "missing_input: an upstream step that is done and holds the data is added to depends_on or passed in full; an upstream output without it is re-run once with the item in its done_when (the only redo of a completed step), then the stuck step.",
    "Rung 1: more turns (tool_error, max_turns), more retry turns then a larger input (checks).",
@@ -4731,7 +4576,7 @@
   ]
  },
  "interpreter": {
-  "checked_at": "96a9a03",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
@@ -4816,7 +4661,6 @@
     "Episode.latency_ms",
     "Episode.seed",
     "Episode.team_version",
-    "Recipe.version",
     "TeamConfig.version",
     "__init__.max_agents",
     "run.seed"
@@ -4824,11 +4668,11 @@
    "prompts": {},
    "title": "Interpreter"
   },
-  "facts_hash": "e78224e9b13172b0",
+  "facts_hash": "d16ab41ea20128dc",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "92a5bb70bcb60bb1",
   "sentence": "Coordinates the team's workflow by selecting the appropriate execution strategy based on the team's structure.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Opens the log entry for the whole run and picks the runner for the team's shape.",
    "If an AI reply cannot be read at all, the run ends with a parse error instead of crashing.",
@@ -4836,7 +4680,7 @@
   ]
  },
  "localtools": {
-  "checked_at": "96a9a03",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
@@ -5938,7 +5782,6 @@
    "kind": "code",
    "numbers": [
     "PoolLimits.timeout_s",
-    "Recipe.version",
     "TeamConfig.version",
     "WebLimits.timeout_s",
     "recalc.timeout_s"
@@ -5946,11 +5789,11 @@
    "prompts": {},
    "title": "Local toolbox (OpenShell sandbox, D96)"
   },
-  "facts_hash": "7a37b6e9f0b16ce9",
+  "facts_hash": "ca3eac5a9e067c8a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "7c7f0b7504b7d30d",
   "sentence": "With --local-tools on, Claude Code's tools and skills run in a fresh OpenShell sandbox per run: no network, only the workspace writable.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "D96: `claude mcp serve` and every command run inside a fresh OpenShell sandbox per run (image amoeba-sandbox:local, gateway on 127.0.0.1:17680): no network, Landlock lets only /sandbox, /tmp and /dev/null be written, skills are read-only under /opt/skills, no secrets, runs as user sandbox; the sandbox is deleted at the end.",
    "The harness gate refuses first what it can see: network commands, paths outside the workspace, writes to MCP configs, hooks, settings, CLAUDE.md or skills (protected_config); what a command hides is stopped by the sandbox. Files are copied back to runs/<id>/workspace/ after each call.",
@@ -5963,12 +5806,17 @@
   ]
  },
  "niche": {
-  "checked_at": "96a9a03",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
+     "callees": [],
+     "doc": "Step numbers (1-based) of a draft's answer step(s): the summariser's steps, else the last step.",
+     "key": "amoeba/adapt/config.py::answer_steps",
+     "signature": "answer_steps(d: Draft) -> set[int]"
+    },
+    {
      "callees": [
-      "amoeba/adapt/architect.py::check",
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/checks/calc.py::check",
       "amoeba/checks/xlsx_formulas.py::check",
@@ -6085,8 +5933,8 @@
     },
     {
      "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/recipe.py::_answer_steps"
+      "amoeba/adapt/config.py::answer_steps",
+      "amoeba/adapt/evidence.py::EvidenceLog.append"
      ],
      "doc": "The profile's default done_when clauses, added by code to the answer step(s) of the final draft.",
      "key": "amoeba/config/niche.py::add_done_clauses",
@@ -6257,6 +6105,11 @@
      "skip (continue)"
     ],
     [
+     "fallback",
+     "{d.plan[-1].index + 1} if d.plan else set()",
+     "choose value"
+    ],
+    [
      "filter",
      "keep only if c not in CHECKS",
      "drop the rest"
@@ -6289,6 +6142,16 @@
     [
      "filter",
      "keep only if not tool_allowed(n, niche, descs.get(n, ''))[0]",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.is_summariser",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if s and s in x.agent_names",
      "drop the rest"
     ],
     [
@@ -6389,11 +6252,11 @@
    "prompts": {},
    "title": "Niche profiles (D102)"
   },
-  "facts_hash": "dbd1f5dfb53818f2",
+  "facts_hash": "556b7a374b3273f0",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "d219f1b6cf765c75",
   "sentence": "One file per environment says which tools and models are allowed, the limits, what counts as done, the domain's rules and words, and which domain checks run; plain code enforces it.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "--niche <name> loads profiles/<name>.yaml; the default, general, changes nothing.",
    "The prompts stay generic: one Environment section in Box 1's and Box 2's prompts is filled from the profile, asking the team to assess the environment first and plan only with what is allowed.",
@@ -6402,43 +6265,38 @@
   ]
  },
  "ov_adapt": {
-  "checked_at": "982eebb",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
      "callees": [
-      "amoeba/adapt/architect.py::_allowed_ok",
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/proposer.py::FixEdit.key",
-      "amoeba/adapt/recipe.py::Edit.key",
-      "amoeba/adapt/recipe.py::apply_edit",
-      "amoeba/adapt/recipe.py::validate_recipe",
-      "amoeba/llm/cache.py::CachedLLM.key",
+      "amoeba/adapt/config.py::adapt_config",
       "amoeba/llm/cache.py::_Store.get",
-      "amoeba/pool/stock.py::SharedPicks.get",
-      "amoeba/pool/stock.py::SharedPicks.key"
+      "amoeba/pool/stock.py::SharedPicks.get"
      ],
-     "doc": "Plain code's checks of one proposal; empty when it may be applied. `allowed`: the edits the cause allows",
-     "key": "amoeba/adapt/architect.py::check",
-     "signature": "check(reply: ArchitectReply, allowed: list[str], recipe: Recipe, failed: list[dict], envelope=None, sample_draft=None) -> list[str]"
+     "doc": "One cause for a stuck step: the first cause in `diagnoser.causes` that a signal names; its allowed edits",
+     "key": "amoeba/adapt/stuck.py::diagnose",
+     "signature": "diagnose(signals: list[dict], config: dict | None=None) -> dict"
     }
    ],
    "checks": [],
    "guards": [],
    "kind": "top",
-   "numbers": [],
+   "numbers": [
+    "MAX_EVIDENCE"
+   ],
    "prompts": {},
    "title": "4 · Adapt within the task"
   },
-  "facts_hash": "a804c77fb21226b5",
-  "seed_hash": "301450c9405a0214",
+  "facts_hash": "55f99105e845e962",
+  "seed_hash": "e183d4df6c04f628",
   "sentence": "D117: the offline learning loop is gone; adaptation happens inside one task, when a Box 3 step gets stuck.",
   "source": "hand",
   "what": [
    "Stage B (built): after each step attempt plain code looks for the stuck signals, marks the step STUCK, diagnoses one cause and logs it.",
    "Stage C (built): code fixes, cheapest first — pass a missing input or re-run its upstream step once, more turns or retry turns or a larger input, attach the missing tool from the pool shortlist.",
    "Stage D (built): when the code fixes are used up or not allowed, the fix proposer (one AI call) proposes one edit; plain code checks and applies it. Within limits; when nothing recovers the step the task stops with a report.",
-   "Kept for the fixes: the cause → edit table, the single-edit format with V1–V6, and the hash-chained event log.",
+   "Every stuck event, fix and stop goes to the run's hash-chained event log.",
    "Nothing carries over between tasks."
   ]
  },
@@ -6699,7 +6557,7 @@
   ]
  },
  "ov_run": {
-  "checked_at": "982eebb",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
@@ -6817,7 +6675,6 @@
     "Episode.team_version",
     "Limits.max_turns",
     "PLAN_MAX_TOKENS",
-    "Recipe.version",
     "TeamConfig.max_inner_turns",
     "TeamConfig.version",
     "run.seed"
@@ -6825,11 +6682,11 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "22d67fbdfb619a07",
+  "facts_hash": "a58a58ae639da410",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call and adaptation report is logged.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "The team runs in one of three shapes chosen when you start the run, never by an AI.",
    "Over the step graph (plan): each step sees only the job and the outputs of the steps it depends on, code checks each step's output, and a summariser only assembles.",
@@ -9019,17 +8876,15 @@
   ]
  },
  "proposer": {
-  "checked_at": "140688f",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
      "callees": [
+      "amoeba/adapt/config.py::adapt_config",
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/proposer.py::FixEdit.key",
       "amoeba/adapt/proposer.py::FixEdit.texts",
-      "amoeba/adapt/recipe.py::Edit.key",
-      "amoeba/adapt/recipe.py::Edit.texts",
-      "amoeba/adapt/recipe.py::adapt_config",
       "amoeba/llm/cache.py::CachedLLM.key",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -9046,7 +8901,6 @@
       "amoeba/adapt/proposer.py::FixEdit.key",
       "amoeba/adapt/proposer.py::fix_problems",
       "amoeba/adapt/proposer.py::parse_fix",
-      "amoeba/adapt/recipe.py::Edit.key",
       "amoeba/interp/plan_runner.py::PlanRunner._d_live",
       "amoeba/interp/plan_runner.py::PlanRunner._fix_done",
       "amoeba/interp/plan_runner.py::PlanRunner._proposer_call",
@@ -9353,15 +9207,15 @@
    },
    "title": "Fix proposer (D117 Stage D)"
   },
-  "facts_hash": "2dd35ab54851c931",
-  "seed_hash": "fcf541eeffdf3adc",
+  "facts_hash": "095df307fd654bac",
+  "seed_hash": "26d95855171d5479",
   "sentence": "The last rung: one AI call proposes one edit for the stuck step; plain code checks it, applies it to the live plan and re-runs the step.",
   "source": "hand",
   "what": [
    "Called only when the code fixes for the step are used up or not allowed (including \"capability fix unavailable: pool off\").",
    "It sees the task, the step's card and done_when, the cause and evidence, the last attempt's errors and checks (trimmed), the team (one line per role), the tools and skills of this run, the edits the cause allows and the fixes already tried.",
    "It returns one JSON edit with a short reason: add_role_rule, add_helper_role (the Planner's role card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the Planner's plan format, for the part not done) or work_around (capability only, after a grant_tool or add_helper_role was tried for the step; stated under Limitations; counted as finished with limitation, never recovered). At most two added helpers per task.",
-   "Plain code checks: allowed for the cause, schema, V1 tools, V3 sizes, V4 wording, V5 team size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second failure is no fix. The adaptation limits apply; success is the step ending done."
+   "Plain code checks, all in proposer.py and the plan runner: allowed for the cause, the schema, tools this run has (no outside action, not paid), text sizes and denied wording (adapt.yaml limits), team size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second failure is no fix. The adaptation limits apply; success is the step ending done."
   ]
  },
  "provenance": {
@@ -9746,847 +9600,6 @@
    "D70 (harness fixes): the action input is read to the end of the reply, so an answer is never cut at its first sub-heading; thinking tags are dropped wherever they stand, malformed ones too; AutoAgents' own Write File block ('>>>file name' … '>>>END') is turned into our local Write call."
   ]
  },
- "recipe": {
-  "checked_at": "4dbf020",
-  "facts": {
-   "anchors": [
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "text",
-       "str"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::AddRule",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "One typed edit (§3.2) with its parameters, validated per op (unknown keys are refused).",
-     "fields": [
-      [
-       "op",
-       "Literal['add_planner_rule', 'remove_planner_rule', 'add_verify_step', 'tighten_done_when', 'grant_tool', 'revoke_tool', 'add_role_rule', 'set_run_option', 'prefer_model']"
-      ],
-      [
-       "params",
-       "dict"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::Edit",
-     "methods": [
-      "key(self) -> str",
-      "texts(self) -> list[str]"
-     ],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "role",
-       "str"
-      ],
-      [
-       "model",
-       "str"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::PreferModel",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "family",
-       "str"
-      ],
-      [
-       "version",
-       "int"
-      ],
-      [
-       "parent_version",
-       "int | None"
-      ],
-      [
-       "planner_rules",
-       "list[Rule]"
-      ],
-      [
-       "transforms",
-       "list[Transform]"
-      ],
-      [
-       "run_options",
-       "dict[str, Any]"
-      ],
-      [
-       "model_prefs",
-       "dict[str, str]"
-      ],
-      [
-       "provenance",
-       "dict[str, dict]"
-      ],
-      [
-       "created_by",
-       "Literal['seed', 'human', 'architect', 'prune']"
-      ],
-      [
-       "hypothesis_id",
-       "str | None"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::Recipe",
-     "methods": [
-      "is_empty(self) -> bool",
-      "content(self) -> dict",
-      "line_keys(self) -> list[str]",
-      "hash(self) -> str"
-     ],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "id",
-       "str"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::RemoveRule",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "select",
-       "Selector"
-      ],
-      [
-       "text",
-       "str"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::RoleRule",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "id",
-       "str"
-      ],
-      [
-       "text",
-       "str"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::Rule",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "select",
-       "Selector"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::SelectOnly",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "Which steps or roles a transform acts on — matched by code against DraftPlanStep / DraftedRole fields only.",
-     "fields": [
-      [
-       "kind",
-       "Literal['work', 'verify', 'any']"
-      ],
-      [
-       "roles_with_tool",
-       "str | None"
-      ],
-      [
-       "last_work_step",
-       "bool"
-      ],
-      [
-       "all_roles",
-       "bool"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::Selector",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "name",
-       "str"
-      ],
-      [
-       "value",
-       "Any"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::SetOption",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "select",
-       "Selector"
-      ],
-      [
-       "clause",
-       "str"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::Tighten",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "select",
-       "Selector"
-      ],
-      [
-       "tool",
-       "str"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::ToolEdit",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "id",
-       "str"
-      ],
-      [
-       "op",
-       "Literal['add_verify_step', 'tighten_done_when', 'grant_tool', 'revoke_tool', 'add_role_rule']"
-      ],
-      [
-       "select",
-       "Selector"
-      ],
-      [
-       "params",
-       "dict"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::Transform",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [
-      [
-       "rule",
-       "Literal['V1', 'V2', 'V3', 'V4', 'V5', 'V6']"
-      ],
-      [
-       "detail",
-       "str"
-      ]
-     ],
-     "key": "amoeba/adapt/recipe.py::Violation",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "fields": [],
-     "key": "amoeba/adapt/recipe.py::_P",
-     "methods": [],
-     "signature": null
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "key": "amoeba/adapt/recipe.py::_adapt_config",
-     "signature": "_adapt_config(model_edits: bool) -> dict"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/recipe.py::_summariser"
-     ],
-     "doc": "Step numbers (1-based) of the answer step(s): the summariser's steps, else the last step.",
-     "key": "amoeba/adapt/recipe.py::_answer_steps",
-     "signature": "_answer_steps(d: Draft) -> set[int]"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/recipe.py::_summariser",
-      "amoeba/adapt/recipe.py::adapt_config",
-      "amoeba/task/models.py::DraftedRole"
-     ],
-     "doc": "The team's checker role: one that already owns a verify step, else one whose name says it checks; else a",
-     "key": "amoeba/adapt/recipe.py::_checker",
-     "signature": "_checker(d: Draft, avoid: list[str]) -> tuple[Draft, str]"
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "key": "amoeba/adapt/recipe.py::_next_id",
-     "signature": "_next_id(prefix: str, ids: list[str]) -> str"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append"
-     ],
-     "doc": "Make room for a new step number `at` (1-based): later steps move up one, and so do references to them.",
-     "key": "amoeba/adapt/recipe.py::_renumber",
-     "signature": "_renumber(plan: list[DraftPlanStep], at: int) -> list[DraftPlanStep]"
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "key": "amoeba/adapt/recipe.py::_summariser",
-     "signature": "_summariser(d: Draft) -> str | None"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/recipe.py::_answer_steps",
-      "amoeba/adapt/recipe.py::_checker",
-      "amoeba/adapt/recipe.py::_renumber",
-      "amoeba/adapt/recipe.py::select_steps",
-      "amoeba/task/models.py::DraftPlanStep"
-     ],
-     "doc": "",
-     "key": "amoeba/adapt/recipe.py::_t_add_verify_step",
-     "signature": "_t_add_verify_step(d: Draft, t: Transform) -> tuple[Draft, dict]"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/recipe.py::select_roles"
-     ],
-     "doc": "",
-     "key": "amoeba/adapt/recipe.py::_t_role_rule",
-     "signature": "_t_role_rule(d: Draft, t: Transform) -> tuple[Draft, dict]"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/recipe.py::select_steps"
-     ],
-     "doc": "",
-     "key": "amoeba/adapt/recipe.py::_t_tighten",
-     "signature": "_t_tighten(d: Draft, t: Transform) -> tuple[Draft, dict]"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/recipe.py::select_roles"
-     ],
-     "doc": "",
-     "key": "amoeba/adapt/recipe.py::_t_tools",
-     "signature": "_t_tools(d: Draft, t: Transform) -> tuple[Draft, dict]"
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "key": "amoeba/adapt/recipe.py::_texts",
-     "signature": "_texts(recipe: Recipe) -> list[tuple[str, str]]"
-    },
-    {
-     "callees": [],
-     "doc": "",
-     "key": "amoeba/adapt/recipe.py::_tools_of",
-     "signature": "_tools_of(d: Draft) -> dict[str, list[str]]"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/recipe.py::_adapt_config",
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
-     ],
-     "doc": "",
-     "key": "amoeba/adapt/recipe.py::adapt_config",
-     "signature": "adapt_config() -> dict"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/recipe.py::Rule",
-      "amoeba/adapt/recipe.py::Transform",
-      "amoeba/adapt/recipe.py::_next_id"
-     ],
-     "doc": "Pure: a new recipe (version + 1, parent = this version) with the edit applied. The input is not changed.",
-     "key": "amoeba/adapt/recipe.py::apply_edit",
-     "signature": "apply_edit(recipe: Recipe, edit: Edit, created_by: str='architect', hypothesis_id: str | None=None) -> Recipe"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append"
-     ],
-     "doc": "The recipe's transforms, in order, on a copy of the final Draft; returns it and what each one changed",
-     "key": "amoeba/adapt/recipe.py::apply_transforms",
-     "signature": "apply_transforms(draft: Draft, recipe: Recipe | None) -> tuple[Draft, list[dict]]"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append"
-     ],
-     "doc": "The Phase 1 plan checks V5 re-runs after the transforms: depends_on names existing steps, no cycle, every",
-     "key": "amoeba/adapt/recipe.py::plan_problems",
-     "signature": "plan_problems(d: Draft) -> list[str]"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/recipe.py::_summariser",
-      "amoeba/adapt/recipe.py::select_steps"
-     ],
-     "doc": "Role names the selector matches; the summariser (who writes the answer and holds no tools) never is.",
-     "key": "amoeba/adapt/recipe.py::select_roles",
-     "signature": "select_roles(d: Draft, sel: Selector) -> list[str]"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/recipe.py::_answer_steps",
-      "amoeba/adapt/recipe.py::_tools_of",
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
-     ],
-     "doc": "Step numbers (1-based) the selector matches; the answer step is never selected.",
-     "key": "amoeba/adapt/recipe.py::select_steps",
-     "signature": "select_steps(d: Draft, sel: Selector) -> list[int]"
-    },
-    {
-     "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/adapt/recipe.py::Violation",
-      "amoeba/adapt/recipe.py::_texts",
-      "amoeba/adapt/recipe.py::adapt_config",
-      "amoeba/adapt/recipe.py::apply_transforms",
-      "amoeba/adapt/recipe.py::plan_problems",
-      "amoeba/llm/cache.py::_Store.get",
-      "amoeba/pool/stock.py::SharedPicks.get",
-      "amoeba/pool/stock.py::side_effect"
-     ],
-     "doc": "V1–V5, plain code. envelope: the Phase 1 Envelope (its allowlist is the registry's tools); sample_draft: a",
-     "key": "amoeba/adapt/recipe.py::validate_recipe",
-     "signature": "validate_recipe(recipe: Recipe, envelope=None, sample_draft: Draft | None=None) -> list[Violation]"
-    }
-   ],
-   "checks": [],
-   "guards": [
-    [
-     "correct",
-     "if 'min' in spec and (not (isinstance(value, int) and (not isinstance(value, bool)) and (spec['min'] <= value <= spec['max'])))",
-     "add Violation(rule='V2', detail=f\"run option {name}={value!r} not in {spec['min']}–{spec['max']}\")"
-    ],
-    [
-     "correct",
-     "if 'values' in spec and value not in spec['values']",
-     "add Violation(rule='V2', detail=f\"run option {name}={value!r} not in {spec['values']}\")"
-    ],
-    [
-     "correct",
-     "if bad",
-     "add f'step {n} depends on unknown step(s) {bad}'"
-    ],
-    [
-     "correct",
-     "if envelope is not None and tool not in allowed",
-     "add Violation(rule='V1', detail=f'{t.id}: tool {tool!r} is not in the registry or allowlist')"
-    ],
-    [
-     "correct",
-     "if hit",
-     "add Violation(rule='V1', detail=f'{t.id}: tool {tool!r} acts outside ({hit!r})')"
-    ],
-    [
-     "correct",
-     "if hits",
-     "add Violation(rule='V4', detail=f'{where}: denied wording {hits} (review by hand)')"
-    ],
-    [
-     "correct",
-     "if len(d.created_roles) > getattr(envelope, 'max_agents', 5)",
-     "add Violation(rule='V5', detail=f'{len(d.created_roles)} roles > {envelope.max_agents}')"
-    ],
-    [
-     "correct",
-     "if len(recipe.planner_rules) > cfg['max_rules']",
-     "add Violation(rule='V3', detail=f\"{len(recipe.planner_rules)} rules > {cfg['max_rules']}\")"
-    ],
-    [
-     "correct",
-     "if len(recipe.transforms) > cfg['max_transforms']",
-     "add Violation(rule='V3', detail=f\"{len(recipe.transforms)} transforms > {cfg['max_transforms']}\")"
-    ],
-    [
-     "correct",
-     "if len(text) > cfg['max_text_chars']",
-     "add Violation(rule='V3', detail=f\"{where}: {len(text)} characters > {cfg['max_text_chars']}\")"
-    ],
-    [
-     "correct",
-     "if missing",
-     "add f'step {s.index + 1} names unknown role(s) {missing}'"
-    ],
-    [
-     "correct",
-     "if model not in reg",
-     "add Violation(rule='V6', detail=f'prefer_model: {model!r} is not in the model registry')"
-    ],
-    [
-     "correct",
-     "if not cfg.get('allow_model_edits')",
-     "add Violation(rule='V6', detail='model edits are off (--allow-model-edits)')"
-    ],
-    [
-     "correct",
-     "if not ready",
-     "add f'cycle among steps {sorted(set(deps) - done)}'"
-    ],
-    [
-     "correct",
-     "if not text.strip()",
-     "add Violation(rule='V3', detail=f'{where}: empty text')"
-    ],
-    [
-     "correct",
-     "if numbers != list(range(1, len(d.plan) + 1))",
-     "add f'step numbers are not 1..{len(d.plan)}: {numbers}'"
-    ],
-    [
-     "correct",
-     "if role not in roles",
-     "add Violation(rule='V6', detail=f'prefer_model: unknown role {role!r}')"
-    ],
-    [
-     "correct",
-     "if s.index + 1 in _answer_steps(d.model_copy(update={'plan': plan})) and at not in s.depends_on",
-     "add at"
-    ],
-    [
-     "correct",
-     "if spec is None",
-     "add Violation(rule='V2', detail=f'run option {name!r} is not whitelisted')"
-    ],
-    [
-     "correct",
-     "if t.op == 'grant_tool' and ('x402' in tool.lower() or 'paid' in tool.lower())",
-     "add Violation(rule='V1', detail=f'{t.id}: tool {tool!r} is a paid endpoint')"
-    ],
-    [
-     "decide",
-     "if edit.op == 'add_planner_rule'",
-     "set key = _next_id('L', [x.id for x in r.planner_rules])"
-    ],
-    [
-     "decide",
-     "if edit.op == 'prefer_model'",
-     "set r.model_prefs[p['role']] = p['model']"
-    ],
-    [
-     "decide",
-     "if edit.op == 'remove_planner_rule'",
-     "set r.planner_rules = [x for x in r.planner_rules if x.id != p['id']]"
-    ],
-    [
-     "decide",
-     "if edit.op == 'set_run_option'",
-     "set r.run_options[p['name']] = p['value']"
-    ],
-    [
-     "decide",
-     "if isinstance(norm.get(k), str)",
-     "set norm[k] = ' '.join(norm[k].lower().split())"
-    ],
-    [
-     "decide",
-     "if key",
-     "set r.provenance[key] = {'hypothesis_id': hypothesis_id, 'created_by': created_by, 'date': dat"
-    ],
-    [
-     "decide",
-     "if len(d.created_roles) < 5 and name not in [r.name for r in d.created_roles]",
-     "set role = DraftedRole(name=name, description='Re-checks the figures and claims of the step it"
-    ],
-    [
-     "decide",
-     "if model_edits",
-     "set cfg['recipe']['allow_model_edits'] = True"
-    ],
-    [
-     "decide",
-     "if recipe.model_prefs",
-     "set models = yaml.safe_load((CONFIG.parent / 'models.yaml').read_text(encoding='utf-8')) or {}"
-    ],
-    [
-     "decide",
-     "if sel.last_work_step",
-     "set work = [n for n in out if (d.plan[n - 1].kind or 'work') == 'work']"
-    ],
-    [
-     "decide",
-     "if self.model_prefs",
-     "set out['model_prefs'] = dict(sorted(self.model_prefs.items()))"
-    ],
-    [
-     "decide",
-     "if t.op == 'grant_tool' and tool not in r.tools",
-     "set r = r.model_copy(update={'tools': [*r.tools, tool]})"
-    ],
-    [
-     "decide",
-     "if t.op == 'revoke_tool' and tool in r.tools",
-     "set r = r.model_copy(update={'tools': [x for x in r.tools if x != tool]})"
-    ],
-    [
-     "fallback",
-     "d + 1 if d >= at else d",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "except (ValidationError, ValueError, KeyError, IndexError)",
-     "add Violation(rule='V5', detail=f'the transforms fail on the sample draft: {e}'[:300])"
-    ],
-    [
-     "fallback",
-     "r.model_copy(update={'constraints': [*r.constraints, text]}) if r.name in roles else r",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "s.done_when.rstrip(' .') + '. ' if s.done_when.strip() else ''",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "s.index + 1 if s.index + 1 >= at else s.index",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "s.model_copy(update={'done_when': (s.done_when.rstrip(' .') + '. ' if s.done_when.strip() else '') + clause}) if s.index + 1 in steps else s",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "side_effect(tool, desc) if t.op == 'grant_tool' else None",
-     "choose value"
-    ],
-    [
-     "fallback",
-     "{d.plan[-1].index + 1} if d.plan else set()",
-     "choose value"
-    ],
-    [
-     "filter",
-     "keep only if (d.plan[n - 1].kind or 'work') == 'work'",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if (s.kind or '') == 'verify'",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if a != summ",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if a not in roles",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if i.startswith(prefix) and i[len(prefix):].isdigit()",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if k != 'select'",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if k in t.params",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if n in picked",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if n not in done and all((x in done or x not in known for x in deps[n]))",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if r.is_summariser",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if r.name != summ",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if r.name != summ and any((w in (r.name + ' ' + r.description).lower() for w in ('check', 'verif', 'review', 'qa', 'audit')))",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if r.name != summ and r.name not in avoid",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if r.name != summ and sel.roles_with_tool in r.tools",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if s and s in x.agent_names",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if self.params.get(k)",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if w in low",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if x != tool",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if x not in known",
-     "drop the rest"
-    ],
-    [
-     "filter",
-     "keep only if x.id != p['id']",
-     "drop the rest"
-    ],
-    [
-     "loop cap",
-     "while len(done) < len(deps)",
-     "loop ends"
-    ],
-    [
-     "reject",
-     "if n in answer",
-     "skip (continue)"
-    ],
-    [
-     "reject",
-     "if p['id'] not in [x.id for x in r.planner_rules]",
-     "raise ValueError"
-    ],
-    [
-     "reject",
-     "if sel.kind != 'any' and kind != sel.kind",
-     "skip (continue)"
-    ],
-    [
-     "reject",
-     "if sel.roles_with_tool and (not any((sel.roles_with_tool in tools.get(a, []) for a in s.agent_names)))",
-     "skip (continue)"
-    ],
-    [
-     "stop",
-     "if named",
-     "return (d, named[0])"
-    ],
-    [
-     "stop",
-     "if owners",
-     "return (d, owners[0])"
-    ],
-    [
-     "stop",
-     "if recipe is None or not recipe.transforms",
-     "return (draft, [])"
-    ],
-    [
-     "stop",
-     "if sel.all_roles",
-     "return names"
-    ],
-    [
-     "stop",
-     "if sel.roles_with_tool and sel.kind == 'any' and (not sel.last_work_step)",
-     "return [r.name for r in d.created_roles if r.name != summ and sel.roles_with_tool in r.tools]"
-    ]
-   ],
-   "kind": "code",
-   "numbers": [
-    "Envelope.max_agents",
-    "Recipe.version",
-    "TeamConfig.version"
-   ],
-   "prompts": {},
-   "title": "Edit menu, transforms and V1–V6 (kept from D81)"
-  },
-  "facts_hash": "2e1557e01a6b2fae",
-  "seed_hash": "60cb0f326bb4e5ad",
-  "sentence": "The typed edits a fix may make, the code that applies them to a plan, and the plain-code validation every edit must pass.",
-  "source": "hand",
-  "what": [
-   "The edit menu: add or remove a planner rule, add a check step after selected steps, add a clause to selected steps' done-when, grant or revoke a tool on selected roles, add a rule to selected roles' cards, set one run option, prefer a model (built, off). Each edit is a pure function that makes version N+1 with parent N.",
-   "Transforms apply an edit to a Draft: add a verify step, tighten done_when, grant or revoke a tool, add a role rule; each returns what it changed.",
-   "Validation by plain code (V1–V6): tools are in the registry and not outside actions; run options are whitelisted and in range (max_turns 3–8, check_retry_turns 1–3, input sizes); at most 8 rules and 8 transforms of at most 300 characters (amoeba/config/adapt.yaml); no wording that tells the team to skip checks, citations or the sandbox; the step graph still passes the plan checks; a model preference names a known role and model.",
-   "D117: there is no recipe store and no recipe hook any more; nothing carries over between tasks. A Recipe is only the container one task's edits are checked in."
-  ]
- },
  "resolver": {
   "checked_at": "96a9a03",
   "facts": {
@@ -10752,7 +9765,7 @@
   ]
  },
  "router": {
-  "checked_at": "d99f4c4",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
@@ -11343,14 +10356,14 @@
    "title": "Model router (D97–D98)"
   },
   "facts_hash": "a6ce870b36ae6c35",
-  "seed_hash": "8135e3d1f4fd013d",
+  "seed_hash": "b3aef96263e4b10a",
   "sentence": "Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters that are never relaxed, then a preference set for the role (D98, built, off), the role's default or the cheapest of the right size.",
   "source": "hand",
   "what": [
    "Every call states its role, step, size, needed features and data class; the router keeps the models that are allowed (niche profile, --allowed-models) and available (key present, not cooling down, not failing), drops those whose context, features, privacy, budget or verifier-independence rule fails, then chooses.",
    "One token bucket per model, shared by every process, keeps calls inside the model's per-minute limits; a 429 cools a model down and the next one of the same size is used (with one model: wait).",
    "Every decision — candidates, what was filtered and why, the choice, fallbacks and waits — is logged; result.json gets calls, tokens and US dollars per model. A new model is a registry entry only.",
-   "D98: a prefer_model edit (built, off) fills the router's per-role preference; it is used only when that model is still a candidate after every filter, and a verifier preference for the checked work's family is logged as verifier_same_family: recipe preference.",
+   "The router still takes a per-role model preference (begin_run); since D117 removed D98's prefer_model edit, nothing sets it.",
    "D102: the niche profile's model allowlist and verifier-independence setting feed the router; a model outside the profile is filtered out with reason profile."
   ]
  },
@@ -13301,7 +12314,7 @@
   ]
  },
  "stuck": {
-  "checked_at": "8c49914",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
@@ -13320,7 +12333,7 @@
     },
     {
      "callees": [
-      "amoeba/adapt/recipe.py::adapt_config",
+      "amoeba/adapt/config.py::adapt_config",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -13484,11 +12497,11 @@
    "prompts": {},
    "title": "Stuck watch and diagnosis (D117 Stage B)"
   },
-  "facts_hash": "289984518411b6ef",
+  "facts_hash": "80feb5d97478d4e4",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "a81f7db46b95d199",
   "sentence": "After each step attempt plain code marks a step that did not end done STUCK on any of six signals and names one cause.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Signals: a missing input (data an earlier step should have given, told from a missing tool by classify_lacked); the same tool error twice in a row (digits masked); checks still failing after the retry turn (unless the helpers ran out of turns); max turns; a capability or skill lacked or requested and unfilled; a file owed and no file change between attempts.",
    "Each signal names a cause; the first cause in the table order wins, with its allowed edits and at most eight evidence lines.",
@@ -13552,7 +12565,7 @@
   ]
  },
  "teamconfig": {
-  "checked_at": "837a4f6",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
@@ -13746,14 +12759,13 @@
     "AgentSpec.max_history",
     "AgentSpec.max_tokens",
     "AgentSpec.temperature",
-    "Recipe.version",
     "TeamConfig.max_inner_turns",
     "TeamConfig.version"
    ],
    "prompts": {},
    "title": "TeamConfig"
   },
-  "facts_hash": "0931ccd3a655f977",
+  "facts_hash": "ce1d1025b8ac62a9",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "53dfb3b38116dee8",
   "sentence": "The finished team written down as data: who exists, what each may use and who hands work to whom.",
@@ -15601,7 +14613,7 @@
   ]
  },
  "trace": {
-  "checked_at": "96a9a03",
+  "checked_at": "2f077a6",
   "facts": {
    "anchors": [
     {
@@ -15635,7 +14647,6 @@
     },
     {
      "callees": [
-      "amoeba/adapt/architect.py::check",
       "amoeba/checks/calc.py::check",
       "amoeba/checks/xlsx_formulas.py::check",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
@@ -15701,7 +14712,7 @@
    "prompts": {},
    "title": "Every AI call → one trace line"
   },
-  "facts_hash": "966e9233538a5ce5",
+  "facts_hash": "0800cb189f376c66",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0f5f3df261f75ad2",
   "sentence": "Writes one log line per AI call and tool call: who, which model, tokens, reasoning tokens, time, step, and automated safety checks. Nothing enforces a budget.",
