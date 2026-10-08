@@ -730,14 +730,14 @@ BOXES: list[dict] = [
                "Finished runs that pass the key scan are shipped as fast-forward commits to the orphan `evidence` "
                "branch, at most one commit per 10 minutes plus a final one; each commit message carries the chain "
                "head. Shipping runs in the harness only; agents never get git credentials or cloud credentials.",
-               "D117: the loop that wrote it is gone; the log is kept for in-task adaptation, where every stuck step, "
-               "diagnosis and fix will be a row."],
+               "D117: the loop that wrote it is gone; the log is kept for in-task adaptation: every stuck step, "
+               "diagnosis, fix tried and stop is a row (settings read through amoeba/adapt/config.py)."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes, chains and verifies the log.",
          anchors=[]),
-    dict(id="router", view="around", title="Model router (D97–D98)", kind="code", plan=None,
+    dict(id="router", view="around", title="Model router (D97)", kind="code", plan=None,
          sentence="Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters "
-                  "that are never relaxed, then a preference set for the role (D98, built, off), the role's default or the cheapest of the right size.",
+                  "that are never relaxed, then a preference for the role (none is set since D117), the role's default or the cheapest of the right size.",
          what=["Every call states its role, step, size, needed features and data class; the router keeps the models "
                "that are allowed (niche profile, --allowed-models) and available (key present, not cooling down, not "
                "failing), drops those whose context, features, privacy, budget or verifier-independence rule fails, "

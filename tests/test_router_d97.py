@@ -129,10 +129,10 @@ def test_verifier_independence_required_preferred_and_off(tmp_path):
     assert "verifier independence required" in r.decisions[-1]["filtered"]["gemma"]
 
 
-def test_the_recipe_preference_and_the_role_default_come_first(tmp_path):
+def test_the_role_preference_and_the_role_default_come_first(tmp_path):
     a, b = entry("a", price=(1, 1)), entry("b", price=(2, 2))
-    r = router([a, b], tmp_path, policy={"role_defaults": {"planner": "b"}}, recipe_prefs={"worker": "b"})
-    assert r.route(CallSpec(role="worker"))[1]["why"] == "recipe preference"
+    r = router([a, b], tmp_path, policy={"role_defaults": {"planner": "b"}}, role_prefs={"worker": "b"})
+    assert r.route(CallSpec(role="worker"))[1]["why"] == "role preference"
     assert r.route(CallSpec(role="planner"))[1]["why"] == "role default"
     assert r.route(CallSpec(role="summariser"))[0] == "a"
 

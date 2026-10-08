@@ -8,7 +8,7 @@ features, data class, the steps it checks) and `ModelRouter.route(spec)` picks t
   b. hard filters, never relaxed: context window ≥ prompt + reply; the needed features (json, tools, vision);
      sensitive data → privacy local only; estimated USD ≤ what is left of the run USD cap; verifier independence
      (`required` keeps only models of another family than the one that produced the checked work);
-  c. choice: a preference for the role (begin_run's recipe_prefs; nothing sets it since D117) if still a candidate;
+  c. choice: a preference for the role (begin_run's role_prefs; nothing sets it since D117) if still a candidate;
      else the role's default from the profile;
      else the cheapest candidate in the role's size tier (tie → the lowest current load); under verifier
      independence `preferred` a different family wins when one is left, else the same family is used and the
@@ -187,7 +187,7 @@ class ModelRouter(LLMClient):
     def __init__(self, registry: dict[str, ModelEntry], policy: dict, make: Callable[[ModelEntry], LLMClient],
                  mode: str = "routed", allowed: list[str] | None = None, profile_allowed: list[str] | None = None,
                  usd_cap: float | None = None, env=None, rate_dir: str | Path | None = None,
-                 recipe_prefs: dict | None = None, fixed_model: str | None = None, clock=time.time, sleep=time.sleep,
+                 role_prefs: dict | None = None, fixed_model: str | None = None, clock=time.time, sleep=time.sleep,
                  failing_after: int = 3):
         if mode not in ("fixed", "routed"):
             raise ValueError("ModelRouter modes: fixed | routed (role mode is the D54 RoleRouter)")
@@ -195,7 +195,7 @@ class ModelRouter(LLMClient):
         self.allowed, self.profile_allowed = allowed, profile_allowed
         self.usd_cap, self.env = usd_cap, os.environ if env is None else env
         self.rate_dir = Path(rate_dir or os.environ.get("AMOEBA_RATE_DIR") or Path.home() / ".cache" / "amoeba" / "rate")
-        self.recipe_prefs = dict(recipe_prefs or {})
+        self.role_prefs = dict(role_prefs or {})
         self.clock, self.sleep, self.failing_after = clock, sleep, failing_after
         self.fixed = fixed_model or policy.get("default_model") or next(iter(registry), None)
         self._clients: dict[str, LLMClient] = {}
@@ -208,11 +208,11 @@ class ModelRouter(LLMClient):
         self.data_class = "normal"
         self.model = self.fixed or ""
 
-    def begin_run(self, data_class: str = "normal", recipe_prefs: dict | None = None,
+    def begin_run(self, data_class: str = "normal", role_prefs: dict | None = None,
                   usd_cap: float | None = None) -> None:
         """A fresh account for one run (the router object is shared by the runs of one command)."""
         self.data_class = data_class
-        self.recipe_prefs = dict(recipe_prefs or {})
+        self.role_prefs = dict(role_prefs or {})
         if usd_cap is not None:
             self.usd_cap = usd_cap
         self.usage, self.decisions, self.step_family = {}, [], {}
@@ -294,11 +294,11 @@ class ModelRouter(LLMClient):
                                                                               dec["filtered"].items()) or "registry empty")
         # c. choice
         chosen, how = None, ""
-        pref = self.recipe_prefs.get(spec.role)
+        pref = self.role_prefs.get(spec.role)
         if self.mode == "fixed":
             chosen, how = left[0], "fixed"
         elif pref in left:
-            chosen, how = pref, "recipe preference"
+            chosen, how = pref, "role preference"
         elif (self.policy.get("role_defaults") or {}).get(spec.role) in left:
             chosen, how = self.policy["role_defaults"][spec.role], "role default"
         else:
@@ -313,7 +313,7 @@ class ModelRouter(LLMClient):
         if indep in ("preferred", "required") and produced:
             if self.registry[chosen].family in produced:
                 alt = any(self.registry[n].family not in produced for n in left)
-                dec["verifier_same_family"] = "recipe preference" if alt and how == "recipe preference" else \
+                dec["verifier_same_family"] = "role preference" if alt and how == "role preference" else \
                     "no alternative"
             dec["checked_family"] = sorted(produced)
         dec.update(chosen=chosen, why=how, family=self.registry[chosen].family)

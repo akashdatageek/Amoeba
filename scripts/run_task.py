@@ -91,7 +91,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
     if hasattr(llm, "begin_run"):  # D97: the router's account for this run (data class)
-        llm.begin_run(data_class="sensitive" if "sensitive" in (task.tags or []) else "normal", recipe_prefs=None)
+        llm.begin_run(data_class="sensitive" if "sensitive" in (task.tags or []) else "normal", role_prefs=None)
     t0 = time.perf_counter()
     family_rec = None
     if family_classify and topology == "plan" and task.family == "freeform":      # D101: Box 1 names the family
