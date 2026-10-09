@@ -6,6 +6,12 @@ picks are the same and the arms differ only in Box 3. Everything after `--` is p
 unchanged. A pair whose arm already has a result.json is not run again (resumable). Each arm is logged to
 <out>/pairs.jsonl: task, seed, arm, run folder, exit code, start and end.
 
+D119: `--inject-fault <cause>:<step>[:<n>]` (repeatable) runs injected pairs instead: both arms get the same fault
+(run_task's test-only flag, with AMOEBA_TEST_FAULTS=1 set for those two processes only), and both reuse the plan.json
+of the same task and seed's clean off run in <out> (run the clean pairs first), so an injected pair differs from the
+clean pair only by the fault, and from each other only by --adapt. Injected runs go to <arm>/<task>.s<seed>.<label>
+(label: "fault-" and the causes) and their rows carry `fault` and `faults`.
+
     python -m scripts.stage_e --tasks tasks/probe_hard.jsonl --ids probe-h1-freight,probe-h2-income \\
         --seeds 0 --out eval/stage_e/pilot -- --topology plan --llm openai ...
 """
@@ -13,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -44,43 +51,69 @@ def run_dir_of(runs: Path) -> Path | None:
 
 # box: stage_e
 def arm_command(arm: str, task_file: Path, seed: int, runs: Path, picks: Path, off_run: Path | None,
-                passthrough: list[str], python: str = sys.executable) -> list[str]:
+                passthrough: list[str], python: str = sys.executable, faults: list[str] | None = None,
+                draft_from: Path | None = None) -> list[str]:
     cmd = [python, "-m", "scripts.run_task", "--tasks", str(task_file), "--seed", str(seed), "--adapt", arm,
            "--runs-dir", str(runs), "--picks-file", str(picks), *passthrough]
-    if arm == "on":
+    if draft_from is not None:                    # D119: an injected pair reuses the clean off run's draft
+        cmd += ["--drafts-from", str(draft_from)]
+    elif arm == "on":
         cmd += ["--drafts-from", str(off_run)]
+    for f in faults or []:
+        cmd += ["--inject-fault", f]
     return cmd
 
 
 # box: stage_e
+def fault_label(faults: list[str]) -> str:
+    return "fault-" + "+".join(dict.fromkeys(f.split(":")[0] for f in faults)) if faults else ""
+
+
+# box: stage_e
+def arm_env(faults: list[str] | None) -> dict | None:
+    """The environment of an injected arm: this process's, plus AMOEBA_TEST_FAULTS=1 (None: inherit unchanged)."""
+    return {**os.environ, "AMOEBA_TEST_FAULTS": "1"} if faults else None
+
+
+# box: stage_e
 def run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthrough: list[str],
-              python: str = sys.executable) -> list[dict]:
+              python: str = sys.executable, faults: list[str] | None = None) -> list[dict]:
     out.mkdir(parents=True, exist_ok=True)
     log, rows = out / "pairs.jsonl", []
     picks = out / "picks.json"
+    label = fault_label(faults or [])
     for task_id in ids:
         task_file = one_task_file(tasks, task_id, out)
         for seed in seeds:
-            off_run = None
+            off_run, clean = None, None
+            if faults:
+                clean = run_dir_of(out / "off" / f"{task_id}.s{seed}")
+                if clean is None:
+                    print(f"== skip {task_id} seed {seed} {label}: no clean off run to reuse; run the clean pair "
+                          f"first", flush=True)
+                    continue
             for arm in ARMS:
-                runs = out / arm / f"{task_id}.s{seed}"
+                runs = out / arm / (f"{task_id}.s{seed}" + (f".{label}" if label else ""))
                 done = run_dir_of(runs)
                 if done is not None:
                     off_run = done if arm == "off" else off_run
                     print(f"== skip {task_id} seed {seed} {arm}: {done.name} exists", flush=True)
                     continue
-                if arm == "on" and off_run is None:
+                if arm == "on" and off_run is None and not faults:
                     print(f"== skip {task_id} seed {seed} on: the off arm left no run to reuse", flush=True)
                     continue
                 runs.mkdir(parents=True, exist_ok=True)
                 start = datetime.now(timezone.utc).isoformat(timespec="seconds")
                 print(f"== start {task_id} seed {seed} {arm} {start}", flush=True)
                 t0 = time.monotonic()
-                rc = subprocess.call(arm_command(arm, task_file, seed, runs, picks, off_run, passthrough, python))
+                rc = subprocess.call(arm_command(arm, task_file, seed, runs, picks, off_run, passthrough, python,
+                                                 faults=faults, draft_from=clean), env=arm_env(faults))
                 run = run_dir_of(runs)
                 row = {"task": task_id, "seed": seed, "arm": arm, "run": str(run.resolve()) if run else None, "rc": rc,
                        "start": start, "end": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                        "wall_s": round(time.monotonic() - t0, 1)}
+                if faults:
+                    row.update(fault=label, faults=list(faults), draft_from=str(clean.resolve()))
                 rows.append(row)
                 with open(log, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps(row) + "\n")
@@ -99,11 +132,22 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--ids", required=True, help="comma-separated task ids")
     p.add_argument("--seeds", default="0", help="comma-separated seeds")
     p.add_argument("--out", required=True)
+    p.add_argument("--inject-fault", action="append", default=[], metavar="CAUSE:STEP[:N]",
+                   help="D119 (test-only): run injected pairs with this fault (repeatable); both arms reuse the clean "
+                        "off run's draft from --out")
     a = p.parse_args(own)
-    for flag in ("--adapt", "--drafts-from", "--runs-dir", "--seed", "--tasks", "--picks-file"):
+    for flag in ("--adapt", "--drafts-from", "--runs-dir", "--seed", "--tasks", "--picks-file", "--inject-fault"):
         if flag in passthrough:
             raise SystemExit(f"{flag} is set by the pair runner; leave it out of the pass-through flags")
-    run_pairs(Path(a.tasks), a.ids.split(","), [int(s) for s in a.seeds.split(",")], Path(a.out), passthrough)
+    if a.inject_fault:
+        from amoeba.adapt.faults import parse_fault
+        for f in a.inject_fault:
+            try:
+                parse_fault(f)
+            except ValueError as e:
+                raise SystemExit(str(e))
+    run_pairs(Path(a.tasks), a.ids.split(","), [int(s) for s in a.seeds.split(",")], Path(a.out), passthrough,
+              faults=a.inject_fault)
 
 
 if __name__ == "__main__":

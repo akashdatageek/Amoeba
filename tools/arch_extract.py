@@ -845,6 +845,22 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code runs the pairs and counts.",
          anchors=["scripts/stage_e.py::run_pairs", "scripts/stage_e_report.py::run_record"], guard_anchors=[]),
+    dict(id="faults", view="adapt", title="Fault injection (D119, test-only)", kind="code", plan=None,
+         sentence="Puts one known fault into one step, so the stuck watch's diagnosis and the fixes can be checked "
+                  "against a ground truth; refused unless AMOEBA_TEST_FAULTS=1.",
+         what=["--inject-fault <cause>:<step>[:<n>] (hidden from --help): tool_error (the first n tool calls return "
+               "an injected error), capability (one tool taken from the step's helpers until a grant gives it back), "
+               "missing_input (the first input cut until a fix passes it in full), missing_input_b (the upstream "
+               "output saved cut once), max_turns (n turns, no forced last turn, until a fix sets the turns), checks "
+               "(one more check: a markdown table with a Source column).",
+               "\"auto\" picks the step by code from the plan; each fault fires the same way with --adapt off and on; "
+               "arming, firing and clearing are trace events and result.json records `faults`.",
+               "Stage E: the pair runner's --inject-fault runs injected pairs that reuse the clean off run's draft; "
+               "the report gives each fault's diagnosis against the expected one, false alarms, the fixes and a "
+               "confusion table."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code arms the fault, fires it at its hook in the plan runner and records it.",
+         anchors=["amoeba/adapt/faults.py::Faults", "amoeba/adapt/faults.py::check_flag"], guard_anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and

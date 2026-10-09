@@ -41,10 +41,14 @@ adapt:                        # D117 Stage C: in-task code fixes (--adapt on); a
   max_added_helpers: 2        # D117 D (user): helpers the fix proposer may add (add_helper_role) in one task
   stop_when_exhausted: true   # D117 D: the code fixes, then the fix proposer; none recovers the step → the task stops with a report
 
-evidence:                     # D95: the evidence log's off-container copy (used by the removed loop; kept)
+# D95, kept by D117: where the hash-chained event log is copied off the container. The log itself is each run's
+# events.jsonl, written by the stuck watch, the fixes and the stops (amoeba/interp/plan_runner.py; checked by
+# scripts/verify_evidence.py). make_shipper (amoeba/adapt/evidence.py) reads these settings; no run calls it yet, so
+# run folders are committed by hand (docs/RUNNING_ON_A_VM.md, section 7).
+evidence:
   target: "github"            # github: the repository's orphan `evidence` branch; "none": no shipping
   branch: "evidence"          # a ruleset is meant to block force-push and deletion on it
   worktree: "../amoeba-evidence"   # the branch's worktree (relative to the repository), made if missing
   batch_seconds: 600          # at most one evidence commit per 10 minutes (forced at the end)
-  retries: 3                  # push attempts per batch; what failed stays unshipped in loop_state.json
+  retries: 3                  # push attempts per batch; what failed stays queued for the next batch
   gcs: {enabled: false}       # the bucket uploader is kept but disabled

@@ -15,6 +15,7 @@ from datetime import date
 from pathlib import Path
 
 from amoeba.adapt.evidence import EvidenceLog
+from amoeba.adapt.faults import Faults
 from amoeba.adapt.fixes import POOL_OFF, candidates, fix_key, limits as fix_limits
 from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
@@ -113,6 +114,7 @@ class PlanOptions:
     max_replans: int = 2             # D63: observer calls per run
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
     domain_checks: tuple = ()        # D102: the niche profile's checks (amoeba/checks/<name>.py) after each step
+    faults: tuple = ()               # D119: injected faults (test-only, --inject-fault; amoeba/adapt/faults.py)
 
 
 class PlanGraphError(ValueError):
@@ -620,6 +622,8 @@ class PlanRunner:
         self.proposer_gave_up: dict[int, str] = {}        # D117 Stage D: step -> why the fix proposer gave no fix
         self.workarounds: list[dict] = []                 # D117 Stage D: accepted work-arounds (for Limitations)
         self.helpers_added = 0                            # D117 Stage D: helpers the fix proposer added (capped)
+        self.faults = Faults(self.opt.faults, interp.trace)   # D119: test-only injected faults (none by default)
+        self.no_last_turn: set[int] = set()               # D119 max_turns fault: steps whose last turn is not forced
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
     # box: step_check
@@ -838,6 +842,8 @@ class PlanRunner:
         ws = waves(self.cfg.plan)
         deps = dependencies(self.cfg.plan)
         self.answer_n = self._answer_step(ws)
+        if self.faults:                                   # D119: resolve "auto" steps from the plan, log the arming
+            self.faults.arm(self.fault_steps(deps))
         self.i.trace.event("plan_graph", {"amoeba.waves": ws, "amoeba.depends_on": {str(k): v for k, v in deps.items()},
                                           "amoeba.max_turns": self._max_turns(), "amoeba.max_tokens": PLAN_MAX_TOKENS,
                                           **{f"amoeba.options.{k}": v for k, v in asdict(self.opt).items()}})
@@ -857,12 +863,14 @@ class PlanRunner:
                 self.run_step(self.steps[n], w, deps[n])
                 fixed = self.fix_stuck(n, w) if self.opt.adapt == "on" else None   # D117 Stages C–D
                 if fixed == "stop":                                                 # no fix recovered it
+                    self.ep.faults = self.faults.summary()
                     return self.stop_report(n)
                 if fixed == "replanned":                  # D117 Stage D: the plan changed; recompute the waves
                     break
             if replan:
                 self.action_observer(w)
         ws = waves(self.cfg.plan)
+        self.ep.faults = self.faults.summary()                # D119: [] without --inject-fault
         if self.opt.adapt == "on":
             self.ep.adaptation = self.adapt_summary()
             if self.stuck:                                    # D117 Stage D: the report, also when nothing stopped
@@ -973,14 +981,28 @@ class PlanRunner:
         for d in deps:
             a = self.artifacts[d]
             m = a["meta"]
-            body = a["text"] if d in self.step_opts.get(n, {}).get("full_from", ()) else \
+            full = d in self.step_opts.get(n, {}).get("full_from", ())
+            body = a["text"] if full else \
                 self.cap(a["text"], self.so(n, "max_input_chars"), n or 0, d, "input")     # D117: a fix may widen it
+            body = self.faults.input_body(n, d, body, full)                            # D119 missing_input
             stale = f", STALE (built on step(s) {', '.join(map(str, m['stale_because']))} before their rework)" \
                 if m.get("stale") else ""
             parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{stale}\n{body}")
             if evidence and self.opt.contract == "on":          # D61 (G4): the verifier sees what the step used
                 parts[-1] += "\n\n" + self.evidence_text(d)
         return "\n\n".join(parts)
+
+    # box: faults
+    def fault_steps(self, deps: dict[int, list[int]]) -> list[dict]:
+        """D119: what "auto" picks a step from — each step's inputs, its helpers' tools (first helper first), and
+        whether it is the summary or a verification step."""
+        out = []
+        for st in self.cfg.plan:
+            n = number(st)
+            tools = list(dict.fromkeys(t for a in st.agent_ids for t in self.agents[a].tools))
+            out.append({"n": n, "deps": list(deps.get(n, [])), "tools": tools,
+                        "summary": self.is_summary_step(st), "verify": self.is_verification(st)})
+        return out
 
     # box: fixes
     def so(self, n: int | None, name: str):
@@ -994,6 +1016,7 @@ class PlanRunner:
         n = number(step)
         previous = (self.artifacts.get(n) or {}).get("meta")                     # D117: the attempt before, if any
         agents = [self.agents[a] for a in step.agent_ids]
+        self.faults.hide(n, agents)                                               # D119 capability
         summarising = self.is_summary_step(step)                                  # D35
         verifier = self.is_verification(step) and not summarising
         inputs = self.all_inputs_text(n) if summarising else self.inputs_text(deps, n, evidence=verifier)
@@ -1044,7 +1067,10 @@ class PlanRunner:
                                         previous=self.artifacts[n]["text"].strip())
         if fixing and fixing.get("note"):                                       # D117 Stage C: what the fix changed
             extra += "\n\n" + fixing["note"]
-        w = _Work(max_turns=self.step_opts.get(n, {}).get("max_turns") or agents[0].limits.max_turns)
+        turns, forced = self.faults.turns(n, self.step_opts.get(n, {}).get("max_turns") or agents[0].limits.max_turns,
+                                          bool(self.step_opts.get(n, {}).get("max_turns")))   # D119 max_turns
+        (self.no_last_turn.discard if forced else self.no_last_turn.add)(n)
+        w = _Work(max_turns=turns)
         if mine and not mine["reused"]:          # D90: the re-checks of the verifier's own result are its tool calls too
             w.calls, w.tool_results = list(mine["tool_calls"]), list(mine["tool_results"])
         template = PROMPT.plan_summarise if summarising else PROMPT.plan_step
@@ -1065,6 +1091,7 @@ class PlanRunner:
         checks += conclusion_check(text, w)                                       # D76
         checks += self.domain_checks(n, text, inputs, w, answer_step)             # D102
         checks += self.xlsx_checks(n, text)                                       # D113
+        checks += self.faults.extra_checks(n, text)                               # D119 checks
         own, visible = self._sources(n, deps)
         prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,   # D33
                                 self.computed_results(w), self.web_ids())
@@ -1084,6 +1111,7 @@ class PlanRunner:
             checks += conclusion_check(text, w)
             checks += self.domain_checks(n, text, inputs, w, answer_step)
             checks += self.xlsx_checks(n, text)
+            checks += self.faults.extra_checks(n, text)
             own, visible = self._sources(n, deps)
             prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,
                                     self.computed_results(w), self.web_ids())
@@ -1250,6 +1278,7 @@ class PlanRunner:
                 self.run_step(step, wave, deps, reverify={"first_verdict": meta["verdict"],
                                                           "first_issues": meta["issues"], "reworked": reworked})
                 self.mark_stale(reworked, verifier_step=n)                           # D39
+        self.faults.restore(agents_all)                                           # D119: the tool back for other steps
         return self.artifacts[n]
 
     # box: niche
@@ -1865,6 +1894,7 @@ class PlanRunner:
             self.step_opts.setdefault(n, {}).setdefault("full_from", set()).add(u)
         elif kind == "grant_tool":
             rec["attached"] = self.attach_missing(n, fix)
+            self.faults.granted(n, rec["attached"])                               # D119: ends a capability fault
             if not rec["attached"]:                     # nothing to give: the step is not re-run
                 rec.update({"status_after": self.artifacts[n]["meta"]["status"],
                             "result": "failed: the pool shortlist had nothing to attach for "
@@ -2245,6 +2275,7 @@ class PlanRunner:
 
     # box: artifacts
     def _save(self, n: int, wave: int, text: str, meta: dict, prov: dict) -> None:
+        text = self.faults.saved_text(n, text)                                    # D119 missing_input_b
         self.artifacts[n] = {"text": text, "meta": meta}
         self.ep.steps.append(meta)
         self.i.trace.event("step_done", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.status": meta["status"],
@@ -2280,7 +2311,7 @@ class PlanRunner:
     # box: plan_step
     def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int,
               extra: str = "", template: str = "") -> tuple[str, str, str, str | None]:
-        last = turns_left <= 1                   # D76: the last turn ends the step with a written conclusion
+        last = turns_left <= 1 and n not in self.no_last_turn   # D76: the last turn ends the step with a conclusion
         tools = [FINAL_OUTPUT] if last else list(agent.tools) + [PRINT, FINAL_OUTPUT]
         user = render(template or PROMPT.plan_step, task=self.task.prompt, today=self.i.clock["line"], deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
                       step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
@@ -2325,7 +2356,9 @@ class PlanRunner:
                 act, inp = sec["Action"].strip(), full_action_input(raw, sec["ActionInput"])
                 if FINAL_OUTPUT not in act:
                     return "no action", inp, "", None
-            resp, gap = self.i._dispatch(agent, act, inp, step.index, self.ep)
+            injected = self.faults.tool_result(n, act) if act in agent.tools else None   # D119 tool_error
+            resp, gap = (injected, None) if injected is not None else \
+                self.i._dispatch(agent, act, inp, step.index, self.ep)
         return act, inp, resp, gap
 
     # ---- D63: the Action Observer (mid-run re-plan) ----------------------------------------------------------------

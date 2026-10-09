@@ -871,3 +871,10 @@ team-size and step-graph checks in `PlanRunner.propose_fix`. In `adapt.yaml` the
 `limits:`, and `diagnoser.allowed_edits` lists only edits a code fix or the proposer can apply; the causes feedback,
 honesty and unused_tool are gone (no stuck signal maps to them). `amoeba/config/validate.py`'s V1–V6 are Phase 1's
 TeamConfig checks and unrelated.
+
+**D119, fault injection (test-only, Oct 9).** `--inject-fault <cause>:<step>[:<n>]` puts one known fault into one step
+so the diagnosis and the fixes can be checked against a ground truth: tool_error, capability, missing_input,
+missing_input_b, max_turns, checks (`amoeba/adapt/faults.py`; the table of what each does, its expected diagnosis and
+first fix is in the README). Refused unless `AMOEBA_TEST_FAULTS=1`; it fires the same way with `--adapt off` and on;
+`result.json` `faults`. The Stage E pilot adds three injected pairs on H1 (capability, missing_input, tool_error), both
+arms reusing the clean off run's draft (`docs/eval/stage_e/PLAN.md`).

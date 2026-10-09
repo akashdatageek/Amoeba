@@ -173,18 +173,24 @@ resumable (an arm with a result.json is skipped), but a run killed half-way star
 
 ```bash
 #!/bin/bash
-# D117 Stage E pilot: H1-H3 x (adapt off, adapt on) x seed 0, one run at a time.
+# D117 Stage E pilot: H1-H3 x (adapt off, adapt on) x seed 0, then three injected H1 pairs (D119); one run at a time.
 W=$HOME/work
 cd "$HOME/Amoeba" && . .venv/bin/activate
-set -a; . "$W/keys.env"; set +a; unset AMOEBA_MODEL AMOEBA_BASE_URL AMOEBA_API_KEY
+set -a; . "$W/keys.env"; set +a; unset AMOEBA_MODEL AMOEBA_BASE_URL AMOEBA_API_KEY AMOEBA_TEST_FAULTS
 echo "== code $(git rev-parse --short HEAD) $(date -u +%FT%TZ)"
+OUT=eval/stage_e/pilot
+FLAGS=(--topology plan --llm openai --routing routed --niche general
+       --local-tools on --local-tools-mode sandbox --web-tools --replan off --timezone America/Chicago
+       --draft-prompts d24 --max-rate-retries 8 --ask-assumed off)
 python -m scripts.stage_e --tasks tasks/probe_hard.jsonl \
-  --ids probe-h1-freight,probe-h2-income,probe-h3-ev-trucks --seeds 0 --out eval/stage_e/pilot -- \
-  --topology plan --llm openai --routing routed --niche general \
-  --local-tools on --local-tools-mode sandbox --web-tools --replan off --timezone America/Chicago \
-  --draft-prompts d24 --max-rate-retries 8 --ask-assumed off
-echo "== pilot done rc=$? $(date -u +%FT%TZ)"
-python -m scripts.stage_e_report eval/stage_e/pilot > /dev/null && echo "== report written"
+  --ids probe-h1-freight,probe-h2-income,probe-h3-ev-trucks --seeds 0 --out $OUT -- "${FLAGS[@]}"
+echo "== clean pairs done rc=$? $(date -u +%FT%TZ)"
+for F in capability:auto missing_input:auto tool_error:auto; do     # D119: after the clean H1 pair
+  python -m scripts.stage_e --tasks tasks/probe_hard.jsonl --ids probe-h1-freight --seeds 0 --out $OUT \
+    --inject-fault $F -- "${FLAGS[@]}"
+  echo "== injected $F done rc=$? $(date -u +%FT%TZ)"
+done
+python -m scripts.stage_e_report $OUT > /dev/null && echo "== report written"
 ```
 
 - **`--replan off` in both arms** (user decision, Oct 7): D63's mid-run re-plan changed H1's plan in one arm of the
@@ -195,8 +201,14 @@ python -m scripts.stage_e_report eval/stage_e/pilot > /dev/null && echo "== repo
   done; the report names the commit on its first line.
 - **Unit:** the oneshot unit of section 5 with `ExecStart=/home/amoeba/work/stage_e.sh` and
   `StandardOutput=append:/home/amoeba/work/logs/stage_e.log` (same for StandardError).
-- **Expected:** six runs, about 1.5 M billed tokens and 3–5 hours one at a time (H1 measured 24 and 23 minutes; one
-  H2 attempt passed 77 minutes before it was killed).
+- **Injected pairs (D119).** The `for` loop runs H1 three more times per arm, each with one fault (`capability`,
+  `missing_input`, `tool_error`, step picked by code). Both arms reuse the clean H1 off run's plan.json, so they must
+  run after it; a missing clean run is skipped with a message. The pair runner sets `AMOEBA_TEST_FAULTS=1` for those
+  run_task processes only; never put it in `keys.env` or the unit. Their runs go to
+  `$OUT/<arm>/probe-h1-freight.s0.fault-<cause>/` and the report lists them apart (section "Injected faults").
+- **Expected:** six clean runs, about 1.5 M billed tokens and 3–5 hours one at a time (H1 measured 24 and 23 minutes;
+  one H2 attempt passed 77 minutes before it was killed); the six injected runs about 0.85–1.0 M more and 2.5–3 hours
+  (`docs/eval/stage_e/PLAN.md`).
 - **Results back:** `eval/stage_e/pilot/REPORT.md` and `report.json`, plus the run folders. Key scan (section 3),
   commit `eval/stage_e/pilot`, push; or copy the folder back and the report is re-run from it.
 

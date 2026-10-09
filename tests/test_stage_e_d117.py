@@ -4,7 +4,7 @@ import json
 import sys
 
 from amoeba.task.source import ToyTaskSource
-from scripts.stage_e import arm_command, run_pairs
+from scripts.stage_e import arm_command, arm_env, fault_label, run_pairs
 from scripts.stage_e_report import report
 
 
@@ -32,8 +32,32 @@ def test_a_pilot_folder_runs_and_reports(tmp_path, monkeypatch):
     assert run_pairs(tasks, ["toy-1"], [0], out, ["--topology", "plan", "--llm", "mock"]) == []   # resumable
     md, data = report(out)
     assert {r["arm"]: r["outcome"] for r in data["records"]} == {"off": "done", "on": "done"}
-    assert "| toy-1 | 0 | on | done |" in md and data["arms"]["on"]["runs"] == 1
-    assert "No step was recovered." in md
+    assert "| toy-1 | 0 | on | - | done |" in md and data["arms"]["on"]["runs"] == 1
+    assert "No step was recovered." in md and "Injected faults" not in md
+    # D119: an injected pair after the clean one — both arms reuse the clean off run's draft and get the fault
+    rows = run_pairs(tasks, ["toy-1"], [0], out, ["--topology", "plan", "--llm", "mock"], faults=["checks:auto"])
+    assert [(r["arm"], r["rc"], r["fault"]) for r in rows] == [("off", 0, "fault-checks"), ("on", 0, "fault-checks")]
+    clean_off = json.loads(open(f"{out}/pairs.jsonl").readline())["run"]
+    for r in rows:
+        res = json.loads(open(f"{r['run']}/result.json").read())
+        assert res["draft_source"] == clean_off.rsplit("/", 1)[1] and res["faults"][0]["cause"] == "checks"
+        assert "/toy-1.s0.fault-checks/" in r["run"]
+    md, data = report(out)
+    assert data["arms"]["on"]["runs"] == 1 and len(data["records"]) == 4      # injected runs are kept apart
+    assert "## Injected faults (D119)" in md and "| toy-1 | 0 | on | checks |" in md
+    assert "Confusion (injected cause × diagnosed cause" in md
+
+
+def test_an_injected_pair_command_and_environment(tmp_path):
+    a = arm_command("off", tmp_path / "t", 0, tmp_path / "r", tmp_path / "p", None, ["--topology", "plan"],
+                    faults=["capability:auto"], draft_from=tmp_path / "clean")
+    b = arm_command("on", tmp_path / "t", 0, tmp_path / "r", tmp_path / "p", tmp_path / "x", ["--topology", "plan"],
+                    faults=["capability:auto"], draft_from=tmp_path / "clean")
+    for c in (a, b):
+        assert c[c.index("--drafts-from") + 1] == str(tmp_path / "clean") and c[-2:] == ["--inject-fault",
+                                                                                       "capability:auto"]
+    assert arm_env([]) is None and arm_env(["checks:1"])["AMOEBA_TEST_FAULTS"] == "1"
+    assert fault_label(["checks:1", "checks:2", "tool_error:auto"]) == "fault-checks+tool_error"
 
 
 def test_an_answer_with_a_partial_last_step_is_done_with_limitation(tmp_path):
