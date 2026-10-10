@@ -133,3 +133,11 @@ def test_block_limit_and_no_findings():
     text = findings_text(rec)
     assert len(text) <= MAX_BLOCK_CHARS + 60 and "block limit" in text and text.rstrip().endswith("WEB DATA END")
     assert findings_text({"status": "not_needed"}) == "" and add_findings({"planner": "x"}, None) == {"planner": "x"}
+
+
+def test_the_decision_call_is_traced_under_the_interpretation_box(tmp_path, envelope):
+    llm = team(decision(False))
+    r, _, _, _ = run(tmp_path, envelope, llm, FakeProvider(), plan_search=True)
+    lines = [json.loads(x) for x in (tmp_path / r.run_id / "trace.jsonl").read_text().splitlines()]
+    chat = [x for x in lines if x.get("gen_ai.agent.name") == "plan_searcher"]
+    assert chat and all(x.get("amoeba.box") == "interpret" for x in chat)
