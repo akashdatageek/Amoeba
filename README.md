@@ -511,6 +511,35 @@ folder; answer them and run again with `--clarify 'P and W=1'` (the words or the
 `--ask-assumed off` keeps the earlier behaviour: the top reading is assumed and the answer opens by saying so.
 A batch run with no terminal stops for questions instead of guessing; pass `--clarify` answers or `--ask-assumed off` there.
 
+## Web search before planning (D120)
+
+    python -m scripts.run_task --tasks tasks/probe_hard.jsonl --llm openai --topology plan --draft-prompts d24 \
+        --web-tools --plan-search on
+
+Off by default. With `--plan-search on`, after the interpretation step and before the Planner drafts, one AI call
+(`plan_searcher`) decides whether planning needs facts from the web — which source or agency publishes what the task
+needs, a current fact that decides the steps or tools, what a name refers to — and proposes its queries, each with a
+reason. It is told not to search for the answer itself (the team does that in Box 3) and not to put task details in a
+query. Plain code then, with the limits in `amoeba/config/plan_search.yaml`:
+
+- gives an unreadable reply one retry, and stops the step when its tokens pass `max_tokens` (12,000);
+- refuses a query that is empty, too long (over 200 characters), holds a URL, an email address or a key shape,
+  repeats another, only restates the task, or is past the cap (4) — each with its reason;
+- runs the rest through the run's own search provider (3 results each, so `--llm-cache` replays them);
+- drops result lines that address a model ("ignore previous instructions", "you are now", role tags, tool-call
+  syntax, long base64) and counts them;
+- shows the results to the Planner and both observers as one data block (the pool's, whose end marker cannot be
+  forged; at most 4,000 characters) with ids `[P1]`, `[P2]` …
+
+The Planner cites `[P#]` where a result shaped a requirement, assumption, role, tool or step; plain code records where
+(`used_in`) and removes the ids before Box 3 builds the team. They are never in the team's `[S#]` source list, so
+nothing in the answer can cite them, and a figure the answer needs is still researched and cited while the team works.
+
+Needs `--web-tools` and `--draft-prompts d24`; otherwise the run records `no_web_tools` or `needs_d24` and drafts as
+before. `plan.json` and `result.json` get `plan_search` (status, why, queries kept and refused, each search's sources
+with `used_in`, screened lines, calls, tokens). A reused draft keeps its own record and searches nothing. Code:
+`amoeba/task/plan_search.py`; design and its differences: `docs/design/D120_plan_search.md`.
+
 ## Cost controls (D45–D48)
 
 ```bash

@@ -204,13 +204,25 @@ BOXES: list[dict] = [
                "from it, not by its guess.",
                "After the run, when the reading was assumed, plain code makes the answer open with \"I read X as Y; if "
                "you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing.",
-               "D116: with --ask-assumed on (the CLI default) every reading that would be assumed, a tie included, is asked about before planning, one question each, least certain first; with nobody to ask the run stops with needs_clarification and writes clarification.json, and --clarify ENTITY=READING answers ahead of time; off keeps the behaviour above, and experiment runs pass off."],
-         proposes="The entities, their readings, a reason and a confidence for each.",
-         disposes="Plain code decides whether a reading is clear, whether to ask, and checks the answer's opening line.",
-         prompts=["interpret"],
+               "D116: with --ask-assumed on (the CLI default) every reading that would be assumed, a tie included, is asked about before planning, one question each, least certain first; with nobody to ask the run stops with needs_clarification and writes clarification.json, and --clarify ENTITY=READING answers ahead of time; off keeps the behaviour above, and experiment runs pass off.",
+               "D120: with --plan-search on (default off; needs --web-tools and the d24 prompts), one more call "
+               "(plan_searcher) says whether planning needs facts from the web, with its queries. Plain code "
+               "(config/plan_search.yaml) retries an unreadable reply once, caps the step's tokens, refuses empty, "
+               "too long, URL, email, key-shape, repeated, task-restating and over-cap queries, runs the rest through "
+               "the run's own search provider, drops result lines that address a model, and shows the results to the "
+               "Planner and both checkers as a data block with [P#] ids. [P#] citations in the draft are recorded "
+               "(used_in) and removed before Box 3 builds the team: never in the team's [S#] sources."],
+         proposes="The entities, their readings, a reason and a confidence for each; D120: whether planning needs web "
+                  "facts, and at most 3 queries.",
+         disposes="Plain code decides whether a reading is clear, whether to ask, and checks the answer's opening line; "
+                  "D120: it checks the queries, runs them and shows the results to Box 2 as planning data.",
+         prompts=["interpret", "plan_search"],
          anchors=["amoeba/task/interpret.py::read_task", "amoeba/task/interpret.py::decide",
                   "amoeba/task/interpret.py::ask_one", "amoeba/task/interpret.py::enforce_opening",
-                  "amoeba/task/interpret.py::route_open_questions", "amoeba/memory/context.py::load_context"]),
+                  "amoeba/task/interpret.py::route_open_questions", "amoeba/memory/context.py::load_context",
+                  "amoeba/task/plan_search.py::search_before_planning", "amoeba/task/plan_search.py::vet_queries",
+                  "amoeba/task/plan_search.py::screen", "amoeba/task/plan_search.py::findings_text",
+                  "amoeba/task/plan_search.py::with_used_in", "amoeba/task/plan_search.py::without_plan_ids"]),
     dict(id="split", view="plan", title="Split sections", kind="code", plan="Split sections",
          sentence="Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
          what=["Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts. Only a "

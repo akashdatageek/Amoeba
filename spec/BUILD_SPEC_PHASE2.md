@@ -555,6 +555,7 @@ the report too.
 | D114 | `max_input_chars` (3000–20000) and `max_summary_input_chars` (15000–60000) whitelisted as recipe run options; the Diagnoser allows them for the checks / feedback causes; Gate-tested like any edit | `amoeba/config/adapt.yaml`, `amoeba/adapt/recipe.py`, `scripts/run_task.py` | v1 |
 | D116 | Ask the user about every reading the interpretation step would only assume (a tie included), before planning; no terminal → stop with `needs_clarification` + `clarification.json`; `--clarify ENTITY=READING`; `--ask-assumed off` = D77; experiments pass off | `amoeba/task/interpret.py`, `scripts/run_task.py`, `amoeba/task/models.py`, `amoeba/config/adapt.yaml` | v1 |
 | D117 | The offline learning loop is removed; in-task adaptation replaces it (Stage A: removal; B: stuck watch; C: code fixes; D: fix-proposer agent; E: `--adapt` test). Kept: contract causes, cause → edit table, event log. Stage B built: stuck signals, one diagnosed cause, logged; Stage C built: code fixes with limits and a stop report, new cause missing_input; Stage D built: the fix proposer as the last rung (§17) | `amoeba/adapt/` (stuck, fixes, proposer, config, evidence), `amoeba/config/prompts/fix_proposer.txt`, `amoeba/pool/stock.py`, `amoeba/config/adapt.yaml`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py`, `scripts/stuck_report.py` | v1 |
+| D120 | Web search before planning (`--plan-search on`, default off; needs `--web-tools` and `--draft-prompts d24`; design `docs/design/D120_plan_search.md`, differences in its "As built"): one AI call (`plan_searcher`, role planner, prompt `plan_search`, trace box interpret) says whether the plan needs web facts and proposes queries with reasons; plain code (limits in `amoeba/config/plan_search.yaml`) retries an unreadable reply once, caps the step's tokens, refuses empty, too long, URL, email, key-shape, repeated, task-restating and over-cap queries, runs the rest through the run's provider, screens instruction-like lines out of the results and shows them to the Planner and both observers as a pool-style data block with `[P#]` ids; `[P#]` citations in the draft are recorded (`used_in`) and removed before Box 3, never in the team's `[S#]` sources. Record in plan.json and result.json `plan_search`. Tests `tests/test_plan_search_d120.py` (13). Not part of Stage E | `amoeba/task/plan_search.py`, `amoeba/config/plan_search.yaml`, `amoeba/config/prompts/plan_search.txt`, `scripts/run_task.py`, `amoeba/task/models.py` | v1 |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit
@@ -878,3 +879,13 @@ missing_input_b, max_turns, checks (`amoeba/adapt/faults.py`; the table of what 
 first fix is in the README). Refused unless `AMOEBA_TEST_FAULTS=1`; it fires the same way with `--adapt off` and on;
 `result.json` `faults`. The Stage E pilot adds three injected pairs on H1 (capability, missing_input, tool_error), both
 arms reusing the clean off run's draft (`docs/eval/stage_e/PLAN.md`).
+
+**D120, web search before planning (Oct 10, user request).** Box 2 used to draft blind: the Planner was told the team
+would have web tools (D68) but nothing was searched before Box 3. With `--plan-search on` (default off), after the
+interpretation step and before the Planner drafts, one AI call decides whether planning needs facts from the web and
+proposes queries; plain code checks them (including for private data: URLs, email addresses, key shapes, text that
+restates the task), runs them through the run's provider, screens instruction-like lines out of the results, and
+shows them to the Planner and both observers as a data block with `[P#]` ids. The Planner cites `[P#]` where a
+result shaped the draft; plain code records `used_in` and removes the ids before Box 3, so they never enter the
+team's `[S#]` sources, D74's citation check or provenance. Design and the differences from it:
+`docs/design/D120_plan_search.md` ("As built"). To be tested after Stage E as its own off-vs-on comparison on Box 2.
