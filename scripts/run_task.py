@@ -25,7 +25,7 @@ from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, desc
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
-from amoeba.task.plan_search import add_findings, search_before_planning
+from amoeba.task.plan_search import add_findings, search_before_planning, with_used_in, without_plan_ids
 from amoeba.task.interpret import (NeedsClarification, apply_clarify, ask_all, ask_one, classify_family,
                                    enforce_opening, open_questions, opening_line, read_task, with_note)
 from amoeba.config.niche import add_done_clauses, environment_text, load_profile
@@ -188,7 +188,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                quality_gate=quality_gate, toolbox=toolbox, interpretation=interp,   # D68, D77
                                lessons=lessons)                                                       # D82
-            draft.plan_search = search_rec                                                             # D120
+            draft.plan_search = with_used_in(search_rec, draft)                                        # D120
             if ask is not None:       # D53: the user reads the draft's intake before Box 3 runs
                 print(intake_text(draft))
                 clarification = ask_user(ask)
@@ -199,17 +199,18 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                        quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
                                        toolbox=toolbox, interpretation=interp, lessons=lessons)
-                    draft.plan_search = search_rec                                                     # D120
+                    draft.plan_search = with_used_in(search_rec, draft)                                # D120
         task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})    # D77: Box 3 reads it too
         if prof is not None and prof.done_when:           # D102: what "done" means here, on the answer step(s)
             draft, done_steps = add_done_clauses(draft, prof)
             trace.event("niche_done_when", {"amoeba.box": "niche", "amoeba.steps": done_steps})
-        cfg = instantiate(draft, topology, task, envelope)
+        work = without_plan_ids(draft) if draft.plan_search else draft   # D120: [P#] never reach Box 3
+        cfg = instantiate(work, topology, task, envelope)
         if max_turns is not None:                         # --max-turns (or a harness default)
             for a in cfg.agents.values():
                 a.limits.max_turns = max_turns
         team_id = cfg.team_id
-        requests = [q.model_copy(deep=True) for q in draft.capability_requests]
+        requests = [q.model_copy(deep=True) for q in work.capability_requests]
         picks = SharedPicks(picks_file, task.id) if picks_file else None           # D70
         if pool is not None or box is not None:   # D56: Box 3 starts by stocking the toolbox, before the runner
             tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed, local=box, picks=picks)

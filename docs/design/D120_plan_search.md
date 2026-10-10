@@ -1,6 +1,7 @@
-# D120 (proposed) — web search in planning
+# D120 — web search in planning
 
-Status: design only, not built. Waits for the user's go.
+Status: **built** (PR #36, `--plan-search on`, default off), with the differences listed under "As built" at the end.
+Not yet run on a real model.
 
 **Goal.** Box 2 can look things up before it drafts the team: a domain term it does not know, which tools or methods
 fit the task, what a good result looks like. LLM proposes, plain code disposes: the model proposes queries, plain
@@ -87,3 +88,31 @@ One extra model call per plan (about 2–4 k tokens with Gemma's reasoning), up 
 about 1 k extra input tokens in each Box 2 prompt per drafting round (at most 3 rounds × 3 prompts). A first check:
 H1–H3 with `--plan-search on` vs off, one seed, `--adapt off` (6 runs), with the planning sources and `used_in` read
 by hand.
+
+## As built (Oct 10) — where the code differs from this design
+
+The user chose (Oct 10) to keep planning results out of the team's source book and to close the safety gaps. Built
+as above except:
+
+- **Ids `[P#]`, not `[S#]`; Box 3's source book is not seeded.** Planning results are planning data only. The
+  Planner is asked to cite `[P#]` where a result shaped a requirement, assumption, role, tool choice or step; plain
+  code records `used_in` from the final draft (requirements, givens, risks, open questions, role cards, capability
+  requests, plan steps) and removes every `[P#]` before Box 3 builds the team (`without_plan_ids`; plan.json keeps
+  the cited draft). So D74's citation check and provenance are unchanged, a step cannot cite a planning result, and
+  `--drafts-from` reuse needs no source-book seeding. A figure the answer needs is still researched in Box 3.
+- **No page fetch** (`max_fetches`, `fetch_chars` and the `kind` field are not built): snippets only.
+- **The flag is not refused without `--web-tools`**: the run records `plan_search.status = no_web_tools` and drafts
+  as before; likewise `needs_d24` with the d19 prompts (they have no slot for the block).
+- **The reply format** is one object `{"need_search", "why", "queries": [{"query", "reason"}]}` instead of a bare
+  array, so "no search needed" is explicit.
+- **"Restates the task"** refuses a query when ≥ 80% of its words are task words *and* it covers at least half of
+  the task's words; the 80% rule alone refused short, focused lookups built from task terms.
+- **Limits** (`amoeba/config/plan_search.yaml`): `max_queries` 4, `max_query_chars` 200, `results_per_query` 3,
+  `snippet_chars` 300, `max_background_chars` 4,000, `max_tokens` 12,000 as designed; `proposer_max_tokens` is 4,096
+  rather than 1,024, because Gemma's hidden reasoning counts against it (as in the interpretation step, D77).
+- Built as designed: one retry on an unreadable reply; the token cap (no retry past it, no search over it); query
+  checks for empty, too long, URL, email address, key shape (the evidence key scan's `KEY_SHAPES`), repeat (same
+  words), restating the task, over the cap; screening of instruction-like lines, counted in `plan_search_screened`;
+  the POOL-style data block whose end marker cannot be forged; the three d24 prompts unchanged with the flag off;
+  the trace box `interpret`; `plan_search` in plan.json and result.json (queries kept and refused with reasons,
+  sources with `used_in`, screened lines, calls, tokens).
