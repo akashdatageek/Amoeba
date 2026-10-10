@@ -7,6 +7,11 @@ or the proposer's edit type), the work-arounds apart, the rubric score where the
 broke. Per arm: the sums. Then 3 recovered steps per arm picked at random (seeded), each with its trace lines and its
 output before and after, to check the recovery is real and not only the contract passing.
 
+D119: injected runs (rows with `fault`) are listed apart and left out of the per-arm sums; for each one the report
+gives the fault, where it fired, the first stuck event on its step (the diagnosed cause and whether it is the expected
+one), false alarms (stuck steps the fault did not touch), the fixes on its step with their rungs and results, and the
+step's outcome; then a confusion table (injected cause × diagnosed cause) and a recovery table (cause × outcome).
+
     python -m scripts.stage_e_report eval/stage_e/pilot [--seed 117]
 """
 from __future__ import annotations
@@ -73,7 +78,7 @@ def run_record(row: dict, folder: Path | None = None) -> dict:
     """One arm's run, measured."""
     run = run_path(row, folder)
     rec = {"task": row["task"], "seed": row["seed"], "arm": row["arm"], "rc": row.get("rc"), "wall_s": row.get("wall_s"),
-           "problems": []}
+           "fault": row.get("fault") or "", "problems": []}
     res = _load(run / "result.json") if run else None
     if res is None:
         rec.update(outcome="failed", problems=[f"no result.json (rc={row.get('rc')})"])
@@ -100,6 +105,8 @@ def run_record(row: dict, folder: Path | None = None) -> dict:
                 causes.setdefault(r["step"], r["cause"])
             last[r["step"]] = r
         unresolved = sorted(n for n, r in last.items() if r["stuck"])
+    if res.get("faults"):                                         # D119: what the injected fault did
+        rec["injected"] = [injected_record(f, causes, fixes, _final_metas(run)) for f in res["faults"]]
     recovered = Counter(("code: " if f.get("rung") in CODE_RUNGS else "proposer: ") + f["kind"]
                         for f in fixes if f.get("result") == "recovered")
     workarounds = [f for f in fixes if f.get("result") == "finished with limitation"]
@@ -135,6 +142,27 @@ def run_record(row: dict, folder: Path | None = None) -> dict:
 
 
 # box: stage_e
+def injected_record(f: dict, causes: dict, fixes: list[dict], metas: dict) -> dict:
+    """One injected fault of a run: where it fired, the diagnosis on its step against the expected one, false alarms,
+    the fixes on its step and the step's final status."""
+    n, exp = f.get("step"), f.get("expected") or {}
+    diag = causes.get(n)
+    mine = [x for x in fixes if x.get("step") == n]
+    status = (metas.get(n) or {}).get("status")
+    outcome = ("not fired" if not f.get("fired") else "not stuck" if diag is None and status == "done"
+               else "recovered" if any(x.get("result") == "recovered" for x in mine)
+               else "finished with limitation" if any(x.get("result") == "finished with limitation" for x in mine)
+               else "left " + (status or "?"))
+    return {"cause": f.get("cause"), "step": n, "fired": f.get("fired", 0), "cleared": f.get("cleared"),
+            "target": f.get("tool") or f.get("upstream"), "expected": exp.get("diagnosis"), "diagnosed": diag,
+            "correct": diag == exp.get("diagnosis") if diag else None,
+            "false_alarms": sorted(k for k in causes if k != n),
+            "fixes": [f"{x['kind']} (rung {x.get('rung')}): {x.get('result', '')[:60]}" for x in mine],
+            "first_fix_expected": bool(mine) and mine[0]["kind"] == exp.get("first_fix"),
+            "status": status, "outcome": outcome}
+
+
+# box: stage_e
 def samples(rows: list[dict], records: list[dict], k: int = 3, seed: int = 117) -> list[dict]:
     """k recovered steps of the on arm picked at random (seeded), each with its trace lines and its output before
     and after the fix."""
@@ -156,6 +184,32 @@ def samples(rows: list[dict], records: list[dict], k: int = 3, seed: int = 117) 
     return out
 
 
+# box: stage_e
+def injected_md(records: list[dict]) -> list[str]:
+    """D119: the injected runs, their confusion table and their recovery table."""
+    rows = [(r, f) for r in records for f in r.get("injected") or []]
+    if not rows:
+        return []
+    md = ["", "## Injected faults (D119)", "",
+          "| Task | Seed | Arm | Fault | Step | Fired | Diagnosed (expected) | Correct | False alarms | Fixes on the "
+          "step | First fix as expected | Outcome |", "|---|---:|---|---|---:|---:|---|---|---|---|---|---|"]
+    for r, f in sorted(rows, key=lambda x: (x[0]["task"], x[0]["seed"], x[1]["cause"], x[0]["arm"])):
+        md.append(f"| {r['task']} | {r['seed']} | {r['arm']} | {f['cause']} | {f['step']} | {f['fired']} | "
+                  f"{f['diagnosed'] or 'not stuck'} ({f['expected']}) | "
+                  f"{'-' if f['correct'] is None else 'yes' if f['correct'] else 'no'} | {f['false_alarms'] or '-'} | "
+                  f"{'; '.join(f['fixes']) or '-'} | {'yes' if f['first_fix_expected'] else '-'} | {f['outcome']} |")
+    conf = Counter((f["cause"], f["diagnosed"] or "not stuck") for _, f in rows)
+    got = sorted({d for _, d in conf})
+    md += ["", "Confusion (injected cause × diagnosed cause, both arms):", "",
+           "| Injected | " + " | ".join(got) + " |", "|---|" + "---:|" * len(got)]
+    md += [f"| {c} | " + " | ".join(str(conf.get((c, d), 0)) for d in got) + " |"
+           for c in sorted({c for c, _ in conf})]
+    rec = Counter((f["cause"], r["arm"], f["outcome"]) for r, f in rows)
+    md += ["", "Recovery (cause, arm → outcome):", "", "| Cause | Arm | Outcome | Runs |", "|---|---|---|---:|"]
+    md += [f"| {c} | {a} | {o} | {k} |" for (c, a, o), k in sorted(rec.items())]
+    return md
+
+
 def _sum(records: list[dict], arm: str) -> dict:
     rs = [r for r in records if r["arm"] == arm]
     tot = lambda k: sum((r.get(k) or 0) for r in rs)
@@ -173,22 +227,23 @@ def report(folder: Path, seed: int = 117) -> tuple[str, dict]:
             for l in f.read_text(encoding="utf-8").splitlines() if l.strip()]
     latest = {}
     for r in rows:                                   # a re-run arm replaces its earlier row
-        latest[(r["task"], r["seed"], r["arm"])] = r
+        latest[(r["task"], r["seed"], r["arm"], r.get("fault") or "")] = r
     records = [run_record(r, folder) for r in latest.values()]
-    arms = {a: _sum(records, a) for a in ("off", "on")}
+    clean = [r for r in records if not r["fault"]]
+    arms = {a: _sum(clean, a) for a in ("off", "on")}
     picks = samples(rows, records, seed=seed)
     md = ["# D117 Stage E report", "", f"Folder: `{folder}`", "", "## Per run", "",
-          "| Task | Seed | Arm | Outcome | Steps not done (why) | Stuck steps (cause) | Recovered (rung) | Work-arounds | "
+          "| Task | Seed | Arm | Fault | Outcome | Steps not done (why) | Stuck steps (cause) | Recovered (rung) | Work-arounds | "
           "Rubric | Tokens | Adapt tokens | Wall (min) | Searches + fetches | Problems |",
-          "|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|"]
-    for r in sorted(records, key=lambda r: (r["task"], r["seed"], r["arm"])):
-        md.append(f"| {r['task']} | {r['seed']} | {r['arm']} | {r['outcome']} | {r.get('not_done') or '-'} | "
+          "|---|---:|---|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---|"]
+    for r in sorted(records, key=lambda r: (r["task"], r["seed"], r["fault"], r["arm"])):
+        md.append(f"| {r['task']} | {r['seed']} | {r['arm']} | {r['fault'] or '-'} | {r['outcome']} | {r.get('not_done') or '-'} | "
                   f"{r.get('stuck_steps', 0)} "
                   f"{r.get('stuck_by_cause') or ''} | {r.get('recovered') or '-'} | {r.get('workarounds', 0)} | "
                   f"{r.get('rubric') if r.get('rubric') is not None else '-'} | {r.get('tokens') or 0:,} | "
                   f"{r.get('adapt_tokens') or 0:,} | {round((r.get('wall_s') or 0) / 60, 1)} | "
                   f"{r.get('searches', 0)} + {r.get('fetches', 0)} | {'; '.join(r['problems']) or '-'} |")
-    md += ["", "## Per arm", "", "| | off | on |", "|---|---|---|"]
+    md += ["", "## Per arm (clean runs; injected runs are below)", "", "| | off | on |", "|---|---|---|"]
     for k in ("runs", "outcomes", "stuck_steps", "stuck_by_cause", "recovered", "workarounds", "tokens",
               "adapt_tokens", "wall_min", "searches", "fetches", "rubric"):
         md.append(f"| {k} | {arms['off'][k]} | {arms['on'][k]} |")
@@ -201,6 +256,7 @@ def report(folder: Path, seed: int = 117) -> tuple[str, dict]:
         md += [f"- {f['kind']} (rung {f['rung']}): {f['result']}" for f in s["fixes"]]
         md += ["", "Trace lines:", "", "```"] + [json.dumps(t, ensure_ascii=False, default=str)[:600] for t in s["trace"]]
         md += ["```", "", "Before:", "", "```", s["before"], "```", "", "After:", "", "```", s["after"], "```"]
+    md += injected_md(records)
     data = {"records": records, "arms": arms, "samples": picks}
     return "\n".join(md) + "\n", data
 

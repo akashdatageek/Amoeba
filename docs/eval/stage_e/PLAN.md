@@ -115,3 +115,26 @@ workspaces); its `REPORT.md` is the report script's output.
 **Decisions (user, Oct 7).** The pilot runs on a VM (`docs/RUNNING_ON_A_VM.md`, "The Stage E pilot"), all six runs
 again, with `--replan off` in both arms, so the arms differ only in `--adapt`. The full set waits for the VM pilot's
 report.
+
+## Injected faults in the pilot (D119, user decision Oct 9)
+
+Three more pairs, run after the six clean runs: H1 (`probe-h1-freight`, seed 0) with one fault each, `capability`,
+`missing_input` and `tool_error`, the step picked by code (`auto`). H1 was never stuck in stored runs, so a stuck event
+in these runs comes from the fault. Both arms of an injected pair reuse the clean H1 off run's plan.json, so an
+injected pair differs from the clean pair only by the fault and its two arms only by `--adapt`.
+
+| Fault | Step (`auto`, stored H1 plan) | What happens | Expected diagnosis | Expected first fix |
+|---|---|---|---|---|
+| capability | the first step whose helpers hold a tool (step 1: local:Bash in the stored run) | that tool is taken from the step's helpers while it runs | capability | grant_tool (rung 2, from the registry) |
+| missing_input | the first step with an input (step 2, input from step 1) | step 1's output reaches step 2 cut to 200 characters | missing_input | add_dependency (passed in full) |
+| tool_error | as capability | the step's first 3 tool calls return an injected error | tool_error | more turns |
+
+The report (`scripts/stage_e_report.py`) lists the injected runs apart from the per-arm sums: the fault, its step and
+target, how often it fired, the diagnosed cause against the expected one, false alarms, the fixes on the step and the
+outcome, then a confusion table and a recovery table. The off arm shows what the fault does with nothing fixing it.
+
+**Cost.** Six more runs. Each reuses the draft, so it costs about the clean H1 on arm (141,856 billed tokens, 23
+minutes in attempt 1); the on arm adds its fixes (about 6,000 tokens a re-run, capped at 200,000 per task). About
+0.85–1.0 M billed tokens and 2.5–3 hours one at a time; the whole pilot then about 2.4–2.7 M tokens and 6–8 hours.
+$0.00 at the current Gemma price.
+

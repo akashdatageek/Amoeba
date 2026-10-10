@@ -554,7 +554,7 @@ the report too.
 | D113 | Spreadsheet checks: after a step that made an .xlsx, typed totals and typed derived cells (row/column sums, products of row cells) fail `domain_xlsx_formulas` with the cell names and earn the retry turn; task numbers are inputs (`--xlsx-formulas`, default on) | `amoeba/checks/xlsx_formulas.py`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py` | v1 |
 | D114 | `max_input_chars` (3000–20000) and `max_summary_input_chars` (15000–60000) whitelisted as recipe run options; the Diagnoser allows them for the checks / feedback causes; Gate-tested like any edit | `amoeba/config/adapt.yaml`, `amoeba/adapt/recipe.py`, `scripts/run_task.py` | v1 |
 | D116 | Ask the user about every reading the interpretation step would only assume (a tie included), before planning; no terminal → stop with `needs_clarification` + `clarification.json`; `--clarify ENTITY=READING`; `--ask-assumed off` = D77; experiments pass off | `amoeba/task/interpret.py`, `scripts/run_task.py`, `amoeba/task/models.py`, `amoeba/config/adapt.yaml` | v1 |
-| D117 | The offline learning loop is removed; in-task adaptation replaces it (Stage A: removal; B: stuck watch; C: code fixes; D: fix-proposer agent; E: `--adapt` test). Kept: contract causes, cause → edit table, single-edit format + V1–V6, event log. Stage B built: stuck signals, one diagnosed cause, logged; Stage C built: code fixes with limits and a stop report, new cause missing_input; Stage D built: the fix proposer as the last rung (§17) | `amoeba/adapt/` (stuck, fixes, proposer, recipe, architect, evidence), `amoeba/config/prompts/fix_proposer.txt`, `amoeba/pool/stock.py`, `amoeba/config/adapt.yaml`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py`, `scripts/stuck_report.py` | v1 |
+| D117 | The offline learning loop is removed; in-task adaptation replaces it (Stage A: removal; B: stuck watch; C: code fixes; D: fix-proposer agent; E: `--adapt` test). Kept: contract causes, cause → edit table, event log. Stage B built: stuck signals, one diagnosed cause, logged; Stage C built: code fixes with limits and a stop report, new cause missing_input; Stage D built: the fix proposer as the last rung (§17) | `amoeba/adapt/` (stuck, fixes, proposer, config, evidence), `amoeba/config/prompts/fix_proposer.txt`, `amoeba/pool/stock.py`, `amoeba/config/adapt.yaml`, `amoeba/interp/plan_runner.py`, `scripts/run_task.py`, `scripts/stuck_report.py` | v1 |
 
 **Stage A (done Oct 2: D78–D84, calibration, h1/h2).** The mock-LLM tests in §14 pass. The hand-edit check ran on
 Gemma on the held-out post slice hpost-1..5 of `stream_m1`: a calibration row (noise 0.000), the useless hand edit
@@ -871,3 +871,10 @@ team-size and step-graph checks in `PlanRunner.propose_fix`. In `adapt.yaml` the
 `limits:`, and `diagnoser.allowed_edits` lists only edits a code fix or the proposer can apply; the causes feedback,
 honesty and unused_tool are gone (no stuck signal maps to them). `amoeba/config/validate.py`'s V1–V6 are Phase 1's
 TeamConfig checks and unrelated.
+
+**D119, fault injection (test-only, Oct 9).** `--inject-fault <cause>:<step>[:<n>]` puts one known fault into one step
+so the diagnosis and the fixes can be checked against a ground truth: tool_error, capability, missing_input,
+missing_input_b, max_turns, checks (`amoeba/adapt/faults.py`; the table of what each does, its expected diagnosis and
+first fix is in the README). Refused unless `AMOEBA_TEST_FAULTS=1`; it fires the same way with `--adapt off` and on;
+`result.json` `faults`. The Stage E pilot adds three injected pairs on H1 (capability, missing_input, tool_error), both
+arms reusing the clean off run's draft (`docs/eval/stage_e/PLAN.md`).

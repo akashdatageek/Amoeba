@@ -102,6 +102,7 @@ class Episode(BaseModel):
     final_check: dict = Field(default_factory=dict)   # D105 + D110: the final-answer requirement check
     stuck: list[dict] = Field(default_factory=list)   # D117 --adapt on: every stuck step event (cause, evidence)
     adaptation: dict = Field(default_factory=dict)    # D117 Stage C: fixes tried, steps recovered, tokens, stop
+    faults: list[dict] = Field(default_factory=list)  # D119 (test-only): injected faults, where they fired, cleared
 
 
 class Answer(BaseModel):
@@ -358,5 +359,6 @@ class RunResult(BaseModel):
     requirement_status: dict | None = None   # D105 (amended): each Box 2 requirement as checked on the FINAL answer
     stuck: list[dict] | None = None   # D117 --adapt on: each stuck step event (cause, signals, evidence)
     adaptation: dict | None = None    # D117 Stage C --adapt on: fixes tried and their results, tokens, stop
+    faults: list[dict] | None = None  # D119 (test-only, --inject-fault): each injected fault; left out when none
     status: str | None = None    # D111: ok | infra_error | agent_error (D105: no_deliverable); run_status
     routing: dict | None = None  # D97: the router's per-model calls, tokens and USD, and its decision counts

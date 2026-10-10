@@ -471,6 +471,30 @@ answer and `adapt_report.md` say what was stuck, the cause, each fix tried and w
 each step that used an upstream output from before that step was re-run.
 `result.json` `adaptation` lists every fix with its result and tokens. `--adapt off` turns the watch and the fixes off.
 
+## Fault injection (D119, test-only)
+
+Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault
+<cause>:<step>[:<n>]` (repeatable, hidden from `--help`) puts one known fault into one step, the same way with
+`--adapt off` and on; run_task refuses it unless `AMOEBA_TEST_FAULTS=1` is in the environment, and nothing sets that
+by default. `<step>` may be `auto`: plain code picks the first step that is neither the summary nor a check and that
+holds a tool (tool_error, capability), has an input (missing_input, missing_input_b), or any (max_turns, checks).
+Code: `amoeba/adapt/faults.py`, called at one point each of the plan runner.
+
+| Fault | What plain code does | Expected diagnosis | Expected first fix |
+|---|---|---|---|
+| tool_error | the step's first n tool calls (default 3) return `error: <tool> failed: injected fault` | tool_error | more turns |
+| capability | one tool the step's helpers hold is taken from them while the step runs (the registry keeps it) | capability | grant_tool (rung 2) |
+| missing_input | the step's first input is cut to n characters (default 200) until a fix passes it in full | missing_input | add_dependency |
+| missing_input_b | the upstream output is saved cut to n characters the first time it runs | missing_input | rerun_upstream |
+| max_turns | the step gets n turns (default 2) and no forced last turn until a fix sets its turns | max_turns | more turns |
+| checks | one more check: a markdown table with a Source column (the helpers learn of it from the retry turn) | checks | more retry turns |
+
+Arming, firing and clearing are trace events; `result.json` `faults` lists each fault, its step and target, how often
+it fired, how it ended and the expected diagnosis and first fix. The Stage E pair runner's `--inject-fault` runs
+injected pairs whose arms both reuse the clean off run's draft; the report lists them apart (diagnosis against the
+expected one, false alarms, fixes, a confusion table). The stuck watch sees tool errors only with the step contract
+on (`--step-contract on`, the CLI default), since the step's tool calls are recorded there.
+
 ## Ask before assuming (D116)
 
 When the interpretation step finds a name or term whose readings are close (no reading leads the next by 0.3,

@@ -602,7 +602,10 @@ BOXES: list[dict] = [
                "It also lists the steps that answered BLOCKED and every capability request, and counts how many "
                "requests round 1 made and how many the checkers talked the planner out of.",
                "D105 + D110: after the summariser, plain code checks each Box 2 requirement and each promised file against the final answer and the workspace (and the dates of web figures); missing → one refine turn, then Limitations, and no_deliverable when a core deliverable is missing; requirement_status records the final-answer result.",
-               "D116: status needs_clarification when the run stopped before planning to ask the user about a reading it would otherwise have assumed; result.json then lists the open questions (interpretation.pending)."],
+               "D116: status needs_clarification when the run stopped before planning to ask the user about a reading it would otherwise have assumed; result.json then lists the open questions (interpretation.pending).",
+               "D117 and D119: stuck and adaptation (with --adapt on) and faults (the test-only --inject-fault: each "
+               "fault, its step and target, how often it fired, how it ended, the expected diagnosis and first fix) "
+               "are left out of result.json when there are none."],
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,
@@ -707,7 +710,9 @@ BOXES: list[dict] = [
                "Temperature is set once for the connection, not per helper.",
                "Every call from every box goes through here, wrapped so it is logged.",
                "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
-               "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error, no_deliverable or needs_clarification."],
+               "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error, no_deliverable or needs_clarification.",
+               "D117 D: the offline stand-in (--llm mock) answers the fix proposer with no edit, so a stuck step in an "
+               "offline run ends in the stop report instead of a crash (D119's injected pairs found it)."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
@@ -845,6 +850,22 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code runs the pairs and counts.",
          anchors=["scripts/stage_e.py::run_pairs", "scripts/stage_e_report.py::run_record"], guard_anchors=[]),
+    dict(id="faults", view="adapt", title="Fault injection (D119, test-only)", kind="code", plan=None,
+         sentence="Puts one known fault into one step, so the stuck watch's diagnosis and the fixes can be checked "
+                  "against a ground truth; refused unless AMOEBA_TEST_FAULTS=1.",
+         what=["--inject-fault <cause>:<step>[:<n>] (hidden from --help): tool_error (the first n tool calls return "
+               "an injected error), capability (one tool taken from the step's helpers until a grant gives it back), "
+               "missing_input (the first input cut until a fix passes it in full), missing_input_b (the upstream "
+               "output saved cut once), max_turns (n turns, no forced last turn, until a fix sets the turns), checks "
+               "(one more check: a markdown table with a Source column).",
+               "\"auto\" picks the step by code from the plan; each fault fires the same way with --adapt off and on; "
+               "arming, firing and clearing are trace events and result.json records `faults`.",
+               "Stage E: the pair runner's --inject-fault runs injected pairs that reuse the clean off run's draft; "
+               "the report gives each fault's diagnosis against the expected one, false alarms, the fixes and a "
+               "confusion table."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code arms the fault, fires it at its hook in the plan runner and records it.",
+         anchors=["amoeba/adapt/faults.py::Faults", "amoeba/adapt/faults.py::check_flag"], guard_anchors=[]),
 ]
 
 # Box 3 gaps (docs/eval/round3/report.md, thesis): information a run already records that the code judging steps and

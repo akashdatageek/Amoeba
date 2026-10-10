@@ -1,7 +1,9 @@
-# Plans before the Stage E full set (plan only, nothing built)
+# Plans before the Stage E full set
 
 Two pieces of work the user asked to plan after the pilot and before the full set. Proposed D-numbers: D118 (skills in
 prompts) and D119 (fault injection). Neither changes a default until the user approves it.
+
+**Status (Oct 9).** D119 is built (offline tests only); D118 is still a plan.
 
 ## D118 — skills in prompts
 
@@ -52,7 +54,16 @@ that does not touch the skill, passes on NOT NEEDED.
 **Measure.** Re-run the stored-run count (skill attachments with a Bash call touching the skill folder: 5 of 56
 today) on the Stage E full set, and the input tokens per step with the short block vs the full body.
 
-## D119 — fault injection (test-only)
+## D119 — fault injection (test-only) — built Oct 9
+
+Built as below, with these changes (spec row D119; README "Fault injection"): the capability fault keeps the tool in
+the run's registry, so rung 2 grants it back (a pool-only shortlist entry could not be made the same way on every
+task); max_turns gives the step 2 turns with no forced last turn (with 1 turn the forced last turn makes the helper
+finish, so it would never run out of turns); the checks fault adds one hidden check (a markdown table with a Source
+column) instead of a done_when line, which the format checks ignore when the output line has markers. The pair runner
+does pass the flag, but only through its own `--inject-fault` and with the variable set for those runs only (user
+request: three injected pairs in the pilot, `PLAN.md`). The real-model set below is still a plan.
+
 
 **Why.** Stage E shows whether stuck steps recover, but not whether the watch names the right cause: the stored runs
 have one tool_error and few max_turns. Injecting one known fault per cause gives a ground truth for the diagnosis

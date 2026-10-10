@@ -45,10 +45,11 @@ from amoeba.tools.web import TavilyProvider, web_registry
 from amoeba.pool.stock import PoolSetup, SharedPicks, stock_toolbox
 from amoeba.localtools.gate import SandboxRequired, require_sandbox
 from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
+from amoeba.adapt.faults import check_flag
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
-PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation"}           # left out of result.json when None (Phase 1 records unchanged)
+PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults"}           # left out of result.json when None (Phase 1 records unchanged)
 
 
 # box: ov_leave, capreq, runresult
@@ -281,6 +282,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         stuck=ep.stuck if ep and topology == "plan" and getattr(plan_options, "adapt", "off") == "on" else None,
         adaptation=ep.adaptation if ep and topology == "plan" and getattr(plan_options, "adapt", "off") == "on"
         else None,
+        faults=(ep.faults or None) if ep and topology == "plan" else None,              # D119
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
@@ -458,7 +460,8 @@ def cli_plan_options(args: argparse.Namespace):
                        replan_method=getattr(args, "replan_method", "off"), dated=getattr(args, "dated_figures", "off"),
                        cite_arithmetic=getattr(args, "cite_arithmetic", "off"),
                        final_check=getattr(args, "deliverable_check", "off"),
-                       xlsx_formulas=getattr(args, "xlsx_formulas", "off"), adapt=getattr(args, "adapt", "off"), **extra)
+                       xlsx_formulas=getattr(args, "xlsx_formulas", "off"), adapt=getattr(args, "adapt", "off"),
+                       faults=tuple(getattr(args, "inject_fault", ()) or ()), **extra)
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -687,6 +690,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "cheapest first (pass or re-run the upstream input, more turns, retry turns, a larger input, "
                         "attach the missing tool from the pool shortlist), then one fix-proposer edit, within the "
                         "limits of adapt.yaml `adapt`; when none recovers the step the task stops with adapt_report.md")
+    p.add_argument("--inject-fault", action="append", default=[], metavar="CAUSE:STEP[:N]",
+                   help=argparse.SUPPRESS)   # D119: test-only, refused unless AMOEBA_TEST_FAULTS=1
     p.add_argument("--replan", choices=["on", "off"], default="off",
                    help="plan: the Action Observer (D63) — after a wave in which a step lacked a capability, a verify "
                         "step still failed, a step reported a missing input or the team got a tool the plan never "
@@ -775,6 +780,7 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     if args.interactive and args.drafts_from:
         p.error("--interactive reviews a fresh draft; it cannot be combined with --drafts-from")
     args.explicit = explicit_flags(argv if argv is not None else sys.argv[1:])
+    args.inject_fault = check_flag(args.inject_fault, args.topology)      # D119: SystemExit unless allowed
     for kv in filter(None, args.option_defaults.split(",")):            # harness defaults; an explicit flag wins
         k, _, v = kv.partition("=")
         k = k.strip().replace("-", "_")
