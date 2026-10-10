@@ -271,12 +271,17 @@ class Draft(BaseModel):
     # D82: what a Phase 2 recipe did to this draft (transforms applied by code); left out of the dump when None, so
     # a Phase 1 draft (plan.json, eval_draft files) is unchanged
     recipe_applied: dict | None = None
+    # D120 --plan-search on: the search before planning (decision, queries, sources the Planner saw); left out of the
+    # dump when None, so a draft made without it is unchanged and a reused draft still says what its Planner saw
+    plan_search: dict | None = None
 
     @model_serializer(mode="wrap")
     def _drop_unset_phase2(self, handler):
         out = handler(self)
-        if isinstance(out, dict) and out.get("recipe_applied", 0) is None:
-            out.pop("recipe_applied")
+        if isinstance(out, dict):
+            for k in ("recipe_applied", "plan_search"):
+                if k in out and out[k] is None:
+                    out.pop(k)
         return out
 
 
@@ -360,5 +365,6 @@ class RunResult(BaseModel):
     stuck: list[dict] | None = None   # D117 --adapt on: each stuck step event (cause, signals, evidence)
     adaptation: dict | None = None    # D117 Stage C --adapt on: fixes tried and their results, tokens, stop
     faults: list[dict] | None = None  # D119 (test-only, --inject-fault): each injected fault; left out when none
+    plan_search: dict | None = None   # D120 --plan-search on: the search before planning (Draft.plan_search)
     status: str | None = None    # D111: ok | infra_error | agent_error (D105: no_deliverable); run_status
     routing: dict | None = None  # D97: the router's per-model calls, tokens and USD, and its decision counts

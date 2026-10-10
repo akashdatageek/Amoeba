@@ -511,6 +511,25 @@ folder; answer them and run again with `--clarify 'P and W=1'` (the words or the
 `--ask-assumed off` keeps the earlier behaviour: the top reading is assumed and the answer opens by saying so.
 A batch run with no terminal stops for questions instead of guessing; pass `--clarify` answers or `--ask-assumed off` there.
 
+## Web search before planning (D120)
+
+    python -m scripts.run_task --tasks tasks/probe_hard.jsonl --llm openai --topology plan --draft-prompts d24 \
+        --web-tools --plan-search on
+
+Off by default. With `--plan-search on`, after the interpretation step and before the Planner drafts, one AI call
+(`plan_searcher`) decides whether planning needs facts from the web — which source or agency publishes what the task
+needs, a current fact that decides the steps or tools, what a name refers to — and proposes at most 3 queries. It is
+told not to search for the answer itself; the team does that in Box 3. Plain code refuses empty, over-long (over 150
+characters), repeated and over-cap queries, runs the rest through the run's own search provider (3 results each, so
+`--llm-cache` replays them), and shows the results to the Planner and both observers as one `WEB DATA` block with
+`[P1]`, `[P2]` … ids. Those ids are planning data only: they are not in the team's `[S#]` source list, so nothing in
+the answer can cite them, and a figure the answer needs is still researched and cited while the team works.
+
+Needs `--web-tools` and `--draft-prompts d24` (the d19 prompts have no slot for it); otherwise the run records
+`no_web_tools` or `needs_d24` and drafts as before. `plan.json` and `result.json` get `plan_search` (status, why,
+queries, refused queries, each search's sources or error). A reused draft keeps its own record. Code:
+`amoeba/task/plan_search.py`, prompt `amoeba/config/prompts/plan_search.txt`.
+
 ## Cost controls (D45–D48)
 
 ```bash

@@ -25,6 +25,7 @@ from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, desc
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
+from amoeba.task.plan_search import add_findings, search_before_planning
 from amoeba.task.interpret import (NeedsClarification, apply_clarify, ask_all, ask_one, classify_family,
                                    enforce_opening, open_questions, opening_line, read_task, with_note)
 from amoeba.config.niche import add_done_clauses, environment_text, load_profile
@@ -49,7 +50,8 @@ from amoeba.adapt.faults import check_flag
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
-PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults"}           # left out of result.json when None (Phase 1 records unchanged)
+PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults",
+                 "plan_search"}           # left out of result.json when None (Phase 1 records unchanged)
 
 
 # box: ov_leave, capreq, runresult
@@ -63,7 +65,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
             default_max_turns: int | None = None, family_classify: bool = False,
             niche=None, deliverable_check: bool = False,
-            workspace_sources: bool = False, ask_assumed: str = "off", clarify: dict | None = None) -> RunResult:
+            workspace_sources: bool = False, ask_assumed: str = "off", clarify: dict | None = None,
+            plan_search: bool = False) -> RunResult:
     """One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.
     ask: D53 --interactive — a function like input(); the user checks the draft before Box 3 and may clarify once.
     pool: D56 — Box 3 first stocks the toolbox from the cached pool (None: that step is off).
@@ -81,7 +84,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     logged), its done clauses on the answer step and its domain checks after each step.
     ask_assumed: D116 — "on": every reading the interpretation step would assume (a tie included) is asked about
     before planning, through `ask` or, without it, the terminal; when nobody can be asked the run stops with
-    error needs_clarification and writes clarification.json. clarify: D116 --clarify answers {entity: reading}."""
+    error needs_clarification and writes clarification.json. clarify: D116 --clarify answers {entity: reading}.
+    plan_search: D120 --plan-search on — before the Planner drafts, one AI call says whether planning needs web facts
+    (at most 3 queries); plain code checks and runs them and shows the results to the Planner and both observers
+    (amoeba/task/plan_search.py). Needs --web-tools; a reused draft keeps the record of its own search."""
     prof = niche if niche is not None and not niche.is_neutral() else None          # D102: general = None
     if prof is not None and topology != "plan":
         raise ValueError("niche profiles are for Amoeba's plan runner only; the baselines stay as they are (D102)")
@@ -137,6 +143,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     box = LocalToolbox(local, run_dir, trace) if local is not None else None   # D59: refuses without AMOEBA_SANDBOX=1
     local_out: dict = {}
     interp = None
+    search_rec = None             # D120: the search before planning (None: --plan-search off)
     cfg = None
     stated: dict = {}
     try:
@@ -169,10 +176,19 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                 elif interp["ambiguous"] and ask is not None:
                     interp = ask_one(interp, ask)
                     trace.event("interpretation_question", {"amoeba.question": interp["question"]})
+            if plan_search and draft_prompts != "d24":   # D120: the d19 prompts have no {lessons} slot to show it
+                search_rec = {"status": "needs_d24", "why": "--plan-search needs --draft-prompts d24"}
+                trace.event("plan_search_decision", {"amoeba.box": "interpret", "amoeba.status": "needs_d24"})
+            elif plan_search:         # D120: after the readings are settled, before the Planner drafts
+                web = getattr(tools, "web", None) if "web_search" in tools else None   # D80: disabled → none
+                search_rec = search_before_planning(task.prompt, interp, TracedLLM(llm, trace),
+                                                    web.provider if web is not None else None, trace, seed)
+                lessons = add_findings(lessons, search_rec)
             task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                quality_gate=quality_gate, toolbox=toolbox, interpretation=interp,   # D68, D77
                                lessons=lessons)                                                       # D82
+            draft.plan_search = search_rec                                                             # D120
             if ask is not None:       # D53: the user reads the draft's intake before Box 3 runs
                 print(intake_text(draft))
                 clarification = ask_user(ask)
@@ -183,6 +199,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                        quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
                                        toolbox=toolbox, interpretation=interp, lessons=lessons)
+                    draft.plan_search = search_rec                                                     # D120
         task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})    # D77: Box 3 reads it too
         if prof is not None and prof.done_when:           # D102: what "done" means here, on the answer step(s)
             draft, done_steps = add_done_clauses(draft, prof)
@@ -283,6 +300,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         adaptation=ep.adaptation if ep and topology == "plan" and getattr(plan_options, "adapt", "off") == "on"
         else None,
         faults=(ep.faults or None) if ep and topology == "plan" else None,              # D119
+        plan_search=(draft.plan_search if draft else search_rec),                       # D120
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
@@ -738,6 +756,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "leads the next by 0.3, a tie included) is asked about before planning; with no terminal "
                         "the run stops with error needs_clarification and writes clarification.json. off = the "
                         "D77 behaviour (the answer states the assumption); the experiment harness passes off")
+    p.add_argument("--plan-search", choices=["on", "off"], default="off",
+                   help="D120: on = before the Planner drafts, one AI call says whether planning needs facts from the "
+                        "web (at most 3 queries); plain code checks and runs them (needs --web-tools) and shows the "
+                        "results to the Planner and both observers as [P#] planning data, never answer evidence. "
+                        "Needs --draft-prompts d24 (the d19 prompts have no slot for it). Default off")
     p.add_argument("--clarify", action="append", default=None, metavar="ENTITY=READING",
                    help="D116: answer an interpretation question ahead of time (the words or the option number); "
                         "repeat for each entity")
@@ -872,7 +895,8 @@ def main(argv: list[str] | None = None) -> int:
                     niche=niche,
                     deliverable_check=args.deliverable_check == "on" and args.topology == "plan",   # D105
                     workspace_sources=args.workspace_sources == "on" and args.topology == "plan",   # D107
-                    ask_assumed=args.ask_assumed, clarify=parse_clarify(args.clarify))                  # D116
+                    ask_assumed=args.ask_assumed, clarify=parse_clarify(args.clarify),                  # D116
+                    plan_search=args.plan_search == "on")                                             # D120
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
