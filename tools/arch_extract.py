@@ -157,7 +157,8 @@ BOXES: list[dict] = [
                "and constraint found by pattern, each number found with its unit within a tolerance (10 TB and "
                "9.1 TiB are the same amount), and nothing it must not do (such as a price with no source nearby).",
                "No AI judges the answer in Phase 1; a hook can store a judge's view beside the score, never in it.",
-               "D94: a rubric item can also check content, not just a heading: it passes only when the section its pattern finds has a body that names one of the item's entities (section_entity; \"**Assumptions:** no resale value\" counts, an empty Assumptions heading does not)."],
+               "D94: a rubric item can also check content, not just a heading: it passes only when the section its pattern finds has a body that names one of the item's entities (section_entity; \"**Assumptions:** no resale value\" counts, an empty Assumptions heading does not).",
+               "Only the final answer is scored: nothing from planning (D120's planning search included) counts."],
          proposes="The answer text (from the team).", disposes="Plain code decides match or no match.",
          anchors=["amoeba/task/evaluate.py::normalise", "amoeba/task/evaluate.py::score",
                   "amoeba/task/evaluate.py::rubric_score", "amoeba/task/evaluate.py::number_found",
@@ -409,7 +410,9 @@ BOXES: list[dict] = [
                "(Action / ActionInput lines, at most 5 calls); reviewers may call their own tools the same way.",
                "D70: a reply that is only a tool request is no answer: the writer is asked once more for its "
                "answer, and a run whose last answer is still a tool request ends with error 'no_answer'.",
-               "D102: a tool the run's niche profile does not allow is refused before it runs (refused: <tool>) and logged as niche_refused; general allows every tool."],
+               "D102: a tool the run's niche profile does not allow is refused before it runs (refused: <tool>) and logged as niche_refused; general allows every tool.",
+               "It belongs to the boss + reviewers baseline: the plan runner's in-task adaptation (D117) and fault "
+               "injection (D119) never touch it."],
          proposes="The answer text (and, with D62, tool calls).",
          disposes="Plain code decides when it is asked again and takes its last answer as the result.",
          prompts=["agentverse_solver_prepend", "agentverse_solver_append"],
@@ -617,7 +620,10 @@ BOXES: list[dict] = [
                "D116: status needs_clarification when the run stopped before planning to ask the user about a reading it would otherwise have assumed; result.json then lists the open questions (interpretation.pending).",
                "D117 and D119: stuck and adaptation (with --adapt on) and faults (the test-only --inject-fault: each "
                "fault, its step and target, how often it fired, how it ended, the expected diagnosis and first fix) "
-               "are left out of result.json when there are none."],
+               "are left out of result.json when there are none.",
+               "D120: plan_search (with --plan-search on): the decision and why, the queries kept and refused with "
+               "their reasons, each search's [P#] results and where the draft cited them (used_in), the lines "
+               "screened out and the tokens; left out when the flag is off."],
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,
