@@ -11161,7 +11161,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "30f2b7e",
+  "checked_at": "9911129",
   "facts": {
    "anchors": [
     {
@@ -11345,6 +11345,10 @@
        "list[dict] | None"
       ],
       [
+       "plan_search",
+       "dict | None"
+      ],
+      [
        "status",
        "str | None"
       ],
@@ -11405,6 +11409,10 @@
       "amoeba/task/interpret.py::with_note",
       "amoeba/task/models.py::RunResult",
       "amoeba/task/models.py::run_status",
+      "amoeba/task/plan_search.py::add_findings",
+      "amoeba/task/plan_search.py::search_before_planning",
+      "amoeba/task/plan_search.py::with_used_in",
+      "amoeba/task/plan_search.py::without_plan_ids",
       "amoeba/tools/registry.py::ToolRegistry.names",
       "scripts/run_task.py::ask_user",
       "scripts/run_task.py::blocked_of",
@@ -11417,11 +11425,12 @@
      ],
      "doc": "One run: Box 2 drafts a team (or `saved_draft`, a SavedDraft, is reused — D45), Box 3 runs it, Box 1 scores.",
      "key": "scripts/run_task.py::run_one",
-     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, niche=None, deliverable_check: bool=False, workspace_sources: bool=False, ask_assumed: str='off', clarify: dict | None=None) -> RunResult"
+     "signature": "run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry, runs_dir: str | Path, seed: int=0, log_content: bool=False, draft_prompts: str='d19', max_tokens: dict | None=None, quality_gate: bool=False, plan_options=None, saved_draft=None, limits: RunLimits | None=None, ask=None, pool: PoolSetup | None=None, local: LocalSetup | None=None, equal_tools: bool=False, picks_file: str | None=None, picks_only: bool=False, timezone: str | None=None, interpret: bool=False, context=None, disabled_tools=(), cli_explicit: frozenset=frozenset(), max_turns: int | None=None, default_max_turns: int | None=None, family_classify: bool=False, niche=None, deliverable_check: bool=False, workspace_sources: bool=False, ask_assumed: str='off', clarify: dict | None=None, plan_search: bool=False) -> RunResult"
     },
     {
      "callees": [
-      "amoeba/interp/citecheck.py::identifiers.take.sub"
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
      "doc": "Characters of real content in the answer: headings, BLOCKED lines and the Limitations section left out.",
      "key": "amoeba/task/deliverables.py::answer_content",
@@ -11493,7 +11502,8 @@
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/deliverables.py::_has_term",
       "amoeba/task/deliverables.py::promised_files",
-      "amoeba/task/deliverables.py::requirement_terms"
+      "amoeba/task/deliverables.py::requirement_terms",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
      "doc": "One requirement against the final answer (and the workspace, for a file it asks for).",
      "key": "amoeba/task/deliverables.py::requirement_check",
@@ -11547,28 +11557,28 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "18882fbb1b5f781f",
-  "rejected_hash": "a61fa9cefa43a0ad",
-  "seed_hash": "7deb4b8624d6378f",
+  "facts_hash": "a61fa9cefa43a0ad",
+  "seed_hash": "09aed73abc98a57d",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
    "It also lists the steps that answered BLOCKED and every capability request, and counts how many requests round {MIN_ANSWER_CHARS} made and how many the checkers talked the planner out of.",
    "D105 + D110: after the summariser, plain code checks each Box 2 requirement and each promised file against the final answer and the workspace (and the dates of web figures); missing → one refine turn, then Limitations, and no_deliverable when a core deliverable is missing; requirement_status records the final-answer result.",
    "D116: status needs_clarification when the run stopped before planning to ask the user about a reading it would otherwise have assumed; result.json then lists the open questions (interpretation.pending).",
-   "D117 and D119: stuck and adaptation (with --adapt on) and faults (the test-only --inject-fault: each fault, its step and target, how often it fired, how it ended, the expected diagnosis and first fix) are left out of result.json when there are none."
+   "D117 and D119: stuck and adaptation (with --adapt on) and faults (the test-only --inject-fault: each fault, its step and target, how often it fired, how it ended, the expected diagnosis and first fix) are left out of result.json when there are none.",
+   "D120: plan_search (with --plan-search on): the decision and why, the queries kept and refused with their reasons, each search's [P#] results and where the draft cited them (used_in), the lines screened out and the tokens; left out when the flag is off."
   ]
  },
  "scoring": {
-  "checked_at": "b95399a",
+  "checked_at": "9911129",
   "facts": {
    "anchors": [
     {
      "callees": [
-      "amoeba/interp/citecheck.py::identifiers.take.sub"
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
      "doc": "",
      "key": "amoeba/task/evaluate.py::normalise",
@@ -11592,6 +11602,7 @@
       "amoeba/task/evaluate.py::_any",
       "amoeba/task/evaluate.py::number_found",
       "amoeba/task/evaluate.py::section_entity",
+      "amoeba/task/plan_search.py::without_plan_ids.strip",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
      ],
@@ -11735,24 +11746,22 @@
    "prompts": {},
    "title": "Scoring (after Box 3)"
   },
-  "facts_hash": "27832273fcce92a3",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "ab41263815c78b3a",
-  "seed_hash": "11f3ffc2604961a0",
+  "facts_hash": "ab41263815c78b3a",
+  "seed_hash": "7323e1e3f42733fa",
   "sentence": "Compares the team's answer with the known answer; a job with no single right answer is scored against its rubric instead.",
-  "source": "model: kept",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand",
   "what": [
    "After the run, the team's answer is compared with the known answer.",
    "Both are lower-cased, runs of spaces are squeezed to one, and trailing full stops are dropped.",
    "An exact match scores 1, anything else 0.",
    "A job with a rubric and no known answer gets the fraction of rubric items it passes: each deliverable and constraint found by pattern, each number found with its unit within a tolerance (10 TB and 9.1 TiB are the same amount), and nothing it must not do (such as a price with no source nearby).",
    "No AI judges the answer in Phase 1; a hook can store a judge's view beside the score, never in it.",
-   "D94: a rubric item can also check content, not just a heading: it passes only when the section its pattern finds has a body that names one of the item's entities (section_entity; \"**Assumptions:** no resale value\" counts, an empty Assumptions heading does not)."
+   "D94: a rubric item can also check content, not just a heading: it passes only when the section its pattern finds has a body that names one of the item's entities (section_entity; \"**Assumptions:** no resale value\" counts, an empty Assumptions heading does not).",
+   "Only the final answer is scored: nothing from planning (D120's planning search included) counts."
   ]
  },
  "solver": {
-  "checked_at": "06dbc12",
+  "checked_at": "9911129",
   "facts": {
    "anchors": [
     {
@@ -11765,7 +11774,8 @@
       "amoeba/localtools/toolbox.py::LocalToolbox.call",
       "amoeba/pool/mcp.py::Connector.call",
       "amoeba/pool/mcp.py::PoolTools.call",
-      "amoeba/pool/mcp.py::SdkConnector.call"
+      "amoeba/pool/mcp.py::SdkConnector.call",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
      "doc": "",
      "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.solve",
@@ -11781,7 +11791,8 @@
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/pool/stock.py::pool_skill_notes",
-      "amoeba/pool/stock.py::pool_tool_notes"
+      "amoeba/pool/stock.py::pool_tool_notes",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
      "doc": "",
      "key": "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
@@ -11791,7 +11802,8 @@
      "callees": [
       "amoeba/interp/runtime.py::Interpreter._dispatch",
       "amoeba/interp/runtime.py::Interpreter._llm_messages",
-      "amoeba/interp/runtime.py::strip_thought"
+      "amoeba/interp/runtime.py::strip_thought",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
      "doc": "D62: a boss_reviewers agent's tool calls. A reply that is an Action / ActionInput pair naming one of its",
      "key": "amoeba/interp/runtime.py::Interpreter._tool_loop",
@@ -11876,19 +11888,18 @@
    },
    "title": "Solver"
   },
-  "facts_hash": "1d513d491073841d",
-  "rejected_hash": "664c23558dc2a9c8",
-  "seed_hash": "9ec3a3051875794c",
+  "facts_hash": "664c23558dc2a9c8",
+  "seed_hash": "2ac3dd7f4f232c00",
   "sentence": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply gets one retry.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "The writer sees the job, then its own past answers and the reviewers' objections as chat history.",
    "It writes a full new answer each time it is asked.",
    "It is asked at most four times: once, then once per review round with an objection.",
    "With --equal-tools on (D62) the writer holds every tool the team was given and may call them first (Action / ActionInput lines, at most 5 calls); reviewers may call their own tools the same way.",
    "D70: a reply that is only a tool request is no answer: the writer is asked once more for its answer, and a run whose last answer is still a tool request ends with error 'no_answer'.",
-   "D102: a tool the run's niche profile does not allow is refused before it runs (refused: <tool>) and logged as niche_refused; general allows every tool."
+   "D102: a tool the run's niche profile does not allow is refused before it runs (refused: <tool>) and logged as niche_refused; general allows every tool.",
+   "It belongs to the boss + reviewers baseline: the plan runner's in-task adaptation (D117) and fault injection (D119) never touch it."
   ]
  },
  "split": {
