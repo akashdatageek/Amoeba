@@ -2185,9 +2185,11 @@
    "title": "AI connection"
   },
   "facts_hash": "4727b48c8b208087",
+  "rejected_hash": "9a600572d6d201ea",
   "seed_hash": "6dadf5ad0e96121e",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
    "Waits out rate limits (HTTP 429/503: up to five retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message, set the reasoning effort and count hidden reasoning tokens.",
@@ -3615,7 +3617,7 @@
   ]
  },
  "free_text": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "92021b0",
   "facts": {
    "anchors": [
     {
@@ -3649,6 +3651,7 @@
       "scripts/run_task.py::cli_token_limits",
       "scripts/run_task.py::disable_tools",
       "scripts/run_task.py::family_classify_on",
+      "scripts/run_task.py::guard_config",
       "scripts/run_task.py::niche_tools",
       "scripts/run_task.py::parse_args",
       "scripts/run_task.py::parse_clarify",
@@ -3661,15 +3664,19 @@
     },
     {
      "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::check_flag",
       "amoeba/config/niche.py::NicheProfile.is_neutral",
       "amoeba/config/niche.py::load_profile",
+      "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/gate.py::require_sandbox",
       "amoeba/localtools/toolbox.py::LocalSetup",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
       "scripts/eval_draft.py::parse_args",
       "scripts/run_task.py::add_client_args",
       "scripts/run_task.py::explicit_flags",
+      "scripts/run_task.py::guard_config",
       "scripts/run_task.py::parse_args"
      ],
      "doc": "",
@@ -3679,6 +3686,11 @@
    ],
    "checks": [],
    "guards": [
+    [
+     "decide",
+     "if args.stall_calls is None",
+     "set args.stall_calls = int(guard_config().get('stall_calls', 0) or 0)"
+    ],
     [
      "decide",
      "if args.tasks",
@@ -3811,12 +3823,13 @@
     "Episode.n_llm_calls",
     "Episode.seed",
     "Episode.total_tokens",
-    "Limits.max_turns"
+    "Limits.max_turns",
+    "RunLimits.finish_share"
    ],
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "1e3a35df35f41aa9",
+  "facts_hash": "a078a16e6a7dda88",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
@@ -7252,7 +7265,7 @@
   ]
  },
  "ov_run": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "92021b0",
   "facts": {
    "anchors": [
     {
@@ -7334,10 +7347,13 @@
       "amoeba/interp/plan_runner.py::PlanRunner._max_turns",
       "amoeba/interp/plan_runner.py::PlanRunner.action_observer",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
+      "amoeba/interp/plan_runner.py::PlanRunner.answer_on_stop",
       "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
       "amoeba/interp/plan_runner.py::PlanRunner.fault_steps",
+      "amoeba/interp/plan_runner.py::PlanRunner.finish_skip",
       "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
       "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+      "amoeba/interp/plan_runner.py::PlanRunner.guard_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.plan_items",
       "amoeba/interp/plan_runner.py::PlanRunner.replan_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
@@ -7384,7 +7400,7 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "c9c21261cacfead9",
+  "facts_hash": "98fda10445220d9a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call, adaptation, and fault recovery is logged.",
@@ -7476,7 +7492,7 @@
   ]
  },
  "plan_graph": {
-  "checked_at": "b95399a",
+  "checked_at": "92021b0",
   "facts": {
    "anchors": [
     {
@@ -7515,10 +7531,13 @@
       "amoeba/interp/plan_runner.py::PlanRunner._max_turns",
       "amoeba/interp/plan_runner.py::PlanRunner.action_observer",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
+      "amoeba/interp/plan_runner.py::PlanRunner.answer_on_stop",
       "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
       "amoeba/interp/plan_runner.py::PlanRunner.fault_steps",
+      "amoeba/interp/plan_runner.py::PlanRunner.finish_skip",
       "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
       "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+      "amoeba/interp/plan_runner.py::PlanRunner.guard_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.plan_items",
       "amoeba/interp/plan_runner.py::PlanRunner.replan_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
@@ -7536,6 +7555,38 @@
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.run",
      "signature": "run(self) -> tuple[str | None, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.summary",
+      "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
+      "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
+      "amoeba/interp/plan_runner.py::PlanRunner.guard_summary",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/router.py::ModelRouter.summary"
+     ],
+     "doc": "D122: a cap or the runaway guard stopped the run. Plain code assembles the answer from the steps that have",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.answer_on_stop",
+     "signature": "answer_on_stop(self, e: RunLimitReached) -> tuple[str | None, str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/limits.py::RunLimits.finishing",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D122: True when an optional extra (fixes, rework, disputes, replan) is skipped because the run is in finish",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.finish_skip",
+     "signature": "finish_skip(self, kind: str, needed: bool) -> bool"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.guard_summary",
+     "signature": "guard_summary(self, stopped: dict | None=None) -> dict"
     }
    ],
    "checks": [],
@@ -7576,6 +7627,11 @@
      "set self.ep.adaptation = self.adapt_summary()"
     ],
     [
+     "decide",
+     "if self.opt.adapt == 'on' and (not self.finish_skip('fixes', bool(self.artifacts[n]['meta'].get('stuck'))))",
+     "set fixed = self.fix_stuck(n, w)"
+    ],
+    [
      "fallback",
      "None if status == 'done' else status",
      "choose value"
@@ -7587,12 +7643,22 @@
     ],
     [
      "fallback",
-     "self.fix_stuck(n, w) if self.opt.adapt == 'on' else None",
+     "except RunLimitReached",
+     "return self.answer_on_stop(e)"
+    ],
+    [
+     "fallback",
+     "f'**Steps that did not run:** {names}\\n\\n' if missing else ''",
      "choose value"
     ],
     [
      "filter",
      "keep only if d not in known",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n in self.artifacts",
      "drop the rest"
     ],
     [
@@ -7647,6 +7713,21 @@
     ],
     [
      "stop",
+     "if not (self.finish_skipped or stopped or (lim is not None and getattr(lim, '_finishing', False)))",
+     "return {}"
+    ],
+    [
+     "stop",
+     "if not have",
+     "return (None, e.code)"
+    ],
+    [
+     "stop",
+     "if not needed or lim is None or (not lim.finishing(self.i.trace))",
+     "return False"
+    ],
+    [
+     "stop",
      "if nums is None",
      "stop (break)"
     ],
@@ -7663,7 +7744,7 @@
    "prompts": {},
    "title": "Step graph (depends_on)"
   },
-  "facts_hash": "d29d688c70367a77",
+  "facts_hash": "1660c95a3062e731",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "15b138f4913a332f",
   "sentence": "Builds the order of work from each step's 'depends on' line and rejects a plan that loops.",
@@ -7782,7 +7863,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "92021b0",
   "facts": {
    "anchors": [
     {
@@ -7816,6 +7897,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
       "amoeba/interp/plan_runner.py::PlanRunner.files_of",
       "amoeba/interp/plan_runner.py::PlanRunner.final_answer_check",
+      "amoeba/interp/plan_runner.py::PlanRunner.finish_skip",
       "amoeba/interp/plan_runner.py::PlanRunner.inputs_text",
       "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
       "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
@@ -8058,6 +8140,11 @@
     ],
     [
      "decide",
+     "if disputes and self.finish_skip('disputes', True)",
+     "set disputes = []"
+    ],
+    [
+     "decide",
      "if failed",
      "set status, reason = ('incomplete', 'checks failed: ' + ', '.join(failed))"
     ],
@@ -8268,7 +8355,7 @@
     ],
     [
      "decide",
-     "if verifier and meta['verdict'] == 'FAIL' and (not reverify)",
+     "if verifier and meta['verdict'] == 'FAIL' and (not reverify) and (not self.finish_skip('rework', True))",
      "set reworked = self.rework_producers(n, deps, meta['issues'])"
     ],
     [
@@ -8718,17 +8805,17 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "dc1c14bcce6ed791",
+  "facts_hash": "cb15b0134f088676",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, the outputs of the steps it depends on, and a list of local files it can reference.",
-   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, verify spreadsheet data, and mark what it could not do as BLOCKED: <capability>.",
+   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, verify spreadsheet data, resolve any figure disputes, and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; if no model is available, it reports a blocked status; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search, lacks specific tools, or is performing research gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information; if local files are available, it is provided with a summary of those files and their source identifiers.",
-   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including resolving disputed figures, checking final findings, and marking missing inputs, before the final output is kept.",
+   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including resolving disputed figures, checking final findings, and marking missing inputs, before the final output is kept; if the system determines a step or rework is unnecessary, it may skip those processes.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
   ]
  },
@@ -11159,7 +11246,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "9911129",
+  "checked_at": "92021b0",
   "facts": {
    "anchors": [
     {
@@ -11341,6 +11428,10 @@
       [
        "faults",
        "list[dict] | None"
+      ],
+      [
+       "run_guard",
+       "dict | None"
       ],
       [
        "plan_search",
@@ -11555,10 +11646,11 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "a61fa9cefa43a0ad",
+  "facts_hash": "a803bbe27683728d",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "09aed73abc98a57d",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
@@ -12213,7 +12305,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "92021b0",
   "facts": {
    "anchors": [
     {
@@ -12442,7 +12534,8 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/interp/disputes.py::_same_label",
       "amoeba/interp/disputes.py::agree",
-      "amoeba/interp/disputes.py::labelled_figures"
+      "amoeba/interp/disputes.py::labelled_figures",
+      "amoeba/interp/disputes.py::same_quantity"
      ],
      "doc": "The labelled figures of the verifier's blind result that the checked outputs state under the same label only",
      "key": "amoeba/interp/disputes.py::disputed_figures",
@@ -12463,10 +12556,13 @@
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/disputes.py::_kind",
+      "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/server.py::StdioServer.start",
       "amoeba/localtools/toolbox.py::LocalToolbox.start",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/models.py::CapabilityRequest._kind",
       "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
@@ -12847,6 +12943,11 @@
     ],
     [
      "fallback",
+     "'/' if '/' in u.group(0) or 'per' in u.group(0).lower() else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'\\n[… rest of this result left out: nothing in it matches the claims checked …]' if len('\\n'.join(lines)) > keep_head else ''",
      "choose value"
     ],
@@ -12873,6 +12974,11 @@
     [
      "fallback",
      "'worker' if wv and agree(v, dv, *wv) else 'verifier' if cv and agree(v, dv, *cv) else 'corrected'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "('/' if '/' in u.group(0) or 'per' in u.group(0).lower() else '') + UNIT_SAME.get(u.group(1).lower(), u.group(1).lower()) if u else ''",
      "choose value"
     ],
     [
@@ -12952,7 +13058,7 @@
     ],
     [
      "filter",
-     "keep only if g['kind'] == f['kind'] and (s := _same_label(f['label'], g['label']))",
+     "keep only if g['kind'] == f['kind'] and same_quantity(f, g) and (s := _same_label(f['label'], g['label']))",
      "drop the rest"
     ],
     [
@@ -13189,11 +13295,11 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "27af94aceadd8063",
+  "facts_hash": "643ddd2fdef35b22",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "6f0a328d9f2e4908",
   "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
@@ -13204,7 +13310,7 @@
    "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial.",
    "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
    "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
-   "D109 (resolver): plain code pairs the verifier's blind figures with the worker's by label (5% tolerance); one fresh resolver call settles each disagreement by source text or a re-run, plain code checks its evidence, a settled value replaces the wrong one, and an unresolved one keeps the step from PASS and goes into Limitations.",
+   "D102: the niche profile's domain checks (e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn, and the resolver uses quantity-aware matching to settle disagreements.",
    "D110 (part of D105's final-answer check): every web-sourced figure of the final answer must carry its source's date (line or source entry); undated ones share the refine turn, and those still undated are listed in Limitations.",
    "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked."
   ]
