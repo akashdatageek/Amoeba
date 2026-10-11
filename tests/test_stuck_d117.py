@@ -114,3 +114,18 @@ def test_the_report_reads_stored_runs_the_same_way(tmp_path):
     s = r["sets"]["eval/set1"]
     assert (s["runs"], s["attempts"], s["stuck"], s["no_tool_calls"]) == (1, 4, 2, 2)
     assert dict(r["total"]["causes"]) == {"capability": 1, "claimed_file_missing": 1}
+
+
+def test_a_request_the_run_already_covers_is_not_an_open_capability():
+    """H3 run fe375170 (Oct 11): web_search and fetch_url requests marked "unfilled (registered_tool)" by the toolbox
+    step (the run already had them) were read as missing capabilities and stopped the task at step 1."""
+    from amoeba.adapt.stuck import open_requests, step_signals
+    reqs = [{"name": "web_search", "kind": "tool", "for_role": "Analyst", "status": "unfilled", "reason": "registered_tool"},
+            {"name": "fetch_url", "kind": "tool", "for_role": "Analyst", "status": "unfilled", "reason": "registered_tool"},
+            {"name": "docx_generator", "kind": "tool", "for_role": "Analyst", "status": "unfilled", "reason": "pick_none"},
+            {"name": "calc", "kind": "tool", "for_role": "Analyst", "status": "unfilled", "reason": "no_helper"}]
+    assert [q["name"] for q in open_requests(reqs)] == ["docx_generator", "calc"]
+    assert [q["name"] for q in open_requests(reqs, {"Analyst": {"calc"}})] == ["docx_generator"]   # held now
+    meta = {"step": 1, "status": "partial", "roles": ["Analyst"], "checks": [], "status_reason": "mislabelled citation"}
+    assert step_signals(meta, unfilled=open_requests(reqs[:2])) == []                    # nothing open: not stuck
+    assert step_signals(meta, unfilled=open_requests(reqs))[0]["signal"] == "capability_unfilled"

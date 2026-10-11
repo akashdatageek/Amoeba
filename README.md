@@ -471,6 +471,11 @@ answer and `adapt_report.md` say what was stuck, the cause, each fix tried and w
 each step that used an upstream output from before that step was re-run.
 `result.json` `adaptation` lists every fix with its result and tokens. `--adapt off` turns the watch and the fixes off.
 
+**D121 (Oct 11).** Two fixes from the H3 end-to-end run (`eval/manual/h3/REPORT.md`): a capability request the run
+already covers (`unfilled (registered_tool)`, such as web_search) or a helper already holds no longer makes a step
+stuck, and a registry grant marks its request filled; the fix proposer's reply is read from the last JSON object that
+holds an edit, not from the first brace (Gemma's thought often quotes JSON from the prompt).
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

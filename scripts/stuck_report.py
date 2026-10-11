@@ -16,7 +16,7 @@ import os
 from collections import Counter
 from pathlib import Path
 
-from amoeba.adapt.stuck import diagnose, is_stuck, step_signals
+from amoeba.adapt.stuck import diagnose, is_stuck, open_requests, step_signals
 from amoeba.interp.plan_runner import missing_input_marks
 
 
@@ -51,7 +51,7 @@ def run_stuck(run: Path) -> list[dict]:
     requests = _load(run / "capability_requests.json")
     if requests is None:
         requests = (_load(run / "result.json") or {}).get("requested_capabilities") or []
-    unfilled = [q for q in requests if isinstance(q, dict) and q.get("status") == "unfilled"]
+    unfilled = open_requests(requests)          # "registered_tool" requests are covered by the run's own tools
     metas = {}
     for p in (run / "artifacts").glob("step_*.json"):
         if p.name[len("step_"):-len(".json")].isdigit() and isinstance(m := _load(p), dict):

@@ -210,8 +210,12 @@ def test_a_registry_tool_is_granted_without_the_pool_step(task, envelope, trace,
         if n == "1" and not fixed(trace):
             return reply("Final Output", f"OUT-1\n{BODY}\nBLOCKED: calc — nothing to compute with")
         return good(n)
-    llm, cfg, ep = run(task, envelope, trace, tools, script, stock=fake_stock(calls))
+    def ask_calc(cfg):                   # an open request for the tool the grant gives
+        cfg.meta.setdefault("capability_requests", []).append(
+            {"name": "calc", "kind": "tool", "for_role": "Cost Analyst", "status": "unfilled", "reason": "no_helper"})
+    llm, cfg, ep = run(task, envelope, trace, tools, script, stock=fake_stock(calls), setup_cfg=ask_calc)
     assert ep.adaptation["fixes"][0]["attached"] == ["calc"] and calls == []
+    assert [q for q in cfg.meta["capability_requests"] if q["name"] == "calc"][0]["status"] == "filled"   # granted
 
 
 def test_an_empty_shortlist_is_one_failed_fix_never_repeated_then_the_task_stops(task, envelope, trace, tools,

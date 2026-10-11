@@ -19,7 +19,7 @@ from amoeba.adapt.faults import Faults
 from amoeba.adapt.fixes import POOL_OFF, candidates, fix_key, limits as fix_limits
 from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
-from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, step_signals
+from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, open_requests, step_signals
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
@@ -1771,9 +1771,10 @@ class PlanRunner:
         """D117 Stage B: the stuck watch after one step attempt. A stuck step gets `meta["stuck"]` (cause, signals,
         allowed edits, evidence lines), a `stuck` trace event and a row in the run's hash-chained events.jsonl."""
         roles = set(meta.get("roles") or [])
-        unfilled = [q for q in self.cfg.meta.get("capability_requests", []) if q.get("status") == "unfilled"]
-        unfilled += [{**q.model_dump(), "status": "unfilled", "reason": "raised_during_run"}
-                     for q in self.ep.requested_capabilities if q.for_role in roles and self.pool is not None]
+        holds = {a.name: set(a.tools) for a in self.agents.values()}
+        unfilled = open_requests(list(self.cfg.meta.get("capability_requests", [])) + [
+            {**q.model_dump(), "status": "unfilled", "reason": "raised_during_run"}
+            for q in self.ep.requested_capabilities if q.for_role in roles and self.pool is not None], holds)
         plan = {number(s): {"output": s.output, "roles": [self.agents[a].name for a in s.agent_ids],
                             "status": (self.artifacts.get(number(s)) or {}).get("meta", {}).get("status")}
                 for s in self.cfg.plan}
@@ -1947,6 +1948,9 @@ class PlanRunner:
                     if have not in a.tools:
                         a.tools.append(have)
                     a.missing_tools = [t for t in a.missing_tools if t not in (item, canon)]
+                for q in self.cfg.meta.get("capability_requests", []):   # the request is filled now
+                    if q.get("for_role") in {a.name for a in writers} and {q.get("name"), q.get("canonical")} & {item, canon}:
+                        q["status"], q["reason"] = "filled", "granted"
                 got.append(have)
             else:
                 reqs.append(CapabilityRequest(name=item, kind="skill" if "skill" in item.lower() else "tool",

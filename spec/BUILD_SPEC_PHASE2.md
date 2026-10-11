@@ -889,3 +889,11 @@ shows them to the Planner and both observers as a data block with `[P#]` ids. Th
 result shaped the draft; plain code records `used_in` and removes the ids before Box 3, so they never enter the
 team's `[S#]` sources, D74's citation check or provenance. Design and the differences from it:
 `docs/design/D120_plan_search.md` ("As built"). To be tested after Stage E as its own off-vs-on comparison on Box 2.
+
+**D121, two Box 4 fixes from the H3 run (Oct 11).** The run (`eval/manual/h3/REPORT.md`) stopped at step 1: the stuck
+watch counted capability requests marked `unfilled (registered_tool)`, which the run already covers (web_search and
+fetch_url, D32), as missing capabilities, and the fix proposer's parser read the reply from its first brace (JSON quoted
+in Gemma's thought) and refused both valid edits. Now `open_requests` (amoeba/adapt/stuck.py) decides which requests
+are open, for the live watch and `scripts/stuck_report.py` alike; a registry grant marks its request filled; and
+`parse_fix` takes the last JSON object that holds an edit.
+

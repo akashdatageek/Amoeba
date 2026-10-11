@@ -171,11 +171,23 @@ class FixReply(BaseModel):
 
 # box: proposer
 def parse_fix(text: str) -> FixReply:
-    """The first JSON object of the reply (a code fence around it is allowed)."""
-    m = re.search(r"\{.*\}", text or "", re.S)
-    if not m:
+    """The reply's edit: the last top-level JSON object that holds an "edit" (a code fence around it is allowed).
+    Gemma's thought section often quotes JSON from the prompt (a fix already tried, a params shape) before the answer,
+    so the first "{" of the reply is not the edit. With no object holding "edit", the last object is validated (its
+    errors name what is missing)."""
+    s, dec, objs, i = text or "", json.JSONDecoder(), [], (text or "").find("{")
+    while i != -1:
+        try:
+            obj, end = dec.raw_decode(s, i)
+        except ValueError:
+            i = s.find("{", i + 1)
+            continue
+        if isinstance(obj, dict):
+            objs.append(obj)
+        i = s.find("{", end)
+    if not objs:
         raise ValueError("no JSON object in the reply")
-    return FixReply.model_validate(json.loads(m.group(0)))
+    return FixReply.model_validate(next((o for o in reversed(objs) if "edit" in o), objs[-1]))
 
 
 # box: proposer

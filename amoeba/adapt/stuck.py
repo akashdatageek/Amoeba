@@ -164,6 +164,23 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
 
 
 # box: stuck
+def open_requests(requests: list | None, holds: dict[str, set] | None = None) -> list[dict]:
+    """The capability requests that are really open: status unfilled, and not covered by a tool the run already has.
+    "registered_tool" means the toolbox step found the tool in the run's registry (web_search and fetch_url, granted by
+    D32), so the pool had nothing to add; it is not a missing capability. `holds` (the live watch): role name → the
+    tools its helper holds now, so a request a later grant covered is not open either."""
+    out = []
+    for q in requests or []:
+        if not isinstance(q, dict) or q.get("status") != "unfilled" or q.get("reason") == "registered_tool":
+            continue
+        have = (holds or {}).get(q.get("for_role")) or set()
+        if (q.get("kind") or "tool") == "tool" and {q.get("name"), q.get("canonical")} & set(have):
+            continue
+        out.append(q)
+    return out
+
+
+# box: stuck
 def is_stuck(meta: dict, signals: list[dict]) -> bool:
     """Stuck: the step did not end done and at least one signal holds (a step that recovered is not stuck)."""
     return bool(signals) and meta.get("status") != "done"

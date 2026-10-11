@@ -304,3 +304,19 @@ def test_steps_on_an_old_upstream_output_are_listed_in_the_answer_and_the_report
     assert ep.adaptation["left_on_old_output"] == [{"step": 2, "upstream": 1}]
     assert "- OLD INPUT: step 2 used step 1's output from before step 1 was re-run" in ep.answer
     assert "- step 2 used step 1's earlier output (not redone)" in (tmp_path / "adapt_report.md").read_text()
+
+
+def test_the_edit_is_found_after_json_quoted_in_the_thought():
+    """H3 run fe375170 (Oct 11): Gemma's thought quoted a fix already tried before the edit; the old parser started
+    at that first brace and refused both replies as unreadable ("Extra data")."""
+    edit = {"edit": {"op": "add_role_rule", "params": {"role": "Cost Analyst", "text": "Cite the page you read."}},
+            "reason": "the step's citations do not match their sources"}
+    raw = ("<thought>Fixes already tried: grant_tool on step 1 {\"items\": [\"fetch_url\", \"web_search\"], "
+           "\"exclude\": []} failed. Another shape: {\"role\": \"<name>\"}.</thought>\n```json\n"
+           + json.dumps(edit) + "\n```")
+    r = parse_fix(raw)
+    assert r.edit.op == "add_role_rule" and r.edit.params["text"] == "Cite the page you read."
+    with pytest.raises(ValueError, match="no JSON object"):
+        parse_fix("no braces here")
+    with pytest.raises(Exception):                       # an object without "edit" is still validated and refused
+        parse_fix('{"items": ["web_search"]}')
