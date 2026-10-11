@@ -730,7 +730,11 @@ BOXES: list[dict] = [
                "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
                "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error, no_deliverable or needs_clarification.",
                "D117 D: the offline stand-in (--llm mock) answers the fix proposer with no edit, so a stuck step in an "
-               "offline run ends in the stop report instead of a crash (D119's injected pairs found it)."],
+               "offline run ends in the stop report instead of a crash (D119's injected pairs found it).",
+               "D122: no token cap by default; a runaway guard stops a plan run after --stall-calls model calls with "
+               "no progress (default 60; calls, never tokens; armed once the plan runner starts). With an optional "
+               "hard cap the plan runner enters finish mode past 85% of it, and a stopped plan run returns its "
+               "finished steps as a partial answer."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
