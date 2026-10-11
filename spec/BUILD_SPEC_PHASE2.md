@@ -897,3 +897,10 @@ in Gemma's thought) and refused both valid edits. Now `open_requests` (amoeba/ad
 are open, for the live watch and `scripts/stuck_report.py` alike; a registry grant marks its request filled; and
 `parse_fix` takes the last JSON object that holds an edit.
 
+**D122, limits that keep nearly finished work (Oct 11, user decision).** The H3 re-run had a correct TCO table after
+four steps and lost it to a 600k token cap before the memo. Now: no token cap by default; a runaway guard counts model
+calls with no progress (default 60, armed when the plan runner starts; spec §2's "tokens never enforced" holds); with
+an optional hard cap the plan runner enters finish mode at 85% (no fixes, rework, dispute resolution or re-planning);
+a stopped plan run returns the finished steps assembled by code as a partial answer; and the dispute matcher pairs
+figures only on the same scale and unit. `result.json` `run_guard` records it.
+

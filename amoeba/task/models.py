@@ -103,6 +103,7 @@ class Episode(BaseModel):
     stuck: list[dict] = Field(default_factory=list)   # D117 --adapt on: every stuck step event (cause, evidence)
     adaptation: dict = Field(default_factory=dict)    # D117 Stage C: fixes tried, steps recovered, tokens, stop
     faults: list[dict] = Field(default_factory=list)  # D119 (test-only): injected faults, where they fired, cleared
+    run_guard: dict = Field(default_factory=dict)     # D122: finish mode, extras skipped, a stop and what was assembled
 
 
 class Answer(BaseModel):
@@ -365,6 +366,7 @@ class RunResult(BaseModel):
     stuck: list[dict] | None = None   # D117 --adapt on: each stuck step event (cause, signals, evidence)
     adaptation: dict | None = None    # D117 Stage C --adapt on: fixes tried and their results, tokens, stop
     faults: list[dict] | None = None  # D119 (test-only, --inject-fault): each injected fault; left out when none
+    run_guard: dict | None = None     # D122: finish mode / skipped extras / a stop with the answer assembled; left out when none
     plan_search: dict | None = None   # D120 --plan-search on: the search before planning (Draft.plan_search)
     status: str | None = None    # D111: ok | infra_error | agent_error (D105: no_deliverable); run_status
     routing: dict | None = None  # D97: the router's per-model calls, tokens and USD, and its decision counts

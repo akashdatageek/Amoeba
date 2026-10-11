@@ -32,7 +32,7 @@ from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_
                                       strip_unverified)
 from amoeba.interp.freshness import stale_figure, time_sensitive
 from amoeba.interp.shorten import shorten
-from amoeba.llm.limits import estimate
+from amoeba.llm.limits import RunLimitReached, estimate
 from amoeba.llm.profiles import role_group
 from amoeba.llm.router import NoModelAvailable
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
@@ -624,6 +624,7 @@ class PlanRunner:
         self.helpers_added = 0                            # D117 Stage D: helpers the fix proposer added (capped)
         self.faults = Faults(self.opt.faults, interp.trace)   # D119: test-only injected faults (none by default)
         self.no_last_turn: set[int] = set()               # D119 max_turns fault: steps whose last turn is not forced
+        self.finish_skipped: dict[str, int] = {}          # D122: extras skipped in finish mode, by kind
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
     # box: step_check
@@ -852,25 +853,31 @@ class PlanRunner:
             self.known = self.plan_items()                                  # D63: what the plan knew of at the start
             self.save_plan_version(None)
         w = 0
-        while True:     # D63: the waves are recomputed after each wave, so an accepted re-plan takes effect
-            nums = next((x for x in ([n for n in wave if n not in self.artifacts] for wave in waves(self.cfg.plan))
-                         if x), None)
-            if nums is None:
-                break
-            w += 1
-            deps = dependencies(self.cfg.plan)
-            for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
-                self.run_step(self.steps[n], w, deps[n])
-                fixed = self.fix_stuck(n, w) if self.opt.adapt == "on" else None   # D117 Stages C–D
-                if fixed == "stop":                                                 # no fix recovered it
-                    self.ep.faults = self.faults.summary()
-                    return self.stop_report(n)
-                if fixed == "replanned":                  # D117 Stage D: the plan changed; recompute the waves
+        try:
+            while True:     # D63: the waves are recomputed after each wave, so an accepted re-plan takes effect
+                nums = next((x for x in ([n for n in wave if n not in self.artifacts] for wave in waves(self.cfg.plan))
+                             if x), None)
+                if nums is None:
                     break
-            if replan:
-                self.action_observer(w)
+                w += 1
+                deps = dependencies(self.cfg.plan)
+                for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
+                    self.run_step(self.steps[n], w, deps[n])
+                    fixed = None
+                    if self.opt.adapt == "on" and not self.finish_skip("fixes", bool(self.artifacts[n]["meta"].get("stuck"))):
+                        fixed = self.fix_stuck(n, w)                                 # D117 Stages C–D
+                    if fixed == "stop":                                             # no fix recovered it
+                        self.ep.faults = self.faults.summary()
+                        return self.stop_report(n)
+                    if fixed == "replanned":              # D117 Stage D: the plan changed; recompute the waves
+                        break
+                if replan and not self.finish_skip("replan", True):
+                    self.action_observer(w)
+        except RunLimitReached as e:                      # D122: a cap or the runaway guard stopped the run
+            return self.answer_on_stop(e)
         ws = waves(self.cfg.plan)
         self.ep.faults = self.faults.summary()                # D119: [] without --inject-fault
+        self.ep.run_guard = self.guard_summary()              # D122: {} unless finish mode or a stop happened
         if self.opt.adapt == "on":
             self.ep.adaptation = self.adapt_summary()
             if self.stuck:                                    # D117 Stage D: the report, also when nothing stopped
@@ -888,6 +895,53 @@ class PlanRunner:
         art = self.artifacts[self.answer_n]
         status = art["meta"]["status"]
         return art["text"], (None if status == "done" else status)
+
+    # box: plan_graph
+    def finish_skip(self, kind: str, needed: bool) -> bool:
+        """D122: True when an optional extra (fixes, rework, disputes, replan) is skipped because the run is in finish
+        mode (it has used most of a hard cap); counted per kind."""
+        lim = getattr(self.i.trace, "limits", None)
+        if not needed or lim is None or not lim.finishing(self.i.trace):
+            return False
+        self.finish_skipped[kind] = self.finish_skipped.get(kind, 0) + 1
+        self.i.trace.event("finish_skip", {"amoeba.kind": kind, "amoeba.count": self.finish_skipped[kind]})
+        return True
+
+    # box: plan_graph
+    def guard_summary(self, stopped: dict | None = None) -> dict:
+        lim = getattr(self.i.trace, "limits", None)
+        if not (self.finish_skipped or stopped or (lim is not None and getattr(lim, "_finishing", False))):
+            return {}
+        return {"finish_mode": bool(lim is not None and getattr(lim, "_finishing", False)),
+                "skipped": dict(self.finish_skipped), "stopped": stopped}
+
+    # box: plan_graph
+    def answer_on_stop(self, e: RunLimitReached) -> tuple[str | None, str]:
+        """D122: a cap or the runaway guard stopped the run. Plain code assembles the answer from the steps that have
+        an output (in plan order, D41) under a header that says the run stopped and which steps did not run; with no
+        step finished there is nothing to assemble (no answer, as before)."""
+        order = [number(st) for st in self.cfg.plan]
+        have = [n for n in order if n in self.artifacts]
+        missing = [n for n in order if n not in self.artifacts]
+        self.ep.faults = self.faults.summary()
+        if self.opt.adapt == "on":
+            self.ep.adaptation = self.adapt_summary()
+        stopped = {"code": e.code, "why": str(e), "steps_with_output": have, "steps_not_run": missing}
+        self.ep.run_guard = self.guard_summary(stopped)
+        self.i.trace.event("answer_on_stop", {"amoeba.code": e.code, "amoeba.steps": have, "amoeba.not_run": missing})
+        if not have:
+            return None, e.code
+        text, _ = self.assemble_by_code(have)
+        title = lambda n: re.sub(r"^\s*\[.*?\]\s*:\s*", "", self.steps[n].text).strip()
+        names = ", ".join(f"{n} ({title(n)})" for n in missing)
+        head = ("# Partial answer: the run stopped before it finished\n\n"
+                f"**Why it stopped:** {e}\n\n"
+                + (f"**Steps that did not run:** {names}\n\n" if missing else "")
+                + "The sections below are the outputs of the steps that ran, put together by plain code.\n\n")
+        if self.dir:
+            (self.dir / "answer.md").write_text(head + text + "\n", encoding="utf-8")
+        return head + text, f"{e.code}: stopped with step(s) {', '.join(map(str, missing)) or 'none'} not run; " \
+                            f"answer assembled from step(s) {', '.join(map(str, have))}"
 
     def _answer_step(self, ws: list[list[int]]) -> int | None:
         """The summariser's step if it owns one in the last wave; else the last wave's only step; else None: the
@@ -1180,6 +1234,8 @@ class PlanRunner:
         disputes, resolutions, unresolved = [], [], []
         if verifier and mine is not None and self.opt.disputes == "on":           # D109: blind result vs outputs
             disputes = disputed_figures(mine["text"], {d: self.artifacts[d]["text"] for d in deps if d in self.artifacts})
+            if disputes and self.finish_skip("disputes", True):   # D122: finish mode: no resolver calls
+                disputes = []
             if disputes:
                 self.i.trace.event("disputed", {"amoeba.step": n, "amoeba.disputes": disputes})
                 resolutions = self.resolve_disputes(step, n, writers, disputes)
@@ -1271,7 +1327,7 @@ class PlanRunner:
         if self.opt.adapt == "on":                    # D117 Stage B: watch and diagnose, no fix yet
             self.watch(n, meta, previous, file_sig(self.files_of(n)) == files_before if refine else None)
         self._save(n, wave, text, meta, prov)
-        if verifier and meta["verdict"] == "FAIL" and not reverify:
+        if verifier and meta["verdict"] == "FAIL" and not reverify and not self.finish_skip("rework", True):
             reworked = self.rework_producers(n, deps, meta["issues"])
             if reworked:                                   # D38: check once more what the rework produced
                 self.i.trace.event("reverify", {"amoeba.step": n, "amoeba.reworked": reworked})

@@ -26,9 +26,11 @@ def test_a_token_limit_in_box3_keeps_the_steps_that_ran(tmp_path, envelope, tool
     llm = mock(planner=[DIAMOND], agent_observer=[APPROVE], plan_observer=[APPROVE], plan_worker=finish)
     r = run_one(Task(prompt="Compute 17 * 23 + 5."), "plan", llm, envelope, tools, tmp_path, draft_prompts="d24",
                 limits=RunLimits(max_tokens=6500))   # drafting ~4.6k, steps ~0.8k each
-    assert r.error == "budget"
+    assert r.error.startswith("budget: stopped with step(s)")             # D122: the finished steps are the answer
     arts = sorted(p.name for p in (tmp_path / r.run_id / "artifacts").glob("step_*.json"))
     assert arts and "step_4.json" not in arts                                # stopped before the last step
+    assert r.answer.startswith("# Partial answer: the run stopped before it finished") and "## Step 1:" in r.answer
+    assert "**Steps that did not run:**" in r.answer
     assert r.usage["tokens"] >= 6500 and r.usage["calls"] == r.n_llm_calls
 
 

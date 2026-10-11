@@ -4,6 +4,9 @@ A verify step first works out its own result without the outputs it checks (D90)
 that blind result with the figures of the checked outputs by their labels (the words before the number on its line,
 e.g. "BEV purchase price") and compares the values with the rubric's tolerance (5% relative, or equal at the coarser
 precision written). A labelled figure the outputs state only with a different value is a disagreement.
+D122: two figures are only the same figure when their scales and units fit: values more than SCALE apart (a $35
+charger cost against a $325,000 truck price) or with different units written after them (420,000 mi against 6.5 MPG)
+share a label word by chance and are never a disagreement.
 
 Every disagreement goes to the resolver: one separate, fresh call (plan_resolve.txt) whose only job is to settle each
 disputed figure against the source text the team was shown, a fresh fetch, a calculation, or a re-run in the sandbox.
@@ -22,6 +25,13 @@ from amoeba.interp.citecheck import norm
 from amoeba.interp.provenance import IDS, LIST_MARKER, NUM, TAG, computed_values
 
 TOLERANCE = 0.05            # the rubric's default relative tolerance (RubricNumber.tolerance)
+SCALE = 20                  # D122: values further apart than this factor are different quantities, not a dispute
+UNIT = re.compile(r"\s*(?:/\s*|per\s+)?(mpg|kwh|kw|mwh|gal(?:lon)?s?|mi(?:les?)?|km|lbs?|tons?|hours?|hrs?|"
+                  r"cents?|¢|years?|yrs?|months?|days?|trucks?|chargers?)\b", re.I)
+UNIT_SAME = {"gallon": "gal", "gallons": "gal", "gals": "gal", "mile": "mi", "miles": "mi", "cent": "¢", "cents": "¢",
+             "year": "yr", "years": "yr", "yrs": "yr", "hour": "hr", "hours": "hr", "hrs": "hr", "month": "mo",
+             "months": "mo", "day": "d", "days": "d", "lb": "lbs", "ton": "tons", "truck": "trucks",
+             "charger": "chargers"}
 MAX_DISPUTES = 10
 STOP = {"the", "a", "an", "of", "for", "in", "on", "at", "to", "is", "are", "was", "were", "be", "per", "and", "or",
         "with", "by", "from", "its", "this", "that", "as", "about", "approx", "approximately", "around", "roughly",
@@ -63,8 +73,11 @@ def labelled_figures(text: str) -> list[dict]:
             words = [w for w in re.findall(r"[a-z][a-z0-9'-]*", seg.lower()) if w not in STOP]
             if not words:
                 continue
+            u = UNIT.match(body, m.end())
+            unit = (("/" if "/" in u.group(0) or "per" in u.group(0).lower() else "") + UNIT_SAME.get(
+                u.group(1).lower(), u.group(1).lower())) if u else ""
             out.append({"label": words[-5:], "tok": tok, "value": v, "digits": len(bare.partition(".")[2]),
-                        "kind": _kind(body, m), "line": line.strip()[:200]})
+                        "kind": _kind(body, m), "unit": unit, "line": line.strip()[:200]})
     return out
 
 
@@ -74,6 +87,15 @@ def _same_label(a: list[str], b: list[str]) -> int:
     shared = len(set(a) & set(b))
     short, long_ = sorted((a, b), key=len)
     return shared if shared >= 2 or (short and long_[-len(short):] == short) else 0
+
+
+def same_quantity(f: dict, g: dict) -> bool:
+    """D122: two labelled figures can be one quantity only on the same scale (within SCALE of each other) and, when
+    both write a unit after the number, with the same unit."""
+    a, b = abs(f["value"]), abs(g["value"])
+    if a and b and max(a, b) / min(a, b) > SCALE:
+        return False
+    return not (f.get("unit") and g.get("unit") and f["unit"] != g["unit"])
 
 
 def agree(a: float, da: int, b: float, db: int, tolerance: float = TOLERANCE) -> bool:
@@ -88,7 +110,8 @@ def disputed_figures(own: str, outputs: dict[int, str], tolerance: float = TOLER
     theirs = [(d, f) for d, text in sorted(outputs.items()) for f in labelled_figures(text)]
     out, seen = [], set()
     for f in labelled_figures(own):
-        cands = [(s, d, g) for d, g in theirs if g["kind"] == f["kind"] and (s := _same_label(f["label"], g["label"]))]
+        cands = [(s, d, g) for d, g in theirs if g["kind"] == f["kind"] and same_quantity(f, g)
+                 and (s := _same_label(f["label"], g["label"]))]
         if not cands or any(agree(f["value"], f["digits"], g["value"], g["digits"], tolerance) for _, _, g in cands):
             continue
         s, d, g = max(cands, key=lambda c: c[0])

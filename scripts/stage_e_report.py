@@ -27,7 +27,7 @@ from amoeba.task.models import run_status
 from scripts.stuck_report import run_stuck
 
 FAILED = {"agent_error", "infra_error", "no_deliverable", "needs_clarification"}
-NOT_DONE = ("partial", "incomplete")      # the answer step's status as the run's error: an answer, not a failure
+NOT_DONE = ("partial", "incomplete", "budget", "stalled")   # an answer with these errors is not a failure (D122)
 CODE_RUNGS = {1, 2, "input"}
 TRACE_NAMES = {"stuck", "fix_try", "fix_skipped", "proposer_reply", "fix_done", "step_done", "refine",
                "input_truncated", "claimed_file_missing", "adapt_stop"}

@@ -552,14 +552,23 @@ with `used_in`, screened lines, calls, tokens). A reused draft keeps its own rec
 python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --topology plan \
     --drafts-from runs/draft_eval/cmp2-gemini-3.1-flash-lite-d24 --draft-pick 0 \
     --llm-cache runs/cache --llm-cache-mode record --llm-cache-namespace rep0 \
-    --max-tokens-per-run 200000 --min-seconds-between-calls 1
+    --min-seconds-between-calls 1
 ```
 
 - `--drafts-from DIR --draft-pick K`: reuse saved drafts (an eval_draft folder or a runs folder); result.json names
   the `draft_source`.
 - `--llm-cache DIR --llm-cache-mode record|replay|off [--llm-cache-namespace NAME]`: every model reply and web result
   is stored; `replay` never calls anything (a miss ends the run with `error="cache_miss"`).
-- `--max-tokens-per-run N`, `--max-calls-per-run N`: the run stops cleanly with `error="budget"`; what ran is saved.
+- **No token cap by default (D122).** Nobody can know ahead how many tokens a task needs (Gemma's hidden reasoning
+  alone can be a third of them), so real tasks run without `--max-tokens-per-run`. What stops a runaway instead is the
+  **runaway guard**: a plan run stops when `--stall-calls N` model calls (default 60, adapt.yaml `run_guard`; 0 = off)
+  pass with no progress, meaning no new step and no step done. It counts calls, never tokens, and arms only once the plan runner starts,
+  so drafting and the baselines are never counted.
+- `--max-tokens-per-run N`, `--max-calls-per-run N` (optional hard caps): past 85% of a cap the run enters **finish
+  mode**: no more in-task fixes, rework after a failed check, dispute resolution or re-planning; it goes straight to
+  the steps still owed. If a cap or the guard does stop a plan run, the answer is **assembled from the finished steps**
+  under "# Partial answer: the run stopped before it finished", listing the steps that did not run; the error starts
+  `budget:` or `stalled:` and what ran is saved. A run is never left with an empty answer when a step had finished.
   Every run prints its billed tokens and an estimated cost from `amoeba/config/prices.yaml` (fill in the prices;
   a model without one gets tokens only).
 - HTTP 429/503, dropped connections and timeouts are retried up to `--max-rate-retries` (5) with exponential waits
