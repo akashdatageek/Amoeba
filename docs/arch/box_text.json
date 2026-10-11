@@ -1668,7 +1668,7 @@
   ]
  },
  "client": {
-  "checked_at": "30f2b7e",
+  "checked_at": "1ba55e1",
   "facts": {
    "anchors": [
     {
@@ -1785,11 +1785,38 @@
       [
        "max_calls",
        "int | None"
+      ],
+      [
+       "stall_calls",
+       "int | None"
+      ],
+      [
+       "finish_share",
+       "float"
+      ],
+      [
+       "_armed",
+       "bool"
+      ],
+      [
+       "_progress",
+       "int"
+      ],
+      [
+       "_mark",
+       "int"
+      ],
+      [
+       "_finishing",
+       "bool"
       ]
      ],
      "key": "amoeba/llm/limits.py::RunLimits",
      "methods": [
       "active(self) -> bool",
+      "progress(trace) -> int",
+      "stalled(self, trace) -> int | None",
+      "finishing(self, trace) -> bool",
       "check(self, trace) -> None"
      ],
      "signature": null
@@ -1901,6 +1928,17 @@
      "doc": "D73: the time of the live call travels with a web result (a page, or each search hit), so a replayed result",
      "key": "amoeba/llm/cache.py::stamped",
      "signature": "stamped(result)"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/config.py::adapt_config",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D122: adapt.yaml run_guard (the runaway guard and finish mode).",
+     "key": "scripts/run_task.py::guard_config",
+     "signature": "guard_config() -> dict"
     }
    ],
    "checks": [],
@@ -1914,6 +1952,11 @@
      "decide",
      "if args.llm == 'mock'",
      "set mock = toy_mock_client()"
+    ],
+    [
+     "decide",
+     "if k not in seen or e.get('amoeba.status') == 'done'",
+     "set n += 1"
     ],
     [
      "decide",
@@ -1942,6 +1985,16 @@
     ],
     [
      "decide",
+     "if near and (not self._finishing)",
+     "set self._finishing = True"
+    ],
+    [
+     "decide",
+     "if not self._armed",
+     "set self._armed, self._mark = (True, calls)"
+    ],
+    [
+     "decide",
      "if old and env[k] == old",
      "set env[k] = new"
     ],
@@ -1949,6 +2002,11 @@
      "decide",
      "if opts and any(opts.values())",
      "set parts['options'] = opts"
+    ],
+    [
+     "decide",
+     "if p > self._progress",
+     "set self._progress, self._mark = (p, calls)"
     ],
     [
      "decide",
@@ -1998,6 +2056,11 @@
     [
      "fallback",
      "after if after is not None else min(60.0, 2.0 * 2 ** len(retries))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "calls - self._mark if calls - self._mark >= self.stall_calls else None",
      "choose value"
     ],
     [
@@ -2107,6 +2170,11 @@
     ],
     [
      "reject",
+     "if quiet is not None",
+     "raise RunLimitReached"
+    ],
+    [
+     "reject",
      "if reasoning_effort is not None and reasoning_effort not in REASONING_EFFORTS",
      "raise ValueError"
     ],
@@ -2142,6 +2210,11 @@
     ],
     [
      "stop",
+     "if not (self.max_tokens or self.max_calls)",
+     "return False"
+    ],
+    [
+     "stop",
      "if not new or (old or '').rstrip('/') == new",
      "return None"
     ],
@@ -2152,8 +2225,18 @@
     ],
     [
      "stop",
+     "if not self.stall_calls",
+     "return None"
+    ],
+    [
+     "stop",
      "if not system",
      "return rest"
+    ],
+    [
+     "stop",
+     "if not trace.events('plan_graph')",
+     "return None"
     ],
     [
      "stop",
@@ -2179,17 +2262,16 @@
     "ChatResponse.throttle_wait_s",
     "Episode.latency_ms",
     "Episode.seed",
+    "RunLimits.finish_share",
     "WebLimits.max_results"
    ],
    "prompts": {},
    "title": "AI connection"
   },
-  "facts_hash": "4727b48c8b208087",
-  "rejected_hash": "9a600572d6d201ea",
-  "seed_hash": "6dadf5ad0e96121e",
+  "facts_hash": "9a600572d6d201ea",
+  "seed_hash": "c3e0a1294e3b69ca",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
    "Waits out rate limits (HTTP 429/503: up to five retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message, set the reasoning effort and count hidden reasoning tokens.",
@@ -2199,7 +2281,8 @@
    "Every call from every box goes through here, wrapped so it is logged.",
    "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
    "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error, no_deliverable or needs_clarification.",
-   "D117 D: the offline stand-in (--llm mock) answers the fix proposer with no edit, so a stuck step in an offline run ends in the stop report instead of a crash (D119's injected pairs found it)."
+   "D117 D: the offline stand-in (--llm mock) answers the fix proposer with no edit, so a stuck step in an offline run ends in the stop report instead of a crash (D119's injected pairs found it).",
+   "D122: no token cap by default; a runaway guard stops a plan run after --stall-calls model calls with no progress (default 60; calls, never tokens; armed once the plan runner starts). With an optional hard cap the plan runner enters finish mode past 85% of it, and a stopped plan run returns its finished steps as a partial answer."
   ]
  },
  "critics": {
