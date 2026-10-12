@@ -40,8 +40,11 @@ def limits(config: dict | None = None) -> dict:
 
 # box: fixes
 def fix_key(fix: dict) -> str:
-    """What makes two fixes the same (a failed fix is never repeated): its kind, the step it changes and its values."""
-    return json.dumps([fix["kind"], fix.get("target"), fix.get("params", {})], sort_keys=True)
+    """What makes two fixes the same (a failed fix is never repeated): its kind, the step it changes and its values
+    (lists of names compared as sets)."""
+    norm = lambda v: sorted(set(v), key=str) if isinstance(v, list) and all(isinstance(x, str) for x in v) else v
+    return json.dumps([fix["kind"], fix.get("target"), {k: norm(v) for k, v in (fix.get("params") or {}).items()}],
+                      sort_keys=True)          # D124: a list that only repeats an item is the same fix
 
 
 # box: fixes
@@ -119,7 +122,7 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
             notes.append(POOL_OFF)
         else:
             out.append({"kind": "grant_tool", "rung": 2, "target": n,
-                        "params": {"items": sorted(x.partition(" — ")[0].strip() for x in d.get("lacked") or []),
+                        "params": {"items": sorted({x.partition(" — ")[0].strip() for x in d.get("lacked") or []}),
                                    "exclude": sorted(ctx.get("attached") or [])}})
     else:
         notes.append(f"no code fix for the cause {cause}")

@@ -189,6 +189,31 @@ def open_requests(requests: list | None, holds: dict[str, set] | None = None) ->
 
 
 # box: stuck
+def waived_view(meta: dict, unfilled: list[dict], waived: set[str] | None) -> tuple[dict, list[dict]]:
+    """D124: what the watch reads once a work-around for a capability was accepted (plain code applied the fix
+    proposer's work_around): that capability no longer counts as lacked or requested, and a file type the capability
+    names (docx_generator → docx) is no longer owed by the step's output line, its claimed files or its checks. The
+    step's own status and reason are not changed; only the stuck signals stop firing for what was worked around."""
+    names = {w.strip().lower() for w in waived or () if w and w.strip()}
+    if not names:
+        return meta, unfilled
+    label = lambda x: (x or "").partition(" — ")[0].strip().lower()
+    kinds = {k.lower() for w in names for k in re.findall(r"xlsx|xlsm|csv|tsv|docx|pptx|pdf|png|jpg|svg|json",
+                                                            w.replace("_", " "))}
+    view = {**meta, "blocked": [x for x in meta.get("blocked") or [] if label(x) not in names],
+            "contract_missing": [x for x in meta.get("contract_missing") or [] if label(x) not in names]}
+    if kinds:
+        drop = re.compile(r"\.?\b(" + "|".join(sorted(kinds)) + r")\b", re.I)
+        view["output_spec"] = drop.sub("", meta.get("output_spec") or "")
+        view["claimed_files_missing"] = [f for f in meta.get("claimed_files_missing") or []
+                                         if not drop.search(f)]
+        view["checks"] = [c for c in meta.get("checks") or [] if not drop.search(c.get("name", ""))]
+    keep = [q for q in unfilled or [] if not ({str(q.get("name") or "").lower(),
+                                               str(q.get("canonical") or "").lower()} & names)]
+    return view, keep
+
+
+# box: stuck
 def is_stuck(meta: dict, signals: list[dict]) -> bool:
     """Stuck: the step did not end done and at least one signal holds (a step that recovered is not stuck)."""
     return bool(signals) and meta.get("status") != "done"

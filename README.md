@@ -576,6 +576,10 @@ python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai -
   repair call fails only that turn, and if the step then does not finish, Box 4 treats it as the cause `format` (more
   turns, then a role rule or a split). A run that stops anyway (Box 4 gave up, a parse or model service error) keeps
   the finished steps as a partial answer; a bug in Amoeba's own code is still raised, after `answer.md` saves them.
+- **A work-around counts (D124).** When Box 4's fix proposer works around a missing capability (for example a memo
+  in Markdown because no tool makes a .docx), the stuck watch stops asking for that capability and its file type, so
+  the run goes on and the step is reported "finished with limitation"; a fix that only repeats an item is never tried
+  twice.
 - HTTP 429/503, dropped connections and timeouts are retried up to `--max-rate-retries` (5) with exponential waits
   or the server's Retry-After; `--min-seconds-between-calls` spaces calls out for free tiers. An error still there
   after the retries ends the run with `error: "api: ..."` (a plan run keeps its finished steps as a partial answer,

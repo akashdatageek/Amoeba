@@ -19,7 +19,7 @@ from amoeba.adapt.faults import Faults
 from amoeba.adapt.fixes import POOL_OFF, candidates, fix_key, limits as fix_limits
 from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
-from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, open_requests, step_signals
+from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, open_requests, step_signals, waived_view
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
@@ -626,6 +626,7 @@ class PlanRunner:
         self.exhausted: dict | None = None                # the stuck step no fix recovered (the task stops)
         self.proposer_gave_up: dict[int, str] = {}        # D117 Stage D: step -> why the fix proposer gave no fix
         self.workarounds: list[dict] = []                 # D117 Stage D: accepted work-arounds (for Limitations)
+        self.waived: dict[int, set[str]] = {}             # D124: step -> capabilities a work-around stands in for
         self.helpers_added = 0                            # D117 Stage D: helpers the fix proposer added (capped)
         self.faults = Faults(self.opt.faults, interp.trace)   # D119: test-only injected faults (none by default)
         self.no_last_turn: set[int] = set()               # D119 max_turns fault: steps whose last turn is not forced
@@ -1883,7 +1884,8 @@ class PlanRunner:
         plan = {number(s): {"output": s.output, "roles": [self.agents[a].name for a in s.agent_ids],
                             "status": (self.artifacts.get(number(s)) or {}).get("meta", {}).get("status")}
                 for s in self.cfg.plan}
-        signals = step_signals(meta, previous=previous, unfilled=unfilled, files_unchanged=files_unchanged, plan=plan)
+        view, unfilled = waived_view(meta, unfilled, self.waived.get(n))   # D124: an accepted work-around
+        signals = step_signals(view, previous=previous, unfilled=unfilled, files_unchanged=files_unchanged, plan=plan)
         if not is_stuck(meta, signals):
             return None
         d = {"step": n, "attempt": len([s for s in self.stuck if s["step"] == n]) + 1, **diagnose(signals)}
@@ -2251,16 +2253,18 @@ class PlanRunner:
                 self.steps[n].done_when = p["done_when"].strip()
             note = WORKAROUND_NOTE.format(cap=p["capability"], method=p["method"],
                                           done_when=self.steps[n].done_when or "as written")
+            self.waived.setdefault(n, set()).add(p["capability"])       # D124: the watch stops asking for it
         self.keep_try(n)
         self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n],
                       fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note})
         m = self.artifacts[n]["meta"]
         rec["status_after"] = m["status"]
         done = "finished with limitation" if op == "work_around" else "recovered"   # never "recovered" (user)
-        rec["result"] = done if m["status"] == "done" else \
+        limited = op == "work_around" and not m.get("stuck")   # D124: the step goes on without the capability
+        rec["result"] = done if m["status"] == "done" or limited else \
             f"failed: still stuck ({m['stuck']['cause']}: {'; '.join(m['stuck']['evidence'][:2])[:200]})" \
             if m.get("stuck") else f"failed: not stuck but {m['status']} ({m['status_reason'][:160]})"
-        if op == "work_around" and m["status"] == "done":
+        if op == "work_around" and (m["status"] == "done" or limited):
             self.workarounds.append({"step": n, **p})
         self._fix_done(rec, t0, s0)
         return "applied"

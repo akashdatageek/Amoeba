@@ -912,3 +912,8 @@ stops anyway keeps the finished steps as a partial answer: after a Box 4 stop (u
 helper turn, or a model service failure. A bug in Amoeba's own code is not given to Box 4: it is still raised, after
 the finished steps are saved to `answer.md`.
 
+**D124, an accepted work-around ends what it stands in for (Oct 12).** In H3 run 4 the fix proposer's work-around for
+the missing `docx_generator` was applied but could never count: the watch kept reading the open request and the
+step's `docx:` output line. Now an accepted work-around waives that capability (and the file type it names) for the
+stuck watch, and a fix that only repeats an item in a list is the same fix as before, so it is not tried twice.
+
