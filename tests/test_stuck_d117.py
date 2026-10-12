@@ -78,7 +78,7 @@ def test_the_live_watch_logs_a_stuck_step(task, envelope, trace, tools, tmp_path
     [ev] = [e for e in trace.events("stuck") if e["amoeba.step"] == 1]
     assert ev["amoeba.cause"] == "capability" and "grant_tool" in ev["amoeba.allowed_edits"]
     rows = [json.loads(l) for l in (tmp_path / "events.jsonl").read_text().splitlines()]
-    assert [r["event"] for r in rows] == ["stuck", "fix_skipped", "adapt_stop"] and rows[0]["data"]["step"] == 1
+    assert [r["event"] for r in rows] == ["stuck", "fix_skipped", "fix_skipped", "adapt_stop"] and rows[0]["data"]["step"] == 1   # pool off, no code runner (D125)
     assert len(ep.stuck) == 1 and verify(tmp_path)["ok"]
     saved = json.loads((tmp_path / "artifacts" / "step_1.json").read_text())
     assert saved["stuck"]["cause"] == "capability"

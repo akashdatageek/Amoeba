@@ -18,7 +18,8 @@ No memory, monitor, gate or cost handling yet. Token counts are recorded in the 
 
 Since D117 a fourth box adapts a stuck step inside one task: a stuck watch, code fixes and a fix-proposer agent
 ("In-task adaptation replaces the learning loop" below). The offline learning loop of Phase 2 (task streams,
-Experimenter, Gate, recipes) was removed; nothing carries over between tasks.
+Experimenter, Gate, recipes) was removed; nothing carries over between tasks except tools Box 4 wrote that you
+approved (D125).
 
 ## Quick start
 
@@ -580,6 +581,18 @@ python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai -
   in Markdown because no tool makes a .docx), the stuck watch stops asking for that capability and its file type, so
   the run goes on and the step is reported "finished with limitation"; a fix that only repeats an item is never tried
   twice.
+- **Box 4 can write a missing tool (D125, needs `--local-tools`).** When a step lacks a tool, the pool has none and
+  the missing thing is a file type an offline library can make (docx, xlsx, pptx, pdf, png, svg, csv, json; adapt.yaml
+  `tool_writer`), the tool writer writes a small Python tool with a self-test. Plain code checks the code (allowed
+  imports only, no eval/exec/subprocess/os calls), runs the self-test in the sandboxed workspace, and only then gives
+  the step `made:<name>`. A tool the step then used successfully is saved in `data/tool_library/` as **unreviewed**;
+  no later task uses it until you approve it:
+
+      python -m scripts.tool_library list
+      python -m scripts.tool_library show docx_memo      # read the code first
+      python -m scripts.tool_library approve docx_memo   # or: reject
+
+  An approved tool is offered only while its code is unchanged, and its self-test runs again before each use.
 - HTTP 429/503, dropped connections and timeouts are retried up to `--max-rate-retries` (5) with exponential waits
   or the server's Retry-After; `--min-seconds-between-calls` spaces calls out for free tiers. An error still there
   after the retries ends the run with `error: "api: ..."` (a plan run keeps its finished steps as a partial answer,

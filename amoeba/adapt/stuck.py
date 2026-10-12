@@ -189,11 +189,14 @@ def open_requests(requests: list | None, holds: dict[str, set] | None = None) ->
 
 
 # box: stuck
-def waived_view(meta: dict, unfilled: list[dict], waived: set[str] | None) -> tuple[dict, list[dict]]:
+def waived_view(meta: dict, unfilled: list[dict], waived: set[str] | None, files: bool = True
+                ) -> tuple[dict, list[dict]]:
     """D124: what the watch reads once a work-around for a capability was accepted (plain code applied the fix
     proposer's work_around): that capability no longer counts as lacked or requested, and a file type the capability
     names (docx_generator → docx) is no longer owed by the step's output line, its claimed files or its checks. The
-    step's own status and reason are not changed; only the stuck signals stop firing for what was worked around."""
+    step's own status and reason are not changed; only the stuck signals stop firing for what was worked around.
+    files=False (D125, a tool was made for the capability): the capability is no longer missing, but a file it makes
+    is still owed."""
     names = {w.strip().lower() for w in waived or () if w and w.strip()}
     if not names:
         return meta, unfilled
@@ -202,7 +205,7 @@ def waived_view(meta: dict, unfilled: list[dict], waived: set[str] | None) -> tu
                                                             w.replace("_", " "))}
     view = {**meta, "blocked": [x for x in meta.get("blocked") or [] if label(x) not in names],
             "contract_missing": [x for x in meta.get("contract_missing") or [] if label(x) not in names]}
-    if kinds:
+    if kinds and files:
         drop = re.compile(r"\.?\b(" + "|".join(sorted(kinds)) + r")\b", re.I)
         view["output_spec"] = drop.sub("", meta.get("output_spec") or "")
         view["claimed_files_missing"] = [f for f in meta.get("claimed_files_missing") or []

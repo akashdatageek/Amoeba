@@ -16,6 +16,8 @@ from pathlib import Path
 
 from amoeba.adapt.evidence import EvidenceLog
 from amoeba.adapt.faults import Faults
+from amoeba.adapt.toolmaker import (PREFIX as MADE, ToolLibrary, call_tool, check_code, feasible, install,
+                                     parse_tool, self_test as tool_self_test, tool_text, tw_config)
 from amoeba.adapt.fixes import POOL_OFF, candidates, fix_key, limits as fix_limits
 from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
@@ -627,6 +629,9 @@ class PlanRunner:
         self.proposer_gave_up: dict[int, str] = {}        # D117 Stage D: step -> why the fix proposer gave no fix
         self.workarounds: list[dict] = []                 # D117 Stage D: accepted work-arounds (for Limitations)
         self.waived: dict[int, set[str]] = {}             # D124: step -> capabilities a work-around stands in for
+        self.provided: dict[int, set[str]] = {}           # D125: step -> capabilities a made tool now provides
+        self.tools_made: list[dict] = []                  # D125: tools written or taken from the library
+        self.made_calls: dict[str, list[dict]] = {}       # D125: made tool -> its calls (step, ok)
         self.helpers_added = 0                            # D117 Stage D: helpers the fix proposer added (capped)
         self.faults = Faults(self.opt.faults, interp.trace)   # D119: test-only injected faults (none by default)
         self.no_last_turn: set[int] = set()               # D119 max_turns fault: steps whose last turn is not forced
@@ -1885,6 +1890,7 @@ class PlanRunner:
                             "status": (self.artifacts.get(number(s)) or {}).get("meta", {}).get("status")}
                 for s in self.cfg.plan}
         view, unfilled = waived_view(meta, unfilled, self.waived.get(n))   # D124: an accepted work-around
+        view, unfilled = waived_view(view, unfilled, self.provided.get(n), files=False)   # D125: a made tool
         signals = step_signals(view, previous=previous, unfilled=unfilled, files_unchanged=files_unchanged, plan=plan)
         if not is_stuck(meta, signals):
             return None
@@ -1963,7 +1969,17 @@ class PlanRunner:
                          "check_retry_turns": self.so(n, "check_retry_turns"),
                          "max_input_chars": self.so(n, "max_input_chars")},
                 "capped": bool(self.capped.get(n)), "stock": getattr(self.i, "stock", None) is not None,
-                "upstream_rerun": set(self.upstream_rerun), "attached": self.attached_ids.get(n, [])}
+                "upstream_rerun": set(self.upstream_rerun), "attached": self.attached_ids.get(n, []),
+                **self.make_tool_ctx(n)}
+
+    # box: toolmaker
+    def make_tool_ctx(self, n: int) -> dict:
+        """D125: whether Box 4 may make a tool for step n's missing capability (plain code's feasibility check)."""
+        d = self.artifacts[n]["meta"].get("stuck") or {}
+        if d.get("cause") != "capability":
+            return {}
+        f = feasible([x.partition(" — ")[0].strip() for x in d.get("lacked") or []], self.local)
+        return {"make_tool": f} if f.get("ok") else {"make_tool_why": f.get("why")}
 
     # box: fixes
     def apply_fix(self, n: int, wave: int, d: dict, fix: dict) -> dict:
@@ -2008,6 +2024,15 @@ class PlanRunner:
                             "result": "failed: the pool shortlist had nothing to attach for "
                                       + ", ".join(p.get("items") or []) + " (no candidate passed the checks)"})
                 return self._fix_done(rec, t0, s0)
+        elif kind == "make_tool":                           # D125: a tool from the library or the tool writer
+            made = self.make_tool(n, p)
+            rec.update({k: v for k, v in made.items() if not k.startswith("_") and k not in ("step", "kind")},
+                       file_kind=made.get("kind"))
+            if not made.get("tool"):                        # nothing passed: the step is not re-run
+                rec.update({"status_after": self.artifacts[n]["meta"]["status"], "result": f"failed: {made['why']}"})
+                return self._fix_done(rec, t0, s0)
+            note = MADE_TOOL_NOTE.format(tool=made["tool"], cap=p["capability"], what=made["description"],
+                                         input=made["input"] or "a JSON object")
         self.keep_try(n)
         self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n], fixing={**fix, "note": note})
         m = self.artifacts[n]["meta"]
@@ -2015,7 +2040,125 @@ class PlanRunner:
         rec["result"] = "recovered" if m["status"] == "done" else \
             f"failed: still stuck ({m['stuck']['cause']}: {'; '.join(m['stuck']['evidence'][:2])[:200]})" \
             if m.get("stuck") else f"failed: not stuck but {m['status']} ({m['status_reason'][:160]})"
+        if kind == "make_tool":
+            self.keep_made_tool(n, rec, made)
         return self._fix_done(rec, t0, s0)
+
+    # box: toolmaker
+    def make_tool(self, n: int, p: dict) -> dict:
+        """D125: an approved library tool for the capability (its self-test run again), else up to `attempts` tool
+        writer calls, each checked by plain code and self-tested in the sandbox. The first tool that passes goes to
+        the step's helpers as made:<name>. Returns {tool, how, description, input, ...} or {tool: None, why}."""
+        cfg, cap, kind = tw_config(), p["capability"], p["kind"]
+        libs = list(cfg["libraries"].get(kind) or [])
+        lib = ToolLibrary()
+        m = lib.find(cap, kind)
+        if m is not None:
+            rel = install(self.local, {"name": m["name"]}, lib.text(m["name"]))
+            ok, out = tool_self_test(self.local, rel)
+            self.i.trace.event("tool_library_reuse", {"amoeba.box": "toolmaker", "amoeba.step": n,
+                                                      "amoeba.tool": m["name"], "amoeba.self_test": ok})
+            if ok:
+                return self._give_tool(n, cap, kind, m["name"], rel, m.get("description", ""), m.get("input", ""),
+                                       "library", {"library_name": m["name"]})
+        refused, last = None, "no reply"
+        for attempt in range(1, int(cfg["attempts"]) + 1):
+            raw = self._tool_writer_call(n, cap, kind, libs, refused)
+            try:
+                tool = parse_tool(raw)
+            except ValueError as e:
+                refused = last = str(e)
+                self.i.trace.event("tool_refused", {"amoeba.box": "toolmaker", "amoeba.step": n,
+                                                    "amoeba.attempt": attempt, "amoeba.problems": [last]})
+                continue
+            problems = check_code(tool, libs, cfg)
+            if problems:
+                refused, last = "\n".join(f"- {x}" for x in problems), "; ".join(problems)[:300]
+                self.i.trace.event("tool_refused", {"amoeba.box": "toolmaker", "amoeba.step": n,
+                                                    "amoeba.attempt": attempt, "amoeba.tool": tool["name"],
+                                                    "amoeba.problems": problems[:10]})
+                continue
+            rel = install(self.local, tool)
+            ok, out = tool_self_test(self.local, rel)
+            self.i.trace.event("tool_self_test", {"amoeba.box": "toolmaker", "amoeba.step": n, "amoeba.attempt": attempt,
+                                                  "amoeba.tool": tool["name"], "amoeba.passed": ok,
+                                                  "amoeba.output": out[-400:]})
+            if not ok:
+                refused, last = f"- the self-test failed; its output ends:\n{out[-1200:]}", "the self-test failed"
+                continue
+            return self._give_tool(n, cap, kind, tool["name"], rel, tool["description"], tool["input"], "written",
+                                   {"attempts": attempt, "_tool": tool})
+        return {"tool": None, "why": f"tool writer: no tool passed plain code's checks and its self-test in "
+                                     f"{cfg['attempts']} tries (last: {last[:200]})"}
+
+    # box: toolmaker
+    def _give_tool(self, n: int, cap: str, kind: str, name: str, rel: str, description: str, input_: str, how: str,
+                   extra: dict) -> dict:
+        tool = f"{MADE}{name}"
+        def use(text: str, _r: str = rel, _t: str = tool) -> str:
+            out = call_tool(self.local, _r, text)
+            self.made_calls.setdefault(_t, []).append({"step": self.local.step, "ok": tool_ok(out)})
+            return out
+        self.i.tools.register(tool, f"made by the tool writer (D125): {description[:200]}", use)
+        for aid in self.steps[n].agent_ids:
+            a = self.agents[aid]
+            if tool not in a.tools:
+                a.tools.append(tool)
+            a.missing_tools = [t for t in a.missing_tools if t != cap]
+        for q in self.cfg.meta.get("capability_requests", []):
+            if isinstance(q, dict) and cap in (q.get("name"), q.get("canonical")) and q.get("status") == "unfilled":
+                q.update({"status": "filled", "reason": "made_tool"})
+        self.provided.setdefault(n, set()).add(cap)
+        rec = {"step": n, "capability": cap, "kind": kind, "tool": tool, "how": how, "file": rel}
+        self.tools_made.append(rec)
+        self.i.trace.event("tool_made", {"amoeba.box": "toolmaker", **{f"amoeba.{k}": v for k, v in rec.items()}})
+        self.log_event("tool_made", rec)
+        return {**rec, "description": description, "input": input_, **extra}
+
+    # box: toolmaker
+    def keep_made_tool(self, n: int, rec: dict, made: dict) -> None:
+        """D125: a written tool that the step then used without an error, in a step no longer stuck, is saved to the
+        library as unreviewed (the user approves it before any later task may use it)."""
+        if made.get("how") != "written":
+            return
+        m = self.artifacts[n]["meta"]
+        used = [c for c in self.made_calls.get(made["tool"], []) if c["step"] == n]
+        ok = bool(used) and all(c.get("ok") for c in used) and not m.get("stuck")
+        rec["library"] = "not saved: " + ("the step did not use it" if not used else "a call failed"
+                                          if not all(c.get("ok") for c in used) else "the step is still stuck") \
+            if not ok else None
+        if ok:
+            saved = ToolLibrary().save(made["_tool"], tool_text(made["_tool"]), {
+                "capability": made["capability"], "kind": made["kind"],
+                "libraries": list(tw_config()["libraries"].get(made["kind"]) or []),
+                "task_id": self.task.id, "run_id": self.ep.episode_id, "step": n,
+                "self_test": "passed", "calls_ok": len(used)})
+            rec["library"] = f"saved as {saved['name']} (unreviewed)"
+            self.i.trace.event("tool_library_saved", {"amoeba.box": "toolmaker", "amoeba.step": n,
+                                                      "amoeba.tool": saved["name"], "amoeba.status": "unreviewed"})
+        for t in self.tools_made:
+            if t["step"] == n and t["tool"] == made["tool"]:
+                t["library"] = rec["library"]
+
+    # box: toolmaker
+    def _tool_writer_call(self, n: int, cap: str, kind: str, libs: list[str], refused: str | None) -> str:
+        step = self.steps[n]
+        card = "\n".join(x for x in (re.sub(r"^\s*\[.*?\]\s*:\s*", "", step.text).strip(),
+                                     f"output: {step.output}" if step.output else "",
+                                     f"done_when: {step.done_when}" if step.done_when else "") if x)
+        cfg = tw_config()
+        user = render(PROMPT.tool_writer, task=self.task.prompt[:1500], step=str(n), card=card, capability=cap,
+                      kind=kind, libraries=", ".join(libs) or "no third-party library",
+                      stdlib=", ".join(cfg["stdlib"]), max_chars=cfg["max_code_chars"])
+        if refused:
+            user += f"\n\n# Your previous tool was refused by plain code\n{refused}\nReply again with a corrected tool."
+        with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "tool_writer", "amoeba.box": "toolmaker",
+                                                "amoeba.step": n}):
+            resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
+                                            agent_name="tool_writer", max_tokens=4096, role="planner")
+        self.ep.total_tokens += resp.input_tokens + resp.output_tokens
+        self.ep.n_llm_calls += 1
+        return resp.content or ""
 
     # box: fixes
     def _fix_done(self, rec: dict, t0: int, s0: int) -> dict:
@@ -2100,7 +2243,7 @@ class PlanRunner:
         return {"fixes": self.fixes, "recovered_steps": recovered, "finished_with_limitation_steps": limited,
                 "stuck_steps": sorted({s["step"] for s in self.stuck}), "tokens": self.adapt_tokens,
                 "cost_usd": self.adapt_usd(), "skipped": [{"step": s, "why": w} for s, w in sorted(self.fix_notes)],
-                "stopped": self.exhausted, "workarounds": self.workarounds,
+                "stopped": self.exhausted, "workarounds": self.workarounds, "tools_made": self.tools_made,
                 "left_on_old_output": self.left_on_old_output()}
 
     # box: fixes
@@ -2139,6 +2282,11 @@ class PlanRunner:
             lines += ["**Work-arounds (in the answer's Limitations):**",
                       *[f"- step {w['step']}: no {w['capability']}; {w['method'][:160]}. {w['limitation'][:200]}"
                         for w in self.workarounds], ""]
+        if self.tools_made:                                   # D125
+            lines += ["**Tools made (D125):**",
+                      *[f"- step {t['step']}: {t['tool']} for {t['capability']} ({t['how']}"
+                        + (f"; library: {t['library']}" if t.get("library") else "") + ")" for t in self.tools_made],
+                      ""]
         old = self.left_on_old_output()
         lines += ["**Steps built on an upstream output from before its re-run:**",
                   *([f"- step {o['step']} used step {o['upstream']}'s earlier output (not redone)" for o in old]
@@ -2998,6 +3146,9 @@ class PlanRunner:
                 "requirements": status}
 
 
+MADE_TOOL_NOTE = """Plain code re-runs this step with a new tool: {tool} (made for the missing {cap}; its self-test passed in the
+sandbox). What it does: {what}. Call it with Action {tool} and ActionInput {input}. Use it to make what the step owes instead of
+writing BLOCKED for {cap}, and name the file it made in your output."""
 WORKAROUND_NOTE = """Plain code re-runs this step with a work-around: this run has no {cap}. Finish the step without it,
 using this method: {method}. The step is judged against: {done_when}. Write "NOT NEEDED: {cap} — worked around: <how>"
 and say in your output what the work-around does not cover; plain code states it in the final answer's Limitations."""

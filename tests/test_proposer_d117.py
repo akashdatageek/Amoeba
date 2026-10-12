@@ -8,6 +8,7 @@ import pytest
 
 import amoeba.interp.plan_runner as pr
 from amoeba.adapt.fixes import POOL_OFF, limits
+from tests.test_fixes_d117 import NO_RUNNER
 from amoeba.adapt.proposer import fix_problems, parse_fix
 from amoeba.interp.plan_runner import PlanOptions
 from amoeba.interp.runtime import Interpreter
@@ -92,7 +93,7 @@ def test_grant_tool_after_the_pool_rung_was_skipped(task, envelope, trace, tools
                        tmp_path)
     [f] = ep.adaptation["fixes"]
     assert (f["kind"], f["rung"], f["result"]) == ("grant_tool", "D", "recovered") and ep.error is None
-    assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}]           # the code rung came first
+    assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}, {"step": 1, "why": NO_RUNNER}]   # code rungs first
     [prompt] = proposer_prompts(llm)
     for part in ("# Task", "done_when: every cell sourced", "Cause: capability", "lacked: currency_api",
                  "tools: calc, echo", "- grant_tool: params", "- add_helper_role: params", "None yet."):
@@ -100,7 +101,7 @@ def test_grant_tool_after_the_pool_rung_was_skipped(task, envelope, trace, tools
     assert "- add_dependency" not in prompt                                    # code fixes are not offered
     assert "- work_around" not in prompt                                       # not before a grant or a helper
     rows = [json.loads(l)["event"] for l in (tmp_path / "events.jsonl").read_text().splitlines()]
-    assert rows == ["stuck", "fix_skipped", "fix"]
+    assert rows == ["stuck", "fix_skipped", "fix_skipped", "fix"]
     assert "## Step 1 — cause capability" in (tmp_path / "adapt_report.md").read_text()
 
 

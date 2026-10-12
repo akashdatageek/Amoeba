@@ -917,3 +917,12 @@ the missing `docx_generator` was applied but could never count: the watch kept r
 step's `docx:` output line. Now an accepted work-around waives that capability (and the file type it names) for the
 stuck watch, and a fix that only repeats an item in a list is the same fix as before, so it is not tried twice.
 
+**D125, Box 4 writes a missing tool (Oct 12, user decision).** When a stuck step lacks a tool, the pool has nothing
+to attach and plain code finds an offline library that can make what is missing (a .docx, .xlsx, .pptx, chart, …),
+a new rung W asks the tool writer for a small Python tool with a self-test. Plain code checks the code, runs the
+self-test in the run's sandboxed workspace through the local toolbox, and only then gives the step `made:<name>`;
+without `--local-tools` there is no code runner and the rung is skipped. A tool that worked is saved to
+`data/tool_library/` as unreviewed, and a later task may use it only after the user approves it
+(`python -m scripts.tool_library approve <name>`), only while its code is unchanged, and only after its self-test
+passes again. This is the one thing that carries over between tasks, a deliberate exception to D117.
+
