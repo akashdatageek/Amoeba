@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from amoeba.llm.client import ChatResponse, LLMClient, Messages
 from amoeba.llm.profiles import BOX2_GROUPS
-from amoeba.task.parsers import MissingSections, parse_sections, repair_prompt, require
+from amoeba.task.parsers import MissingSections, parse_sections, repair_prompt, require, unglue
 
 
 # D55: every trace line names the as-built page box (tools/arch_extract.py BOXES id) whose code wrote it, so the page
@@ -250,11 +250,26 @@ class TracedLLM:
         """AutoAgents _aask_v1: parse '## Section' blocks; a missing one gets one LLM repair call, then raises."""
         raw = self.chat(system, user, seed, **ids).content
         try:
-            return raw, require(parse_sections(raw), keys)
+            return raw, self._sections(raw, keys, ids)
         except MissingSections as e:
             raw2 = self.chat(system, repair_prompt(user, raw, keys, str(e)), seed, **ids).content
             try:
-                return raw2, require(parse_sections(raw2), keys)
+                return raw2, self._sections(raw2, keys, ids)
             except MissingSections as e2:
                 e2.raw = raw2   # the repaired reply, so a caller can still use the sections it did write
                 raise
+
+    # box: split
+    def _sections(self, raw: str, keys: list[str], ids: dict) -> dict[str, str]:
+        """D123: a reply missing a required heading is read once more with the heading unglued (plain code, no call)
+        before the repair call is made; a reply read that way is a `sections_unglued` event."""
+        try:
+            return require(parse_sections(raw), keys)
+        except MissingSections as e:
+            fixed = unglue(raw, e.missing)
+            if fixed == raw:
+                raise
+            sec = require(parse_sections(fixed), keys)
+            self.trace.event("sections_unglued", {"amoeba.box": "split", "amoeba.sections": e.missing,
+                                                  "gen_ai.agent.name": ids.get("agent_name")})
+            return sec

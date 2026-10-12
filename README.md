@@ -571,9 +571,15 @@ python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai -
   `budget:` or `stalled:` and what ran is saved. A run is never left with an empty answer when a step had finished.
   Every run prints its billed tokens and an estimated cost from `amoeba/config/prices.yaml` (fill in the prices;
   a model without one gets tokens only).
+- **A format slip costs a turn, never the run (D123).** A helper reply whose `## CurrentStep`, `## Action` or
+  `## ActionInput` heading is glued onto the end of a sentence is read by plain code; a reply still unreadable after the
+  repair call fails only that turn, and if the step then does not finish, Box 4 treats it as the cause `format` (more
+  turns, then a role rule or a split). A run that stops anyway (Box 4 gave up, a parse or model service error) keeps
+  the finished steps as a partial answer; a bug in Amoeba's own code is still raised, after `answer.md` saves them.
 - HTTP 429/503, dropped connections and timeouts are retried up to `--max-rate-retries` (5) with exponential waits
   or the server's Retry-After; `--min-seconds-between-calls` spaces calls out for free tiers. An error still there
-  after the retries ends the run with `error: "api: ..."`, and its plan.json, trace and result.json are still
+  after the retries ends the run with `error: "api: ..."` (a plan run keeps its finished steps as a partial answer,
+  D123), and its plan.json, trace and result.json are still
   written (D57), so a re-run with the same `--llm-cache` replays the calls already paid for.
 
 ## Model profiles and Gemma 4 (D49, D54)

@@ -11,6 +11,7 @@ in this task and within the limits, re-runs only the stuck step and re-checks it
   tool_error      rung 1: more turns
   checks          rung 1: more retry turns, then a larger input when an input was shortened
   max_turns       rung 1: more turns
+  format          rung 1: more turns (D123: the step runs again with turns to make up for the unreadable ones)
   capability      rung 2: attach the missing tool or skill from the pool shortlist (pool or local tools must be on;
                   otherwise the rung is skipped with "capability fix unavailable: pool off")
 
@@ -99,7 +100,7 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
                             "items": lacking})
         if not d.get("upstream"):
             notes.append("missing input with no upstream step named or matched")
-    elif cause in ("tool_error", "max_turns"):
+    elif cause in ("tool_error", "max_turns", "format"):
         f = _option("set_run_option:max_turns", "max_turns", int(opts.get("max_turns", 0)),
                     int(opts.get("max_turns", 0)) + int(lim["more_turns"]), ranges, n)
         out += [f] if f else []

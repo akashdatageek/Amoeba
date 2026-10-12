@@ -759,7 +759,7 @@ grant_tool, set_run_option:max_turns); `checks_after_retry` → `checks`; `max_t
 `capability_unfilled` (a BLOCKED or undeclared capability, or an unfilled request for one of the step's roles) →
 `capability`; `no_file_change` (the step owes a file — claimed but missing, a file type in its output line and none
 made, a failed spreadsheet check — and its files did not change across the refine turn or between two attempts) →
-`claimed_file_missing`. `is_stuck`: the step did not end `done` and a signal holds. `diagnose`: the first cause in the
+`claimed_file_missing`; D123: `unreadable_reply` (a helper reply no unglue or repair could read, in a step that did not finish) → `format` (after `capability`; allowed edits set_run_option:max_turns, add_role_rule, split_step). `is_stuck`: the step did not end `done` and a signal holds. `diagnose`: the first cause in the
 table order, its allowed edits (prefer_model only with model edits on), at most eight evidence lines. The plan runner
 calls it after each attempt (`PlanRunner.watch`) when `PlanOptions.adapt == "on"` (`--adapt`, CLI default on;
 library default off) and writes `meta["stuck"]`, a `stuck` trace event, a `stuck` row in `<run>/events.jsonl`
@@ -903,4 +903,12 @@ calls with no progress (default 60, armed when the plan runner starts; spec §2'
 an optional hard cap the plan runner enters finish mode at 85% (no fixes, rework, dispute resolution or re-planning);
 a stopped plan run returns the finished steps assembled by code as a partial answer; and the dispute matcher pairs
 figures only on the same scale and unit. `result.json` `run_guard` records it.
+
+**D123, a format slip costs a turn, never the run (Oct 12, user decision).** H3 run 3 lost three finished steps to
+one heading Gemma glued onto a sentence (`…verdict.## CurrentStep`), twice. Now plain code first puts a glued required
+heading back on its own line (no model call); a helper reply still unreadable after the repair call fails only that turn
+and is a stuck signal, `unreadable_reply`, whose cause `format` allows more turns, a role rule or a split; and a run that
+stops anyway keeps the finished steps as a partial answer: after a Box 4 stop (under its report), a parse error outside a
+helper turn, or a model service failure. A bug in Amoeba's own code is not given to Box 4: it is still raised, after
+the finished steps are saved to `answer.md`.
 

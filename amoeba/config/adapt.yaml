@@ -15,7 +15,7 @@ limits:                       # checks the fix proposer's edit must pass (amoeba
 
 diagnoser:                    # the stuck causes and the edits each allows (amoeba/adapt/stuck.py)
   # tie order when two causes are found at once: missing_input first (a mixed step is fixed for it, then re-checked)
-  causes: [missing_input, capability, tool_error, checks, max_turns, claimed_file_missing]
+  causes: [missing_input, capability, format, tool_error, checks, max_turns, claimed_file_missing]
   # Only edits something can apply: code fixes (add_dependency, rerun_upstream, "set_run_option:<name>" for that one
   # option, grant_tool from the pool) and the fix proposer's edits (add_role_rule, add_helper_role, grant_tool,
   # split_step, replan_remaining, work_around). Code fixes come first, the proposer only after them.
@@ -27,6 +27,8 @@ diagnoser:                    # the stuck causes and the edits each allows (amoe
     checks: ["set_run_option:check_retry_turns", "set_run_option:max_input_chars", add_role_rule, split_step,
              add_helper_role]
     max_turns: ["set_run_option:max_turns", split_step, add_role_rule]
+    # D123: a reply plain code could not read (a section heading missing even after the unglue and the repair call)
+    format: ["set_run_option:max_turns", add_role_rule, split_step]
     claimed_file_missing: [add_role_rule, grant_tool, split_step]
   max_evidence: 8             # evidence lines kept per diagnosis
 

@@ -247,7 +247,7 @@ def test_with_the_pool_off_the_capability_rung_is_skipped_and_the_task_stops_wit
     assert ep.error.startswith(f"stuck: step 1 (capability) — {POOL_OFF}; fix proposer: no valid edit")
     assert ep.answer.startswith("# The task stopped: a step stayed stuck") and POOL_OFF in ep.answer
     assert {step_no(c["messages"]) for c in llm.calls_of("plan_worker")} == {"1"}    # nothing after it ran
-    assert (tmp_path / "adapt_report.md").read_text() == ep.answer
+    assert ep.answer.startswith((tmp_path / "adapt_report.md").read_text())   # D123: the finished steps follow
     assert [e["amoeba.why"] for e in trace.events("fix_skipped")] == [POOL_OFF]
 
 

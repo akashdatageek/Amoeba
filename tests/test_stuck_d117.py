@@ -1,4 +1,4 @@
-"""D117 Stage B — the stuck watch: after each step attempt plain code looks for the five stuck signals, marks a step
+"""D117 Stage B — the stuck watch: after each step attempt plain code looks for the stuck signals, marks a step
 that did not end done STUCK, diagnoses one cause from adapt.yaml and logs it (trace, step_N.json, result field,
 hash-chained events.jsonl). No fix yet. The same functions read stored run folders (scripts/stuck_report.py).
 Offline, with the mock LLM."""

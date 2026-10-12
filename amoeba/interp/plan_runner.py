@@ -32,6 +32,7 @@ from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_
                                       strip_unverified)
 from amoeba.interp.freshness import stale_figure, time_sensitive
 from amoeba.interp.shorten import shorten
+from amoeba.llm.client import api_error, describe_api_error
 from amoeba.llm.limits import RunLimitReached, estimate
 from amoeba.llm.profiles import role_group
 from amoeba.llm.router import NoModelAvailable
@@ -41,7 +42,7 @@ from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _ou
 from pydantic import ValidationError
 
 from amoeba.task.models import CapabilityRequest, DraftedRole, Episode, Task
-from amoeba.task.parsers import MissingSections, parse_json_objects, parse_plan_d24, parse_sections
+from amoeba.task.parsers import MissingSections, ParseError, parse_json_objects, parse_plan_d24, parse_sections
 from amoeba.task.quality import VERIFY_WORDS
 from amoeba.tools.web import WEB_TOOLS
 
@@ -237,6 +238,9 @@ and compute from these files with your local tools, and cite a figure from a fil
 LAST_TURN_NOTE = ("THIS IS YOUR LAST TURN. No more tool calls: choose Final Output and write your conclusion from what "
                   "you have found so far, with the [S#] of what supports each fact, and say plainly what you could not "
                   "confirm.")
+UNREADABLE = "unreadable"   # D123: the turn's reply had no readable CurrentStep/Action/ActionInput, even after repair
+UNREADABLE_NOTE = ("error: your reply could not be read ({why}). Write each section heading (## Thought, "
+                   "## CurrentStep, ## Action, ## ActionInput) at the start of its own line.")
 LAST_TURN_AGAIN = ("Your last turn must be Final Output with a written conclusion (not a search query or a tool "
                    "request). Answer now from what you have.")
 
@@ -375,6 +379,7 @@ class _Work:
         self.calls: list[dict] = []             # D61: every tool call of the step: who, which tool, ok or not
         self.last_message = ""                  # D44: the last helper message, passed on when no Final Output came
         self.requests: list[str] = []           # D76: every tool request / non-final message of the step
+        self.unreadable: list[dict] = []        # D123: turns whose reply could not be read (who, turn, why)
 
 
 # box: step_check
@@ -875,6 +880,14 @@ class PlanRunner:
                     self.action_observer(w)
         except RunLimitReached as e:                      # D122: a cap or the runaway guard stopped the run
             return self.answer_on_stop(e)
+        except ParseError as e:                           # D123: a reply no repair could read, outside a helper turn
+            return self.answer_on_stop(e, f"parse: {str(e)[:300]}")
+        except Exception as e:
+            if api_error(e):                              # D123: the model service failed after its retries (D57)
+                self.i.trace.event("api_error", {"error.type": describe_api_error(e)[:300]})
+                return self.answer_on_stop(e, f"api: {describe_api_error(e)}")
+            self.save_partial_on_crash(e)                 # D123: a bug in our code stays loud; finished steps are kept
+            raise
         ws = waves(self.cfg.plan)
         self.ep.faults = self.faults.summary()                # D119: [] without --inject-fault
         self.ep.run_guard = self.guard_summary()              # D122: {} unless finish mode or a stop happened
@@ -916,32 +929,60 @@ class PlanRunner:
                 "skipped": dict(self.finish_skipped), "stopped": stopped}
 
     # box: plan_graph
-    def answer_on_stop(self, e: RunLimitReached) -> tuple[str | None, str]:
-        """D122: a cap or the runaway guard stopped the run. Plain code assembles the answer from the steps that have
-        an output (in plan order, D41) under a header that says the run stopped and which steps did not run; with no
-        step finished there is nothing to assemble (no answer, as before)."""
+    def answer_on_stop(self, e: Exception, code: str | None = None) -> tuple[str | None, str]:
+        """D122: a cap or the runaway guard stopped the run. D123: also a reply no repair could read outside a helper
+        turn (code "parse") and a model service that failed after its retries ("api: …"). Plain code assembles the
+        answer from the steps that have an output (in plan order, D41) under a header that says the run stopped and
+        which steps did not run; with no step finished there is nothing to assemble (no answer, as before)."""
+        code = code or getattr(e, "code", "error")
         order = [number(st) for st in self.cfg.plan]
         have = [n for n in order if n in self.artifacts]
         missing = [n for n in order if n not in self.artifacts]
         self.ep.faults = self.faults.summary()
         if self.opt.adapt == "on":
             self.ep.adaptation = self.adapt_summary()
-        stopped = {"code": e.code, "why": str(e), "steps_with_output": have, "steps_not_run": missing}
+        stopped = {"code": code, "why": str(e)[:500], "steps_with_output": have, "steps_not_run": missing}
         self.ep.run_guard = self.guard_summary(stopped)
-        self.i.trace.event("answer_on_stop", {"amoeba.code": e.code, "amoeba.steps": have, "amoeba.not_run": missing})
+        self.i.trace.event("answer_on_stop", {"amoeba.code": code, "amoeba.steps": have, "amoeba.not_run": missing})
         if not have:
-            return None, e.code
+            return None, code
+        text = self.partial_answer(f"**Why it stopped:** {str(e)[:500]}", have, missing)
+        if self.dir:
+            (self.dir / "answer.md").write_text(text + "\n", encoding="utf-8")
+        return text, f"{code}: stopped with step(s) {', '.join(map(str, missing)) or 'none'} not run; " \
+                     f"answer assembled from step(s) {', '.join(map(str, have))}"
+
+    # box: plan_graph
+    def save_partial_on_crash(self, e: Exception) -> None:
+        """D123: an error in Amoeba's own code is not handed to Box 4 or hidden: it is raised as before, after the
+        finished steps are written to <run>/answer.md as a partial answer and a `crash` event is recorded."""
+        order = [number(st) for st in self.cfg.plan]
+        have = [n for n in order if n in self.artifacts]
+        self.i.trace.event("crash", {"amoeba.box": "plan_graph", "error.type": type(e).__name__,
+                                     "error.message": str(e)[:300], "amoeba.steps": have})
+        if self.dir and have:
+            try:
+                text = self.partial_answer(f"**Why it stopped:** an error in Amoeba's code: {type(e).__name__}: "
+                                           f"{str(e)[:300]}", have, [n for n in order if n not in self.artifacts])
+                (self.dir / "answer.md").write_text(text + "\n", encoding="utf-8")
+            except Exception:                              # the original error is the one to see
+                pass
+
+    # box: plan_graph
+    def partial_answer(self, why: str, have: list[int], missing: list[int]) -> str:
+        """D122/D123: the outputs of the steps that ran, put together by plain code under a header that says why the
+        run stopped, which steps did not run and which outputs are not finished (their status)."""
         text, _ = self.assemble_by_code(have)
         title = lambda n: re.sub(r"^\s*\[.*?\]\s*:\s*", "", self.steps[n].text).strip()
         names = ", ".join(f"{n} ({title(n)})" for n in missing)
-        head = ("# Partial answer: the run stopped before it finished\n\n"
-                f"**Why it stopped:** {e}\n\n"
+        unfinished = [(n, self.artifacts[n]["meta"].get("status")) for n in have
+                      if self.artifacts[n]["meta"].get("status") != "done"]
+        return ("# Partial answer: the run stopped before it finished\n\n"
+                f"{why}\n\n"
                 + (f"**Steps that did not run:** {names}\n\n" if missing else "")
-                + "The sections below are the outputs of the steps that ran, put together by plain code.\n\n")
-        if self.dir:
-            (self.dir / "answer.md").write_text(head + text + "\n", encoding="utf-8")
-        return head + text, f"{e.code}: stopped with step(s) {', '.join(map(str, missing)) or 'none'} not run; " \
-                            f"answer assembled from step(s) {', '.join(map(str, have))}"
+                + (f"**Steps that ran but did not finish:** {', '.join(f'{n} ({st})' for n, st in unfinished)}\n\n"
+                   if unfinished else "")
+                + "The sections below are the outputs of the steps that ran, put together by plain code.\n\n" + text)
 
     def _answer_step(self, ws: list[list[int]]) -> int | None:
         """The summariser's step if it owns one in the last wave; else the last wave's only step; else None: the
@@ -1212,6 +1253,8 @@ class PlanRunner:
             status, reason = "done", ""
         if undeclared:
             reason += "; not declared by the helper: " + ", ".join(undeclared)
+        if w.unreadable and not finished:            # D123: turns lost to replies that could not be read
+            reason = "; ".join(x for x in (reason, f"unreadable replies: {len(w.unreadable)}") if x)
         if unused:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "attached unused: " + ", ".join(unused)) if x)
@@ -1283,6 +1326,8 @@ class PlanRunner:
                 "stale": False, "stale_because": [],
                 "missing_inputs": missing_input_marks(text),                       # D63 marks, read by D117
                 "fix_of": {k: v for k, v in fixing.items() if k != "note"} if fixing else None,
+                "unreadable_turns": w.unreadable,                                  # D123, read by the stuck watch
+                "finished": finished,
                 "contributions": w.contributions}
         if claimed is not None:
             meta["claimed_files"], meta["claimed_files_missing"] = claimed, missing
@@ -1793,6 +1838,10 @@ class PlanRunner:
                                                  template)
                 w.contributions.append({"turn": w.turn + 1, "agent": agent.name, "action": act,
                                         "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
+                if act == UNREADABLE:                    # D123: nothing readable to pass on; the helper is told
+                    w.unreadable.append({"agent": agent.name, "turn": w.turn + 1, "why": resp})
+                    w.completed += f">{agent.name} (reply not readable):\n>Result:\n{resp}\n"
+                    continue
                 w.last_message = inp.strip()
                 if FINAL_OUTPUT not in act:
                     w.requests.append(inp.strip())
@@ -2119,6 +2168,12 @@ class PlanRunner:
                                           "amoeba.fixes": len(tried)})
         self.log_event("adapt_stop", {"step": n, "cause": x.get("cause"), "why": x.get("why"), "fixes": len(tried)})
         self.ep.adaptation = self.adapt_summary()
+        order = [number(st) for st in self.cfg.plan]
+        have = [k for k in order if k in self.artifacts]
+        if have:                                          # D123: the finished work goes with the report
+            text += "\n\n" + self.partial_answer(f"**Why it stopped:** step {n} stayed stuck ({x.get('cause')}); "
+                                                   "the report above says what was tried.", have,
+                                                   [k for k in order if k not in self.artifacts])
         return text, f"stuck: step {n} ({x.get('cause')}) — {x.get('why') or 'no fix recovered it'}"
 
     # ---- D117 Stage D: the fix proposer ------------------------------------------------------------------------
@@ -2398,6 +2453,8 @@ class PlanRunner:
                                                   max_tokens=PLAN_MAX_TOKENS, role=group, **self.route_ids(n, step))
             except NoModelAvailable as e:                 # D97: no model passed the router's filters
                 return "no_model", f"BLOCKED: no_model — {str(e)[:200]}", "", "no_model"
+            except MissingSections as e:                  # D123: only this turn fails; the stuck watch sees it
+                return self.unreadable_turn(agent, n, e, before)
             for rec in self.i.trace.spans("chat")[before:]:
                 self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                rec.get("gen_ai.usage.output_tokens", 0))
@@ -2406,10 +2463,13 @@ class PlanRunner:
                 self.i.trace.event("last_turn_forced", {"amoeba.step": n, "gen_ai.agent.name": agent.name,
                                                         "amoeba.asked_for": act[:80]})
                 before = self.i.trace.n_llm_calls
-                raw, sec = self.i.llm.chat_sections(system, f"{user}\n\n{LAST_TURN_AGAIN}", PLAN_SECTIONS,
-                                                    self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
-                                                    max_tokens=PLAN_MAX_TOKENS, role=group,
-                                                    **self.route_ids(n, step))
+                try:
+                    raw, sec = self.i.llm.chat_sections(system, f"{user}\n\n{LAST_TURN_AGAIN}", PLAN_SECTIONS,
+                                                        self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
+                                                        max_tokens=PLAN_MAX_TOKENS, role=group,
+                                                        **self.route_ids(n, step))
+                except MissingSections as e:              # D123
+                    return self.unreadable_turn(agent, n, e, before)
                 for rec in self.i.trace.spans("chat")[before:]:
                     self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                    rec.get("gen_ai.usage.output_tokens", 0))
@@ -2420,6 +2480,22 @@ class PlanRunner:
             resp, gap = (injected, None) if injected is not None else \
                 self.i._dispatch(agent, act, inp, step.index, self.ep)
         return act, inp, resp, gap
+
+    # box: plan_step
+    def unreadable_turn(self, agent: AgentSpec, n: int, e: MissingSections, before: int
+                        ) -> tuple[str, str, str, str | None]:
+        """D123: a reply still missing a required section after the unglue and the repair call fails only this turn:
+        the calls are recorded, the helper is told on its next turn what could not be read, and the step's meta
+        lists it (`unreadable_turns`) for the stuck watch (cause `format`)."""
+        raw = getattr(e, "raw", "") or ""
+        for rec in self.i.trace.spans("chat")[before:]:
+            self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
+                           rec.get("gen_ai.usage.output_tokens", 0))
+        why = f"missing sections {e.missing}"
+        self.i.trace.event("unreadable_reply", {"amoeba.box": "plan_step", "amoeba.step": n,
+                                                "gen_ai.agent.name": agent.name, "amoeba.missing": e.missing,
+                                                "amoeba.found": e.found[:8]})
+        return UNREADABLE, "", UNREADABLE_NOTE.format(why=why), None
 
     # ---- D63: the Action Observer (mid-run re-plan) ----------------------------------------------------------------
     # box: action_obs

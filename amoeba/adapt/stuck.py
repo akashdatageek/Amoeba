@@ -1,6 +1,6 @@
 """D117 Stage B — the stuck watch and its diagnosis (plain code only, no fixes yet).
 
-After each Box 3 step attempt, plain code looks for five stuck signals in what the step recorded (its step_<n>.json
+After each Box 3 step attempt, plain code looks for six stuck signals in what the step recorded (its step_<n>.json
 meta, its tool calls, the files it made, and the attempt before it when the step was redone):
 
   repeated_error       the same tool error twice in a row (same tool, same error text once digits are masked)
@@ -9,6 +9,8 @@ meta, its tool calls, the files it made, and the attempt before it when the step
   max_turns            the helpers ran out of turns before a Final Output
   capability_unfilled  a capability or skill the step needed was requested and not filled (BLOCKED, not declared,
                        or an unfilled request for one of the step's roles)
+  unreadable_reply     D123: a helper's reply could not be read (a required section missing even after the unglue and
+                       the repair call) and the step did not finish: the turns went to replies plain code could not use
   no_file_change       the step owes a file (claimed but missing, a file type in its output line with none made, or
                        a failed spreadsheet check) and its files did not change between two attempts
 
@@ -24,7 +26,8 @@ import re
 from amoeba.adapt.config import adapt_config
 
 SIGNAL_CAUSE = {"missing_input": "missing_input", "capability_unfilled": "capability", "repeated_error": "tool_error",
-                "max_turns": "max_turns", "checks_after_retry": "checks", "no_file_change": "claimed_file_missing"}
+                "max_turns": "max_turns", "checks_after_retry": "checks", "no_file_change": "claimed_file_missing",
+                "unreadable_reply": "format"}
 # D117 Stage C: a lacked item is a missing input (data an earlier step should have given) unless it names a tool
 TOOL_WORDS = re.compile(r"tool|\bapi\b|_api|reader|interpreter|executor|calculator|\bcalc|access|generator|analy[sz]er|"
                         r"\bengine\b|_engine|service|search|network|browser|capability|skill|\blocal\b|local:|script|"
@@ -127,6 +130,11 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
         how = "after the retry turn" if meta.get("retried") or meta.get("refine") else "and no retry turn was possible"
         sig.append({"signal": "checks_after_retry",
                     "evidence": [f"check {c['name']} still fails {how}: {c.get('detail', '')[:140]}" for c in failed]})
+    bad = meta.get("unreadable_turns") or []
+    if bad and not meta.get("finished", False):    # D123: replies plain code could not read cost the step its end
+        sig.append({"signal": "unreadable_reply",
+                    "evidence": [f"{b.get('agent', '?')}, turn {b.get('turn')}: reply not readable — "
+                                 f"{(b.get('why') or '')[:140]}" for b in bad]})
     if out_of_turns:
         sig.append({"signal": "max_turns", "evidence": [f"turns used: {meta.get('turns')}; no Final Output from "
                                                         f"every helper ({reason[:120]})"]})
