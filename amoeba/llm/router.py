@@ -72,6 +72,7 @@ class ModelEntry:
     privacy: str = "cloud"
     merge_system: bool = False
     reasoning_effort: str | None = None
+    temperature: float | None = 0.2      # None: not sent (`temperature: omit` in models.yaml)
 
     def usd(self, input_tokens: int, output_tokens: int) -> float:
         p_in, p_out = (self.price or {}).get("input") or 0.0, (self.price or {}).get("output") or 0.0
@@ -83,8 +84,9 @@ def load_registry(path: str | Path = MODELS) -> tuple[dict[str, ModelEntry], dic
     """(name → ModelEntry, routing policy) from models.yaml's `registry` and `routing` blocks."""
     data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     reg = {}
+    from amoeba.llm.profiles import temperature_setting
     for name, e in (data.get("registry") or {}).items():
-        reg[name] = ModelEntry(name=name, **e)
+        reg[name] = ModelEntry(name=name, **{**e, "temperature": temperature_setting(e, f"registry {name}")})
     policy = {"verifier_independence": "preferred", "role_tiers": {}, "role_defaults": {}, "default_model": None,
               **(data.get("routing") or {})}
     if policy["verifier_independence"] not in ("required", "preferred", "off"):

@@ -610,6 +610,7 @@ With `--llm openai` the model is chosen by a **profile** in `amoeba/config/model
 | `gemma-openrouter` | `https://openrouter.ai/api/v1` | `google/gemma-4-31b-it:free` | merge_system; key in `OPENROUTER_API_KEY` |
 | `gemini-flash-lite` | Gemini API | `gemini-3.1-flash-lite` | as in the 2026-09-24 baseline; key in `GEMINI_API_KEY` |
 | `gemini-flash` | Gemini API | `gemini-3.5-flash` | as in the 2026-09-24 baseline; key in `GEMINI_API_KEY` |
+| `claude-sonnet` | `https://api.anthropic.com/v1/` (Claude's OpenAI-compatible endpoint) | `claude-sonnet-5-5` | temperature omitted (the endpoint rejects values below 1; it ignores seed and reasoning_effort); key in `CLAUDE_API_KEY`; $2 / $10 per 1M input / output tokens |
 
 To switch, pass `--profile NAME` to `run_task` or `eval_draft`, or change `default:` in the file:
 
@@ -632,6 +633,7 @@ A profile can set:
 - `merge_system`: Gemma takes no system message on some endpoints, so the system text goes into the user message;
 - `reasoning_effort`: `off | low | medium | high`, sent only when set;
 - `max_tokens`: the reply limit of calls that set none;
+- `temperature`: a number, or `omit` (not sent); absent, every call sends 0.2 as before;
 - `roles`: a `model` and `max_tokens` per role group. The groups are `planner`, `observers` (both Box 2 checkers),
   `workers`, `reviewers` (boss_reviewers critics, the plan runner's verify steps and critique reviews) and
   `summariser`.
@@ -642,6 +644,13 @@ What overrides the profile:
 - `--merge-system` / `--no-merge-system` and `--reasoning-effort` (`unset` sends nothing) replace the profile's
   settings.
 - `--planner-max-tokens` / `--observer-max-tokens` replace the profile's per-role limits.
+
+The plan runner calls models through the router (D97) and its registry (`registry:` in models.yaml). The profile
+(`--profile`, else the default) limits the router to the registry entry with the profile's model, so
+`--profile claude-sonnet` runs on Claude, and a Gemma run never sends its verify steps to Claude even when
+`CLAUDE_API_KEY` is set. Unset `AMOEBA_BASE_URL`, `AMOEBA_API_KEY` and `AMOEBA_MODEL` before a Claude run: they
+override any profile. Claude's model list needs an `anthropic-version` header, which `scripts/list_models.py`
+sends for that endpoint.
 
 Every trace line carries `amoeba.profile`. Each AI line holds `gen_ai.request.model` (asked for) and
 `gen_ai.response.model` (the exact name the API returned). result.json has `profile` and `models`

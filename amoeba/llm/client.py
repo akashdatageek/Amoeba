@@ -68,7 +68,7 @@ class OpenAICompatibleClient(LLMClient):
     """Any OpenAI-compatible endpoint (vLLM, Ollama, OpenAI, DeepSeek ...)."""
 
     def __init__(self, base_url: str | None, api_key: str, model: str,
-                 temperature: float = 0.2, max_tokens: int = 2048, max_rate_retries: int = 5,
+                 temperature: float | None = 0.2, max_tokens: int = 2048, max_rate_retries: int = 5,
                  min_seconds_between_calls: float = 0.0, sleep: Callable[[float], None] = time.sleep,
                  merge_system: bool = False, reasoning_effort: str | None = None):
         from openai import OpenAI  # imported lazily so tests never need it
@@ -112,7 +112,9 @@ class OpenAICompatibleClient(LLMClient):
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
         t0 = time.perf_counter()
         kw = dict(model=self.model, messages=merge_system(messages) if self.merge_system else messages,
-                  temperature=self.temperature, max_tokens=max_tokens or self.max_tokens)
+                  max_tokens=max_tokens or self.max_tokens)
+        if self.temperature is not None:               # None: not sent (Claude's endpoint rejects values below 1)
+            kw["temperature"] = self.temperature
         if self.reasoning_effort is not None:          # sent only when set (D49)
             kw["reasoning_effort"] = REASONING_EFFORTS[self.reasoning_effort]
         throttled, retries = self._throttle(), []

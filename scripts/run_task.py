@@ -553,7 +553,7 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
         client = OpenAICompatibleClient(base_url=e.base_url, api_key=key, model=e.model, max_tokens=2048,
                                         max_rate_retries=args.max_rate_retries, min_seconds_between_calls=0.0,
                                         merge_system=e.merge_system if args.merge_system is None else args.merge_system,
-                                        reasoning_effort=effort or e.reasoning_effort)
+                                        reasoning_effort=effort or e.reasoning_effort, temperature=e.temperature)
         return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
             else client
     allowed_arg = getattr(args, "allowed_models", None)
@@ -562,6 +562,18 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
     if args.model:                                    # --model names a registry entry or an API model id
         fixed = next((n for n, e in registry.items() if args.model in (n, e.model)), None)
     niche = getattr(args, "niche_profile", None)       # D102: the niche profile's models and verifier setting
+    profile_models = getattr(args, "profile_models", None)
+    niche_models = niche.allowed_models if niche is not None else None
+    if niche_models is None and profile_models is None and not args.model:
+        # the profile (--profile, else the default) names the run's model: the router calls that registry entry only,
+        # so a second entry (claude-sonnet-5-5) never takes a Gemma run's verify steps, and --profile claude-sonnet
+        # runs on Claude
+        prof = get_profile(getattr(args, "profile", None))
+        entry = next((n for n, e in registry.items() if e.model == prof.model), None)
+        if entry is None and getattr(args, "profile", None):
+            raise SystemExit(f"--profile {args.profile}: no registry entry in amoeba/config/models.yaml has model "
+                             f"{prof.model!r}; the plan runner's router (D97) calls registry models only")
+        profile_models = [entry] if entry else None
     usd_cap = getattr(args, "max_usd_per_run", None)
     if niche is not None:
         if niche.models.get("verifier_independence"):
@@ -569,8 +581,7 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
         if usd_cap is None:
             usd_cap = niche.safety.max_usd_per_run
     router = ModelRouter(registry, policy, make, mode=mode, allowed=allowed, usd_cap=usd_cap, fixed_model=fixed,
-                         profile_allowed=niche.allowed_models if niche is not None else getattr(args, "profile_models",
-                                                                                                None))
+                         profile_allowed=niche_models if niche_models is not None else profile_models)
     router.profile = f"router:{mode}"
     return router
 
@@ -595,7 +606,7 @@ def build_llm(args: argparse.Namespace) -> LLMClient:
         client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=m,
                                         max_tokens=profile.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
                                         min_seconds_between_calls=args.min_seconds_between_calls,
-                                        merge_system=merge, reasoning_effort=effort)
+                                        merge_system=merge, reasoning_effort=effort, temperature=profile.temperature)
         return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
             else client
     # a reply limit given on the command line wins over the profile's for that group (D27 flags)
