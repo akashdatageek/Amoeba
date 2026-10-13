@@ -1,0 +1,426 @@
+team_id: 6d20874d-e303-4805-8119-cf3a8c59bc30
+version: 1
+parent_version: null
+name: team-plan-probe-h3
+topology: plan
+agents:
+  bc01afd0-1002-4640-b0ce-becce1628fa8:
+    agent_id: bc01afd0-1002-4640-b0ce-becce1628fa8
+    name: Fleet Market Analyst
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in heavy-duty vehicle procurement, energy markets, and government
+      incentives. Responsible for gathering the raw cost and efficiency data for vehicles
+      and fuel.
+    role_prompt: 'You are a Senior Fleet Market Analyst. Your goal is to provide the
+      raw financial and technical inputs for a TCO model. 1. Search for current and
+      projected 2026 purchase prices for Class 8 diesel and BEV tractors. 2. Specifically
+      investigate the Federal Commercial Clean Vehicle Credit (45W) and any Indiana-specific
+      grants or vouchers for 2026. 3. Find the most recent Indiana average diesel
+      price and the average commercial/industrial electricity rate (kWh). 4. Find
+      industry benchmarks for efficiency: average MPG for Class 8 diesel and average
+      kWh/mile for Class 8 BEVs. 5. Find industry benchmarks for maintenance costs
+      per mile for both powertrains. Output a markdown table with columns: Item, Value,
+      Unit, Source, and Date. Be precise; do not generalize.'
+    max_history: 5
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Provide a verified dataset of purchase prices, energy costs, efficiency
+      benchmarks, and incentives for 2026.
+    skills:
+    - market research
+    - regulatory analysis
+    - energy pricing
+    outputs:
+    - artifact: Market Data Sheet
+      format: 'markdown table: item | value | unit | source | date'
+    success_criteria:
+    - Every figure has a source and a date
+    - Incentives are specifically checked for 2026 eligibility
+    - Efficiency benchmarks (MPG/kWh) are included
+    constraints:
+    - Must use Indiana-specific rates
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  43cdd62e-732c-4882-9c2b-713a1781540f:
+    agent_id: 43cdd62e-732c-4882-9c2b-713a1781540f
+    name: Infrastructure Engineer
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in EV charging deployment for commercial fleets. Responsible
+      for the 'hidden' costs of electrification.
+    role_prompt: You are a Senior Infrastructure Engineer. Calculate the cost to support
+      20 Class 8 BEV tractors in Indiana. 1. Determine the appropriate charger level
+      (e.g., DC Fast Charging) based on a <250 mile daily range. 2. Estimate the cost
+      per charger. 3. Estimate the cost of utility upgrades (transformers, switchgear)
+      for a 20-truck depot. 4. Provide a total cost and a per-truck cost. Output a
+      markdown table with components, unit costs, and total costs. Cite your sources
+      for hardware and installation benchmarks.
+    max_history: 5
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Provide a detailed cost estimate for the charging infrastructure required
+      for 20 Class 8 trucks.
+    skills:
+    - EV infrastructure design
+    - electrical utility costing
+    outputs:
+    - artifact: Infrastructure Cost Breakdown
+      format: 'markdown table: component | cost_per_unit | total_cost | notes'
+    success_criteria:
+    - Includes both hardware and 'soft' costs (permits, utility upgrades)
+    - Logic for charger selection is explained
+    constraints:
+    - Must be scaled for 20 trucks
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  078f6933-1717-4fc5-8304-1443403eb27f:
+    agent_id: 078f6933-1717-4fc5-8304-1443403eb27f
+    name: TCO Modeler
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Financial analyst specializing in lifecycle costing. Responsible
+      for the mathematical synthesis of all inputs.
+    role_prompt: 'You are a Senior TCO Modeler. Using the provided Market Data and
+      Infrastructure costs, build a 7-year TCO model for one truck. 1. Calculate Purchase
+      Price minus Incentives. 2. Calculate Total Energy Cost: (Miles per year * 7
+      years) * (Cost per mile, derived from efficiency benchmarks). 3. Calculate Total
+      Maintenance: (Miles per year * 7 years) * (Maint cost per mile). 4. Add the
+      per-truck share of infrastructure costs to the BEV side. 5. Create a comparison
+      table. 6. Provide a clear recommendation: Should they switch? Why? Focus on
+      the ''break-even'' point if applicable.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Produce the final 7-year TCO comparison table and recommendation.
+    skills:
+    - TCO modelling
+    - financial analysis
+    - arithmetic
+    outputs:
+    - artifact: TCO Comparison Table
+      format: 'markdown table: cost_category | diesel_per_truck | bev_per_truck |
+        notes'
+    - artifact: Recommendation
+      format: 'text: detailed recommendation with logic'
+    success_criteria:
+    - Math is internally consistent
+    - All requirements R1, R2, R9, R12 are met
+    constraints:
+    - 7-year horizon
+    - Per-truck basis
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  860f65a5-e189-4026-9b7c-d0048eef32d2:
+    agent_id: 860f65a5-e189-4026-9b7c-d0048eef32d2
+    name: Quality Auditor
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Quality assurance lead. Responsible for verifying the integrity of
+      the data and generating the final document file.
+    role_prompt: 'You are the Quality Auditor. Your task is to verify the TCO model
+      and produce the final document. 1. Review the TCO model and the supporting data.
+      2. Verify that every single number has a source and a date. 3. Ensure all assumptions
+      (e.g., utility upgrades, 2026 pricing) are listed in a dedicated section. 4.
+      Audit the math: re-calculate the TCO for both diesel and BEV to ensure no errors.
+      5. Use the docx_generator to produce a professional executive memo. Format:
+      Executive Summary (Recommendation), TCO Comparison Table, Detailed Assumptions,
+      and Sources. Keep it under 2 pages.'
+    max_history: 5
+    missing_tools:
+    - docx_generator
+    is_summariser: false
+    goal: Verify all calculations and citations, then generate the .docx memo.
+    skills:
+    - technical auditing
+    - quality assurance
+    - docx formatting
+    outputs:
+    - artifact: Final Memo File
+      format: docx
+    success_criteria:
+    - Memo is <= 2 pages
+    - All R-requirements are present
+    - No missing citations
+    - Math is verified
+    constraints:
+    - Max 2 pages
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  f6626d64-7621-40be-a98a-800acd7d4b78:
+    agent_id: f6626d64-7621-40be-a98a-800acd7d4b78
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Final reviewer and delivery lead. Ensures the final output is presented
+      correctly to the user.
+    role_prompt: You are the Principal Delivery Lead. Your only task is to take the
+      final verified .docx memo produced by the Quality Auditor and deliver it to
+      the user. Ensure the final response is professional and clearly points to the
+      attached file.
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final verified .docx memo.
+    skills:
+    - executive communication
+    outputs:
+    - artifact: Final Delivery
+      format: 'text: delivery of the .docx file'
+    success_criteria:
+    - The .docx file is delivered and meets all task requirements
+    constraints:
+    - No tools allowed
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: bc01afd0-1002-4640-b0ce-becce1628fa8
+  dst: 078f6933-1717-4fc5-8304-1443403eb27f
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 43cdd62e-732c-4882-9c2b-713a1781540f
+  dst: 078f6933-1717-4fc5-8304-1443403eb27f
+  type: sequential
+  schema_id: text
+  condition: null
+- src: bc01afd0-1002-4640-b0ce-becce1628fa8
+  dst: 860f65a5-e189-4026-9b7c-d0048eef32d2
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 43cdd62e-732c-4882-9c2b-713a1781540f
+  dst: 860f65a5-e189-4026-9b7c-d0048eef32d2
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 078f6933-1717-4fc5-8304-1443403eb27f
+  dst: 860f65a5-e189-4026-9b7c-d0048eef32d2
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 860f65a5-e189-4026-9b7c-d0048eef32d2
+  dst: f6626d64-7621-40be-a98a-800acd7d4b78
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- bc01afd0-1002-4640-b0ce-becce1628fa8
+- 43cdd62e-732c-4882-9c2b-713a1781540f
+exit: f6626d64-7621-40be-a98a-800acd7d4b78
+plan:
+- index: 0
+  agent_ids:
+  - bc01afd0-1002-4640-b0ce-becce1628fa8
+  text: '[Fleet Market Analyst]: Gather Market Data'
+  kind: work
+  covers:
+  - R3
+  - R4
+  - R5
+  - R6
+  - R8
+  depends_on: []
+  do: Research 2026 purchase prices, Federal/Indiana incentives, Indiana energy rates,
+    efficiency benchmarks (MPG/kWh), and maintenance costs.
+  output: 'table: Market Data Sheet (item | value | unit | source | date)'
+  done_when: All 5 categories of data are populated with dated citations.
+- index: 1
+  agent_ids:
+  - 43cdd62e-732c-4882-9c2b-713a1781540f
+  text: '[Infrastructure Engineer]: Estimate Charging Costs'
+  kind: work
+  covers:
+  - R7
+  depends_on: []
+  do: Calculate hardware and installation costs for 20 Class 8 chargers in Indiana.
+  output: 'table: Infrastructure Cost Breakdown (component | cost_per_unit | total_cost
+    | notes)'
+  done_when: Total cost and per-truck cost are clearly defined.
+- index: 2
+  agent_ids:
+  - 078f6933-1717-4fc5-8304-1443403eb27f
+  text: '[TCO Modeler]: Compute TCO and Recommendation'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R9
+  - R12
+  depends_on:
+  - 1
+  - 2
+  do: Synthesize inputs into a 7-year TCO per truck. Calculate energy and maintenance
+    totals using efficiency benchmarks.
+  output: 'table: TCO Comparison Table; memo: Recommendation'
+  done_when: Comparison table is complete and a recommendation is justified by the
+    numbers.
+- index: 3
+  agent_ids:
+  - 860f65a5-e189-4026-9b7c-d0048eef32d2
+  text: '[Quality Auditor]: Audit and Doc Generation'
+  kind: verify
+  covers:
+  - R10
+  - R11
+  - R13
+  depends_on:
+  - 1
+  - 2
+  - 3
+  do: Cross-check the TCO math. Verify that every figure in the table can be traced
+    back to a dated source. Ensure all assumptions are documented. Use the docx_generator
+    to create the final 2-page memo.
+  output: 'docx: Final Memo File'
+  done_when: Math is verified and the .docx file is generated.
+- index: 4
+  agent_ids:
+  - f6626d64-7621-40be-a98a-800acd7d4b78
+  text: '[Delivery Lead]: Final Delivery'
+  kind: work
+  covers:
+  - R13
+  depends_on:
+  - 4
+  do: Present the final .docx memo to the user.
+  output: 'memo: Final Delivery'
+  done_when: The file is delivered.
+requirements:
+  R1: Compute 7-year TCO per truck for diesel.
+  R2: Compute 7-year TCO per truck for battery-electric.
+  R3: Identify and apply Federal incentives applicable to a 2026 purchase.
+  R4: Identify and apply Indiana incentives applicable to a 2026 purchase.
+  R5: Determine Indiana diesel price per gallon and convert to cost per mile.
+  R6: Determine Indiana commercial electricity rate per kWh and convert to cost per
+    mile.
+  R7: Estimate charging infrastructure costs for 20 BEV trucks.
+  R8: Estimate maintenance costs for both diesel and BEV Class 8 tractors.
+  R9: Show the TCO comparison table.
+  R10: State every assumption.
+  R11: Cite every figure with its date.
+  R12: Give a recommendation.
+  R13: Deliver a Word (.docx) memo of at most 2 pages.
+max_inner_turns: 3
+meta:
+  task_id: probe-h3-ev-trucks
+  draft_rounds: 3
+  consensus: false
+  dependency_relinked: []
+  capability_requests:
+  - name: docx_generator
+    for_role: Quality Auditor
+    canonical: docx_generator
+    status: unfilled
+    reason: pick_none
+  - name: web_search
+    for_role: Fleet Market Analyst
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Fleet Market Analyst
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: web_search
+    for_role: Infrastructure Engineer
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Infrastructure Engineer
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
