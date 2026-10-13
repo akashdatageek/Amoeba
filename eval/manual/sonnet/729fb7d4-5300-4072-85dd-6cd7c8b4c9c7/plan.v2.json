@@ -1,0 +1,300 @@
+{
+  "version": 2,
+  "diff": {
+    "steps_added": [
+      8,
+      9
+    ],
+    "steps_rewritten": [
+      3
+    ],
+    "steps_dropped": [],
+    "reassigned": null,
+    "role_added": null,
+    "requests": [],
+    "split_of": 3
+  },
+  "roles": [
+    {
+      "name": "Incentives and Tax Policy Researcher",
+      "tools": [
+        "web_search",
+        "fetch_url"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Fleet Cost Data Researcher",
+      "tools": [
+        "web_search",
+        "fetch_url"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "TCO Modeller and Fleet Feasibility Analyst",
+      "tools": [
+        "calc",
+        "local:Write",
+        "local:Read"
+      ],
+      "missing_tools": [
+        "Bash"
+      ]
+    },
+    {
+      "name": "Cost Model Verifier",
+      "tools": [
+        "calc",
+        "local:Read",
+        "web_search",
+        "fetch_url"
+      ],
+      "missing_tools": [
+        "Bash"
+      ]
+    },
+    {
+      "name": "Memo Editor and Document Assembler",
+      "tools": [
+        "local:Read",
+        "local:Bash",
+        "local:Write",
+        "local:Edit"
+      ],
+      "missing_tools": []
+    }
+  ],
+  "steps": [
+    {
+      "number": 1,
+      "roles": [
+        "Incentives and Tax Policy Researcher"
+      ],
+      "text": "[Incentives and Tax Policy Researcher]: Determine 2026 incentive eligibility and powertrain-specific taxes/fees",
+      "kind": "work",
+      "covers": [
+        "R3",
+        "R8",
+        "R9",
+        "R15"
+      ],
+      "depends_on": [],
+      "do": "(a) Pull primary-source text for the 45W termination (vehicles acquired after 30 Sep 2025; credit was up to $40,000 over 14,000 lb) and the 30C cutoff (placed in service after 30 Jun 2026). (b) Search Indiana/IDEM VW trust, EPA CHDV grants and the four utilities' make-ready/EV programs for 2026 status. (c) Establish federal excise tax and any Indiana fee difference by powertrain (the only step that covers these). (d) Decide base-case $ per truck for each item, counting only near-certain money. (e) List caveats and upside scenarios.",
+      "output": "table: item | status in 2026 | applies? | $ per truck used in model | source URL | as-of date (plus list: caveats)",
+      "done_when": "every row has a primary-source URL and a date, and the base-case dollar amount is stated, even when it is $0",
+      "status": "partial"
+    },
+    {
+      "number": 2,
+      "roles": [
+        "Fleet Cost Data Researcher"
+      ],
+      "text": "[Fleet Cost Data Researcher]: Collect dated cost inputs",
+      "kind": "work",
+      "covers": [
+        "R2",
+        "R4",
+        "R5",
+        "R6",
+        "R8",
+        "R9",
+        "R16"
+      ],
+      "depends_on": [],
+      "do": "(a) EIA diesel (Indiana or Midwest) and EIA Indiana commercial electricity in cents/kWh, latest value plus 12-month average. (b) Diesel and BEV tractor prices with model, range, battery, warranty and price type. (c) mpg and kWh/mi ranges, payload penalty. (d) Maintenance $/mi for both. (e) 150 kW charger hardware, install, make-ready/utility upgrade, interconnection lead time and the demand-charge structure of an Indiana utility. (f) List gaps and source conflicts. Taxes and fees are left to step 1.",
+      "output": "table: parameter | low | base | high | unit | source + URL | date | notes (plus list: gaps and conflicts)",
+      "done_when": "all parameters needed by R2, R4, R5 and R6 have a base value with a URL and date, or an explicit labeled gap",
+      "status": "partial"
+    },
+    {
+      "number": 3,
+      "roles": [
+        "TCO Modeller and Fleet Feasibility Analyst"
+      ],
+      "text": "[TCO Modeller and Fleet Feasibility Analyst]: Compute per-truck 7-yr totals with calc and present them as a markdown table",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R10",
+        "R13",
+        "R14",
+        "R17",
+        "R18"
+      ],
+      "depends_on": [
+        1,
+        2
+      ],
+      "do": "Use calc with one plain scalar arithmetic expression per call (no lists or tuples). Compute purchase, incentives, energy, charging infrastructure and maintenance for diesel and BEV at 1:1 and 1:2 charger ratios, using the sourced inputs from steps 1 and 2 with dates. Write the result as a markdown table with a |---| separator row. Then write a short conclusion sentence stating which option is cheaper per truck and per mile.",
+      "output": "markdown table: cost component | diesel $/truck 7-yr | BEV 1:1 $/truck 7-yr | BEV 1:2 $/truck 7-yr | difference, with a $/mile row, plus the conclusion sentence",
+      "done_when": "every table total is computed by a calc call and the totals sum from their components",
+      "status": "not run"
+    },
+    {
+      "number": 4,
+      "roles": [
+        "Cost Model Verifier"
+      ],
+      "text": "[Cost Model Verifier]: Independently verify sources, dates and arithmetic",
+      "kind": "verify",
+      "covers": [
+        "R1",
+        "R3",
+        "R8",
+        "R9",
+        "R14"
+      ],
+      "depends_on": [
+        1,
+        2,
+        3,
+        9
+      ],
+      "do": "(a) Re-open sources for the 8 most influential inputs and confirm value and date. (b) Recompute totals independently. (c) Confirm the 45W/30C determination against primary text and that no uncertain incentive is in the base case. (d) Check units, the 420,000 mi basis and charger-ratio math. (e) Produce a PASS/FAIL list, label each FAIL material or minor, and give corrected downstream numbers. State \"RERUN REQUIRED\" if any material FAIL exists, otherwise \"CLEARED\".",
+      "output": "list: PASS/FAIL checks with evidence, then table: item | found | should be | source | material?",
+      "done_when": "every check is marked PASS or has a specific correction, the recomputed totals match or the gap is explained, and the status is RERUN REQUIRED or CLEARED",
+      "status": "not run"
+    },
+    {
+      "number": 5,
+      "roles": [
+        "TCO Modeller and Fleet Feasibility Analyst"
+      ],
+      "text": "[TCO Modeller and Fleet Feasibility Analyst]: Correction loop: apply verifier corrections and rerun (conditional; at most twice)",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R5",
+        "R7",
+        "R10",
+        "R18"
+      ],
+      "depends_on": [
+        4
+      ],
+      "do": "(a) If step 4 says CLEARED with only minor fixes, apply the minor fixes to the table text and pass the step 3 artifacts through unchanged, re-emitting the full set. (b) If RERUN REQUIRED, update the inputs (incentive status, price, rate, arithmetic), rerun the script, recompute the table, $/mile, sensitivities, break-evens, feasibility, assumptions, open items and the go/pilot/wait verdict, and list what changed. (c) Save the new script. (d) If step 6 returns RERUN REQUIRED once, repeat this step a second and final time.",
+      "output": "table: cost component | diesel $/truck 7-yr | BEV $/truck 7-yr | difference (plus $/mile row, updated sensitivity table with break-evens, feasibility list, assumptions list, open-items list, changed-numbers list)",
+      "done_when": "all verifier corrections are applied or explicitly rejected with a reason, the full artifact set is present, and totals reproduce under a calc recheck",
+      "status": "not run"
+    },
+    {
+      "number": 6,
+      "roles": [
+        "Cost Model Verifier"
+      ],
+      "text": "[Cost Model Verifier]: Re-check the corrected model (runs only if step 5 changed any number)",
+      "kind": "verify",
+      "covers": [
+        "R1",
+        "R3",
+        "R9"
+      ],
+      "depends_on": [
+        1,
+        2,
+        4,
+        5
+      ],
+      "do": "(a) Recompute the changed totals and every figure derived from a corrected input. (b) Confirm corrected sources and dates against steps 1 and 2. (c) Confirm the recommendation still follows from the numbers. (d) If step 5 changed nothing, record \"no re-check needed\" and CLEARED. (e) Bounded exit: if a material FAIL remains after the second pass through steps 5 and 6, state UNRESOLVED and list each open item with its best available value, so step 7 proceeds with those items labelled.",
+      "output": "list: PASS/FAIL checks with evidence and a final status CLEARED, RERUN REQUIRED (first round only) or UNRESOLVED with the listed items",
+      "done_when": "status is CLEARED or, after the second round only, UNRESOLVED with items listed; a first RERUN REQUIRED sends the work back to step 5 once more before step 7 starts",
+      "status": "not run"
+    },
+    {
+      "number": 7,
+      "roles": [
+        "Memo Editor and Document Assembler"
+      ],
+      "text": "[Memo Editor and Document Assembler]: Assemble the 2-page Word memo",
+      "kind": "work",
+      "covers": [
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R15",
+        "R16",
+        "R17",
+        "R18"
+      ],
+      "depends_on": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        9,
+        8
+      ],
+      "do": "(a) Use the final cleared numbers (step 5 output, or step 3 where step 5 passed it through unchanged) and apply the verifier's corrections from steps 4 and 6; label any UNRESOLVED items. (b) Write the mandated line to mandated_line.txt and put it first, then compare it character by character with the document's first paragraph. (c) Write the recommendation, TCO table, feasibility note, assumptions with a one- or two-line \"Open items for the carrier\", sensitivity lines, one line stating that residual value and discounting could shift the result and that the undiscounted, no-residual definition may favour BEV, and the dated numbered source list. (d) Build the .docx with the docx skill and its local tools, or with python-docx if the skill is unfilled. (e) Verify the page count with a PDF conversion through the skill's tools; if no converter exists, state \"page count unverified\" with a word/line estimate and a table of 8 rows or fewer. (f) Open the chat reply with the same mandated line. Markdown only if no document tool exists at all, with R11 flagged as unmet.",
+      "output": "memo: Word .docx, at most 2 pages (Recommendation, TCO table, Feasibility, Assumptions incl. open items, Sensitivity, Sources with dates)",
+      "done_when": "the first paragraph matches the mandated string exactly (programmatic comparison passes), the table numbers equal the cleared model, every figure has an in-line citation with a dated source entry, the residual-value/discounting caveat and open items are present, and the page count is 2 or fewer (or flagged unverified)",
+      "status": "not run"
+    },
+    {
+      "number": 8,
+      "roles": [
+        "TCO Modeller and Fleet Feasibility Analyst"
+      ],
+      "text": "[TCO Modeller and Fleet Feasibility Analyst]: Sensitivities, break-evens and feasibility check",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R10",
+        "R13",
+        "R14",
+        "R17",
+        "R18"
+      ],
+      "depends_on": [
+        3
+      ],
+      "do": "Using the step 3a totals, use scalar calc calls to find break-evens for the top three drivers (diesel price, electricity rate or demand charge, and BEV purchase price or incentive). Also compute incentives on/off and demand charge on/off. Compute daily kWh, the 1:1 and 1:2 charging windows (about 3.7 h and 7.4 h), fleet peak MW, derated range vs 250 mi, interconnection lead time vs the 30C 30 Jun 2026 date, and a weight/payload note. Present a markdown sensitivity table with a |---| row and a feasibility bullet list, then state the conclusion.",
+      "output": "markdown sensitivity table with break-evens, plus feasibility list",
+      "done_when": "a break-even is stated for each of the top three drivers and every feasibility figure comes from calc",
+      "status": "not run"
+    },
+    {
+      "number": 9,
+      "roles": [
+        "TCO Modeller and Fleet Feasibility Analyst"
+      ],
+      "text": "[TCO Modeller and Fleet Feasibility Analyst]: Recheck, assumptions, risks, go/pilot/wait logic and open items",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R10",
+        "R13",
+        "R14",
+        "R17",
+        "R18"
+      ],
+      "depends_on": [
+        8
+      ],
+      "do": "Recheck the step 3a totals with fresh calc calls. List every assumption with source and date, the risks, and the go/pilot/wait logic, ending with a clear recommendation. Write the Open items for the carrier list (dwell window, depot return pattern, utility and tariff, tractor spec, depot power and space), each stating the result it affects. Include the step 3a table again so the final output has the full table.",
+      "output": "markdown table of totals (repeated), assumptions list, risks, go/pilot/wait logic, open-items list",
+      "done_when": "totals reproduce under the calc recheck and every open item names the result it affects",
+      "status": "not run"
+    }
+  ]
+}

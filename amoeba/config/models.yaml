@@ -9,6 +9,8 @@
 #   merge_system      true for models without a system role (Gemma): the system text goes into the user message
 #   reasoning_effort  off | low | medium | high, sent only when set (off is sent as "none")
 #   max_tokens        the reply limit of calls that set none of their own (the client default is 2048)
+#   temperature       a number, or omit (not sent); absent: 0.2, the client default. Claude's OpenAI-compatible
+#                     endpoint rejects values below 1 (400), so its profile omits it
 #   roles             optional, per role group: {model: ..., max_tokens: ...}. Groups: planner, observers (both
 #                     Box 2 checkers), workers (Box 3 helpers), reviewers (boss_reviewers critics, the plan runner's
 #                     verify steps and critique reviews), summariser (the role that writes the final answer),
@@ -44,6 +46,13 @@ profiles:
     base_url: https://generativelanguage.googleapis.com/v1beta/openai/
     model: gemini-3.5-flash
     api_key_env: GEMINI_API_KEY
+
+  claude-sonnet:                 # Claude Sonnet 5.5 through Claude's OpenAI-compatible endpoint (an Anthropic key)
+    base_url: https://api.anthropic.com/v1/
+    model: claude-sonnet-5-5
+    api_key_env: CLAUDE_API_KEY    # not ANTHROPIC_API_KEY
+    temperature: omit              # the endpoint rejects temperatures below 1; it also ignores seed and
+                                   # reasoning_effort, so neither is set here
 
   arch-text:                     # tools/arch_text.py: re-checks the as-built page's box text (cheap, short replies)
     base_url: https://generativelanguage.googleapis.com/v1beta/openai/
@@ -86,6 +95,21 @@ registry:
     rate: {rpm: 15, tpm: null, rpd: 1500}
     privacy: cloud
     merge_system: true
+
+  claude-sonnet-5-5:              # --profile claude-sonnet fixes the plan runner's router to this entry
+    provider: anthropic
+    base_url: https://api.anthropic.com/v1/
+    model: claude-sonnet-5-5
+    api_key_env: CLAUDE_API_KEY
+    family: claude
+    size_tier: large
+    context_window: 200000
+    max_output: 32768
+    supports: {json: true, tools: false, vision: true}   # text actions, as for every model here
+    price: {input: 2.00, output: 10.00}                  # USD per 1M tokens (user-given, 2026-10-13)
+    rate: {rpm: null, tpm: null, rpd: null}
+    privacy: cloud
+    temperature: omit
 
 routing:
   # the caller roles of Boxes 1–9 (amoeba/llm/router.py ROLES)

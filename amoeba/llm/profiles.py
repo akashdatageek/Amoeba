@@ -17,7 +17,9 @@ from amoeba.llm.client import ChatResponse, LLMClient, Messages
 
 MODELS = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
 ROLE_GROUPS = ("planner", "observers", "workers", "reviewers", "summariser", "pool")   # pool: D56's picker
-PROFILE_KEYS = {"base_url", "model", "api_key_env", "merge_system", "reasoning_effort", "max_tokens", "roles"}
+PROFILE_KEYS = {"base_url", "model", "api_key_env", "merge_system", "reasoning_effort", "max_tokens", "roles",
+                "temperature"}
+DEFAULT_TEMPERATURE = 0.2
 ROLE_KEYS = {"model", "max_tokens"}
 BOX2_GROUPS = {"planner": "planner", "agent_observer": "observers", "plan_observer": "observers",
                "interpreter": "planner",   # D77: the task interpretation step
@@ -36,6 +38,7 @@ class Profile:
     reasoning_effort: str | None = None
     max_tokens: int | None = None
     roles: dict[str, dict] = field(default_factory=dict)   # group -> {model?, max_tokens?}
+    temperature: float | None = DEFAULT_TEMPERATURE        # None: not sent (`temperature: omit`)
 
 
 def load_profiles(path: str | Path = MODELS) -> tuple[str, dict[str, Profile]]:
@@ -51,11 +54,25 @@ def load_profiles(path: str | Path = MODELS) -> tuple[str, dict[str, Profile]]:
                 raise ValueError(f"profile {name}: unknown role group {group!r}; allowed: {list(ROLE_GROUPS)}")
             if set(r) - ROLE_KEYS:
                 raise ValueError(f"profile {name}, role {group}: unknown key(s) {sorted(set(r) - ROLE_KEYS)}")
-        out[name] = Profile(name=name, **{**p, "roles": dict(p.get("roles") or {})})
+        out[name] = Profile(name=name, **{**p, "roles": dict(p.get("roles") or {}),
+                                          "temperature": temperature_setting(p, f"profile {name}")})
     default = data.get("default")
     if default not in out:
         raise ValueError(f"default profile {default!r} is not defined in {path}")
     return default, out
+
+
+def temperature_setting(entry: dict, where: str) -> float | None:
+    """A profile's or registry entry's `temperature`: absent → 0.2 (the client default, unchanged for every existing
+    entry); a number → that number; `omit` → None (the field is not sent)."""
+    if "temperature" not in entry:
+        return DEFAULT_TEMPERATURE
+    t = entry["temperature"]
+    if t == "omit":
+        return None
+    if isinstance(t, bool) or not isinstance(t, (int, float)):
+        raise ValueError(f"{where}: temperature must be a number or omit, not {t!r}")
+    return float(t)
 
 
 def get_profile(name: str | None = None, path: str | Path = MODELS) -> Profile:
