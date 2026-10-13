@@ -60,3 +60,22 @@ def test_the_profile_limits_the_plan_router_to_its_model(clean_env):
 def test_the_model_list_sends_the_anthropic_version_header_to_claude_only():
     assert list_models.anthropic_headers("https://api.anthropic.com/v1/") == {"anthropic-version": "2023-06-01"}
     assert list_models.anthropic_headers("https://generativelanguage.googleapis.com/v1beta/openai/") == {}
+
+
+def test_the_usage_label_is_the_model_the_calls_asked_for():
+    """A routed Claude run was labelled with the registry's default model (gemma-4-31b) in result.json."""
+    from amoeba.llm.limits import estimate
+    from scripts.run_task import models_of
+    span = {"name": "chat", "gen_ai.request.model": "claude-sonnet-5-5", "gen_ai.response.model": "claude-sonnet-5-5",
+            "gen_ai.usage.input_tokens": 1_000_000, "gen_ai.usage.output_tokens": 100_000}
+    u = estimate([span, dict(span)], "gemma-4-31b")
+    assert u["model"] == "claude-sonnet-5-5" and u["cost_usd"] == 2 * (2.0 + 1.0)    # $2/M in, $10/M out, two calls
+    assert estimate([], "gemma-4-31b")["model"] == "gemma-4-31b"                   # no call: the caller's name
+
+    class Router:
+        registry, models, model = {}, {"all": "gemma-4-31b-it"}, "gemma-4-31b"
+
+    class Trace:
+        def spans(self, name):
+            return [span]
+    assert models_of(Router(), Trace()) == {"requested": {"all": "claude-sonnet-5-5"}, "returned": ["claude-sonnet-5-5"]}

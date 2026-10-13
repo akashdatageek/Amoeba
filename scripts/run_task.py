@@ -321,6 +321,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
 def models_of(llm, trace) -> dict:
     """D54: the model each role group was asked for, and the exact model names the API returned."""
     requested = getattr(llm, "models", None) or {"default": llm.model}
+    if hasattr(llm, "registry"):                      # D97 router: the models the calls asked for, not its default
+        asked = sorted({s["gen_ai.request.model"] for s in trace.spans("chat") if s.get("gen_ai.request.model")})
+        if asked:
+            requested = {"all": asked[0]} if len(asked) == 1 else {"calls": asked}
     returned = sorted({s["gen_ai.response.model"] for s in trace.spans("chat") if s.get("gen_ai.response.model")})
     return {"requested": requested, "returned": returned}
 

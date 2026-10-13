@@ -143,7 +143,10 @@ def estimate(chat_spans: list[dict], model: str, prices: dict | None = None) -> 
             break
         u = billed(spans)
         cost += u["input"] / 1e6 * pin + (u["output"] + u["reasoning"]) / 1e6 * pout
-    out = {**use, "model": model, "cost_usd": None if cost is None else round(cost, 6)}
+    # the label is the model the calls asked for (the most-used one when there are several), not the caller's
+    # default: a routed Claude run used to be labelled with the registry's default model (gemma-4-31b)
+    called = max(by_model, key=lambda m: len(by_model[m])) if chat_spans else model
+    out = {**use, "model": called, "cost_usd": None if cost is None else round(cost, 6)}
     if len(by_model) > 1:
         out["models"] = sorted(by_model)
     return out
