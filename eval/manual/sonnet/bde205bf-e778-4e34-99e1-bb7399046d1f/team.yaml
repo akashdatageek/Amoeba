@@ -1,0 +1,754 @@
+team_id: c06e864c-990b-43b6-8b40-82395189fbe6
+version: 1
+parent_version: null
+name: team-plan-probe-h2
+topology: plan
+agents:
+  07f141e4-d365-418e-9271-dd5b0905b7ce:
+    agent_id: 07f141e4-d365-418e-9271-dd5b0905b7ce
+    name: Census Income Data Researcher
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A survey-statistics specialist who has pulled ACS tables via data.census.gov
+      and the Census API for years. Knows the difference between ACS 1-year and 5-year
+      products, CPS ASEC and SIPP, and how to record exact table IDs, vintages and
+      margins of error.
+    role_prompt: 'You are a senior survey statistician. Task: retrieve ACS 1-year
+      table B19013 (median household income in the past 12 months) for the United
+      States and Indiana for survey years 2015 and 2023. Method: (1) Try the Census
+      API with fetch_url: https://api.census.gov/data/2015/acs/acs1?get=NAME,B19013_001E,B19013_001M&for=us:1
+      and the same with for=state:18; repeat with /data/2023/acs/acs1. (2) Cross-check
+      each value on a second Census path: the data.census.gov table page for B19013,
+      or a Census-hosted ACS 1-year published table, found via web_search. (3) If
+      the API fails, use the data.census.gov table page as primary and a Census-hosted
+      flat file or published table as second; state which paths you used for each
+      value. If the 2015 vintage cannot be retrieved from Census at all, stop and
+      report that rather than substituting 5-year data or outside figures. (4) Record
+      for every value: geography, year, estimate, MOE (90% confidence), the dollar
+      basis the release states (e.g. ''2015 inflation-adjusted dollars''), primary
+      path and URL, second path and URL, retrieval date, match yes/no. Do not use
+      values from memory; you may expect the US in the mid-$50 thousands for 2015
+      and the high-$70 thousands for 2023 only as a sanity check, and must flag anything
+      that looks off. If the two paths disagree, re-fetch both, report the discrepancy
+      and the vintage and geography of each, and do not pick one silently. Output
+      exactly one markdown table with the columns listed plus a short note on any
+      discrepancy or failed path.'
+    max_history: 5
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Retrieve, with exact URLs, the ACS 1-year B19013 median household income
+      estimates and margins of error for Indiana and the US for 2015 and 2023, each
+      through two Census paths.
+    skills:
+    - ACS product knowledge
+    - Census API query construction
+    - provenance logging
+    outputs:
+    - artifact: income source table
+      format: 'markdown table: geography | year | B19013_001E | B19013_001M | dollar
+        basis | primary path + URL | second path + URL | retrieval date | match?'
+    success_criteria:
+    - All 4 estimates and 4 margins of error are present, each with a Census URL that
+      returns the value
+    - No value comes from memory, a news article or a non-Census mirror
+    - Any discrepancy between paths is reported, not silently resolved
+    constraints:
+    - Use ACS 1-year only, not 5-year, CPS ASEC or SIPP
+    - Official Census Bureau sources only
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  dfdfc56e-1b42-4457-a19a-0d9df0bde3af:
+    agent_id: dfdfc56e-1b42-4457-a19a-0d9df0bde3af
+    name: BLS Price Index Researcher
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A labor-statistics and price-index specialist who knows BLS CPI series
+      IDs, annual-average conventions (M13) and the BLS Public Data API. Knows which
+      BLS CPI variants exist and which one fits each use.
+    role_prompt: 'You are a senior price-index analyst. Task: obtain the CPI-U annual
+      average (all items, U.S. city average, not seasonally adjusted, series CUUR0000SA0,
+      1982-84=100) for 2015 and 2023. Method: (1) fetch_url the BLS Public Data API
+      v1 endpoint https://api.bls.gov/publicAPI/v1/timeseries/data/CUUR0000SA0?startyear=2015&endyear=2023
+      and read period ''M13'' (annual average) for 2015 and 2023. (2) Cross-check
+      with a second BLS path: the Data Viewer page data.bls.gov/timeseries/CUUR0000SA0,
+      a CPI detailed report or news-release annual-average table, or the historical
+      CPI-U table (bls.gov/cpi/tables/supplemental-files), found via web_search. (3)
+      If bls.gov blocks fetches (403), try the API, then search snippets that quote
+      the bls.gov page, and label the path used as ''snippet-verified'' if that is
+      all you get. A FRED mirror can only be a labelled cross-check, never the cited
+      source. (4) Log exactly which two paths you used for each year so the auditor
+      can pick a different one. (5) Write 3-5 lines on why CPI-U fits (official BLS
+      series, annual average matches ACS annual estimates, widely used, covers the
+      urban population that is most of US households) and caveats (national index,
+      not Indiana''s own price level; CPI-U-RS and C-CPI-U exist). Sanity expectation
+      only: 2015 about 237 and 2023 about 305. Output the markdown table and the rationale
+      list.'
+    max_history: 5
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Retrieve the official CPI-U annual averages for 2015 and 2023 with series
+      ID and URLs, and write the justification for choosing CPI-U.
+    skills:
+    - BLS CPI methodology
+    - BLS Public Data API
+    - provenance logging
+    outputs:
+    - artifact: CPI source table
+      format: 'markdown table: year | series ID | annual average | base period | primary
+        path + URL | second path + URL | retrieval date | match?'
+    - artifact: index rationale
+      format: 'list: 3-5 reasons plus caveats'
+    success_criteria:
+    - Both annual averages match across two BLS paths
+    - Series ID and 1982-84=100 base period stated
+    - No FRED, news or third-party figures used as the primary source (a FRED figure
+      may appear only as a labelled cross-check)
+    constraints:
+    - BLS official source required
+    - CPI-U annual average, not December-to-December
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  6e3f7bde-0564-4e04-bdfc-04105f54aa4c:
+    agent_id: 6e3f7bde-0564-4e04-bdfc-04105f54aa4c
+    name: Quantitative Analyst and Chart Builder
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    - local:Write
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: An applied economist-programmer who deflates income series and builds
+      clean reproducible outputs. Writes scripts whose numbers can be re-run and traced
+      to the cited sources.
+    role_prompt: 'You are a senior applied economist. Inputs: the income table (ACS
+      B19013 estimates and MOEs) and the CPI table. Method: (1) factor = CPI2023 /
+      CPI2015, full precision. (2) For each geography: adj2015 = nominal2015 x factor;
+      nominal change = nominal2023/nominal2015 - 1; real change = nominal2023/adj2015
+      - 1; adjusted 2015 MOE = MOE2015 x factor; significant if |nominal2023 - adj2015|
+      > sqrt(MOE2015adj^2 + MOE2023^2). Compute each number twice (calc tool and Python)
+      and confirm agreement. (3) Comparison: real % change gap = Indiana real % minus
+      US real %, in percentage points; Indiana share of US = Indiana/US for 2015 (in
+      2023 dollars) and 2023, and the change in share in percentage points; Indiana-minus-US
+      level difference in each year with its MOE sqrt(MOE_IN^2 + MOE_US^2) as an indicative
+      significance check. (4) Write mi_income_indiana_us.csv with columns: geography,
+      metric, year, value, unit, dollar_basis, source_url, source_name, retrieval_date,
+      formula (blank for retrieved figures; text for derived ones, citing input rows).
+      Include rows for CPI values, factor, MOEs, percent changes and comparison metrics.
+      (5) Draw real_median_household_income.png with matplotlib: grouped bars per
+      geography for 2015 nominal, 2015 in 2023 dollars, 2023; value labels in dollars;
+      real % change annotation per geography; title ''Median household income, 2015
+      vs 2023, in 2023 dollars''; footnote with source (ACS 1-year B19013; BLS CPI-U
+      CUUR0000SA0 annual average). Write plotted_values.json holding what was plotted.
+      (6) Save build.py. Return the results table, the comparison table and file names.
+      Do not alter inputs; if an input looks wrong, report it instead.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Produce the computed table, the Indiana-versus-US comparison, the CSV with
+      source citations, and the PNG bar chart from the sourced inputs.
+    skills:
+    - deflating time series with CPI
+    - csv handling
+    - matplotlib charting
+    - ACS margin-of-error propagation
+    outputs:
+    - artifact: results table
+      format: 'markdown table: geography | nominal 2015 | 2015 in 2023$ | nominal
+        2023 (=2023$) | nominal % change | real % change | MOEs | significant?'
+    - artifact: comparison table
+      format: 'markdown table: metric | Indiana | US | gap or ratio | formula'
+    - artifact: mi_income_indiana_us.csv
+      format: CSV with citation columns
+    - artifact: real_median_household_income.png
+      format: PNG chart
+    - artifact: build.py and plotted_values.json
+      format: code and JSON in workspace
+    success_criteria:
+    - Every number in the CSV is traceable to a cited URL or to a stated formula on
+      cited inputs
+    - Calc and Python agree to the cent
+    - Chart title, axis labels, units, legend, value labels and source footnote present
+    constraints:
+    - Use the inputs exactly as retrieved; no replacement from memory
+    - 2023 dollars as the base
+    - Round only for display
+    pool:
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: file_writing
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: Bash (python_interpreter)
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  3a8a1ee4-9b41-4bd9-bece-ce908fb12f4a:
+    agent_id: 3a8a1ee4-9b41-4bd9-bece-ce908fb12f4a
+    name: Independent Verification Auditor
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    - local:Read
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A data QA lead who audits analyses by re-deriving them independently
+      and re-checking sources. Did not produce any of the numbers being audited.
+    role_prompt: 'You are a QA lead auditing a small economic analysis you did not
+      build. Do: (1) Read the researchers'' logged paths. Independently retrieve all
+      10 source values: 4 ACS B19013_001E estimates, the 4 matching B19013_001M margins
+      of error, and 2 CPI-U annual averages. Use for each value a path that is neither
+      of the two logged for it. ACS options: a Census ACS 1-year published data table,
+      ranking table or a data.census.gov CSV download (if the researcher used the
+      API and the data.census.gov table page, use these; if they used other paths,
+      use whichever remains). CPI options, choose whichever neither researcher path
+      covers: (a) the BLS Data Viewer page data.bls.gov/timeseries/CUUR0000SA0, (b)
+      the BLS API v2, (c) the historical CPI-U table at bls.gov/cpi/tables/supplemental-files,
+      (d) the CPI Detailed Report or a news-release annual-average table. Compare
+      to the logged values, one pass/fail row per value (estimates, MOEs and CPI each).
+      If a mismatch appears, re-fetch both values, report the discrepancy, and accept
+      the official published table value only after confirming vintage and geography.
+      If bls.gov (or a Census host) blocks your fetches, fall back to search snippets
+      quoting the official page, label that check ''snippet-verified'' and flag it
+      as weaker; if even that is impossible, mark it ''unverified''. Never mark a
+      blocked check as a plain pass. If no third path is reachable for a value, mark
+      it ''single-source verified''. (2) Recompute factor, adjusted 2015 values, nominal
+      and real % changes, adjusted MOEs, significance and comparison metrics with
+      calc from the retrieved values, not from the analyst''s outputs. (3) Use Read
+      and Python to open the CSV: check headers, no blank source_url on retrieved
+      figures, formula text on derived ones, values equal to the results table. (4)
+      Compare plotted_values.json to the CSV and check the PNG exists with a plausible
+      file size and dimensions; open it with image_viewer if available, otherwise
+      verify through the saved plotting values and by re-reading the script for labels,
+      title, units and footnote. (5) Check the dollar basis note: 2015 figures in
+      2015 dollars, 2023 in 2023 dollars. (6) Report every check as pass/fail with
+      a fix. If anything fails, name the step to redo. (7) End with a ''final figures
+      table'' listing every figure (incomes, MOEs, CPI values, factor, adjusted values,
+      % changes, comparison metrics, significance flags) with its citation URL or
+      formula plus inputs, retrieval date, the verification status of each source
+      value, and a single overall verdict (PASS, or FAIL with unresolved items, or
+      PASS WITH WEAKER CHECKS listing them). This table is what the writer will copy
+      from.'
+    max_history: 5
+    missing_tools:
+    - web_search
+    - fetch_url
+    - image_viewer
+    is_summariser: false
+    goal: Confirm or reject the sourced values (all 10), calculations, CSV, chart
+      and citations, and hand the writer a verified figures table.
+    skills:
+    - source verification
+    - independent recalculation
+    - data QA
+    - chart review
+    outputs:
+    - artifact: audit report
+      format: 'markdown table: check | expected | found | pass/fail | fix (includes
+        10 rows for the source values, each marked verified / snippet-verified (weaker)
+        / unverified)'
+    - artifact: final figures table
+      format: 'markdown table: figure | value | unit | citation URL or formula with
+        inputs | retrieval date | verdict'
+    success_criteria:
+    - All 10 source values re-retrieved independently, or explicitly marked snippet-verified
+      or unverified
+    - Independent recomputation matches to the cent and to 0.1 percentage points
+    - All cited URLs correspond to the value shown
+    - CSV and PNG exist, open and match each other
+    - 'Verdict is clear: pass, or fail with required fixes'
+    - The final figures table is complete enough that the writer needs no file access
+    constraints:
+    - Must not reuse either researcher-logged path as its only check
+    - A check done only from search snippets is labelled snippet-verified and flagged
+      as weaker; if nothing can be reached it is reported as unverified, never passed
+      silently
+    - Does not edit the deliverables; reports failures
+    pool:
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: file_reading
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: Bash (python_interpreter)
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  1e9620e6-201a-481a-a811-097d0577d369:
+    agent_id: 1e9620e6-201a-481a-a811-097d0577d369
+    name: Final Report Writer
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: A technical writer who turns verified analysis into a concise, cited,
+      decision-ready answer. Adds no new analysis.
+    role_prompt: 'You are the final editor. Assemble the answer from the team''s outputs
+      only; take every number from the auditor''s final figures table. The very first
+      line must be exactly: I read "U.S. Census Bureau survey estimates for income"
+      as American Community Survey (ACS) 1-year estimates, table B19013 median household
+      income; if you meant Current Population Survey Annual Social and Economic Supplement
+      (CPS ASEC), historical table H-8 for states or Survey of Income and Program
+      Participation (SIPP), the answer below may not apply. Then: (1) a results table
+      per geography: nominal 2015, 2015 in 2023 dollars, nominal 2023 (= 2023 dollars),
+      nominal % change, real % change, with a citation tag per figure. (2) A short
+      comparison of Indiana and the US: levels, real % gap in percentage points, Indiana
+      share of US, and whether each change exceeds sampling error. (3) Method: formula
+      with the CPI-U factor and the CPI values. (4) Why ACS 1-year and why CPI-U (from
+      the researchers'' rationale). (5) Planning basis: objective, assumptions and
+      open questions as given, and who produced and who verified the figures. (6)
+      Caveats: ACS margins of error and significance, CPI-U is national, nominal means
+      survey-year dollars. (7) Audit result, including any weaker-verified (snippet-verified),
+      unverified or unresolved item, stated plainly. (8) Numbered source list with
+      URLs and retrieval dates. (9) Files: mi_income_indiana_us.csv and real_median_household_income.png.
+      Do not add analysis.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: 'Assemble the final answer: mandated opening line, results, comparison,
+      methods and rationale, caveats, audit outcome, citations and file references.'
+    skills:
+    - technical writing
+    - citation hygiene
+    outputs:
+    - artifact: final answer
+      format: 'memo with headings: opening line, results table, comparison, method,
+        why these sources, planning basis and assumptions, caveats, audit result,
+        sources, files'
+    success_criteria:
+    - First line is exactly the mandated sentence
+    - Every figure carries a citation or formula plus cited inputs
+    - Numbers identical to the auditor's final figures table
+    - No analysis beyond what the team produced
+    constraints:
+    - No new numbers
+    - If the audit verdict is FAIL, or items are unresolved, snippet-verified or unverified,
+      report them rather than hiding them
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 07f141e4-d365-418e-9271-dd5b0905b7ce
+  dst: 6e3f7bde-0564-4e04-bdfc-04105f54aa4c
+  type: sequential
+  schema_id: text
+  condition: null
+- src: dfdfc56e-1b42-4457-a19a-0d9df0bde3af
+  dst: 6e3f7bde-0564-4e04-bdfc-04105f54aa4c
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 07f141e4-d365-418e-9271-dd5b0905b7ce
+  dst: 3a8a1ee4-9b41-4bd9-bece-ce908fb12f4a
+  type: sequential
+  schema_id: text
+  condition: null
+- src: dfdfc56e-1b42-4457-a19a-0d9df0bde3af
+  dst: 3a8a1ee4-9b41-4bd9-bece-ce908fb12f4a
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 6e3f7bde-0564-4e04-bdfc-04105f54aa4c
+  dst: 3a8a1ee4-9b41-4bd9-bece-ce908fb12f4a
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 07f141e4-d365-418e-9271-dd5b0905b7ce
+  dst: 1e9620e6-201a-481a-a811-097d0577d369
+  type: sequential
+  schema_id: text
+  condition: null
+- src: dfdfc56e-1b42-4457-a19a-0d9df0bde3af
+  dst: 1e9620e6-201a-481a-a811-097d0577d369
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 3a8a1ee4-9b41-4bd9-bece-ce908fb12f4a
+  dst: 1e9620e6-201a-481a-a811-097d0577d369
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 07f141e4-d365-418e-9271-dd5b0905b7ce
+- dfdfc56e-1b42-4457-a19a-0d9df0bde3af
+exit: 1e9620e6-201a-481a-a811-097d0577d369
+plan:
+- index: 0
+  agent_ids:
+  - 07f141e4-d365-418e-9271-dd5b0905b7ce
+  text: '[Census Income Data Researcher]: Retrieve ACS B19013 values'
+  kind: work
+  covers:
+  - R1
+  - R3
+  - R10
+  depends_on: []
+  do: '
+
+    - Query the Census API for 2015 and 2023 ACS 1-year B19013_001E and B19013_001M
+    for us:1 and state:18.
+
+    - Cross-check each value on a second Census path (data.census.gov table page or
+    Census-hosted published table).
+
+    - Log the primary and second path, URL, vintage, dollar basis and retrieval date
+    for each value.
+
+    - If the paths disagree, re-fetch both and report the discrepancy with vintage
+    and geography.
+
+    - If the 2015 vintage is not retrievable from Census, stop and report it.'
+  output: 'table: geography x year x B19013_001E x B19013_001M x dollar basis x primary
+    path/URL x second path/URL x retrieval date x match'
+  done_when: 4 estimates and 4 MOEs are present, each with an official Census URL,
+    and any mismatch between paths is noted.
+- index: 1
+  agent_ids:
+  - dfdfc56e-1b42-4457-a19a-0d9df0bde3af
+  text: '[BLS Price Index Researcher]: Retrieve CPI-U annual averages and rationale'
+  kind: work
+  covers:
+  - R2
+  - R7
+  - R10
+  depends_on: []
+  do: '
+
+    - Pull series CUUR0000SA0, M13 for 2015 and 2023 from the BLS API.
+
+    - Cross-check via a second BLS path (Data Viewer, CPI table or historical CPI-U
+    table).
+
+    - Log which two paths were used per year so the auditor can choose a different
+    one.
+
+    - Write the justification for CPI-U and its caveats.'
+  output: 'table: year x series ID x annual average x base period x primary path/URL
+    x second path/URL x retrieval date x match; plus list: reasons for CPI-U'
+  done_when: Both values agree across two BLS paths (or the path is labelled snippet-verified)
+    and the sanity range (about 237 and about 305) holds.
+- index: 2
+  agent_ids:
+  - 6e3f7bde-0564-4e04-bdfc-04105f54aa4c
+  text: '[Quantitative Analyst and Chart Builder]: Compute, compare, write CSV, draw
+    chart'
+  kind: work
+  covers:
+  - R3
+  - R4
+  - R5
+  - R6
+  - R8
+  - R9
+  - R10
+  - R12
+  depends_on:
+  - 1
+  - 2
+  do: '
+
+    - Compute the factor, adjusted 2015 values, nominal and real percent changes,
+    adjusted MOEs and significance flags, with calc and Python cross-checked.
+
+    - Compute the Indiana-versus-US comparison: real % change gap in percentage points,
+    Indiana share of US in 2015 (in 2023 dollars) and 2023, and the indicative significance
+    of the level gap.
+
+    - Write mi_income_indiana_us.csv with a citation column for every retrieved figure
+    and formula text for derived ones.
+
+    - Build real_median_household_income.png, plotted_values.json and build.py.'
+  output: 'table: geography x nominal 2015 x 2015 in 2023$ x nominal 2023 x nominal
+    % x real % x MOE x significant; plus comparison table and files (CSV, PNG, script)'
+  done_when: The CSV and PNG exist, calc and Python agree, every row has a source
+    or formula, and the chart is fully labelled.
+- index: 3
+  agent_ids:
+  - 3a8a1ee4-9b41-4bd9-bece-ce908fb12f4a
+  text: '[Independent Verification Auditor]: Audit sources, math, files; produce final
+    figures table'
+  kind: verify
+  covers:
+  - R10
+  - R12
+  depends_on:
+  - 1
+  - 2
+  - 3
+  do: '
+
+    - Re-retrieve all 10 source values (4 B19013_001E, 4 B19013_001M, 2 CPI-U annual
+    averages) by a path different from both logged paths. For ACS use a published
+    ACS 1-year table, ranking table or data.census.gov CSV download. For CPI use whichever
+    of the BLS Data Viewer (data.bls.gov/timeseries/CUUR0000SA0), BLS API v2, historical
+    CPI-U table (bls.gov/cpi/tables/supplemental-files) or CPI Detailed Report / news-release
+    annual-average table neither researcher used. Compare each to the logged value
+    with one pass/fail row per value.
+
+    - If bls.gov or a Census host blocks fetches, label the check "snippet-verified"
+    and flag it as weaker, or report it as "unverified". Never pass it silently. If
+    no third path is reachable, mark the value "single-source verified".
+
+    - Recompute all derived figures and comparison metrics independently with calc.
+
+    - Read the CSV and check it against the results table, the plotted values against
+    the CSV, and each citation URL. Check the PNG by image_viewer if filled, otherwise
+    via plotted_values.json, script strings and file size and dimensions read with
+    Python.
+
+    - Return pass/fail per check with fixes, then the final figures table with citations
+    or formulas, per-value verification status and an overall verdict.
+
+    - On a failure, the named upstream step (1, 2 or 3) is redone once for the affected
+    item. The auditor then re-checks that item and reissues the report and figures
+    table. If the item still fails, it is listed as unresolved in the verdict.'
+  output: 'table: check x expected x found x pass/fail x fix (10 source-value rows
+    included); plus table: figure x value x unit x citation or formula x retrieval
+    date x verdict'
+  done_when: All checks pass, or each failure has had one redo and re-check, and every
+    weaker-verified, unverified or unresolved item is explicitly marked. The final
+    figures table is complete.
+- index: 4
+  agent_ids:
+  - 1e9620e6-201a-481a-a811-097d0577d369
+  text: '[Final Report Writer]: Assemble final answer'
+  kind: work
+  covers:
+  - R3
+  - R4
+  - R5
+  - R6
+  - R7
+  - R8
+  - R9
+  - R10
+  - R11
+  - R12
+  - R13
+  depends_on:
+  - 1
+  - 2
+  - 4
+  do: '
+
+    - Start with the mandated line verbatim.
+
+    - Present the results tables with citations and the Indiana-versus-US comparison,
+    copying numbers from the auditor''s final figures table.
+
+    - Add the method, the reasons for ACS and CPI-U (from steps 1 and 2), the planning
+    basis and assumptions, the caveats, the audit outcome (including snippet-verified,
+    unverified or unresolved items), the source list with logged paths and URLs, and
+    the file names.'
+  output: 'memo: final answer with headings (opening line, results, comparison, method,
+    why these sources, planning basis, caveats, audit, sources, files)'
+  done_when: The first line matches the mandated text exactly, all figures match the
+    auditor's figures table, and every figure is cited.
+requirements:
+  R1: Gather median household income (ACS 1-year, table B19013, B19013_001E and its
+    margin of error B19013_001M) for Indiana and the United States for 2015 and 2023
+    from official Census Bureau sources.
+  R2: Gather the CPI-U (all urban consumers, U.S. city average, all items, not seasonally
+    adjusted, annual average, series CUUR0000SA0) for 2015 and 2023 from BLS.
+  R3: Report the nominal median household income values (as published in each survey
+    year's own dollars) for Indiana and the US, 2015 and 2023.
+  R4: Compute the adjusted values for Indiana and the US, expressed in 2023 dollars.
+  R5: Report the percentage change from 2015 to 2023 for both geographies, nominal
+    and real.
+  R6: 'Compare real median household income for Indiana and the United States between
+    2015 and 2023 in 2023 dollars: side-by-side levels, the real % change gap in percentage
+    points, Indiana as a share of the US, and whether each change exceeds sampling
+    error.'
+  R7: State which survey and which price index were used and why.
+  R8: Deliver a CSV of the figures.
+  R9: Deliver a bar chart as a PNG.
+  R10: Cite every figure (income values, margins of error, CPI values, the derived
+    factor, adjusted values, percentage changes, comparison metrics) with an official
+    URL, or with an explicit formula plus cited inputs.
+  R11: 'The final answer must open with the mandated line: I read "U.S. Census Bureau
+    survey estimates for income" as American Community Survey (ACS) 1-year estimates,
+    table B19013 median household income; if you meant Current Population Survey Annual
+    Social and Economic Supplement (CPS ASEC), historical table H-8 for states or
+    Survey of Income and Program Participation (SIPP), the answer below may not apply.'
+  R12: Disclose the method and caveats (2015-to-2023 formula, rounding, ACS sampling
+    error, comparability limits), and check the numbers independently before delivery.
+    The independent check covers all 10 retrieved source values (4 estimates, 4 MOEs,
+    2 CPI values) and every derived figure.
+  R13: Document the planning basis in the final answer (objective, assumptions, open
+    questions, who produced and verified which figures) so the run can be traced.
+max_inner_turns: 3
+meta:
+  task_id: probe-h2-income
+  draft_rounds: 3
+  consensus: false
+  dependency_relinked: []
+  capability_requests:
+  - name: python_interpreter
+    for_role: Quantitative Analyst and Chart Builder; Independent Verification Auditor
+    canonical: code_execution
+    status: unfilled
+    reason: no_helper
+  - name: file_writing
+    for_role: Quantitative Analyst and Chart Builder
+    canonical: file_writing
+    status: filled
+    reason: ''
+  - name: file_reading
+    for_role: Independent Verification Auditor
+    canonical: file_reading
+    status: filled
+    reason: ''
+  - name: image_viewer
+    for_role: Independent Verification Auditor
+    canonical: image_viewer
+    status: unfilled
+    reason: pick_none
+  - name: web_search
+    for_role: Census Income Data Researcher
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Census Income Data Researcher
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: web_search
+    for_role: BLS Price Index Researcher
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: BLS Price Index Researcher
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: Bash (python_interpreter)
+    for_role: Quantitative Analyst and Chart Builder
+    canonical: Bash (python_interpreter)
+    status: filled
+    reason: ''
+  - name: Write
+    for_role: Quantitative Analyst and Chart Builder
+    canonical: Write
+    status: filled
+    reason: ''
+  - name: web_search
+    for_role: Independent Verification Auditor
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Independent Verification Auditor
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: Bash (python_interpreter)
+    for_role: Independent Verification Auditor
+    canonical: Bash (python_interpreter)
+    status: filled
+    reason: ''
+  - name: Read
+    for_role: Independent Verification Auditor
+    canonical: Read
+    status: filled
+    reason: ''
