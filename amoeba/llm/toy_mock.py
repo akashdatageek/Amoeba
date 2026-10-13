@@ -139,5 +139,6 @@ def toy_mock_client() -> MockLLMClient:
         "pool_picker": ["NONE"],          # D56: the toy tasks need nothing from the pool
         "interpreter": ["## Thought\nNothing in an arithmetic task is in doubt.\n\n## Entities\n```json\n[]\n```\n"],  # D77
         "fix_proposer": ["No fix: the toy mock proposes no edit."],   # D117 D: no JSON → no fix (a stuck step stops)
+        "tool_writer": ["No tool: the toy mock writes none."],       # D125: refused by plain code (no code block)
         "plan_searcher": ['{"need_search": false, "why": "Arithmetic needs no web facts.", "queries": []}'],  # D120
     }, model="toy-mock")

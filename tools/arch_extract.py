@@ -730,7 +730,11 @@ BOXES: list[dict] = [
                "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
                "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error, no_deliverable or needs_clarification.",
                "D117 D: the offline stand-in (--llm mock) answers the fix proposer with no edit, so a stuck step in an "
-               "offline run ends in the stop report instead of a crash (D119's injected pairs found it)."],
+               "offline run ends in the stop report instead of a crash (D119's injected pairs found it).",
+               "D122: no token cap by default; a runaway guard stops a plan run after --stall-calls model calls with "
+               "no progress (default 60; calls, never tokens; armed once the plan runner starts). With an optional "
+               "hard cap the plan runner enters finish mode past 85% of it, and a stopped plan run returns its "
+               "finished steps as a partial answer."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
@@ -824,6 +828,9 @@ BOXES: list[dict] = [
                "Rung 1: more turns (tool_error, max_turns), more retry turns then a larger input (checks).",
                "Rung 2: the missing tool or skill from the pool shortlist, first vetted candidate not given before "
                "(no AI pick); with the pool and local tools off it is skipped: \"capability fix unavailable: pool off\".",
+               "Rung W (D125, capability): a tool for the missing capability from the approved library or the "
+               "tool writer, when plain code finds an offline library for it and the run has a code runner "
+               "(--local-tools); otherwise skipped: \"tool writer: no code runner (local tools are off)\".",
                "When no code fix is left for the step (used up, not allowed for the cause, or skipped), the fix "
                "proposer (Stage D) is the next and last rung.",
                "Limits from adapt.yaml (adapt): three fixes per step and eight per task, the proposer's included, a "
@@ -833,6 +840,28 @@ BOXES: list[dict] = [
          disposes="Plain code picks, applies and judges each fix (success: the step ends done).",
          anchors=["amoeba/adapt/fixes.py::candidates", "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
                   "amoeba/interp/plan_runner.py::PlanRunner.apply_fix"], guard_anchors=[]),
+    dict(id="toolmaker", view="adapt", title="Tool writer and tool library (D125)", kind="ai", plan=None,
+         sentence="When a stuck step lacks a tool the pool cannot give, one AI call writes a small Python tool; plain code checks it, runs its self-test in the sandbox and only then gives it to the step.",
+         what=[
+               "Plain code decides first: the missing capability must name a file type an offline library can make "
+               "(adapt.yaml tool_writer.libraries: docx, xlsx, pptx, pdf, png, svg, csv, json) and the run must have "
+               "a code runner (the local toolbox's sandboxed Bash). Anything else goes to the fix proposer.",
+               "An approved library tool for the capability (same name, then same file type) is tried first, only "
+               "while its code matches the sha256 the user approved, and only after its self-test passes again.",
+               "Else the tool writer replies with a name, a description, its input and a python block with run(args) "
+               "and self_test(); plain code refuses imports outside the allowed library and a short stdlib list, "
+               "eval/exec/subprocess/os calls and missing functions, appends its own command-line harness, and runs "
+               "the self-test through the local toolbox (same gate, sandbox, limits and trace). Two tries; the "
+               "second sees what was refused or the failed self-test.",
+               "The step's helpers get made:<name>; its requests for the capability count as filled, a file it "
+               "makes is still owed. A written tool the step then used without an error, in a step no longer stuck, "
+               "is saved to data/tool_library as unreviewed; python -m scripts.tool_library approve is the user's "
+               "decision before any later task may use it (the one exception to D117's nothing carries over)."],
+         proposes="One tool: name, description, input and code (tool_writer prompt).",
+         disposes="Plain code: feasibility, the code check, the sandboxed self-test, the grant, and what is kept.",
+         prompts=["tool_writer"],
+         anchors=["amoeba/adapt/toolmaker.py::feasible", "amoeba/adapt/toolmaker.py::check_code",
+                  "amoeba/interp/plan_runner.py::PlanRunner.make_tool"], guard_anchors=[]),
     dict(id="proposer", view="adapt", title="Fix proposer (D117 Stage D)", kind="ai", plan=None,
          sentence="The last rung: one AI call proposes one edit for the stuck step; plain code checks it, applies it to the live plan and re-runs the step.",
          what=[

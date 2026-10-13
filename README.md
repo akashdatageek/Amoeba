@@ -18,7 +18,8 @@ No memory, monitor, gate or cost handling yet. Token counts are recorded in the 
 
 Since D117 a fourth box adapts a stuck step inside one task: a stuck watch, code fixes and a fix-proposer agent
 ("In-task adaptation replaces the learning loop" below). The offline learning loop of Phase 2 (task streams,
-Experimenter, Gate, recipes) was removed; nothing carries over between tasks.
+Experimenter, Gate, recipes) was removed; nothing carries over between tasks except tools Box 4 wrote that you
+approved (D125).
 
 ## Quick start
 
@@ -471,6 +472,11 @@ answer and `adapt_report.md` say what was stuck, the cause, each fix tried and w
 each step that used an upstream output from before that step was re-run.
 `result.json` `adaptation` lists every fix with its result and tokens. `--adapt off` turns the watch and the fixes off.
 
+**D121 (Oct 11).** Two fixes from the H3 end-to-end run (`eval/manual/h3/REPORT.md`): a capability request the run
+already covers (`unfilled (registered_tool)`, such as web_search) or a helper already holds no longer makes a step
+stuck, and a registry grant marks its request filled; the fix proposer's reply is read from the last JSON object that
+holds an edit, not from the first brace (Gemma's thought often quotes JSON from the prompt).
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault
@@ -547,19 +553,50 @@ with `used_in`, screened lines, calls, tokens). A reused draft keeps its own rec
 python -m scripts.run_task --tasks tasks/draft_eval_complex.jsonl --llm openai --topology plan \
     --drafts-from runs/draft_eval/cmp2-gemini-3.1-flash-lite-d24 --draft-pick 0 \
     --llm-cache runs/cache --llm-cache-mode record --llm-cache-namespace rep0 \
-    --max-tokens-per-run 200000 --min-seconds-between-calls 1
+    --min-seconds-between-calls 1
 ```
 
 - `--drafts-from DIR --draft-pick K`: reuse saved drafts (an eval_draft folder or a runs folder); result.json names
   the `draft_source`.
 - `--llm-cache DIR --llm-cache-mode record|replay|off [--llm-cache-namespace NAME]`: every model reply and web result
   is stored; `replay` never calls anything (a miss ends the run with `error="cache_miss"`).
-- `--max-tokens-per-run N`, `--max-calls-per-run N`: the run stops cleanly with `error="budget"`; what ran is saved.
+- **No token cap by default (D122).** Nobody can know ahead how many tokens a task needs (Gemma's hidden reasoning
+  alone can be a third of them), so real tasks run without `--max-tokens-per-run`. What stops a runaway instead is the
+  **runaway guard**: a plan run stops when `--stall-calls N` model calls (default 60, adapt.yaml `run_guard`; 0 = off)
+  pass with no progress, meaning no new step and no step done. It counts calls, never tokens, and arms only once the plan runner starts,
+  so drafting and the baselines are never counted.
+- `--max-tokens-per-run N`, `--max-calls-per-run N` (optional hard caps): past 85% of a cap the run enters **finish
+  mode**: no more in-task fixes, rework after a failed check, dispute resolution or re-planning; it goes straight to
+  the steps still owed. If a cap or the guard does stop a plan run, the answer is **assembled from the finished steps**
+  under "# Partial answer: the run stopped before it finished", listing the steps that did not run; the error starts
+  `budget:` or `stalled:` and what ran is saved. A run is never left with an empty answer when a step had finished.
   Every run prints its billed tokens and an estimated cost from `amoeba/config/prices.yaml` (fill in the prices;
   a model without one gets tokens only).
+- **A format slip costs a turn, never the run (D123).** A helper reply whose `## CurrentStep`, `## Action` or
+  `## ActionInput` heading is glued onto the end of a sentence is read by plain code; a reply still unreadable after the
+  repair call fails only that turn, and if the step then does not finish, Box 4 treats it as the cause `format` (more
+  turns, then a role rule or a split). A run that stops anyway (Box 4 gave up, a parse or model service error) keeps
+  the finished steps as a partial answer; a bug in Amoeba's own code is still raised, after `answer.md` saves them.
+- **A work-around counts (D124).** When Box 4's fix proposer works around a missing capability (for example a memo
+  in Markdown because no tool makes a .docx), the stuck watch stops asking for that capability and its file type, so
+  the run goes on and the step is reported "finished with limitation"; a fix that only repeats an item is never tried
+  twice.
+- **Box 4 can write a missing tool (D125, needs `--local-tools`).** When a step lacks a tool, the pool has none and
+  the missing thing is a file type an offline library can make (docx, xlsx, pptx, pdf, png, svg, csv, json; adapt.yaml
+  `tool_writer`), the tool writer writes a small Python tool with a self-test. Plain code checks the code (allowed
+  imports only, no eval/exec/subprocess/os calls), runs the self-test in the sandboxed workspace, and only then gives
+  the step `made:<name>`. A tool the step then used successfully is saved in `data/tool_library/` as **unreviewed**;
+  no later task uses it until you approve it:
+
+      python -m scripts.tool_library list
+      python -m scripts.tool_library show docx_memo      # read the code first
+      python -m scripts.tool_library approve docx_memo   # or: reject
+
+  An approved tool is offered only while its code is unchanged, and its self-test runs again before each use.
 - HTTP 429/503, dropped connections and timeouts are retried up to `--max-rate-retries` (5) with exponential waits
   or the server's Retry-After; `--min-seconds-between-calls` spaces calls out for free tiers. An error still there
-  after the retries ends the run with `error: "api: ..."`, and its plan.json, trace and result.json are still
+  after the retries ends the run with `error: "api: ..."` (a plan run keeps its finished steps as a partial answer,
+  D123), and its plan.json, trace and result.json are still
   written (D57), so a re-run with the same `--llm-cache` replays the calls already paid for.
 
 ## Model profiles and Gemma 4 (D49, D54)

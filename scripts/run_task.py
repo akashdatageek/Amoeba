@@ -47,11 +47,19 @@ from amoeba.pool.stock import PoolSetup, SharedPicks, stock_toolbox
 from amoeba.localtools.gate import SandboxRequired, require_sandbox
 from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 from amoeba.adapt.faults import check_flag
+from amoeba.adapt.config import adapt_config
 
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
-PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults",
+PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
                  "plan_search"}           # left out of result.json when None (Phase 1 records unchanged)
+
+
+
+# box: client
+def guard_config() -> dict:
+    """D122: adapt.yaml run_guard (the runaway guard and finish mode)."""
+    return adapt_config().get("run_guard") or {}
 
 
 # box: ov_leave, capreq, runresult
@@ -301,6 +309,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         adaptation=ep.adaptation if ep and topology == "plan" and getattr(plan_options, "adapt", "off") == "on"
         else None,
         faults=(ep.faults or None) if ep and topology == "plan" else None,              # D119
+        run_guard=(ep.run_guard or None) if ep and topology == "plan" else None,        # D122
         plan_search=(draft.plan_search if draft else search_rec),                       # D120
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
@@ -794,6 +803,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     add_client_args(p)
     p.add_argument("--max-tokens-per-run", type=int, default=None,
                    help="stop a run cleanly (error='budget') before a call once this many billed tokens were used (D47)")
+    p.add_argument("--stall-calls", type=int, default=None, metavar="N",
+                   help="D122: stop a plan run after N model calls with no progress (no new step and no step done); "
+                        "counts calls, never tokens, and the finished steps become the answer. Default from "
+                        "adapt.yaml run_guard (60); 0 = off")
     p.add_argument("--max-calls-per-run", type=int, default=None,
                    help="stop a run cleanly (error='budget') before its call number N+1 (D47)")
     p.add_argument("--no-log-content", action="store_true",
@@ -805,6 +818,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         p.error("--interactive reviews a fresh draft; it cannot be combined with --drafts-from")
     args.explicit = explicit_flags(argv if argv is not None else sys.argv[1:])
     args.inject_fault = check_flag(args.inject_fault, args.topology)      # D119: SystemExit unless allowed
+    if args.stall_calls is None:                                          # D122: the runaway guard's default
+        args.stall_calls = int(guard_config().get("stall_calls", 0) or 0)
     for kv in filter(None, args.option_defaults.split(",")):            # harness defaults; an explicit flag wins
         k, _, v = kv.partition("=")
         k = k.strip().replace("-", "_")
@@ -885,7 +900,9 @@ def main(argv: list[str] | None = None) -> int:
                     quality_gate=quality_gate_on(args.quality_gate, args.topology, args.drafts_from),
                     plan_options=cli_plan_options(args), saved_draft=chosen,
                     limits=RunLimits(args.max_tokens_per_run or niche.safety.max_tokens_per_run,
-                                     args.max_calls_per_run or niche.safety.max_calls_per_run),
+                                     args.max_calls_per_run or niche.safety.max_calls_per_run,
+                                     stall_calls=args.stall_calls or None,                      # D122
+                                     finish_share=float(guard_config().get("finish_share", 0.85))),
                     ask=input if args.interactive else None, pool=pool, local=local,
                     equal_tools=args.equal_tools == "on", picks_file=args.picks_file, picks_only=args.picks_only,
                     timezone=args.timezone, interpret=args.interpret == "on", context=load_context(args.context),

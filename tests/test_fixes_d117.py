@@ -21,6 +21,7 @@ from tests.test_plan_runner import BODY, step_no, plan_team
 from tests.test_pool import CAP, SEARCH, cache, req, setup  # noqa: F401  (cache is a fixture)
 
 ON = PlanOptions(adapt="on")
+NO_RUNNER = "tool writer: no code runner (local tools are off)"   # D125: the next rung, skipped without --local-tools
 
 
 @pytest.fixture
@@ -210,8 +211,12 @@ def test_a_registry_tool_is_granted_without_the_pool_step(task, envelope, trace,
         if n == "1" and not fixed(trace):
             return reply("Final Output", f"OUT-1\n{BODY}\nBLOCKED: calc — nothing to compute with")
         return good(n)
-    llm, cfg, ep = run(task, envelope, trace, tools, script, stock=fake_stock(calls))
+    def ask_calc(cfg):                   # an open request for the tool the grant gives
+        cfg.meta.setdefault("capability_requests", []).append(
+            {"name": "calc", "kind": "tool", "for_role": "Cost Analyst", "status": "unfilled", "reason": "no_helper"})
+    llm, cfg, ep = run(task, envelope, trace, tools, script, stock=fake_stock(calls), setup_cfg=ask_calc)
     assert ep.adaptation["fixes"][0]["attached"] == ["calc"] and calls == []
+    assert [q for q in cfg.meta["capability_requests"] if q["name"] == "calc"][0]["status"] == "filled"   # granted
 
 
 def test_an_empty_shortlist_is_one_failed_fix_never_repeated_then_the_task_stops(task, envelope, trace, tools,
@@ -239,12 +244,12 @@ def test_with_the_pool_off_the_capability_rung_is_skipped_and_the_task_stops_wit
     llm, cfg, ep = run(task, envelope, trace, tools, script, tmp_path)
     [d] = ep.adaptation["fixes"]                       # the code rung is skipped; the proposer gives no fix
     assert d["rung"] == "D" and len(llm.calls_of("fix_proposer")) == 2          # one retry on an invalid reply
-    assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}]
-    assert ep.error.startswith(f"stuck: step 1 (capability) — {POOL_OFF}; fix proposer: no valid edit")
+    assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}, {"step": 1, "why": NO_RUNNER}]
+    assert ep.error.startswith(f"stuck: step 1 (capability) — {POOL_OFF}; {NO_RUNNER}; fix proposer: no valid edit")
     assert ep.answer.startswith("# The task stopped: a step stayed stuck") and POOL_OFF in ep.answer
     assert {step_no(c["messages"]) for c in llm.calls_of("plan_worker")} == {"1"}    # nothing after it ran
-    assert (tmp_path / "adapt_report.md").read_text() == ep.answer
-    assert [e["amoeba.why"] for e in trace.events("fix_skipped")] == [POOL_OFF]
+    assert ep.answer.startswith((tmp_path / "adapt_report.md").read_text())   # D123: the finished steps follow
+    assert [e["amoeba.why"] for e in trace.events("fix_skipped")] == [POOL_OFF, NO_RUNNER]
 
 
 def test_the_token_cap_stops_further_fixes(task, envelope, trace, tools, monkeypatch):

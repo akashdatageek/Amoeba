@@ -16,10 +16,12 @@ from pathlib import Path
 
 from amoeba.adapt.evidence import EvidenceLog
 from amoeba.adapt.faults import Faults
+from amoeba.adapt.toolmaker import (PREFIX as MADE, ToolLibrary, call_tool, check_code, feasible, install,
+                                     parse_tool, self_test as tool_self_test, tool_text, tw_config)
 from amoeba.adapt.fixes import POOL_OFF, candidates, fix_key, limits as fix_limits
 from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
-from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, step_signals
+from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, open_requests, step_signals, waived_view
 from amoeba.capabilities import normalise
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
@@ -32,7 +34,8 @@ from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_
                                       strip_unverified)
 from amoeba.interp.freshness import stale_figure, time_sensitive
 from amoeba.interp.shorten import shorten
-from amoeba.llm.limits import estimate
+from amoeba.llm.client import api_error, describe_api_error
+from amoeba.llm.limits import RunLimitReached, estimate
 from amoeba.llm.profiles import role_group
 from amoeba.llm.router import NoModelAvailable
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
@@ -41,7 +44,7 @@ from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _ou
 from pydantic import ValidationError
 
 from amoeba.task.models import CapabilityRequest, DraftedRole, Episode, Task
-from amoeba.task.parsers import MissingSections, parse_json_objects, parse_plan_d24, parse_sections
+from amoeba.task.parsers import MissingSections, ParseError, parse_json_objects, parse_plan_d24, parse_sections
 from amoeba.task.quality import VERIFY_WORDS
 from amoeba.tools.web import WEB_TOOLS
 
@@ -237,6 +240,9 @@ and compute from these files with your local tools, and cite a figure from a fil
 LAST_TURN_NOTE = ("THIS IS YOUR LAST TURN. No more tool calls: choose Final Output and write your conclusion from what "
                   "you have found so far, with the [S#] of what supports each fact, and say plainly what you could not "
                   "confirm.")
+UNREADABLE = "unreadable"   # D123: the turn's reply had no readable CurrentStep/Action/ActionInput, even after repair
+UNREADABLE_NOTE = ("error: your reply could not be read ({why}). Write each section heading (## Thought, "
+                   "## CurrentStep, ## Action, ## ActionInput) at the start of its own line.")
 LAST_TURN_AGAIN = ("Your last turn must be Final Output with a written conclusion (not a search query or a tool "
                    "request). Answer now from what you have.")
 
@@ -375,6 +381,7 @@ class _Work:
         self.calls: list[dict] = []             # D61: every tool call of the step: who, which tool, ok or not
         self.last_message = ""                  # D44: the last helper message, passed on when no Final Output came
         self.requests: list[str] = []           # D76: every tool request / non-final message of the step
+        self.unreadable: list[dict] = []        # D123: turns whose reply could not be read (who, turn, why)
 
 
 # box: step_check
@@ -621,9 +628,14 @@ class PlanRunner:
         self.exhausted: dict | None = None                # the stuck step no fix recovered (the task stops)
         self.proposer_gave_up: dict[int, str] = {}        # D117 Stage D: step -> why the fix proposer gave no fix
         self.workarounds: list[dict] = []                 # D117 Stage D: accepted work-arounds (for Limitations)
+        self.waived: dict[int, set[str]] = {}             # D124: step -> capabilities a work-around stands in for
+        self.provided: dict[int, set[str]] = {}           # D125: step -> capabilities a made tool now provides
+        self.tools_made: list[dict] = []                  # D125: tools written or taken from the library
+        self.made_calls: dict[str, list[dict]] = {}       # D125: made tool -> its calls (step, ok)
         self.helpers_added = 0                            # D117 Stage D: helpers the fix proposer added (capped)
         self.faults = Faults(self.opt.faults, interp.trace)   # D119: test-only injected faults (none by default)
         self.no_last_turn: set[int] = set()               # D119 max_turns fault: steps whose last turn is not forced
+        self.finish_skipped: dict[str, int] = {}          # D122: extras skipped in finish mode, by kind
 
     # ---- D61: the step contract ---------------------------------------------------------------------------------
     # box: step_check
@@ -852,25 +864,39 @@ class PlanRunner:
             self.known = self.plan_items()                                  # D63: what the plan knew of at the start
             self.save_plan_version(None)
         w = 0
-        while True:     # D63: the waves are recomputed after each wave, so an accepted re-plan takes effect
-            nums = next((x for x in ([n for n in wave if n not in self.artifacts] for wave in waves(self.cfg.plan))
-                         if x), None)
-            if nums is None:
-                break
-            w += 1
-            deps = dependencies(self.cfg.plan)
-            for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
-                self.run_step(self.steps[n], w, deps[n])
-                fixed = self.fix_stuck(n, w) if self.opt.adapt == "on" else None   # D117 Stages C–D
-                if fixed == "stop":                                                 # no fix recovered it
-                    self.ep.faults = self.faults.summary()
-                    return self.stop_report(n)
-                if fixed == "replanned":                  # D117 Stage D: the plan changed; recompute the waves
+        try:
+            while True:     # D63: the waves are recomputed after each wave, so an accepted re-plan takes effect
+                nums = next((x for x in ([n for n in wave if n not in self.artifacts] for wave in waves(self.cfg.plan))
+                             if x), None)
+                if nums is None:
                     break
-            if replan:
-                self.action_observer(w)
+                w += 1
+                deps = dependencies(self.cfg.plan)
+                for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
+                    self.run_step(self.steps[n], w, deps[n])
+                    fixed = None
+                    if self.opt.adapt == "on" and not self.finish_skip("fixes", bool(self.artifacts[n]["meta"].get("stuck"))):
+                        fixed = self.fix_stuck(n, w)                                 # D117 Stages C–D
+                    if fixed == "stop":                                             # no fix recovered it
+                        self.ep.faults = self.faults.summary()
+                        return self.stop_report(n)
+                    if fixed == "replanned":              # D117 Stage D: the plan changed; recompute the waves
+                        break
+                if replan and not self.finish_skip("replan", True):
+                    self.action_observer(w)
+        except RunLimitReached as e:                      # D122: a cap or the runaway guard stopped the run
+            return self.answer_on_stop(e)
+        except ParseError as e:                           # D123: a reply no repair could read, outside a helper turn
+            return self.answer_on_stop(e, f"parse: {str(e)[:300]}")
+        except Exception as e:
+            if api_error(e):                              # D123: the model service failed after its retries (D57)
+                self.i.trace.event("api_error", {"error.type": describe_api_error(e)[:300]})
+                return self.answer_on_stop(e, f"api: {describe_api_error(e)}")
+            self.save_partial_on_crash(e)                 # D123: a bug in our code stays loud; finished steps are kept
+            raise
         ws = waves(self.cfg.plan)
         self.ep.faults = self.faults.summary()                # D119: [] without --inject-fault
+        self.ep.run_guard = self.guard_summary()              # D122: {} unless finish mode or a stop happened
         if self.opt.adapt == "on":
             self.ep.adaptation = self.adapt_summary()
             if self.stuck:                                    # D117 Stage D: the report, also when nothing stopped
@@ -888,6 +914,81 @@ class PlanRunner:
         art = self.artifacts[self.answer_n]
         status = art["meta"]["status"]
         return art["text"], (None if status == "done" else status)
+
+    # box: plan_graph
+    def finish_skip(self, kind: str, needed: bool) -> bool:
+        """D122: True when an optional extra (fixes, rework, disputes, replan) is skipped because the run is in finish
+        mode (it has used most of a hard cap); counted per kind."""
+        lim = getattr(self.i.trace, "limits", None)
+        if not needed or lim is None or not lim.finishing(self.i.trace):
+            return False
+        self.finish_skipped[kind] = self.finish_skipped.get(kind, 0) + 1
+        self.i.trace.event("finish_skip", {"amoeba.kind": kind, "amoeba.count": self.finish_skipped[kind]})
+        return True
+
+    # box: plan_graph
+    def guard_summary(self, stopped: dict | None = None) -> dict:
+        lim = getattr(self.i.trace, "limits", None)
+        if not (self.finish_skipped or stopped or (lim is not None and getattr(lim, "_finishing", False))):
+            return {}
+        return {"finish_mode": bool(lim is not None and getattr(lim, "_finishing", False)),
+                "skipped": dict(self.finish_skipped), "stopped": stopped}
+
+    # box: plan_graph
+    def answer_on_stop(self, e: Exception, code: str | None = None) -> tuple[str | None, str]:
+        """D122: a cap or the runaway guard stopped the run. D123: also a reply no repair could read outside a helper
+        turn (code "parse") and a model service that failed after its retries ("api: …"). Plain code assembles the
+        answer from the steps that have an output (in plan order, D41) under a header that says the run stopped and
+        which steps did not run; with no step finished there is nothing to assemble (no answer, as before)."""
+        code = code or getattr(e, "code", "error")
+        order = [number(st) for st in self.cfg.plan]
+        have = [n for n in order if n in self.artifacts]
+        missing = [n for n in order if n not in self.artifacts]
+        self.ep.faults = self.faults.summary()
+        if self.opt.adapt == "on":
+            self.ep.adaptation = self.adapt_summary()
+        stopped = {"code": code, "why": str(e)[:500], "steps_with_output": have, "steps_not_run": missing}
+        self.ep.run_guard = self.guard_summary(stopped)
+        self.i.trace.event("answer_on_stop", {"amoeba.code": code, "amoeba.steps": have, "amoeba.not_run": missing})
+        if not have:
+            return None, code
+        text = self.partial_answer(f"**Why it stopped:** {str(e)[:500]}", have, missing)
+        if self.dir:
+            (self.dir / "answer.md").write_text(text + "\n", encoding="utf-8")
+        return text, f"{code}: stopped with step(s) {', '.join(map(str, missing)) or 'none'} not run; " \
+                     f"answer assembled from step(s) {', '.join(map(str, have))}"
+
+    # box: plan_graph
+    def save_partial_on_crash(self, e: Exception) -> None:
+        """D123: an error in Amoeba's own code is not handed to Box 4 or hidden: it is raised as before, after the
+        finished steps are written to <run>/answer.md as a partial answer and a `crash` event is recorded."""
+        order = [number(st) for st in self.cfg.plan]
+        have = [n for n in order if n in self.artifacts]
+        self.i.trace.event("crash", {"amoeba.box": "plan_graph", "error.type": type(e).__name__,
+                                     "error.message": str(e)[:300], "amoeba.steps": have})
+        if self.dir and have:
+            try:
+                text = self.partial_answer(f"**Why it stopped:** an error in Amoeba's code: {type(e).__name__}: "
+                                           f"{str(e)[:300]}", have, [n for n in order if n not in self.artifacts])
+                (self.dir / "answer.md").write_text(text + "\n", encoding="utf-8")
+            except Exception:                              # the original error is the one to see
+                pass
+
+    # box: plan_graph
+    def partial_answer(self, why: str, have: list[int], missing: list[int]) -> str:
+        """D122/D123: the outputs of the steps that ran, put together by plain code under a header that says why the
+        run stopped, which steps did not run and which outputs are not finished (their status)."""
+        text, _ = self.assemble_by_code(have)
+        title = lambda n: re.sub(r"^\s*\[.*?\]\s*:\s*", "", self.steps[n].text).strip()
+        names = ", ".join(f"{n} ({title(n)})" for n in missing)
+        unfinished = [(n, self.artifacts[n]["meta"].get("status")) for n in have
+                      if self.artifacts[n]["meta"].get("status") != "done"]
+        return ("# Partial answer: the run stopped before it finished\n\n"
+                f"{why}\n\n"
+                + (f"**Steps that did not run:** {names}\n\n" if missing else "")
+                + (f"**Steps that ran but did not finish:** {', '.join(f'{n} ({st})' for n, st in unfinished)}\n\n"
+                   if unfinished else "")
+                + "The sections below are the outputs of the steps that ran, put together by plain code.\n\n" + text)
 
     def _answer_step(self, ws: list[list[int]]) -> int | None:
         """The summariser's step if it owns one in the last wave; else the last wave's only step; else None: the
@@ -1158,6 +1259,8 @@ class PlanRunner:
             status, reason = "done", ""
         if undeclared:
             reason += "; not declared by the helper: " + ", ".join(undeclared)
+        if w.unreadable and not finished:            # D123: turns lost to replies that could not be read
+            reason = "; ".join(x for x in (reason, f"unreadable replies: {len(w.unreadable)}") if x)
         if unused:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "attached unused: " + ", ".join(unused)) if x)
@@ -1180,6 +1283,8 @@ class PlanRunner:
         disputes, resolutions, unresolved = [], [], []
         if verifier and mine is not None and self.opt.disputes == "on":           # D109: blind result vs outputs
             disputes = disputed_figures(mine["text"], {d: self.artifacts[d]["text"] for d in deps if d in self.artifacts})
+            if disputes and self.finish_skip("disputes", True):   # D122: finish mode: no resolver calls
+                disputes = []
             if disputes:
                 self.i.trace.event("disputed", {"amoeba.step": n, "amoeba.disputes": disputes})
                 resolutions = self.resolve_disputes(step, n, writers, disputes)
@@ -1227,6 +1332,8 @@ class PlanRunner:
                 "stale": False, "stale_because": [],
                 "missing_inputs": missing_input_marks(text),                       # D63 marks, read by D117
                 "fix_of": {k: v for k, v in fixing.items() if k != "note"} if fixing else None,
+                "unreadable_turns": w.unreadable,                                  # D123, read by the stuck watch
+                "finished": finished,
                 "contributions": w.contributions}
         if claimed is not None:
             meta["claimed_files"], meta["claimed_files_missing"] = claimed, missing
@@ -1271,7 +1378,7 @@ class PlanRunner:
         if self.opt.adapt == "on":                    # D117 Stage B: watch and diagnose, no fix yet
             self.watch(n, meta, previous, file_sig(self.files_of(n)) == files_before if refine else None)
         self._save(n, wave, text, meta, prov)
-        if verifier and meta["verdict"] == "FAIL" and not reverify:
+        if verifier and meta["verdict"] == "FAIL" and not reverify and not self.finish_skip("rework", True):
             reworked = self.rework_producers(n, deps, meta["issues"])
             if reworked:                                   # D38: check once more what the rework produced
                 self.i.trace.event("reverify", {"amoeba.step": n, "amoeba.reworked": reworked})
@@ -1737,6 +1844,10 @@ class PlanRunner:
                                                  template)
                 w.contributions.append({"turn": w.turn + 1, "agent": agent.name, "action": act,
                                         "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
+                if act == UNREADABLE:                    # D123: nothing readable to pass on; the helper is told
+                    w.unreadable.append({"agent": agent.name, "turn": w.turn + 1, "why": resp})
+                    w.completed += f">{agent.name} (reply not readable):\n>Result:\n{resp}\n"
+                    continue
                 w.last_message = inp.strip()
                 if FINAL_OUTPUT not in act:
                     w.requests.append(inp.strip())
@@ -1771,13 +1882,16 @@ class PlanRunner:
         """D117 Stage B: the stuck watch after one step attempt. A stuck step gets `meta["stuck"]` (cause, signals,
         allowed edits, evidence lines), a `stuck` trace event and a row in the run's hash-chained events.jsonl."""
         roles = set(meta.get("roles") or [])
-        unfilled = [q for q in self.cfg.meta.get("capability_requests", []) if q.get("status") == "unfilled"]
-        unfilled += [{**q.model_dump(), "status": "unfilled", "reason": "raised_during_run"}
-                     for q in self.ep.requested_capabilities if q.for_role in roles and self.pool is not None]
+        holds = {a.name: set(a.tools) for a in self.agents.values()}
+        unfilled = open_requests(list(self.cfg.meta.get("capability_requests", [])) + [
+            {**q.model_dump(), "status": "unfilled", "reason": "raised_during_run"}
+            for q in self.ep.requested_capabilities if q.for_role in roles and self.pool is not None], holds)
         plan = {number(s): {"output": s.output, "roles": [self.agents[a].name for a in s.agent_ids],
                             "status": (self.artifacts.get(number(s)) or {}).get("meta", {}).get("status")}
                 for s in self.cfg.plan}
-        signals = step_signals(meta, previous=previous, unfilled=unfilled, files_unchanged=files_unchanged, plan=plan)
+        view, unfilled = waived_view(meta, unfilled, self.waived.get(n))   # D124: an accepted work-around
+        view, unfilled = waived_view(view, unfilled, self.provided.get(n), files=False)   # D125: a made tool
+        signals = step_signals(view, previous=previous, unfilled=unfilled, files_unchanged=files_unchanged, plan=plan)
         if not is_stuck(meta, signals):
             return None
         d = {"step": n, "attempt": len([s for s in self.stuck if s["step"] == n]) + 1, **diagnose(signals)}
@@ -1855,7 +1969,17 @@ class PlanRunner:
                          "check_retry_turns": self.so(n, "check_retry_turns"),
                          "max_input_chars": self.so(n, "max_input_chars")},
                 "capped": bool(self.capped.get(n)), "stock": getattr(self.i, "stock", None) is not None,
-                "upstream_rerun": set(self.upstream_rerun), "attached": self.attached_ids.get(n, [])}
+                "upstream_rerun": set(self.upstream_rerun), "attached": self.attached_ids.get(n, []),
+                **self.make_tool_ctx(n)}
+
+    # box: toolmaker
+    def make_tool_ctx(self, n: int) -> dict:
+        """D125: whether Box 4 may make a tool for step n's missing capability (plain code's feasibility check)."""
+        d = self.artifacts[n]["meta"].get("stuck") or {}
+        if d.get("cause") != "capability":
+            return {}
+        f = feasible([x.partition(" — ")[0].strip() for x in d.get("lacked") or []], self.local)
+        return {"make_tool": f} if f.get("ok") else {"make_tool_why": f.get("why")}
 
     # box: fixes
     def apply_fix(self, n: int, wave: int, d: dict, fix: dict) -> dict:
@@ -1900,6 +2024,15 @@ class PlanRunner:
                             "result": "failed: the pool shortlist had nothing to attach for "
                                       + ", ".join(p.get("items") or []) + " (no candidate passed the checks)"})
                 return self._fix_done(rec, t0, s0)
+        elif kind == "make_tool":                           # D125: a tool from the library or the tool writer
+            made = self.make_tool(n, p)
+            rec.update({k: v for k, v in made.items() if not k.startswith("_") and k not in ("step", "kind")},
+                       file_kind=made.get("kind"))
+            if not made.get("tool"):                        # nothing passed: the step is not re-run
+                rec.update({"status_after": self.artifacts[n]["meta"]["status"], "result": f"failed: {made['why']}"})
+                return self._fix_done(rec, t0, s0)
+            note = MADE_TOOL_NOTE.format(tool=made["tool"], cap=p["capability"], what=made["description"],
+                                         input=made["input"] or "a JSON object")
         self.keep_try(n)
         self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n], fixing={**fix, "note": note})
         m = self.artifacts[n]["meta"]
@@ -1907,7 +2040,125 @@ class PlanRunner:
         rec["result"] = "recovered" if m["status"] == "done" else \
             f"failed: still stuck ({m['stuck']['cause']}: {'; '.join(m['stuck']['evidence'][:2])[:200]})" \
             if m.get("stuck") else f"failed: not stuck but {m['status']} ({m['status_reason'][:160]})"
+        if kind == "make_tool":
+            self.keep_made_tool(n, rec, made)
         return self._fix_done(rec, t0, s0)
+
+    # box: toolmaker
+    def make_tool(self, n: int, p: dict) -> dict:
+        """D125: an approved library tool for the capability (its self-test run again), else up to `attempts` tool
+        writer calls, each checked by plain code and self-tested in the sandbox. The first tool that passes goes to
+        the step's helpers as made:<name>. Returns {tool, how, description, input, ...} or {tool: None, why}."""
+        cfg, cap, kind = tw_config(), p["capability"], p["kind"]
+        libs = list(cfg["libraries"].get(kind) or [])
+        lib = ToolLibrary()
+        m = lib.find(cap, kind)
+        if m is not None:
+            rel = install(self.local, {"name": m["name"]}, lib.text(m["name"]))
+            ok, out = tool_self_test(self.local, rel)
+            self.i.trace.event("tool_library_reuse", {"amoeba.box": "toolmaker", "amoeba.step": n,
+                                                      "amoeba.tool": m["name"], "amoeba.self_test": ok})
+            if ok:
+                return self._give_tool(n, cap, kind, m["name"], rel, m.get("description", ""), m.get("input", ""),
+                                       "library", {"library_name": m["name"]})
+        refused, last = None, "no reply"
+        for attempt in range(1, int(cfg["attempts"]) + 1):
+            raw = self._tool_writer_call(n, cap, kind, libs, refused)
+            try:
+                tool = parse_tool(raw)
+            except ValueError as e:
+                refused = last = str(e)
+                self.i.trace.event("tool_refused", {"amoeba.box": "toolmaker", "amoeba.step": n,
+                                                    "amoeba.attempt": attempt, "amoeba.problems": [last]})
+                continue
+            problems = check_code(tool, libs, cfg)
+            if problems:
+                refused, last = "\n".join(f"- {x}" for x in problems), "; ".join(problems)[:300]
+                self.i.trace.event("tool_refused", {"amoeba.box": "toolmaker", "amoeba.step": n,
+                                                    "amoeba.attempt": attempt, "amoeba.tool": tool["name"],
+                                                    "amoeba.problems": problems[:10]})
+                continue
+            rel = install(self.local, tool)
+            ok, out = tool_self_test(self.local, rel)
+            self.i.trace.event("tool_self_test", {"amoeba.box": "toolmaker", "amoeba.step": n, "amoeba.attempt": attempt,
+                                                  "amoeba.tool": tool["name"], "amoeba.passed": ok,
+                                                  "amoeba.output": out[-400:]})
+            if not ok:
+                refused, last = f"- the self-test failed; its output ends:\n{out[-1200:]}", "the self-test failed"
+                continue
+            return self._give_tool(n, cap, kind, tool["name"], rel, tool["description"], tool["input"], "written",
+                                   {"attempts": attempt, "_tool": tool})
+        return {"tool": None, "why": f"tool writer: no tool passed plain code's checks and its self-test in "
+                                     f"{cfg['attempts']} tries (last: {last[:200]})"}
+
+    # box: toolmaker
+    def _give_tool(self, n: int, cap: str, kind: str, name: str, rel: str, description: str, input_: str, how: str,
+                   extra: dict) -> dict:
+        tool = f"{MADE}{name}"
+        def use(text: str, _r: str = rel, _t: str = tool) -> str:
+            out = call_tool(self.local, _r, text)
+            self.made_calls.setdefault(_t, []).append({"step": self.local.step, "ok": tool_ok(out)})
+            return out
+        self.i.tools.register(tool, f"made by the tool writer (D125): {description[:200]}", use)
+        for aid in self.steps[n].agent_ids:
+            a = self.agents[aid]
+            if tool not in a.tools:
+                a.tools.append(tool)
+            a.missing_tools = [t for t in a.missing_tools if t != cap]
+        for q in self.cfg.meta.get("capability_requests", []):
+            if isinstance(q, dict) and cap in (q.get("name"), q.get("canonical")) and q.get("status") == "unfilled":
+                q.update({"status": "filled", "reason": "made_tool"})
+        self.provided.setdefault(n, set()).add(cap)
+        rec = {"step": n, "capability": cap, "kind": kind, "tool": tool, "how": how, "file": rel}
+        self.tools_made.append(rec)
+        self.i.trace.event("tool_made", {"amoeba.box": "toolmaker", **{f"amoeba.{k}": v for k, v in rec.items()}})
+        self.log_event("tool_made", rec)
+        return {**rec, "description": description, "input": input_, **extra}
+
+    # box: toolmaker
+    def keep_made_tool(self, n: int, rec: dict, made: dict) -> None:
+        """D125: a written tool that the step then used without an error, in a step no longer stuck, is saved to the
+        library as unreviewed (the user approves it before any later task may use it)."""
+        if made.get("how") != "written":
+            return
+        m = self.artifacts[n]["meta"]
+        used = [c for c in self.made_calls.get(made["tool"], []) if c["step"] == n]
+        ok = bool(used) and all(c.get("ok") for c in used) and not m.get("stuck")
+        rec["library"] = "not saved: " + ("the step did not use it" if not used else "a call failed"
+                                          if not all(c.get("ok") for c in used) else "the step is still stuck") \
+            if not ok else None
+        if ok:
+            saved = ToolLibrary().save(made["_tool"], tool_text(made["_tool"]), {
+                "capability": made["capability"], "kind": made["kind"],
+                "libraries": list(tw_config()["libraries"].get(made["kind"]) or []),
+                "task_id": self.task.id, "run_id": self.ep.episode_id, "step": n,
+                "self_test": "passed", "calls_ok": len(used)})
+            rec["library"] = f"saved as {saved['name']} (unreviewed)"
+            self.i.trace.event("tool_library_saved", {"amoeba.box": "toolmaker", "amoeba.step": n,
+                                                      "amoeba.tool": saved["name"], "amoeba.status": "unreviewed"})
+        for t in self.tools_made:
+            if t["step"] == n and t["tool"] == made["tool"]:
+                t["library"] = rec["library"]
+
+    # box: toolmaker
+    def _tool_writer_call(self, n: int, cap: str, kind: str, libs: list[str], refused: str | None) -> str:
+        step = self.steps[n]
+        card = "\n".join(x for x in (re.sub(r"^\s*\[.*?\]\s*:\s*", "", step.text).strip(),
+                                     f"output: {step.output}" if step.output else "",
+                                     f"done_when: {step.done_when}" if step.done_when else "") if x)
+        cfg = tw_config()
+        user = render(PROMPT.tool_writer, task=self.task.prompt[:1500], step=str(n), card=card, capability=cap,
+                      kind=kind, libraries=", ".join(libs) or "no third-party library",
+                      stdlib=", ".join(cfg["stdlib"]), max_chars=cfg["max_code_chars"])
+        if refused:
+            user += f"\n\n# Your previous tool was refused by plain code\n{refused}\nReply again with a corrected tool."
+        with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "tool_writer", "amoeba.box": "toolmaker",
+                                                "amoeba.step": n}):
+            resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
+                                            agent_name="tool_writer", max_tokens=4096, role="planner")
+        self.ep.total_tokens += resp.input_tokens + resp.output_tokens
+        self.ep.n_llm_calls += 1
+        return resp.content or ""
 
     # box: fixes
     def _fix_done(self, rec: dict, t0: int, s0: int) -> dict:
@@ -1947,6 +2198,9 @@ class PlanRunner:
                     if have not in a.tools:
                         a.tools.append(have)
                     a.missing_tools = [t for t in a.missing_tools if t not in (item, canon)]
+                for q in self.cfg.meta.get("capability_requests", []):   # the request is filled now
+                    if q.get("for_role") in {a.name for a in writers} and {q.get("name"), q.get("canonical")} & {item, canon}:
+                        q["status"], q["reason"] = "filled", "granted"
                 got.append(have)
             else:
                 reqs.append(CapabilityRequest(name=item, kind="skill" if "skill" in item.lower() else "tool",
@@ -1989,7 +2243,7 @@ class PlanRunner:
         return {"fixes": self.fixes, "recovered_steps": recovered, "finished_with_limitation_steps": limited,
                 "stuck_steps": sorted({s["step"] for s in self.stuck}), "tokens": self.adapt_tokens,
                 "cost_usd": self.adapt_usd(), "skipped": [{"step": s, "why": w} for s, w in sorted(self.fix_notes)],
-                "stopped": self.exhausted, "workarounds": self.workarounds,
+                "stopped": self.exhausted, "workarounds": self.workarounds, "tools_made": self.tools_made,
                 "left_on_old_output": self.left_on_old_output()}
 
     # box: fixes
@@ -2028,6 +2282,11 @@ class PlanRunner:
             lines += ["**Work-arounds (in the answer's Limitations):**",
                       *[f"- step {w['step']}: no {w['capability']}; {w['method'][:160]}. {w['limitation'][:200]}"
                         for w in self.workarounds], ""]
+        if self.tools_made:                                   # D125
+            lines += ["**Tools made (D125):**",
+                      *[f"- step {t['step']}: {t['tool']} for {t['capability']} ({t['how']}"
+                        + (f"; library: {t['library']}" if t.get("library") else "") + ")" for t in self.tools_made],
+                      ""]
         old = self.left_on_old_output()
         lines += ["**Steps built on an upstream output from before its re-run:**",
                   *([f"- step {o['step']} used step {o['upstream']}'s earlier output (not redone)" for o in old]
@@ -2059,6 +2318,12 @@ class PlanRunner:
                                           "amoeba.fixes": len(tried)})
         self.log_event("adapt_stop", {"step": n, "cause": x.get("cause"), "why": x.get("why"), "fixes": len(tried)})
         self.ep.adaptation = self.adapt_summary()
+        order = [number(st) for st in self.cfg.plan]
+        have = [k for k in order if k in self.artifacts]
+        if have:                                          # D123: the finished work goes with the report
+            text += "\n\n" + self.partial_answer(f"**Why it stopped:** step {n} stayed stuck ({x.get('cause')}); "
+                                                   "the report above says what was tried.", have,
+                                                   [k for k in order if k not in self.artifacts])
         return text, f"stuck: step {n} ({x.get('cause')}) — {x.get('why') or 'no fix recovered it'}"
 
     # ---- D117 Stage D: the fix proposer ------------------------------------------------------------------------
@@ -2136,16 +2401,18 @@ class PlanRunner:
                 self.steps[n].done_when = p["done_when"].strip()
             note = WORKAROUND_NOTE.format(cap=p["capability"], method=p["method"],
                                           done_when=self.steps[n].done_when or "as written")
+            self.waived.setdefault(n, set()).add(p["capability"])       # D124: the watch stops asking for it
         self.keep_try(n)
         self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n],
                       fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note})
         m = self.artifacts[n]["meta"]
         rec["status_after"] = m["status"]
         done = "finished with limitation" if op == "work_around" else "recovered"   # never "recovered" (user)
-        rec["result"] = done if m["status"] == "done" else \
+        limited = op == "work_around" and not m.get("stuck")   # D124: the step goes on without the capability
+        rec["result"] = done if m["status"] == "done" or limited else \
             f"failed: still stuck ({m['stuck']['cause']}: {'; '.join(m['stuck']['evidence'][:2])[:200]})" \
             if m.get("stuck") else f"failed: not stuck but {m['status']} ({m['status_reason'][:160]})"
-        if op == "work_around" and m["status"] == "done":
+        if op == "work_around" and (m["status"] == "done" or limited):
             self.workarounds.append({"step": n, **p})
         self._fix_done(rec, t0, s0)
         return "applied"
@@ -2338,6 +2605,8 @@ class PlanRunner:
                                                   max_tokens=PLAN_MAX_TOKENS, role=group, **self.route_ids(n, step))
             except NoModelAvailable as e:                 # D97: no model passed the router's filters
                 return "no_model", f"BLOCKED: no_model — {str(e)[:200]}", "", "no_model"
+            except MissingSections as e:                  # D123: only this turn fails; the stuck watch sees it
+                return self.unreadable_turn(agent, n, e, before)
             for rec in self.i.trace.spans("chat")[before:]:
                 self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                rec.get("gen_ai.usage.output_tokens", 0))
@@ -2346,10 +2615,13 @@ class PlanRunner:
                 self.i.trace.event("last_turn_forced", {"amoeba.step": n, "gen_ai.agent.name": agent.name,
                                                         "amoeba.asked_for": act[:80]})
                 before = self.i.trace.n_llm_calls
-                raw, sec = self.i.llm.chat_sections(system, f"{user}\n\n{LAST_TURN_AGAIN}", PLAN_SECTIONS,
-                                                    self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
-                                                    max_tokens=PLAN_MAX_TOKENS, role=group,
-                                                    **self.route_ids(n, step))
+                try:
+                    raw, sec = self.i.llm.chat_sections(system, f"{user}\n\n{LAST_TURN_AGAIN}", PLAN_SECTIONS,
+                                                        self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
+                                                        max_tokens=PLAN_MAX_TOKENS, role=group,
+                                                        **self.route_ids(n, step))
+                except MissingSections as e:              # D123
+                    return self.unreadable_turn(agent, n, e, before)
                 for rec in self.i.trace.spans("chat")[before:]:
                     self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                    rec.get("gen_ai.usage.output_tokens", 0))
@@ -2360,6 +2632,22 @@ class PlanRunner:
             resp, gap = (injected, None) if injected is not None else \
                 self.i._dispatch(agent, act, inp, step.index, self.ep)
         return act, inp, resp, gap
+
+    # box: plan_step
+    def unreadable_turn(self, agent: AgentSpec, n: int, e: MissingSections, before: int
+                        ) -> tuple[str, str, str, str | None]:
+        """D123: a reply still missing a required section after the unglue and the repair call fails only this turn:
+        the calls are recorded, the helper is told on its next turn what could not be read, and the step's meta
+        lists it (`unreadable_turns`) for the stuck watch (cause `format`)."""
+        raw = getattr(e, "raw", "") or ""
+        for rec in self.i.trace.spans("chat")[before:]:
+            self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
+                           rec.get("gen_ai.usage.output_tokens", 0))
+        why = f"missing sections {e.missing}"
+        self.i.trace.event("unreadable_reply", {"amoeba.box": "plan_step", "amoeba.step": n,
+                                                "gen_ai.agent.name": agent.name, "amoeba.missing": e.missing,
+                                                "amoeba.found": e.found[:8]})
+        return UNREADABLE, "", UNREADABLE_NOTE.format(why=why), None
 
     # ---- D63: the Action Observer (mid-run re-plan) ----------------------------------------------------------------
     # box: action_obs
@@ -2858,6 +3146,9 @@ class PlanRunner:
                 "requirements": status}
 
 
+MADE_TOOL_NOTE = """Plain code re-runs this step with a new tool: {tool} (made for the missing {cap}; its self-test passed in the
+sandbox). What it does: {what}. Call it with Action {tool} and ActionInput {input}. Use it to make what the step owes instead of
+writing BLOCKED for {cap}, and name the file it made in your output."""
 WORKAROUND_NOTE = """Plain code re-runs this step with a work-around: this run has no {cap}. Finish the step without it,
 using this method: {method}. The step is judged against: {done_when}. Write "NOT NEEDED: {cap} — worked around: <how>"
 and say in your output what the work-around does not cover; plain code states it in the final answer's Limitations."""

@@ -759,7 +759,7 @@ grant_tool, set_run_option:max_turns); `checks_after_retry` → `checks`; `max_t
 `capability_unfilled` (a BLOCKED or undeclared capability, or an unfilled request for one of the step's roles) →
 `capability`; `no_file_change` (the step owes a file — claimed but missing, a file type in its output line and none
 made, a failed spreadsheet check — and its files did not change across the refine turn or between two attempts) →
-`claimed_file_missing`. `is_stuck`: the step did not end `done` and a signal holds. `diagnose`: the first cause in the
+`claimed_file_missing`; D123: `unreadable_reply` (a helper reply no unglue or repair could read, in a step that did not finish) → `format` (after `capability`; allowed edits set_run_option:max_turns, add_role_rule, split_step). `is_stuck`: the step did not end `done` and a signal holds. `diagnose`: the first cause in the
 table order, its allowed edits (prefer_model only with model edits on), at most eight evidence lines. The plan runner
 calls it after each attempt (`PlanRunner.watch`) when `PlanOptions.adapt == "on"` (`--adapt`, CLI default on;
 library default off) and writes `meta["stuck"]`, a `stuck` trace event, a `stuck` row in `<run>/events.jsonl`
@@ -889,3 +889,40 @@ shows them to the Planner and both observers as a data block with `[P#]` ids. Th
 result shaped the draft; plain code records `used_in` and removes the ids before Box 3, so they never enter the
 team's `[S#]` sources, D74's citation check or provenance. Design and the differences from it:
 `docs/design/D120_plan_search.md` ("As built"). To be tested after Stage E as its own off-vs-on comparison on Box 2.
+
+**D121, two Box 4 fixes from the H3 run (Oct 11).** The run (`eval/manual/h3/REPORT.md`) stopped at step 1: the stuck
+watch counted capability requests marked `unfilled (registered_tool)`, which the run already covers (web_search and
+fetch_url, D32), as missing capabilities, and the fix proposer's parser read the reply from its first brace (JSON quoted
+in Gemma's thought) and refused both valid edits. Now `open_requests` (amoeba/adapt/stuck.py) decides which requests
+are open, for the live watch and `scripts/stuck_report.py` alike; a registry grant marks its request filled; and
+`parse_fix` takes the last JSON object that holds an edit.
+
+**D122, limits that keep nearly finished work (Oct 11, user decision).** The H3 re-run had a correct TCO table after
+four steps and lost it to a 600k token cap before the memo. Now: no token cap by default; a runaway guard counts model
+calls with no progress (default 60, armed when the plan runner starts; spec §2's "tokens never enforced" holds); with
+an optional hard cap the plan runner enters finish mode at 85% (no fixes, rework, dispute resolution or re-planning);
+a stopped plan run returns the finished steps assembled by code as a partial answer; and the dispute matcher pairs
+figures only on the same scale and unit. `result.json` `run_guard` records it.
+
+**D123, a format slip costs a turn, never the run (Oct 12, user decision).** H3 run 3 lost three finished steps to
+one heading Gemma glued onto a sentence (`…verdict.## CurrentStep`), twice. Now plain code first puts a glued required
+heading back on its own line (no model call); a helper reply still unreadable after the repair call fails only that turn
+and is a stuck signal, `unreadable_reply`, whose cause `format` allows more turns, a role rule or a split; and a run that
+stops anyway keeps the finished steps as a partial answer: after a Box 4 stop (under its report), a parse error outside a
+helper turn, or a model service failure. A bug in Amoeba's own code is not given to Box 4: it is still raised, after
+the finished steps are saved to `answer.md`.
+
+**D124, an accepted work-around ends what it stands in for (Oct 12).** In H3 run 4 the fix proposer's work-around for
+the missing `docx_generator` was applied but could never count: the watch kept reading the open request and the
+step's `docx:` output line. Now an accepted work-around waives that capability (and the file type it names) for the
+stuck watch, and a fix that only repeats an item in a list is the same fix as before, so it is not tried twice.
+
+**D125, Box 4 writes a missing tool (Oct 12, user decision).** When a stuck step lacks a tool, the pool has nothing
+to attach and plain code finds an offline library that can make what is missing (a .docx, .xlsx, .pptx, chart, …),
+a new rung W asks the tool writer for a small Python tool with a self-test. Plain code checks the code, runs the
+self-test in the run's sandboxed workspace through the local toolbox, and only then gives the step `made:<name>`;
+without `--local-tools` there is no code runner and the rung is skipped. A tool that worked is saved to
+`data/tool_library/` as unreviewed, and a later task may use it only after the user approves it
+(`python -m scripts.tool_library approve <name>`), only while its code is unchanged, and only after its self-test
+passes again. This is the one thing that carries over between tasks, a deliberate exception to D117.
+

@@ -11,8 +11,11 @@ in this task and within the limits, re-runs only the stuck step and re-checks it
   tool_error      rung 1: more turns
   checks          rung 1: more retry turns, then a larger input when an input was shortened
   max_turns       rung 1: more turns
+  format          rung 1: more turns (D123: the step runs again with turns to make up for the unreadable ones)
   capability      rung 2: attach the missing tool or skill from the pool shortlist (pool or local tools must be on;
                   otherwise the rung is skipped with "capability fix unavailable: pool off")
+                  rung W (D125): a tool for it, from the approved library or written by the tool writer, when
+                  plain code finds an offline library for it and the run has a code runner (amoeba/adapt/toolmaker.py)
 
 A cause with no code fix (claimed_file_missing, …) is left to Stage D. Limits come from `adapt` in adapt.yaml.
 """
@@ -39,8 +42,11 @@ def limits(config: dict | None = None) -> dict:
 
 # box: fixes
 def fix_key(fix: dict) -> str:
-    """What makes two fixes the same (a failed fix is never repeated): its kind, the step it changes and its values."""
-    return json.dumps([fix["kind"], fix.get("target"), fix.get("params", {})], sort_keys=True)
+    """What makes two fixes the same (a failed fix is never repeated): its kind, the step it changes and its values
+    (lists of names compared as sets)."""
+    norm = lambda v: sorted(set(v), key=str) if isinstance(v, list) and all(isinstance(x, str) for x in v) else v
+    return json.dumps([fix["kind"], fix.get("target"), {k: norm(v) for k, v in (fix.get("params") or {}).items()}],
+                      sort_keys=True)          # D124: a list that only repeats an item is the same fix
 
 
 # box: fixes
@@ -99,7 +105,7 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
                             "items": lacking})
         if not d.get("upstream"):
             notes.append("missing input with no upstream step named or matched")
-    elif cause in ("tool_error", "max_turns"):
+    elif cause in ("tool_error", "max_turns", "format"):
         f = _option("set_run_option:max_turns", "max_turns", int(opts.get("max_turns", 0)),
                     int(opts.get("max_turns", 0)) + int(lim["more_turns"]), ranges, n)
         out += [f] if f else []
@@ -114,12 +120,17 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
                         int(opts.get("max_input_chars", 0)) * int(lim["input_factor"]), ranges, n)
             out += [g] if g else []
     elif cause == "capability":
+        items = sorted({x.partition(" — ")[0].strip() for x in d.get("lacked") or []})
         if not ctx.get("stock"):
             notes.append(POOL_OFF)
         else:
             out.append({"kind": "grant_tool", "rung": 2, "target": n,
-                        "params": {"items": sorted(x.partition(" — ")[0].strip() for x in d.get("lacked") or []),
-                                   "exclude": sorted(ctx.get("attached") or [])}})
+                        "params": {"items": items, "exclude": sorted(ctx.get("attached") or [])}})
+        if ctx.get("make_tool"):                       # D125: plain code found a library and a code runner
+            out.append({"kind": "make_tool", "rung": "W", "target": n,
+                        "params": {"capability": ctx["make_tool"]["capability"], "kind": ctx["make_tool"]["kind"]}})
+        elif ctx.get("make_tool_why"):
+            notes.append(ctx["make_tool_why"])
     else:
         notes.append(f"no code fix for the cause {cause}")
     allowed = set(d.get("allowed_edits") or [])

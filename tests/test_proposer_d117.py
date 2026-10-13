@@ -8,6 +8,7 @@ import pytest
 
 import amoeba.interp.plan_runner as pr
 from amoeba.adapt.fixes import POOL_OFF, limits
+from tests.test_fixes_d117 import NO_RUNNER
 from amoeba.adapt.proposer import fix_problems, parse_fix
 from amoeba.interp.plan_runner import PlanOptions
 from amoeba.interp.runtime import Interpreter
@@ -92,7 +93,7 @@ def test_grant_tool_after_the_pool_rung_was_skipped(task, envelope, trace, tools
                        tmp_path)
     [f] = ep.adaptation["fixes"]
     assert (f["kind"], f["rung"], f["result"]) == ("grant_tool", "D", "recovered") and ep.error is None
-    assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}]           # the code rung came first
+    assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}, {"step": 1, "why": NO_RUNNER}]   # code rungs first
     [prompt] = proposer_prompts(llm)
     for part in ("# Task", "done_when: every cell sourced", "Cause: capability", "lacked: currency_api",
                  "tools: calc, echo", "- grant_tool: params", "- add_helper_role: params", "None yet."):
@@ -100,7 +101,7 @@ def test_grant_tool_after_the_pool_rung_was_skipped(task, envelope, trace, tools
     assert "- add_dependency" not in prompt                                    # code fixes are not offered
     assert "- work_around" not in prompt                                       # not before a grant or a helper
     rows = [json.loads(l)["event"] for l in (tmp_path / "events.jsonl").read_text().splitlines()]
-    assert rows == ["stuck", "fix_skipped", "fix"]
+    assert rows == ["stuck", "fix_skipped", "fix_skipped", "fix"]
     assert "## Step 1 — cause capability" in (tmp_path / "adapt_report.md").read_text()
 
 
@@ -304,3 +305,19 @@ def test_steps_on_an_old_upstream_output_are_listed_in_the_answer_and_the_report
     assert ep.adaptation["left_on_old_output"] == [{"step": 2, "upstream": 1}]
     assert "- OLD INPUT: step 2 used step 1's output from before step 1 was re-run" in ep.answer
     assert "- step 2 used step 1's earlier output (not redone)" in (tmp_path / "adapt_report.md").read_text()
+
+
+def test_the_edit_is_found_after_json_quoted_in_the_thought():
+    """H3 run fe375170 (Oct 11): Gemma's thought quoted a fix already tried before the edit; the old parser started
+    at that first brace and refused both replies as unreadable ("Extra data")."""
+    edit = {"edit": {"op": "add_role_rule", "params": {"role": "Cost Analyst", "text": "Cite the page you read."}},
+            "reason": "the step's citations do not match their sources"}
+    raw = ("<thought>Fixes already tried: grant_tool on step 1 {\"items\": [\"fetch_url\", \"web_search\"], "
+           "\"exclude\": []} failed. Another shape: {\"role\": \"<name>\"}.</thought>\n```json\n"
+           + json.dumps(edit) + "\n```")
+    r = parse_fix(raw)
+    assert r.edit.op == "add_role_rule" and r.edit.params["text"] == "Cite the page you read."
+    with pytest.raises(ValueError, match="no JSON object"):
+        parse_fix("no braces here")
+    with pytest.raises(Exception):                       # an object without "edit" is still validated and refused
+        parse_fix('{"items": ["web_search"]}')

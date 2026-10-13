@@ -1,6 +1,6 @@
 """D117 Stage B — the stuck watch and its diagnosis (plain code only, no fixes yet).
 
-After each Box 3 step attempt, plain code looks for five stuck signals in what the step recorded (its step_<n>.json
+After each Box 3 step attempt, plain code looks for six stuck signals in what the step recorded (its step_<n>.json
 meta, its tool calls, the files it made, and the attempt before it when the step was redone):
 
   repeated_error       the same tool error twice in a row (same tool, same error text once digits are masked)
@@ -9,6 +9,8 @@ meta, its tool calls, the files it made, and the attempt before it when the step
   max_turns            the helpers ran out of turns before a Final Output
   capability_unfilled  a capability or skill the step needed was requested and not filled (BLOCKED, not declared,
                        or an unfilled request for one of the step's roles)
+  unreadable_reply     D123: a helper's reply could not be read (a required section missing even after the unglue and
+                       the repair call) and the step did not finish: the turns went to replies plain code could not use
   no_file_change       the step owes a file (claimed but missing, a file type in its output line with none made, or
                        a failed spreadsheet check) and its files did not change between two attempts
 
@@ -24,7 +26,8 @@ import re
 from amoeba.adapt.config import adapt_config
 
 SIGNAL_CAUSE = {"missing_input": "missing_input", "capability_unfilled": "capability", "repeated_error": "tool_error",
-                "max_turns": "max_turns", "checks_after_retry": "checks", "no_file_change": "claimed_file_missing"}
+                "max_turns": "max_turns", "checks_after_retry": "checks", "no_file_change": "claimed_file_missing",
+                "unreadable_reply": "format"}
 # D117 Stage C: a lacked item is a missing input (data an earlier step should have given) unless it names a tool
 TOOL_WORDS = re.compile(r"tool|\bapi\b|_api|reader|interpreter|executor|calculator|\bcalc|access|generator|analy[sz]er|"
                         r"\bengine\b|_engine|service|search|network|browser|capability|skill|\blocal\b|local:|script|"
@@ -127,6 +130,11 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
         how = "after the retry turn" if meta.get("retried") or meta.get("refine") else "and no retry turn was possible"
         sig.append({"signal": "checks_after_retry",
                     "evidence": [f"check {c['name']} still fails {how}: {c.get('detail', '')[:140]}" for c in failed]})
+    bad = meta.get("unreadable_turns") or []
+    if bad and not meta.get("finished", False):    # D123: replies plain code could not read cost the step its end
+        sig.append({"signal": "unreadable_reply",
+                    "evidence": [f"{b.get('agent', '?')}, turn {b.get('turn')}: reply not readable — "
+                                 f"{(b.get('why') or '')[:140]}" for b in bad]})
     if out_of_turns:
         sig.append({"signal": "max_turns", "evidence": [f"turns used: {meta.get('turns')}; no Final Output from "
                                                         f"every helper ({reason[:120]})"]})
@@ -161,6 +169,51 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
         s["cause"] = SIGNAL_CAUSE[s["signal"]]
         s["evidence"] = s["evidence"][:MAX_EVIDENCE]
     return sig
+
+
+# box: stuck
+def open_requests(requests: list | None, holds: dict[str, set] | None = None) -> list[dict]:
+    """The capability requests that are really open: status unfilled, and not covered by a tool the run already has.
+    "registered_tool" means the toolbox step found the tool in the run's registry (web_search and fetch_url, granted by
+    D32), so the pool had nothing to add; it is not a missing capability. `holds` (the live watch): role name → the
+    tools its helper holds now, so a request a later grant covered is not open either."""
+    out = []
+    for q in requests or []:
+        if not isinstance(q, dict) or q.get("status") != "unfilled" or q.get("reason") == "registered_tool":
+            continue
+        have = (holds or {}).get(q.get("for_role")) or set()
+        if (q.get("kind") or "tool") == "tool" and {q.get("name"), q.get("canonical")} & set(have):
+            continue
+        out.append(q)
+    return out
+
+
+# box: stuck
+def waived_view(meta: dict, unfilled: list[dict], waived: set[str] | None, files: bool = True
+                ) -> tuple[dict, list[dict]]:
+    """D124: what the watch reads once a work-around for a capability was accepted (plain code applied the fix
+    proposer's work_around): that capability no longer counts as lacked or requested, and a file type the capability
+    names (docx_generator → docx) is no longer owed by the step's output line, its claimed files or its checks. The
+    step's own status and reason are not changed; only the stuck signals stop firing for what was worked around.
+    files=False (D125, a tool was made for the capability): the capability is no longer missing, but a file it makes
+    is still owed."""
+    names = {w.strip().lower() for w in waived or () if w and w.strip()}
+    if not names:
+        return meta, unfilled
+    label = lambda x: (x or "").partition(" — ")[0].strip().lower()
+    kinds = {k.lower() for w in names for k in re.findall(r"xlsx|xlsm|csv|tsv|docx|pptx|pdf|png|jpg|svg|json",
+                                                            w.replace("_", " "))}
+    view = {**meta, "blocked": [x for x in meta.get("blocked") or [] if label(x) not in names],
+            "contract_missing": [x for x in meta.get("contract_missing") or [] if label(x) not in names]}
+    if kinds and files:
+        drop = re.compile(r"\.?\b(" + "|".join(sorted(kinds)) + r")\b", re.I)
+        view["output_spec"] = drop.sub("", meta.get("output_spec") or "")
+        view["claimed_files_missing"] = [f for f in meta.get("claimed_files_missing") or []
+                                         if not drop.search(f)]
+        view["checks"] = [c for c in meta.get("checks") or [] if not drop.search(c.get("name", ""))]
+    keep = [q for q in unfilled or [] if not ({str(q.get("name") or "").lower(),
+                                               str(q.get("canonical") or "").lower()} & names)]
+    return view, keep
 
 
 # box: stuck

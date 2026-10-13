@@ -60,6 +60,17 @@ def parse_sections(text: str, all_fences: bool = False) -> dict[str, str]:
 
 
 # box: split
+def unglue(text: str, keys: list[str]) -> str:
+    """DEVIATION D123: a required heading glued onto the end of a sentence ("…verdict.## CurrentStep", as Gemma
+    sometimes writes it) is put back on a line of its own. Only the given keys, and only when nothing but the
+    heading (and an optional colon) follows on that line, so a '## Assumptions' quoted inside a sentence stays text
+    (D84a). Plain code, no model call; the caller tries it before the repair call."""
+    for k in keys:
+        text = re.sub(r"(?m)(?<=\S)[ \t]*##[ \t]*(" + re.escape(k) + r")[ \t]*:?[ \t]*$", r"\n## \1", text)
+    return text
+
+
+# box: split
 def require(sections: dict[str, str], keys: list[str]) -> dict[str, str]:
     """Missing key → MissingSections; the caller makes one LLM repair call (action.py:69-75) then gives up."""
     missing = [k for k in keys if k not in sections]

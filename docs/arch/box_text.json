@@ -1,12 +1,13 @@
 {
  "action_obs": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._observer_call",
       "amoeba/interp/plan_runner.py::PlanRunner.apply_decision",
       "amoeba/interp/plan_runner.py::PlanRunner.replan_triggers",
@@ -26,6 +27,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.held_items",
       "amoeba/interp/plan_runner.py::missing_input_marks",
       "amoeba/interp/plan_runner.py::names_match",
@@ -41,6 +43,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
       "amoeba/interp/plan_runner.py::PlanRunner.same_method",
@@ -64,6 +67,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
       "amoeba/interp/plan_runner.py::PlanRunner.add_agent",
       "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
@@ -82,6 +86,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -92,6 +97,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
@@ -124,6 +130,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/replan_method.py::failed_method",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -149,6 +156,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/capabilities/__init__.py::normalise",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -173,6 +181,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/tools/research.py::official"
@@ -193,6 +202,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -207,6 +217,7 @@
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/stuck.py::_words",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::_words",
       "amoeba/interp/replan_method.py::_words",
       "amoeba/llm/cache.py::_Store.get",
@@ -751,13 +762,13 @@
    },
    "title": "Action Observer (re-plan)"
   },
-  "facts_hash": "7a02ad68ab095584",
+  "facts_hash": "53f68ad3be13bb98",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "5a16ab76cff4278f",
   "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code validates the change.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
-   "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, or a tool the plan did not know about. No trigger, no call.",
+   "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, or a tool the plan did not know about, including those from the tool library. No trigger, no call.",
    "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available and the budget left, and returns one decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE. Each requirement is marked as met if its covering step is done and no check fails; ADD_ROLE triggers the creation of a new helper with its assigned tools.",
    "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met, and finished steps are tracked by their claim status.",
    "At most {PlanOptions.max_replans} re-plans and {PlanOptions.max_added_steps} added steps per run; an unreadable or invalid reply counts as CONTINUE. Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change.",
@@ -765,17 +776,19 @@
   ]
  },
  "agent_obs": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/interp/trace.py::TracedLLM._sections",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
@@ -828,7 +841,7 @@
    },
    "title": "Agent Observer"
   },
-  "facts_hash": "2834a9322c112496",
+  "facts_hash": "41bf626d75e30eb7",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "212a1f1f8d5da60e",
   "sentence": "A second AI checks the list of helpers and replies with suggestions, or 'No Suggestions'.",
@@ -841,7 +854,7 @@
   ]
  },
  "artifacts": {
-  "checked_at": "b95399a",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -849,6 +862,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::Faults.saved_text",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._write",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
@@ -887,7 +901,7 @@
    "prompts": {},
    "title": "Step artifacts"
   },
-  "facts_hash": "a623a3c9b40161a1",
+  "facts_hash": "230527d1187506f9",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "549a229c301b1f99",
   "sentence": "Each step's output saved as a file, with who wrote it, what it saw, its status and its sources.",
@@ -898,7 +912,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -973,6 +987,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/capabilities/__init__.py::_table",
       "amoeba/capabilities/__init__.py::snake",
       "amoeba/llm/cache.py::_Store.get",
@@ -987,6 +1002,7 @@
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::Faults.summary",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/io.py::dump_yaml",
       "amoeba/config/niche.py::NicheProfile.is_neutral",
       "amoeba/config/niche.py::add_done_clauses",
@@ -1071,7 +1087,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "5d20ae0b8d5cfd5d",
+  "facts_hash": "d452f9ffc7e700ea",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -1086,17 +1102,19 @@
   ]
  },
  "checks": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/interp/trace.py::TracedLLM._sections",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
@@ -1135,6 +1153,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/draft.py::DraftError",
@@ -1161,6 +1180,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/proposer.py::FixEdit.key",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedLLM.key",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
@@ -1201,6 +1221,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/parsers.py::parse_json_objects"
@@ -1653,7 +1674,7 @@
    "prompts": {},
    "title": "Plain-code checks on the final draft"
   },
-  "facts_hash": "96364c1b8d6eb30e",
+  "facts_hash": "c945db471b479b2a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "77d490c5eaf21975",
   "sentence": "Throws out broken or nameless helper entries, records tools we lack instead of dropping them, flags the summariser, and drops steps that name nobody.",
@@ -1668,7 +1689,7 @@
   ]
  },
  "client": {
-  "checked_at": "30f2b7e",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -1755,6 +1776,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -1785,11 +1807,38 @@
       [
        "max_calls",
        "int | None"
+      ],
+      [
+       "stall_calls",
+       "int | None"
+      ],
+      [
+       "finish_share",
+       "float"
+      ],
+      [
+       "_armed",
+       "bool"
+      ],
+      [
+       "_progress",
+       "int"
+      ],
+      [
+       "_mark",
+       "int"
+      ],
+      [
+       "_finishing",
+       "bool"
       ]
      ],
      "key": "amoeba/llm/limits.py::RunLimits",
      "methods": [
       "active(self) -> bool",
+      "progress(trace) -> int",
+      "stalled(self, trace) -> int | None",
+      "finishing(self, trace) -> bool",
       "check(self, trace) -> None"
      ],
      "signature": null
@@ -1798,6 +1847,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/limits.py::billed",
       "amoeba/llm/limits.py::load_prices",
@@ -1823,6 +1873,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/profiles.py::RoleRouter",
       "amoeba/llm/profiles.py::build_router.client",
@@ -1837,6 +1888,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedLLM",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::OpenAICompatibleClient",
@@ -1855,6 +1907,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -1868,6 +1921,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/proxy.py::fresh_proxy",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -1894,6 +1948,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/tools/web.py::now_iso"
@@ -1901,6 +1956,18 @@
      "doc": "D73: the time of the live call travels with a web result (a page, or each search hit), so a replayed result",
      "key": "amoeba/llm/cache.py::stamped",
      "signature": "stamped(result)"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/config.py::adapt_config",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D122: adapt.yaml run_guard (the runaway guard and finish mode).",
+     "key": "scripts/run_task.py::guard_config",
+     "signature": "guard_config() -> dict"
     }
    ],
    "checks": [],
@@ -1914,6 +1981,11 @@
      "decide",
      "if args.llm == 'mock'",
      "set mock = toy_mock_client()"
+    ],
+    [
+     "decide",
+     "if k not in seen or e.get('amoeba.status') == 'done'",
+     "set n += 1"
     ],
     [
      "decide",
@@ -1942,6 +2014,16 @@
     ],
     [
      "decide",
+     "if near and (not self._finishing)",
+     "set self._finishing = True"
+    ],
+    [
+     "decide",
+     "if not self._armed",
+     "set self._armed, self._mark = (True, calls)"
+    ],
+    [
+     "decide",
      "if old and env[k] == old",
      "set env[k] = new"
     ],
@@ -1949,6 +2031,11 @@
      "decide",
      "if opts and any(opts.values())",
      "set parts['options'] = opts"
+    ],
+    [
+     "decide",
+     "if p > self._progress",
+     "set self._progress, self._mark = (p, calls)"
     ],
     [
      "decide",
@@ -1998,6 +2085,11 @@
     [
      "fallback",
      "after if after is not None else min(60.0, 2.0 * 2 ** len(retries))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "calls - self._mark if calls - self._mark >= self.stall_calls else None",
      "choose value"
     ],
     [
@@ -2107,6 +2199,11 @@
     ],
     [
      "reject",
+     "if quiet is not None",
+     "raise RunLimitReached"
+    ],
+    [
+     "reject",
      "if reasoning_effort is not None and reasoning_effort not in REASONING_EFFORTS",
      "raise ValueError"
     ],
@@ -2142,6 +2239,11 @@
     ],
     [
      "stop",
+     "if not (self.max_tokens or self.max_calls)",
+     "return False"
+    ],
+    [
+     "stop",
      "if not new or (old or '').rstrip('/') == new",
      "return None"
     ],
@@ -2152,8 +2254,18 @@
     ],
     [
      "stop",
+     "if not self.stall_calls",
+     "return None"
+    ],
+    [
+     "stop",
      "if not system",
      "return rest"
+    ],
+    [
+     "stop",
+     "if not trace.events('plan_graph')",
+     "return None"
     ],
     [
      "stop",
@@ -2179,15 +2291,17 @@
     "ChatResponse.throttle_wait_s",
     "Episode.latency_ms",
     "Episode.seed",
+    "RunLimits.finish_share",
     "WebLimits.max_results"
    ],
    "prompts": {},
    "title": "AI connection"
   },
-  "facts_hash": "4727b48c8b208087",
-  "seed_hash": "6dadf5ad0e96121e",
+  "facts_hash": "81cbc18f18c79aa4",
+  "model": "gemini-3.1-flash-lite",
+  "seed_hash": "c3e0a1294e3b69ca",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
    "Waits out rate limits (HTTP 429/503: up to five retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message, set the reasoning effort and count hidden reasoning tokens.",
@@ -2197,7 +2311,8 @@
    "Every call from every box goes through here, wrapped so it is logged.",
    "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
    "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error, no_deliverable or needs_clarification.",
-   "D117 D: the offline stand-in (--llm mock) answers the fix proposer with no edit, so a stuck step in an offline run ends in the stop report instead of a crash (D119's injected pairs found it)."
+   "D117 D: the offline stand-in (--llm mock) answers the fix proposer with no edit, so a stuck step in an offline run ends in the stop report instead of a crash (D119's injected pairs found it).",
+   "D122: no token cap by default; a runaway guard stops a plan run after --stall-calls model calls with no progress (default 60; calls, never tokens; armed once the plan runner starts). With an optional hard cap the plan runner enters finish mode past 85% of it, and a stopped plan run returns its finished steps as a partial answer."
   ]
  },
  "critics": {
@@ -2554,7 +2669,7 @@
   ]
  },
  "evidence": {
-  "checked_at": "b95399a",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -2617,6 +2732,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -2628,6 +2744,7 @@
      "callees": [
       "amoeba/adapt/config.py::adapt_config",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/router.py::ModelRouter.bucket",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -2653,6 +2770,7 @@
       "amoeba/adapt/evidence.py::GitShipper",
       "amoeba/adapt/evidence.py::Shipper",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::resolve",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -2690,6 +2808,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -2711,6 +2830,7 @@
       "amoeba/adapt/evidence.py::route_decisions",
       "amoeba/adapt/evidence.py::tool_decisions",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::resolve",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -2739,6 +2859,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -2751,6 +2872,7 @@
       "amoeba/adapt/evidence.py::manifest",
       "amoeba/adapt/evidence.py::sha256_text",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -3209,11 +3331,11 @@
    "prompts": {},
    "title": "Event log and evidence branch (kept from D95)"
   },
-  "facts_hash": "ef6168a38da44bd1",
+  "facts_hash": "ecd01c5cfc1ce456",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "83e9f314f9c29706",
   "sentence": "An append-only, hash-chained log written only by the harness, with a fingerprint of every run folder it names, and an off-container copy on the repository's evidence branch.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
    "Finished runs that pass the key scan are shipped as fast-forward commits to the orphan `evidence` branch, at most one commit per 10 minutes plus a final one; each commit message carries the chain head. Shipping runs in the harness only; agents never get git credentials or cloud credentials.",
@@ -3221,7 +3343,7 @@
   ]
  },
  "faults": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -3291,6 +3413,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -3327,6 +3450,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
       "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
       "amoeba/interp/plan_runner.py::number",
@@ -3347,11 +3471,11 @@
    "prompts": {},
    "title": "Fault injection (D119, test-only)"
   },
-  "facts_hash": "6e8fea3b5905ab55",
+  "facts_hash": "c4ac9e54ab75449b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4385237c0eacf3e8",
   "sentence": "Puts one known fault into one step, so the stuck watch's diagnosis and the fixes can be checked against a ground truth; refused unless AMOEBA_TEST_FAULTS=1.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "--inject-fault <cause>:<step>[:<n>] (hidden from --help): tool_error (the first n tool calls return an injected error), capability (one tool taken from the step's helpers until a grant gives it back), missing_input (the first input cut until a fix passes it in full), missing_input_b (the upstream output saved cut once), max_turns (n turns, no forced last turn, until a fix sets the turns), checks (one more check: a markdown table with a Source column).",
    "\"auto\" picks the step by code from the plan; each fault fires the same way with --adapt off and on; arming, firing and clearing are trace events and result.json records `faults`.",
@@ -3359,7 +3483,7 @@
   ]
  },
  "fixes": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -3370,6 +3494,7 @@
       "amoeba/adapt/fixes.py::_option",
       "amoeba/adapt/fixes.py::holds",
       "amoeba/adapt/fixes.py::limits",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/toolbox.py::LocalSetup.limits",
       "amoeba/pool/stock.py::PoolSetup.limits",
@@ -3385,6 +3510,7 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/fixes.py::candidates",
       "amoeba/adapt/fixes.py::fix_key",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_usd",
       "amoeba/interp/plan_runner.py::PlanRunner.apply_fix",
@@ -3405,9 +3531,12 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::Faults.granted",
       "amoeba/adapt/fixes.py::fix_key",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._fix_done",
       "amoeba/interp/plan_runner.py::PlanRunner.attach_missing",
+      "amoeba/interp/plan_runner.py::PlanRunner.keep_made_tool",
       "amoeba/interp/plan_runner.py::PlanRunner.keep_try",
+      "amoeba/interp/plan_runner.py::PlanRunner.make_tool",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/plan_runner.py::number",
@@ -3423,6 +3552,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -3439,10 +3569,13 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/proposer.py::FixEdit.key.norm",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/citecheck.py::norm",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
-     "doc": "What makes two fixes the same (a failed fix is never repeated): its kind, the step it changes and its values.",
+     "doc": "What makes two fixes the same (a failed fix is never repeated): its kind, the step it changes and its values",
      "key": "amoeba/adapt/fixes.py::fix_key",
      "signature": "fix_key(fix: dict) -> str"
     },
@@ -3459,6 +3592,7 @@
      "callees": [
       "amoeba/adapt/config.py::adapt_config",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -3482,6 +3616,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_usd",
       "amoeba/interp/plan_runner.py::PlanRunner.left_on_old_output",
@@ -3496,6 +3631,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_usd",
       "amoeba/interp/plan_runner.py::PlanRunner.left_on_old_output",
       "amoeba/llm/cache.py::_Store.get",
@@ -3508,6 +3644,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/limits.py::estimate",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -3520,6 +3657,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/capabilities/__init__.py::normalise",
       "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
       "amoeba/llm/cache.py::_Store.get",
@@ -3534,6 +3672,8 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner.make_tool_ctx",
       "amoeba/interp/plan_runner.py::PlanRunner.so",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/llm/cache.py::_Store.get",
@@ -3561,6 +3701,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -3571,9 +3712,12 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.log_event",
+      "amoeba/interp/plan_runner.py::PlanRunner.partial_answer",
       "amoeba/interp/plan_runner.py::PlanRunner.write_adapt_report",
+      "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -3601,27 +3745,28 @@
    "prompts": {},
    "title": "Code fixes for a stuck step (D117 Stage C)"
   },
-  "facts_hash": "e560a1e099f9ac83",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "7e8156707a200b60",
+  "facts_hash": "0eb03ebddceb6b18",
+  "seed_hash": "a1bb93268e26fa14",
   "sentence": "Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
-  "source": "model: kept",
+  "source": "hand",
   "what": [
    "missing_input: an upstream step that is done and holds the data is added to depends_on or passed in full; an upstream output without it is re-run once with the item in its done_when (the only redo of a completed step), then the stuck step.",
    "Rung 1: more turns (tool_error, max_turns), more retry turns then a larger input (checks).",
    "Rung 2: the missing tool or skill from the pool shortlist, first vetted candidate not given before (no AI pick); with the pool and local tools off it is skipped: \"capability fix unavailable: pool off\".",
+   "Rung W (D125, capability): a tool for the missing capability from the approved library or the tool writer, when plain code finds an offline library for it and the run has a code runner (--local-tools); otherwise skipped: \"tool writer: no code runner (local tools are off)\".",
    "When no code fix is left for the step (used up, not allowed for the cause, or skipped), the fix proposer (Stage D) is the next and last rung.",
    "Limits from adapt.yaml (adapt): three fixes per step and eight per task, the proposer's included, a token and dollar cap; a fix is never repeated. When nothing recovers the step the task stops: adapt_report.md says what was stuck, the cause, each fix and why it failed."
   ]
  },
  "free_text": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/niche.py::NicheProfile.is_neutral",
       "amoeba/config/prompts/__init__.py::resolve",
       "amoeba/llm/cache.py::_Store.get",
@@ -3649,6 +3794,7 @@
       "scripts/run_task.py::cli_token_limits",
       "scripts/run_task.py::disable_tools",
       "scripts/run_task.py::family_classify_on",
+      "scripts/run_task.py::guard_config",
       "scripts/run_task.py::niche_tools",
       "scripts/run_task.py::parse_args",
       "scripts/run_task.py::parse_clarify",
@@ -3661,15 +3807,20 @@
     },
     {
      "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::check_flag",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/niche.py::NicheProfile.is_neutral",
       "amoeba/config/niche.py::load_profile",
+      "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/gate.py::require_sandbox",
       "amoeba/localtools/toolbox.py::LocalSetup",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
       "scripts/eval_draft.py::parse_args",
       "scripts/run_task.py::add_client_args",
       "scripts/run_task.py::explicit_flags",
+      "scripts/run_task.py::guard_config",
       "scripts/run_task.py::parse_args"
      ],
      "doc": "",
@@ -3679,6 +3830,11 @@
    ],
    "checks": [],
    "guards": [
+    [
+     "decide",
+     "if args.stall_calls is None",
+     "set args.stall_calls = int(guard_config().get('stall_calls', 0) or 0)"
+    ],
     [
      "decide",
      "if args.tasks",
@@ -3811,12 +3967,13 @@
     "Episode.n_llm_calls",
     "Episode.seed",
     "Episode.total_tokens",
-    "Limits.max_turns"
+    "Limits.max_turns",
+    "RunLimits.finish_share"
    ],
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "1e3a35df35f41aa9",
+  "facts_hash": "049cbdb9e34eeb27",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
@@ -3828,17 +3985,19 @@
   ]
  },
  "handoff": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/interp/trace.py::TracedLLM._sections",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
@@ -3893,7 +4052,7 @@
    "prompts": {},
    "title": "→ Box 2"
   },
-  "facts_hash": "64d1eafd0bf5dd46",
+  "facts_hash": "249d41da8f4c190a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8a1ad7c906bf1b0d",
   "sentence": "Passes the job to the team planner, which reads only the job text.",
@@ -3978,12 +4137,13 @@
   ]
  },
  "instantiate": {
-  "checked_at": "b95399a",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/schema.py::AgentSpec",
       "amoeba/config/schema.py::Edge",
       "amoeba/config/schema.py::PlanStep",
@@ -4004,6 +4164,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/validate.py::_is_uuid",
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/llm/cache.py::_Store.get",
@@ -4187,7 +4348,7 @@
    "prompts": {},
    "title": "Build the team (instantiate)"
   },
-  "facts_hash": "868839f2726f620e",
+  "facts_hash": "2c0033bacb814503",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "eee28a8b08285ada",
   "sentence": "Gives each helper a permanent id, wires the helpers for the chosen shape, and rejects the team if any rule is broken.",
@@ -4200,7 +4361,7 @@
   ]
  },
  "interpret": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -4259,6 +4420,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -4269,6 +4431,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/memory/context.py::approved_standards",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -4281,6 +4444,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/plan_runner.py::parse_decision",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -4310,6 +4474,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/stuck.py::_words",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/plan_runner.py::_words",
       "amoeba/interp/replan_method.py::_words",
@@ -4339,6 +4504,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/mcp.py::data_block",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -4352,6 +4518,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::_places",
@@ -4374,6 +4541,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip"
@@ -4385,6 +4553,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -4395,6 +4564,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -4422,6 +4592,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/disputes.py::settle",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -4448,6 +4619,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -4458,6 +4630,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
       "amoeba/llm/cache.py::CachedLLM.chat_messages",
@@ -4483,6 +4656,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -4496,6 +4670,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -4530,6 +4705,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -4554,6 +4730,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/interpret.py::opening_line"
@@ -4607,6 +4784,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::findings_text"
@@ -4619,6 +4797,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -4652,6 +4831,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -4663,6 +4843,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
@@ -5219,10 +5400,11 @@
    },
    "title": "Task interpretation and family (D77, D101)"
   },
-  "facts_hash": "e8a4fd54869e316a",
+  "facts_hash": "5fce6c46f4e31e2e",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "b431f2f67866c69f",
   "sentence": "Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a clear winner, asks the user one question, or makes the answer state its assumption.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "One call reads the task (and the read-only user context from --context: location, organisation, role) and lists the key entities and terms that could be read more than one way — names, abbreviations, acronyms, likely voice-input errors such as \"P and W\" for \"PNW\" — each reading with a one-line reason and a confidence.",
    "Plain code: a reading whose confidence beats the next by {DOMINANCE_GAP} or more (DOMINANCE_GAP) (or the only one) is the working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question (the readings + other); without it the top reading is an assumption.",
@@ -6469,9 +6651,11 @@
   },
   "facts_hash": "32070e5e6a80d201",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "89a1441a7dd4b02e",
   "seed_hash": "7c7f0b7504b7d30d",
   "sentence": "With --local-tools on, Claude Code's tools and skills run in a fresh OpenShell sandbox per run: no network, only the workspace writable.",
   "source": "model: kept",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "D96: `claude mcp serve` and every command run inside a fresh OpenShell sandbox per run (image amoeba-sandbox:local, gateway on 127.0.0.1:17680): no network, Landlock lets only /sandbox, /tmp and /dev/null be written, skills are read-only under /opt/skills, no secrets, runs as user sandbox; the sandbox is deleted at the end.",
    "The harness gate refuses first what it can see: network commands, paths outside the workspace, writes to MCP configs, hooks, settings, CLAUDE.md or skills (protected_config); what a command hides is stopped by the sandbox. Files are copied back to runs/<id>/workspace/ after each call.",
@@ -6484,7 +6668,7 @@
   ]
  },
  "niche": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -6508,6 +6692,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/checks/calc.py::figures",
       "amoeba/interp/provenance.py::computed_values",
       "amoeba/interp/provenance.py::equals_computed",
@@ -6624,6 +6809,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/niche.py::NicheProfile.is_neutral",
       "amoeba/config/niche.py::tool_allowed",
       "amoeba/llm/cache.py::_Store.get",
@@ -6650,6 +6836,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/checks/__init__.py::run_checks",
       "amoeba/interp/plan_runner.py::PlanRunner.computed_results",
       "amoeba/llm/cache.py::_Store.get",
@@ -6671,6 +6858,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/niche.py::tool_allowed",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/toolbox.py::LocalSetup.with_limits",
@@ -6935,7 +7123,7 @@
    "prompts": {},
    "title": "Niche profiles (D102)"
   },
-  "facts_hash": "a4aff6d5c10ece1c",
+  "facts_hash": "183c9a0b154ed3f5",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "d219f1b6cf765c75",
   "sentence": "One file per environment says which tools and models are allowed, the limits, what counts as done, the domain's rules and words, and which domain checks run; plain code enforces it.",
@@ -6948,13 +7136,14 @@
   ]
  },
  "ov_adapt": {
-  "checked_at": "b95399a",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/config.py::adapt_config",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -6972,11 +7161,11 @@
    "prompts": {},
    "title": "4 · Adapt within the task"
   },
-  "facts_hash": "aa55c23b8e705322",
+  "facts_hash": "da2125de58038c92",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "e183d4df6c04f628",
   "sentence": "D117: the offline learning loop is gone; adaptation happens inside one task, when a Box 3 step gets stuck.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Stage B (built): after each step attempt plain code looks for the stuck signals, marks the step STUCK, diagnoses one cause and logs it.",
    "Stage C (built): code fixes, cheapest first — pass a missing input or re-run its upstream step once, more turns or retry turns or a larger input, attach the missing tool from the pool shortlist.",
@@ -7040,13 +7229,14 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::Faults.summary",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/io.py::dump_yaml",
       "amoeba/config/niche.py::NicheProfile.is_neutral",
       "amoeba/config/niche.py::add_done_clauses",
@@ -7136,29 +7326,31 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "0175847b76ccad60",
+  "facts_hash": "47f3e3e208ef8a68",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves twenty-nine files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed, the fault summary, the fault details, and the plan search findings.",
+  "sentence": "Every run saves thirty files: the team, the draft, a log line per AI call, the tools requested, a result summary, a capability report, local server settings, the toolbox description, the agent limit, the turn limit, the selected pool items, the timezone, the task interpretation, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed, the fault summary, the fault details, the plan search findings, and the tool library.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed ({run_one.seed}), the fault summary, the fault details, and the plan search findings.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed ({run_one.seed}), the fault summary, the fault details, the plan search findings, and the tool library.",
    "These files are the raw material later phases will learn from."
   ]
  },
  "ov_plan": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/interp/trace.py::TracedLLM._sections",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
@@ -7190,6 +7382,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/schema.py::AgentSpec",
       "amoeba/config/schema.py::Edge",
       "amoeba/config/schema.py::PlanStep",
@@ -7239,7 +7432,7 @@
    "prompts": {},
    "title": "2 · Plan a new team"
   },
-  "facts_hash": "1320022b3441f883",
+  "facts_hash": "53ccac51e4a83439",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "a940602a52cfd22e",
   "sentence": "An AI drafts a team and a step plan, two AIs critique it, then plain code checks it and builds the team.",
@@ -7252,7 +7445,7 @@
   ]
  },
  "ov_run": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -7330,17 +7523,22 @@
       "amoeba/adapt/faults.py::Faults.arm",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::Faults.summary",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
       "amoeba/interp/plan_runner.py::PlanRunner._max_turns",
       "amoeba/interp/plan_runner.py::PlanRunner.action_observer",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
+      "amoeba/interp/plan_runner.py::PlanRunner.answer_on_stop",
       "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
       "amoeba/interp/plan_runner.py::PlanRunner.fault_steps",
+      "amoeba/interp/plan_runner.py::PlanRunner.finish_skip",
       "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
       "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+      "amoeba/interp/plan_runner.py::PlanRunner.guard_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.plan_items",
       "amoeba/interp/plan_runner.py::PlanRunner.replan_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::PlanRunner.save_partial_on_crash",
       "amoeba/interp/plan_runner.py::PlanRunner.save_plan_version",
       "amoeba/interp/plan_runner.py::PlanRunner.stop_report",
       "amoeba/interp/plan_runner.py::PlanRunner.write_adapt_report",
@@ -7348,6 +7546,8 @@
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/client.py::api_error",
+      "amoeba/llm/client.py::describe_api_error",
       "amoeba/llm/router.py::ModelRouter.summary",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/tools/web.py::WebLimits.as_trace"
@@ -7384,7 +7584,7 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "c9c21261cacfead9",
+  "facts_hash": "74effba8437c57b2",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call, adaptation, and fault recovery is logged.",
@@ -7476,7 +7676,7 @@
   ]
  },
  "plan_graph": {
-  "checked_at": "b95399a",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -7511,17 +7711,22 @@
       "amoeba/adapt/faults.py::Faults.arm",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::Faults.summary",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._answer_step",
       "amoeba/interp/plan_runner.py::PlanRunner._max_turns",
       "amoeba/interp/plan_runner.py::PlanRunner.action_observer",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
+      "amoeba/interp/plan_runner.py::PlanRunner.answer_on_stop",
       "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
       "amoeba/interp/plan_runner.py::PlanRunner.fault_steps",
+      "amoeba/interp/plan_runner.py::PlanRunner.finish_skip",
       "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
       "amoeba/interp/plan_runner.py::PlanRunner.grant_web_tools",
+      "amoeba/interp/plan_runner.py::PlanRunner.guard_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.plan_items",
       "amoeba/interp/plan_runner.py::PlanRunner.replan_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::PlanRunner.save_partial_on_crash",
       "amoeba/interp/plan_runner.py::PlanRunner.save_plan_version",
       "amoeba/interp/plan_runner.py::PlanRunner.stop_report",
       "amoeba/interp/plan_runner.py::PlanRunner.write_adapt_report",
@@ -7529,6 +7734,8 @@
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/client.py::api_error",
+      "amoeba/llm/client.py::describe_api_error",
       "amoeba/llm/router.py::ModelRouter.summary",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/tools/web.py::WebLimits.as_trace"
@@ -7536,6 +7743,61 @@
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.run",
      "signature": "run(self) -> tuple[str | None, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.summary",
+      "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
+      "amoeba/interp/plan_runner.py::PlanRunner.guard_summary",
+      "amoeba/interp/plan_runner.py::PlanRunner.partial_answer",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/router.py::ModelRouter.summary"
+     ],
+     "doc": "D122: a cap or the runaway guard stopped the run. D123: also a reply no repair could read outside a helper",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.answer_on_stop",
+     "signature": "answer_on_stop(self, e: Exception, code: str | None=None) -> tuple[str | None, str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/limits.py::RunLimits.finishing",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D122: True when an optional extra (fixes, rework, disputes, replan) is skipped because the run is in finish",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.finish_skip",
+     "signature": "finish_skip(self, kind: str, needed: bool) -> bool"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.guard_summary",
+     "signature": "guard_summary(self, stopped: dict | None=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner.assemble_by_code",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D122/D123: the outputs of the steps that ran, put together by plain code under a header that says why the",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.partial_answer",
+     "signature": "partial_answer(self, why: str, have: list[int], missing: list[int]) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.partial_answer",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/trace.py::TraceWriter.event"
+     ],
+     "doc": "D123: an error in Amoeba's own code is not handed to Box 4 or hidden: it is raised as before, after the",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.save_partial_on_crash",
+     "signature": "save_partial_on_crash(self, e: Exception) -> None"
     }
    ],
    "checks": [],
@@ -7576,6 +7838,11 @@
      "set self.ep.adaptation = self.adapt_summary()"
     ],
     [
+     "decide",
+     "if self.opt.adapt == 'on' and (not self.finish_skip('fixes', bool(self.artifacts[n]['meta'].get('stuck'))))",
+     "set fixed = self.fix_stuck(n, w)"
+    ],
+    [
      "fallback",
      "None if status == 'done' else status",
      "choose value"
@@ -7587,12 +7854,42 @@
     ],
     [
      "fallback",
-     "self.fix_stuck(n, w) if self.opt.adapt == 'on' else None",
+     "except Exception",
+     "pass"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "raise "
+    ],
+    [
+     "fallback",
+     "except ParseError",
+     "return self.answer_on_stop(e, f'parse: {str(e)[:300]}')"
+    ],
+    [
+     "fallback",
+     "except RunLimitReached",
+     "return self.answer_on_stop(e)"
+    ],
+    [
+     "fallback",
+     "f\"**Steps that ran but did not finish:** {', '.join((f'{n} ({st})' for n, st in unfinished))}\\n\\n\" if unfinished else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f'**Steps that did not run:** {names}\\n\\n' if missing else ''",
      "choose value"
     ],
     [
      "filter",
      "keep only if d not in known",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if n in self.artifacts",
      "drop the rest"
     ],
     [
@@ -7603,6 +7900,11 @@
     [
      "filter",
      "keep only if n not in self.artifacts",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if self.artifacts[n]['meta'].get('status') != 'done'",
      "drop the rest"
     ],
     [
@@ -7642,8 +7944,28 @@
     ],
     [
      "stop",
+     "if api_error(e)",
+     "return self.answer_on_stop(e, f'api: {describe_api_error(e)}')"
+    ],
+    [
+     "stop",
      "if fixed == 'replanned'",
      "stop (break)"
+    ],
+    [
+     "stop",
+     "if not (self.finish_skipped or stopped or (lim is not None and getattr(lim, '_finishing', False)))",
+     "return {}"
+    ],
+    [
+     "stop",
+     "if not have",
+     "return (None, code)"
+    ],
+    [
+     "stop",
+     "if not needed or lim is None or (not lim.finishing(self.i.trace))",
+     "return False"
     ],
     [
      "stop",
@@ -7663,7 +7985,7 @@
    "prompts": {},
    "title": "Step graph (depends_on)"
   },
-  "facts_hash": "d29d688c70367a77",
+  "facts_hash": "d705d7a553cd2bed",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "15b138f4913a332f",
   "sentence": "Builds the order of work from each step's 'depends on' line and rejects a plan that loops.",
@@ -7676,17 +7998,19 @@
   ]
  },
  "plan_obs": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/interp/trace.py::TracedLLM._sections",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
@@ -7770,7 +8094,7 @@
    },
    "title": "Plan Observer"
   },
-  "facts_hash": "a261e360998b18bf",
+  "facts_hash": "ae74c45f0ac2c1be",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4a783811da20fbfc",
   "sentence": "A third AI checks the step plan; the loop stops when both checkers say 'No Suggestions' in one round.",
@@ -7782,7 +8106,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -7793,6 +8117,7 @@
       "amoeba/adapt/faults.py::Faults.restore",
       "amoeba/adapt/faults.py::Faults.turns",
       "amoeba/adapt/stuck.py::file_sig",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/capabilities/__init__.py::normalise",
       "amoeba/interp/citecheck.py::mislabelled_citations",
       "amoeba/interp/disputes.py::disputed_figures",
@@ -7816,6 +8141,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.enforce_limitations",
       "amoeba/interp/plan_runner.py::PlanRunner.files_of",
       "amoeba/interp/plan_runner.py::PlanRunner.final_answer_check",
+      "amoeba/interp/plan_runner.py::PlanRunner.finish_skip",
       "amoeba/interp/plan_runner.py::PlanRunner.inputs_text",
       "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
       "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
@@ -7881,11 +8207,13 @@
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::Faults.tool_result",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/plan_runner.py::PlanRunner.deliverables_text",
       "amoeba/interp/plan_runner.py::PlanRunner.is_summary_step",
       "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
       "amoeba/interp/plan_runner.py::PlanRunner.route_ids",
+      "amoeba/interp/plan_runner.py::PlanRunner.unreadable_turn",
       "amoeba/interp/plan_runner.py::plan_card",
       "amoeba/interp/plan_runner.py::step_detail",
       "amoeba/interp/runtime.py::Interpreter._dispatch",
@@ -7932,6 +8260,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/capabilities/__init__.py::normalise",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
@@ -7958,6 +8287,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._loop",
       "amoeba/interp/plan_runner.py::PlanRunner._review",
       "amoeba/interp/plan_runner.py::PlanRunner.so",
@@ -7972,6 +8302,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/plan_runner.py::plan_card",
       "amoeba/interp/plan_runner.py::step_detail",
@@ -7997,6 +8328,20 @@
     },
     {
      "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/runtime.py::Interpreter._record",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.spans",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D123: a reply still missing a required section after the unglue and the repair call fails only this turn:",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.unreadable_turn",
+     "signature": "unreadable_turn(self, agent: AgentSpec, n: int, e: MissingSections, before: int) -> tuple[str, str, str, str | None]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/interp/shorten.py::_cut_line",
       "amoeba/interp/shorten.py::_output_tails",
@@ -8015,6 +8360,11 @@
      "correct",
      "if FINAL_OUTPUT not in act",
      "add inp.strip()"
+    ],
+    [
+     "correct",
+     "if act == UNREADABLE",
+     "add {'agent': agent.name, 'turn': w.turn + 1, 'why': resp}"
     ],
     [
      "correct",
@@ -8055,6 +8405,11 @@
      "decide",
      "if disputes",
      "set resolutions = self.resolve_disputes(step, n, writers, disputes)"
+    ],
+    [
+     "decide",
+     "if disputes and self.finish_skip('disputes', True)",
+     "set disputes = []"
     ],
     [
      "decide",
@@ -8268,7 +8623,7 @@
     ],
     [
      "decide",
-     "if verifier and meta['verdict'] == 'FAIL' and (not reverify)",
+     "if verifier and meta['verdict'] == 'FAIL' and (not reverify) and (not self.finish_skip('rework', True))",
      "set reworked = self.rework_producers(n, deps, meta['issues'])"
     ],
     [
@@ -8285,6 +8640,11 @@
      "decide",
      "if verifier and self.opt.verify_first == 'on'",
      "set own_writers = agents[:1] if self.opt.collab == 'critique' and len(agents) > 1 else agents"
+    ],
+    [
+     "decide",
+     "if w.unreadable and (not finished)",
+     "set reason = '; '.join((x for x in (reason, f'unreadable replies: {len(w.unreadable)}') if x))"
     ],
     [
      "fallback",
@@ -8365,6 +8725,11 @@
      "fallback",
      "except (ZoneInfoNotFoundError, ValueError)",
      "raise ValueError"
+    ],
+    [
+     "fallback",
+     "except MissingSections",
+     "return self.unreadable_turn(agent, n, e, before)"
     ],
     [
      "fallback",
@@ -8718,28 +9083,29 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "dc1c14bcce6ed791",
+  "facts_hash": "2de804017cc68a3e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "270a58d016f6ddfa",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
   "source": "model: kept",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, the outputs of the steps it depends on, and a list of local files it can reference.",
-   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, verify spreadsheet data, and mark what it could not do as BLOCKED: <capability>.",
-   "It picks one action per turn: a tool, Print, or Final Output; if no model is available, it reports a blocked status; up to {Limits.max_turns} turns per step.",
+   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, verify spreadsheet data, resolve any figure disputes, and mark what it could not do as BLOCKED: <capability>.",
+   "It picks one action per turn: a tool, Print, or Final Output; if no model is available or a reply is unreadable, it reports a blocked status; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search, lacks specific tools, or is performing research gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information; if local files are available, it is provided with a summary of those files and their source identifiers.",
-   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including resolving disputed figures, checking final findings, and marking missing inputs, before the final output is kept.",
+   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including resolving disputed figures, checking final findings, and marking missing inputs, before the final output is kept; if the system determines a step or rework is unnecessary, it may skip those processes.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
   ]
  },
  "plan_summary": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.cap",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -8765,6 +9131,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/freshness.py::stale_figure",
       "amoeba/interp/freshness.py::time_sensitive",
@@ -8809,6 +9176,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -8892,6 +9260,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -9210,11 +9579,11 @@
    },
    "title": "Summariser assembles"
   },
-  "facts_hash": "4b95e3e9ced6b5a3",
+  "facts_hash": "1d0d4ace2a2933eb",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "f8491f65001402a8",
   "sentence": "An AI assembles the final answer from every step's output, adding nothing new, and lists the gaps.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Sees every step's latest output with its status, missing capabilities, verdict, figure counts, the deliverables the plan committed to, and where each figure was found (never the scoring rubric).",
    "Must add no new analysis or numbers, answer in the form the job asks for, and list gaps under Limitations when there are any.",
@@ -9225,17 +9594,19 @@
   ]
  },
  "planner": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/interp/trace.py::TracedLLM._sections",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/safety/envelope.py::Envelope.tool_catalog_string",
@@ -9292,6 +9663,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -9425,7 +9797,7 @@
    },
    "title": "Planner"
   },
-  "facts_hash": "83b74fcf120e466c",
+  "facts_hash": "a2d2d0859874f6e7",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "53bd3e0ee5bba97c",
   "sentence": "An AI writes the list of helpers and a numbered step plan; later rounds see only the latest critique.",
@@ -9441,13 +9813,14 @@
   ]
  },
  "pool_index": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/index.py::PoolSourceError",
       "amoeba/pool/index.py::load_pool_config",
@@ -9471,6 +9844,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -9511,6 +9885,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -9530,6 +9905,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -9540,6 +9916,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/index.py::_official",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -9552,6 +9929,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/index.py::PoolSourceError",
       "amoeba/pool/index.py::_git",
@@ -9574,6 +9952,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -9607,6 +9986,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/index.py::text_sha256",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -9627,7 +10007,7 @@
    "prompts": {},
    "title": "Pool index (cache)"
   },
-  "facts_hash": "80dbf49b6a71c0ba",
+  "facts_hash": "df9341e5c3fa2097",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "a8206d27f6388101",
   "sentence": "The tools and skills Box 3 may draw on, fetched ahead of time by `amoeba pool refresh`; a run only reads it.",
@@ -9639,7 +10019,7 @@
   ]
  },
  "proposer": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -9649,6 +10029,7 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/proposer.py::FixEdit.key",
       "amoeba/adapt/proposer.py::FixEdit.texts",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedLLM.key",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -9667,6 +10048,7 @@
       "amoeba/adapt/proposer.py::FixEdit.key",
       "amoeba/adapt/proposer.py::fix_problems",
       "amoeba/adapt/proposer.py::parse_fix",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._d_live",
       "amoeba/interp/plan_runner.py::PlanRunner._fix_done",
       "amoeba/interp/plan_runner.py::PlanRunner._proposer_call",
@@ -9884,17 +10266,17 @@
     },
     {
      "callees": [
-      "amoeba/llm/cache.py::CachedProvider.search",
-      "amoeba/tools/web.py::SearchProvider.search",
-      "amoeba/tools/web.py::TavilyProvider.search"
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.find"
      ],
-     "doc": "The first JSON object of the reply (a code fence around it is allowed).",
+     "doc": "The reply's edit: the last top-level JSON object that holds an \"edit\" (a code fence around it is allowed).",
      "key": "amoeba/adapt/proposer.py::parse_fix",
      "signature": "parse_fix(text: str) -> FixReply"
     },
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/plan_runner.py::dependencies",
@@ -9920,6 +10302,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/plan_runner.py::waves",
@@ -9949,6 +10332,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -9978,7 +10362,7 @@
    },
    "title": "Fix proposer (D117 Stage D)"
   },
-  "facts_hash": "2aaef99e6bb36e74",
+  "facts_hash": "5dfaf29e1a914466",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "26d95855171d5479",
   "sentence": "The last rung: one AI call proposes one edit for the stuck step; plain code checks it, applies it to the live plan and re-runs the step.",
@@ -9986,12 +10370,12 @@
   "what": [
    "Called only when the code fixes for the step are used up or not allowed (including \"capability fix unavailable: pool off\").",
    "It sees the task, the step's card and done_when, the cause and evidence, the last attempt's errors and checks (trimmed), the team (one line per role), the tools and skills of this run, the edits the cause allows and the fixes already tried.",
-   "It returns one JSON edit with a short reason: add_role_rule, add_helper_role (the Planner's role card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the Planner's plan format, for the part not done) or work_around (capability only, after a grant_tool or add_helper_role was tried for the step; stated under Limitations; counted as finished with limitation, never recovered). At most two added helpers per task.",
+   "It returns one JSON edit (the last top-level object containing an \"edit\") with a short reason: add_role_rule, add_helper_role (the Planner's role card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the Planner's plan format, for the part not done) or work_around (capability only, after a grant_tool or add_helper_role was tried for the step; stated under Limitations; counted as finished with limitation, never recovered). At most two added helpers per task.",
    "Plain code checks, all in proposer.py and the plan runner: allowed for the cause, the schema, tools this run has (no outside action, not paid), text sizes and denied wording (adapt.yaml limits), team size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second failure is no fix. The adaptation limits apply; success is the step ending done."
   ]
  },
  "provenance": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -10012,6 +10396,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -10130,7 +10515,7 @@
    "prompts": {},
    "title": "Where each figure came from"
   },
-  "facts_hash": "dfafa407423e986d",
+  "facts_hash": "ebc34863fe1147a5",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "487cebdbfb5a1b8a",
   "sentence": "Counts every number in a step's output as cited, unverified, given, derived, inherited or untagged.",
@@ -10145,7 +10530,7 @@
   ]
  },
  "read_action": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -10210,6 +10595,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/niche.py::tool_allowed",
       "amoeba/interp/trace.py::NoopListener.on_tool_call",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -10367,7 +10753,7 @@
    "prompts": {},
    "title": "Read \"## Action\""
   },
-  "facts_hash": "f616b96a012c4a54",
+  "facts_hash": "7e320ed9c85eff64",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8c7248ccf38edd67",
   "sentence": "Reads the helper's chosen action: runs a tool and loops, or accepts a final answer; gives up after five turns.",
@@ -10383,7 +10769,7 @@
   ]
  },
  "resolver": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -10399,6 +10785,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/models.py::CapabilityRequest",
@@ -10433,6 +10820,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/capabilities/__init__.py::normalise",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
@@ -10537,7 +10925,7 @@
    "prompts": {},
    "title": "Tool resolver"
   },
-  "facts_hash": "5e4a2bde6b37fa8b",
+  "facts_hash": "dbd0730cbe27f2f7",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4f1dc3213f08fd80",
   "sentence": "Keeps the tools that exist; a tool we lack is recorded as a request, never used and never silently dropped.",
@@ -10551,7 +10939,7 @@
   ]
  },
  "router": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -10578,6 +10966,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.is_verification",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/llm/cache.py::_Store.get",
@@ -10725,6 +11114,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -10735,6 +11125,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/router.py::ModelEntry",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -10746,6 +11137,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/router.py::CallSpec",
       "amoeba/llm/router.py::estimate_tokens",
@@ -10758,6 +11150,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedLLM",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::OpenAICompatibleClient",
@@ -11147,7 +11540,7 @@
    "prompts": {},
    "title": "Model router (D97)"
   },
-  "facts_hash": "6cc8b984b7744d3b",
+  "facts_hash": "ff7ce559e226b1f2",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "98554a3d1a5efb46",
   "sentence": "Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters that are never relaxed, then a preference for the role (none is set since D117), the role's default or the cheapest of the right size.",
@@ -11161,7 +11554,7 @@
   ]
  },
  "runresult": {
-  "checked_at": "9911129",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -11345,6 +11738,10 @@
        "list[dict] | None"
       ],
       [
+       "run_guard",
+       "dict | None"
+      ],
+      [
        "plan_search",
        "dict | None"
       ],
@@ -11365,6 +11762,7 @@
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::Faults.summary",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/io.py::dump_yaml",
       "amoeba/config/niche.py::NicheProfile.is_neutral",
       "amoeba/config/niche.py::add_done_clauses",
@@ -11440,6 +11838,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/deliverables.py::answer_content",
@@ -11477,6 +11876,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -11498,6 +11898,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/deliverables.py::_has_term",
@@ -11557,10 +11958,11 @@
    "prompts": {},
    "title": "RunResult"
   },
-  "facts_hash": "a61fa9cefa43a0ad",
+  "facts_hash": "c10b21b379e2f32e",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "09aed73abc98a57d",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
-  "source": "hand",
+  "source": "model: kept",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
@@ -11572,7 +11974,7 @@
   ]
  },
  "scoring": {
-  "checked_at": "9911129",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -11613,6 +12015,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/evaluate.py::quantities"
@@ -11648,6 +12051,7 @@
     },
     {
      "callees": [
+      "amoeba/adapt/toolmaker.py::ToolLibrary.find",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/localtools/server.py::StdioServer.start",
       "amoeba/localtools/toolbox.py::LocalToolbox.start",
@@ -11746,10 +12150,11 @@
    "prompts": {},
    "title": "Scoring (after Box 3)"
   },
-  "facts_hash": "ab41263815c78b3a",
+  "facts_hash": "1ccf00b84bc59a03",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "7323e1e3f42733fa",
   "sentence": "Compares the team's answer with the known answer; a job with no single right answer is scored against its rubric instead.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "After the run, the team's answer is compared with the known answer.",
    "Both are lower-cased, runs of spaces are squeezed to one, and trailing full stops are dropped.",
@@ -11903,7 +12308,7 @@
   ]
  },
  "split": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -11935,10 +12340,9 @@
     },
     {
      "callees": [
+      "amoeba/interp/trace.py::TracedLLM._sections",
       "amoeba/interp/trace.py::TracedLLM.chat",
-      "amoeba/task/parsers.py::parse_sections",
-      "amoeba/task/parsers.py::repair_prompt",
-      "amoeba/task/parsers.py::require"
+      "amoeba/task/parsers.py::repair_prompt"
      ],
      "doc": "AutoAgents _aask_v1: parse '## Section' blocks; a missing one gets one LLM repair call, then raises.",
      "key": "amoeba/interp/trace.py::TracedLLM.chat_sections",
@@ -11955,11 +12359,34 @@
     },
     {
      "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/parsers.py::parse_sections",
+      "amoeba/task/parsers.py::require",
+      "amoeba/task/parsers.py::unglue"
+     ],
+     "doc": "D123: a reply missing a required heading is read once more with the heading unglued (plain code, no call)",
+     "key": "amoeba/interp/trace.py::TracedLLM._sections",
+     "signature": "_sections(self, raw: str, keys: list[str], ids: dict) -> dict[str, str]"
+    },
+    {
+     "callees": [
       "amoeba/interp/citecheck.py::identifiers.take.sub"
      ],
      "doc": "common.py:33 splits on every '##'. DEVIATION D72: a '##' right after a written '\\n' is a heading inside a",
      "key": "amoeba/task/parsers.py::split_blocks",
      "signature": "split_blocks(text: str) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub"
+     ],
+     "doc": "DEVIATION D123: a required heading glued onto the end of a sentence (\"…verdict.## CurrentStep\", as Gemma",
+     "key": "amoeba/task/parsers.py::unglue",
+     "signature": "unglue(text: str, keys: list[str]) -> str"
     }
    ],
    "checks": [],
@@ -12007,12 +12434,22 @@
     [
      "fallback",
      "except MissingSections",
+     "set fixed = unglue(raw, e.missing)"
+    ],
+    [
+     "fallback",
+     "except MissingSections",
      "set raw2 = self.chat(system, repair_prompt(user, raw, keys, str(e)), seed, **ids).content"
     ],
     [
      "filter",
      "keep only if k not in sections",
      "drop the rest"
+    ],
+    [
+     "reject",
+     "if fixed == raw",
+     "raise "
     ],
     [
      "reject",
@@ -12036,19 +12473,19 @@
    "prompts": {},
    "title": "Split sections"
   },
-  "facts_hash": "883d1641bfc1f5c6",
+  "facts_hash": "4357fcb876f6a6ad",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "5b7681afa126eb34",
-  "sentence": "Cuts each AI reply into its labelled parts; a missing part gets one retry, then the plan is abandoned.",
-  "source": "hand (model: still true)",
+  "sentence": "Cuts each AI reply into its labelled parts; if a part is missing, the system attempts to fix it by ungluing headings or retrying once.",
+  "source": "model: kept",
   "what": [
    "Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts. Only a '##' that starts a line (or follows a closing tag, as in '</thought>## Thought') is a heading; one in the middle of a line, such as a lesson echoed inside a role's JSON, is text.",
-   "If a required part is missing, the AI is asked once more with the error attached.",
+   "If a required part is missing, the system first tries to unglue headings from text; if that fails, the AI is asked once more with the error attached.",
    "If the retry still lacks it, drafting stops with an error (or the run ends with a parse error)."
   ]
  },
  "stage_e": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -12076,6 +12513,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/models.py::run_status",
@@ -12114,6 +12552,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip"
@@ -12132,6 +12571,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -12142,6 +12582,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -12153,6 +12594,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
@@ -12168,6 +12610,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -12179,6 +12622,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/saved_drafts.py::_load",
@@ -12203,7 +12647,7 @@
    "prompts": {},
    "title": "Stage E: --adapt off vs on (pairs and report)"
   },
-  "facts_hash": "7585aa5921203d7b",
+  "facts_hash": "7d09dabd81a9391f",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "e328f8cc4fb1e139",
   "sentence": "Runs each task and seed with --adapt off, then on with the off run's draft and pool picks, and reports the two arms side by side.",
@@ -12215,7 +12659,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -12258,6 +12702,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._write",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
       "amoeba/interp/plan_runner.py::dependencies",
@@ -12306,6 +12751,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -12320,6 +12766,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -12356,6 +12803,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -12377,6 +12825,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.upstream",
       "amoeba/interp/plan_runner.py::claim_terms",
       "amoeba/interp/plan_runner.py::excerpt",
@@ -12392,6 +12841,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.upstream",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -12444,7 +12894,8 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/interp/disputes.py::_same_label",
       "amoeba/interp/disputes.py::agree",
-      "amoeba/interp/disputes.py::labelled_figures"
+      "amoeba/interp/disputes.py::labelled_figures",
+      "amoeba/interp/disputes.py::same_quantity"
      ],
      "doc": "The labelled figures of the verifier's blind result that the checked outputs state under the same label only",
      "key": "amoeba/interp/disputes.py::disputed_figures",
@@ -12454,6 +12905,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip"
@@ -12465,10 +12917,14 @@
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/disputes.py::_kind",
+      "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/server.py::StdioServer.start",
       "amoeba/localtools/toolbox.py::LocalToolbox.start",
+      "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/models.py::CapabilityRequest._kind",
       "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
@@ -12496,6 +12952,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/proposer.py::FixEdit.key.norm",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/citecheck.py::norm",
       "amoeba/interp/disputes.py::_value",
       "amoeba/interp/disputes.py::agree",
@@ -12513,6 +12970,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.cap",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/plan_runner.py::step_detail",
@@ -12540,6 +12998,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/toolbox.py::LocalToolbox.has_file",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -12591,6 +13050,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -12849,6 +13309,11 @@
     ],
     [
      "fallback",
+     "'/' if '/' in u.group(0) or 'per' in u.group(0).lower() else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'\\n[… rest of this result left out: nothing in it matches the claims checked …]' if len('\\n'.join(lines)) > keep_head else ''",
      "choose value"
     ],
@@ -12875,6 +13340,11 @@
     [
      "fallback",
      "'worker' if wv and agree(v, dv, *wv) else 'verifier' if cv and agree(v, dv, *cv) else 'corrected'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "('/' if '/' in u.group(0) or 'per' in u.group(0).lower() else '') + UNIT_SAME.get(u.group(1).lower(), u.group(1).lower()) if u else ''",
      "choose value"
     ],
     [
@@ -12954,7 +13424,7 @@
     ],
     [
      "filter",
-     "keep only if g['kind'] == f['kind'] and (s := _same_label(f['label'], g['label']))",
+     "keep only if g['kind'] == f['kind'] and same_quantity(f, g) and (s := _same_label(f['label'], g['label']))",
      "drop the rest"
     ],
     [
@@ -13191,7 +13661,7 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "27af94aceadd8063",
+  "facts_hash": "e0b5b9b8514039b7",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "6f0a328d9f2e4908",
   "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
@@ -13206,13 +13676,13 @@
    "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial.",
    "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
    "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
-   "D109 (resolver): plain code pairs the verifier's blind figures with the worker's by label (5% tolerance); one fresh resolver call settles each disagreement by source text or a re-run, plain code checks its evidence, a settled value replaces the wrong one, and an unresolved one keeps the step from PASS and goes into Limitations.",
+   "D102: the niche profile's domain checks (e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn, and the resolver uses quantity-aware matching to settle disagreements.",
    "D110 (part of D105's final-answer check): every web-sourced figure of the final answer must carry its source's date (line or source entry); undated ones share the refine turn, and those still undated are listed in Limitations.",
    "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked."
   ]
  },
  "stuck": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -13223,6 +13693,7 @@
       "amoeba/adapt/stuck.py::file_sig",
       "amoeba/adapt/stuck.py::owes_file",
       "amoeba/adapt/stuck.py::repeated_errors",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -13234,6 +13705,7 @@
      "callees": [
       "amoeba/adapt/config.py::adapt_config",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -13248,7 +13720,10 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/stuck.py::diagnose",
       "amoeba/adapt/stuck.py::is_stuck",
+      "amoeba/adapt/stuck.py::open_requests",
       "amoeba/adapt/stuck.py::step_signals",
+      "amoeba/adapt/stuck.py::waived_view",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
@@ -13268,6 +13743,7 @@
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/stuck.py::_words",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::_words",
       "amoeba/interp/replan_method.py::_words",
       "amoeba/llm/cache.py::CachedProvider.search",
@@ -13284,6 +13760,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -13294,6 +13771,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -13314,6 +13792,19 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The capability requests that are really open: status unfilled, and not covered by a tool the run already has.",
+     "key": "amoeba/adapt/stuck.py::open_requests",
+     "signature": "open_requests(requests: list | None, holds: dict[str, set] | None=None) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -13329,12 +13820,29 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/stuck.py::norm_error",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
      "doc": "Evidence lines for each run of two failed calls in a row with the same tool and the same error.",
      "key": "amoeba/adapt/stuck.py::repeated_errors",
      "signature": "repeated_errors(calls: list[dict]) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D124: what the watch reads once a work-around for a capability was accepted (plain code applied the fix",
+     "key": "amoeba/adapt/stuck.py::waived_view",
+     "signature": "waived_view(meta: dict, unfilled: list[dict], waived: set[str] | None, files: bool=True) -> tuple[dict, list[dict]]"
     },
     {
      "callees": [],
@@ -13385,7 +13893,9 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/stuck.py::diagnose",
       "amoeba/adapt/stuck.py::is_stuck",
+      "amoeba/adapt/stuck.py::open_requests",
       "amoeba/adapt/stuck.py::step_signals",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::missing_input_marks",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -13407,13 +13917,13 @@
    "prompts": {},
    "title": "Stuck watch and diagnosis (D117 Stage B)"
   },
-  "facts_hash": "9465d4f5c83a387e",
+  "facts_hash": "effeb88aa6d2fbce",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "a81f7db46b95d199",
-  "sentence": "After each step attempt plain code marks a step that did not end done STUCK on any of six signals and names one cause.",
+  "sentence": "After each step attempt, plain code marks a step that did not end done STUCK on any of seven signals and names one cause.",
   "source": "model: kept",
   "what": [
-   "Signals: a missing input (data an earlier step should have given, told from a missing tool by classify_lacked); the same tool error twice in a row (digits masked); checks still failing after the retry turn (unless the helpers ran out of turns); max turns; a capability or skill lacked or requested and unfilled; a file owed and no file change between attempts.",
+   "Signals: a missing input; the same tool error twice in a row; checks still failing after the retry turn; max turns; a capability or skill lacked or requested and unfilled; a file owed and no file change; or a capability work-around that was accepted.",
    "Each signal names a cause; the first cause in the table order wins, with its allowed edits and at most eight evidence lines.",
    "The event goes to the trace, step_N.json, result.json (stuck) and the run's hash-chained events.jsonl. --adapt on is the command-line default.",
    "scripts/stuck_report.py runs the same functions over stored run folders, offline."
@@ -13686,7 +14196,7 @@
   ]
  },
  "toolbox": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -13694,6 +14204,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/fixes.py::candidates",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/trace.py::NoopListener",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
@@ -13739,6 +14250,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
@@ -13761,6 +14273,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/index.py::skill_body",
@@ -13779,6 +14292,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/match.py::request_words",
       "amoeba/pool/match.py::words",
@@ -13953,6 +14467,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -14002,6 +14517,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/mcp.py::PoolTools.description",
       "amoeba/pool/mcp.py::data_block",
@@ -14020,6 +14536,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -14036,6 +14553,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -14680,7 +15198,7 @@
    "prompts": {},
    "title": "Stock the toolbox"
   },
-  "facts_hash": "97beaff3d0f9af99",
+  "facts_hash": "83d577f004b42524",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "ec288792550b2470",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code. D117: the in-task capability fix calls it again with no AI pick.",
@@ -14699,8 +15217,276 @@
    "D117 Stage C: when a stuck step lacks a capability and the pool or local tools are on, the plan runner runs this step again for it with code_pick: plain code takes the first vetted candidate not given to that step before (no AI call, no shared pick); with both off the rung is skipped."
   ]
  },
+ "toolmaker": {
+  "checked_at": "a937618",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/adapt/toolmaker.py::file_kind",
+      "amoeba/adapt/toolmaker.py::runner_ready",
+      "amoeba/adapt/toolmaker.py::tw_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "Plain code's feasibility check for writing a tool: {ok, capability, kind, libraries, why}.",
+     "key": "amoeba/adapt/toolmaker.py::feasible",
+     "signature": "feasible(items: list[str], local, cfg: dict | None=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/adapt/toolmaker.py::tw_config",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "Plain code's checks on a written tool, before anything runs: the problems (empty: it may run).",
+     "key": "amoeba/adapt/toolmaker.py::check_code",
+     "signature": "check_code(tool: dict, libraries: list[str], cfg: dict | None=None) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.find",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.text",
+      "amoeba/adapt/toolmaker.py::check_code",
+      "amoeba/adapt/toolmaker.py::install",
+      "amoeba/adapt/toolmaker.py::parse_tool",
+      "amoeba/adapt/toolmaker.py::tw_config",
+      "amoeba/interp/plan_runner.py::PlanRunner._give_tool",
+      "amoeba/interp/plan_runner.py::PlanRunner._tool_writer_call",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D125: an approved library tool for the capability (its self-test run again), else up to `attempts` tool",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.make_tool",
+     "signature": "make_tool(self, n: int, p: dict) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "data/tool_library/<name>/{tool.py, manifest.json}. Tools are saved \"unreviewed\"; only \"approved\" ones (the",
+     "fields": [],
+     "key": "amoeba/adapt/toolmaker.py::ToolLibrary",
+     "methods": [
+      "__init__(self, root: Path | str | None=None)",
+      "manifests(self) -> list[dict]",
+      "get(self, name: str) -> dict | None",
+      "text(self, name: str) -> str",
+      "intact(self, m: dict) -> bool",
+      "find(self, capability: str, kind: str | None) -> dict | None",
+      "save(self, tool: dict, text: str, meta: dict) -> dict",
+      "set_status(self, name: str, status: str) -> dict"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+      "amoeba/llm/router.py::ModelRouter.call",
+      "amoeba/localtools/server.py::StdioServer.call",
+      "amoeba/localtools/toolbox.py::LocalToolbox.call",
+      "amoeba/pool/mcp.py::Connector.call",
+      "amoeba/pool/mcp.py::PoolTools.call",
+      "amoeba/pool/mcp.py::SdkConnector.call",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "A helper's call of a made tool: its ActionInput as JSON args (plain text becomes {\"text\": ...}).",
+     "key": "amoeba/adapt/toolmaker.py::call_tool",
+     "signature": "call_tool(local, rel: str, text: str) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "The file type or job a capability names, by its words: docx_generator → docx, excel_writer → xlsx.",
+     "key": "amoeba/adapt/toolmaker.py::file_kind",
+     "signature": "file_kind(capability: str, cfg: dict) -> str | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/toolmaker.py::tool_text",
+      "amoeba/localtools/toolbox.py::LocalToolbox.put_file"
+     ],
+     "doc": "Put the tool's file in the run's workspace (and its sandbox); returns its workspace path.",
+     "key": "amoeba/adapt/toolmaker.py::install",
+     "signature": "install(local, tool: dict, text: str | None=None) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/toolmaker.py::tw_config",
+      "amoeba/config/prompts/__init__.py::resolve"
+     ],
+     "doc": "",
+     "key": "amoeba/adapt/toolmaker.py::library_root",
+     "signature": "library_root(cfg: dict | None=None) -> Path"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.find",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "The tool writer's reply: the last JSON object holding \"name\" (name, description, input) and the last",
+     "key": "amoeba/adapt/toolmaker.py::parse_tool",
+     "signature": "parse_tool(text: str) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "A code runner for written tools: the local toolbox is up and offers Bash (its sandboxed workspace).",
+     "key": "amoeba/adapt/toolmaker.py::runner_ready",
+     "signature": "runner_ready(local) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
+      "amoeba/llm/router.py::ModelRouter.call",
+      "amoeba/localtools/server.py::StdioServer.call",
+      "amoeba/localtools/toolbox.py::LocalToolbox.call",
+      "amoeba/pool/mcp.py::Connector.call",
+      "amoeba/pool/mcp.py::PoolTools.call",
+      "amoeba/pool/mcp.py::SdkConnector.call"
+     ],
+     "doc": "Run the tool's self-test through the local toolbox (gate, sandbox, limits, trace). (passed, output).",
+     "key": "amoeba/adapt/toolmaker.py::self_test",
+     "signature": "self_test(local, rel: str) -> tuple[bool, str]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/toolmaker.py::sha",
+     "signature": "sha(text: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The file plain code runs: a header line, the model's code and plain code's harness.",
+     "key": "amoeba/adapt/toolmaker.py::tool_text",
+     "signature": "tool_text(tool: dict) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/config.py::adapt_config",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "adapt.yaml `tool_writer`, with defaults for what is not set.",
+     "key": "amoeba/adapt/toolmaker.py::tw_config",
+     "signature": "tw_config(config: dict | None=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/adapt/toolmaker.py::call_tool",
+      "amoeba/interp/plan_runner.py::PlanRunner.log_event",
+      "amoeba/interp/plan_runner.py::tool_ok",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/localtools/toolbox.py::LocalToolbox.register",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/registry.py::ToolRegistry.register"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._give_tool",
+     "signature": "_give_tool(self, n: int, cap: str, kind: str, name: str, rel: str, description: str, input_: str, how: str, extra: dict) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/toolmaker.py::tw_config",
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/interp/trace.py::TraceWriter.span",
+      "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/cache.py::CachedLLM.chat_messages",
+      "amoeba/llm/client.py::LLMClient.chat_messages",
+      "amoeba/llm/client.py::MockLLMClient.chat_messages",
+      "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
+      "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/llm/router.py::ModelRouter.chat_messages",
+      "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "scripts/eval_draft.py::Recording.chat_messages"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._tool_writer_call",
+     "signature": "_tool_writer_call(self, n: int, cap: str, kind: str, libs: list[str], refused: str | None) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.save",
+      "amoeba/adapt/toolmaker.py::tool_text",
+      "amoeba/adapt/toolmaker.py::tw_config",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D125: a written tool that the step then used without an error, in a step no longer stuck, is saved to the",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.keep_made_tool",
+     "signature": "keep_made_tool(self, n: int, rec: dict, made: dict) -> None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/adapt/toolmaker.py::feasible",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "D125: whether Box 4 may make a tool for step n's missing capability (plain code's feasibility check).",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.make_tool_ctx",
+     "signature": "make_tool_ctx(self, n: int) -> dict"
+    }
+   ],
+   "checks": [],
+   "guards": [],
+   "kind": "ai",
+   "numbers": [
+    "AgentResult.input_tokens",
+    "AgentResult.output_tokens",
+    "AgentSpec.max_tokens",
+    "ChatResponse.input_tokens",
+    "ChatResponse.output_tokens",
+    "Episode.n_llm_calls",
+    "Episode.seed",
+    "Episode.total_tokens"
+   ],
+   "prompts": {
+    "tool_writer": "7e26b867a840"
+   },
+   "title": "Tool writer and tool library (D125)"
+  },
+  "facts_hash": "8d7c2595f01ce821",
+  "seed_hash": "58455422af4b27cd",
+  "sentence": "When a stuck step lacks a tool the pool cannot give, one AI call writes a small Python tool; plain code checks it, runs its self-test in the sandbox and only then gives it to the step.",
+  "source": "hand",
+  "what": [
+   "Plain code decides first: the missing capability must name a file type an offline library can make (adapt.yaml tool_writer.libraries: docx, xlsx, pptx, pdf, png, svg, csv, json) and the run must have a code runner (the local toolbox's sandboxed Bash). Anything else goes to the fix proposer.",
+   "An approved library tool for the capability (same name, then same file type) is tried first, only while its code matches the sha256 the user approved, and only after its self-test passes again.",
+   "Else the tool writer replies with a name, a description, its input and a python block with run(args) and self_test(); plain code refuses imports outside the allowed library and a short stdlib list, eval/exec/subprocess/os calls and missing functions, appends its own command-line harness, and runs the self-test through the local toolbox (same gate, sandbox, limits and trace). Two tries; the second sees what was refused or the failed self-test.",
+   "The step's helpers get made:<name>; its requests for the capability count as filled, a file it makes is still owed. A written tool the step then used without an error, in a step no longer stuck, is saved to data/tool_library as unreviewed; python -m scripts.tool_library approve is the user's decision before any later task may use it (the one exception to D117's nothing carries over)."
+  ]
+ },
  "tools": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -14863,6 +15649,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -14890,6 +15677,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
@@ -14908,6 +15696,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/tools/web.py::WebToolError"
@@ -14919,6 +15708,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -15363,7 +16153,7 @@
    "prompts": {},
    "title": "Tool box"
   },
-  "facts_hash": "39e3abc39a5e18ef",
+  "facts_hash": "05d3f7cdb91fad95",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "d05b27c35fe8d109",
   "sentence": "Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search and page reading.",
@@ -15545,7 +16335,7 @@
   ]
  },
  "trace": {
-  "checked_at": "b95399a",
+  "checked_at": "a937618",
   "facts": {
    "anchors": [
     {
@@ -15570,6 +16360,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/trace.py::TraceWriter._write",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -15581,6 +16372,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/checks/calc.py::check",
       "amoeba/checks/xlsx_formulas.py::check",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
@@ -15646,7 +16438,7 @@
    "prompts": {},
    "title": "Every AI call → one trace line"
   },
-  "facts_hash": "447cc380b07e54bc",
+  "facts_hash": "3c441f7aef12bdb7",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0f5f3df261f75ad2",
   "sentence": "Writes one log line per AI call and tool call: who, which model, tokens, reasoning tokens, time, step, and automated safety checks. Nothing enforces a budget.",

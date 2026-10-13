@@ -22,7 +22,8 @@ ROLE_KEYS = {"model", "max_tokens"}
 BOX2_GROUPS = {"planner": "planner", "agent_observer": "observers", "plan_observer": "observers",
                "interpreter": "planner",   # D77: the task interpretation step
                "architect": "planner",     # D87's Architect (removed by D117); kept so old traces still map
-               "fix_proposer": "planner"}  # D117 Stage D: the fix proposer uses the planner's model
+               "fix_proposer": "planner",  # D117 Stage D: the fix proposer uses the planner's model
+               "tool_writer": "planner"}   # D125: the tool writer too
 
 
 @dataclass

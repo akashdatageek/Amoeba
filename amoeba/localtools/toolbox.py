@@ -38,6 +38,7 @@ from amoeba.localtools.skills import card_text, copy_skill, list_skills, sandbox
 from amoeba.pool.match import document_format, rank
 from amoeba.pool.mcp import SourceBook, data_block
 
+MADE_TOOLS = "made_tools"    # D125: tools the tool writer made (code, not a file the team made)
 INPUTS = "sources"            # D107: the workspace folder of read-only input files (fetched pages and data tables)
 
 CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "localtools.yaml"
@@ -479,7 +480,7 @@ class LocalToolbox:
         if self.workspace.is_dir():
             for f in self.workspace.rglob("*"):
                 rel = f.relative_to(self.workspace)
-                if f.is_file() and not f.is_symlink() and rel.parts[0] not in ("skills", INPUTS):   # D107: inputs
+                if f.is_file() and not f.is_symlink() and rel.parts[0] not in ("skills", INPUTS, MADE_TOOLS):   # D107, D125
                     st = f.stat()
                     out[str(rel)] = (st.st_size, st.st_mtime_ns)
         return out
@@ -516,6 +517,23 @@ class LocalToolbox:
                 self.trace.event("input_upload_failed", {"amoeba.box": "localtools", "amoeba.file": rel,
                                                          "amoeba.error": str(e)[:200]})
         return rel
+
+    # box: localtools
+    def put_file(self, rel: str, content: bytes) -> None:
+        """D125: plain code puts a file (a written tool) in the workspace, on the host and, in sandbox mode, in the
+        sandbox's workspace. Only under made_tools/; the file is not counted as made by a step."""
+        if not rel.startswith(f"{MADE_TOOLS}/") or ".." in Path(rel).parts:
+            raise ValueError(f"put_file: only under {MADE_TOOLS}/")
+        p = self.workspace / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(content)
+        if self.box is not None:
+            q = shlex.quote(f"{SANDBOX_WORKSPACE}/{rel}")
+            r = self.box.exec(["bash", "-c", f"mkdir -p {SANDBOX_WORKSPACE}/{MADE_TOOLS} && cat > {q}"],
+                              stdin=content, timeout_s=60)
+            if getattr(r, "exit_code", 0) != 0:
+                raise RuntimeError(f"put_file: exit {r.exit_code}")
+        self._seen = self._snapshot()
 
     # box: localtools
     def save_source(self, rec: dict, web=None) -> str | None:
