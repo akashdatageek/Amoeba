@@ -940,3 +940,12 @@ candidate before the request is left unfilled, and on an equal score a local ite
 tools; plain code reads a lacked item with no tool name and no earlier step as `missing_data`, a cause of its own
 (web tools if the helpers lack them, more turns, then the proposer; a work-around after one fix), never as a capability
 to grant.
+
+**D128, Box 4 names the real cause (Oct 14).** On Claude, 47 of 145 calls came back empty with finish reason
+`content_filter`; each got a repair call (blocked too) and Box 4 called the step's cause "format" or "capability" and
+spent its fixes on edits that could not help. Now a blocked reply is retried once as it was (never stored in the
+response cache), gets no repair call, and in routed mode goes to the next candidate model; a step whose turns were
+blocked has the cause `provider_blocked`, ranked first, whose only fix is more turns once (the refusals come and go),
+after which the task stops and says the service refused the calls; `result.json` counts them (`provider_blocked`).
+A step that ran out of turns is seen as such even when it also lacked something (its lacked line may even say "turn
+budget"), and `**BLOCKED:**` or `**MISSING INPUT:**` in bold is read like the plain mark.

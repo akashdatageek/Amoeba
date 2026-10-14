@@ -12,6 +12,7 @@ in this task and within the limits, re-runs only the stuck step and re-checks it
   checks          rung 1: more retry turns, then a larger input when an input was shortened
   max_turns       rung 1: more turns
   format          rung 1: more turns (D123: the step runs again with turns to make up for the unreadable ones)
+  provider_blocked  D128: rung 1, more turns once (the refusals come and go); then the task stops and says so
   missing_data    D127: the step's helpers get the run's web tools when they lack them (rung 2, a registry grant),
                   else more turns (rung 1)
   capability      rung 2: attach the missing tool or skill from the pool shortlist (pool or local tools must be on;
@@ -116,7 +117,7 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
         out += [f] if f else []
         if not f and not ctx.get("web_missing"):
             notes.append("missing data: the helpers hold the web tools and more turns are at the maximum")
-    elif cause in ("tool_error", "max_turns", "format"):
+    elif cause in ("tool_error", "max_turns", "format", "provider_blocked"):
         f = _option("set_run_option:max_turns", "max_turns", int(opts.get("max_turns", 0)),
                     int(opts.get("max_turns", 0)) + int(lim["more_turns"]), ranges, n)
         out += [f] if f else []

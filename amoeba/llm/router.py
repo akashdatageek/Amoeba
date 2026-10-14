@@ -36,6 +36,7 @@ from typing import Callable
 import yaml
 
 from amoeba.llm.client import ChatResponse, LLMClient, Messages
+from amoeba.llm.cache import is_blocked
 
 MODELS = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
 ROLES = ("interpreter", "planner", "agent_observer", "plan_observer", "worker", "verifier", "action_observer",
@@ -359,18 +360,33 @@ class ModelRouter(LLMClient):
             if any(r.get("status") == 429 for r in resp.retries or []):
                 self.bucket(name).cooldown(min(60.0, max(r.get("wait_s") or 0 for r in resp.retries)))
                 dec["rate_limited"] = sum(r.get("status") == 429 for r in resp.retries)
-            e = self.registry[name]
-            billed_out = resp.output_tokens + (resp.reasoning_tokens or 0)
-            usd = 0.0 if resp.cached else e.usd(resp.input_tokens, billed_out)
-            u = self.usage.setdefault(name, {"calls": 0, "input_tokens": 0, "output_tokens": 0, "usd": 0.0})
-            u["calls"] += 1
-            u["input_tokens"] += resp.input_tokens
-            u["output_tokens"] += billed_out
-            u["usd"] = round(u["usd"] + usd, 8)
-            dec["usd"] = round(usd, 8)
+            others = [n for n in dec["candidates"] if n != name and n not in dec.get("blocked_by", [])]
+            if self.mode == "routed" and others and is_blocked(resp):
+                # D128: the provider blocked this reply; the call goes to the next candidate model (the blocked call
+                # is still counted), never back to the same one within this call
+                self._account(name, resp, dec)
+                dec.setdefault("blocked_by", []).append(name)
+                dec["fallbacks"].append({"from": name, "to": others[0], "reason": "provider_blocked"})
+                name = others[0]
+                dec["chosen"], dec["family"] = name, self.registry[name].family
+                dec["rate_wait_s"] = round(self.bucket(name).acquire(spec.prompt_tokens + (max_tokens or 0)), 2)
+                resp = self.client(name).chat_messages(messages, seed, max_tokens=max_tokens)
+            self._account(name, resp, dec)
             if spec.step is not None and spec.role in ("worker", "summariser"):
-                self.step_family[spec.step] = e.family
+                self.step_family[spec.step] = self.registry[name].family
             return resp, dec
+
+    def _account(self, name: str, resp: ChatResponse, dec: dict) -> None:
+        """The call's tokens and dollars on its model's account (D97)."""
+        e = self.registry[name]
+        billed_out = resp.output_tokens + (resp.reasoning_tokens or 0)
+        usd = 0.0 if resp.cached else e.usd(resp.input_tokens, billed_out)
+        u = self.usage.setdefault(name, {"calls": 0, "input_tokens": 0, "output_tokens": 0, "usd": 0.0})
+        u["calls"] += 1
+        u["input_tokens"] += resp.input_tokens
+        u["output_tokens"] += billed_out
+        u["usd"] = round(u["usd"] + usd, 8)
+        dec["usd"] = round(dec.get("usd", 0.0) + usd, 8)
 
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
         resp, _ = self.call(CallSpec(role="worker", prompt_tokens=estimate_tokens(messages),

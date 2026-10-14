@@ -367,6 +367,7 @@ class RunResult(BaseModel):
     adaptation: dict | None = None    # D117 Stage C --adapt on: fixes tried and their results, tokens, stop
     faults: list[dict] | None = None  # D119 (test-only, --inject-fault): each injected fault; left out when none
     run_guard: dict | None = None     # D122: finish mode / skipped extras / a stop with the answer assembled; left out when none
+    provider_blocked: int | None = None   # D128: calls the model service blocked (content_filter), retries included
     plan_search: dict | None = None   # D120 --plan-search on: the search before planning (Draft.plan_search)
     status: str | None = None    # D111: ok | infra_error | agent_error (D105: no_deliverable); run_status
     routing: dict | None = None  # D97: the router's per-model calls, tokens and USD, and its decision counts

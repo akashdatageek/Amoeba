@@ -241,6 +241,9 @@ LAST_TURN_NOTE = ("THIS IS YOUR LAST TURN. No more tool calls: choose Final Outp
                   "you have found so far, with the [S#] of what supports each fact, and say plainly what you could not "
                   "confirm.")
 UNREADABLE = "unreadable"   # D123: the turn's reply had no readable CurrentStep/Action/ActionInput, even after repair
+PROVIDER_BLOCKED = "provider_blocked"   # D128: the model service blocked the reply (content_filter), even after a retry
+PROVIDER_BLOCKED_NOTE = ("error: the model service returned no reply for this turn (it was blocked by the service's "
+                         "content filter). Continue the step from where it stands.")
 UNREADABLE_NOTE = ("error: your reply could not be read ({why}). Write each section heading (## Thought, "
                    "## CurrentStep, ## Action, ## ActionInput) at the start of its own line.")
 LAST_TURN_AGAIN = ("Your last turn must be Final Output with a written conclusion (not a search query or a tool "
@@ -578,7 +581,8 @@ def unmark(text: str) -> str:
 def blocked_marks(text: str) -> list[str]:
     """D36: the capabilities named in 'BLOCKED: <capability> — ...' lines of a step's output."""
     names = []
-    for m in re.finditer(r"BLOCKED\s*[:：]\s*`?([A-Za-z][\w ./+-]{0,60}?)`?\s*(?:[—–:;,(\n]|-\s|$)", text or ""):
+    for m in re.finditer(r"BLOCKED\s*[:：]\s*`?([A-Za-z][\w ./+-]{0,60}?)`?\s*(?:[—–:;,(\n]|-\s|$)",
+                         unmark(text)):                                  # D128: "**BLOCKED:**" is read too
         name = m.group(1).strip(" .-")
         if name and name.lower() not in names and name.lower() not in ("none", "n/a"):
             names.append(name)
@@ -1269,6 +1273,8 @@ class PlanRunner:
             status, reason = "incomplete", "checks failed: " + ", ".join(failed)
         else:
             status, reason = "done", ""
+        if (gaps or data_gaps) and not finished:      # D128: out of turns as well as lacking something
+            reason += "; max_turns"
         if undeclared:
             reason += "; not declared by the helper: " + ", ".join(undeclared)
         if w.unreadable and not finished:            # D123: turns lost to replies that could not be read
@@ -1325,7 +1331,7 @@ class PlanRunner:
                 self.i.trace.event("claimed_file_missing", {"amoeba.step": n, "amoeba.files": missing})
         # D61 (G6): what went wrong, for rework — a step that only lacked a capability cannot be fixed by a rework
         causes = [c for c, hit in (("capability", bool(gaps)), ("checks", bool(failed)),
-                                   ("max_turns", not finished and not gaps), ("unused_tool", bool(unused)),
+                                   ("max_turns", not finished), ("unused_tool", bool(unused)),   # D128: with gaps too
                                    ("claimed_file_missing", bool(missing))) if hit]
         origins = self.ledger_update(n, prov.pop("figures"))                               # D43
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents_all], "covers": step.covers,
@@ -1857,8 +1863,9 @@ class PlanRunner:
                                                  template)
                 w.contributions.append({"turn": w.turn + 1, "agent": agent.name, "action": act,
                                         "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
-                if act == UNREADABLE:                    # D123: nothing readable to pass on; the helper is told
-                    w.unreadable.append({"agent": agent.name, "turn": w.turn + 1, "why": resp})
+                if act in (UNREADABLE, PROVIDER_BLOCKED):   # D123: nothing readable to pass on; the helper is told
+                    w.unreadable.append({"agent": agent.name, "turn": w.turn + 1, "why": resp,
+                                         "blocked": act == PROVIDER_BLOCKED})               # D128
                     w.completed += f">{agent.name} (reply not readable):\n>Result:\n{resp}\n"
                     continue
                 w.last_message = inp.strip()
@@ -2660,10 +2667,13 @@ class PlanRunner:
         for rec in self.i.trace.spans("chat")[before:]:
             self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                            rec.get("gen_ai.usage.output_tokens", 0))
+        blocked = bool(getattr(e, "blocked", False))         # D128: blocked by the service, not a format slip
         why = f"missing sections {e.missing}"
         self.i.trace.event("unreadable_reply", {"amoeba.box": "plan_step", "amoeba.step": n,
                                                 "gen_ai.agent.name": agent.name, "amoeba.missing": e.missing,
-                                                "amoeba.found": e.found[:8]})
+                                                "amoeba.found": e.found[:8], "amoeba.provider_blocked": blocked})
+        if blocked:
+            return PROVIDER_BLOCKED, "", PROVIDER_BLOCKED_NOTE, None
         return UNREADABLE, "", UNREADABLE_NOTE.format(why=why), None
 
     # ---- D63: the Action Observer (mid-run re-plan) ----------------------------------------------------------------
@@ -3195,7 +3205,7 @@ def missing_data_marks(text: str) -> list[str]:
 # box: step_check
 def missing_input_marks(text: str) -> list[str]:
     """D63: the 'MISSING INPUT: <what>' lines of a step's output."""
-    return [m.group(1).strip() for m in re.finditer(r"MISSING\s+INPUT\s*[:：]\s*(.+)", text or "", re.I)]
+    return [m.group(1).strip() for m in re.finditer(r"MISSING\s+INPUT\s*[:：]\s*(.+)", unmark(text), re.I)]
 
 
 def head_tail(text: str, limit: int) -> str:

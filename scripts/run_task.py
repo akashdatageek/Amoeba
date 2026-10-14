@@ -52,7 +52,7 @@ from amoeba.adapt.config import adapt_config
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
-                 "plan_search"}           # left out of result.json when None (Phase 1 records unchanged)
+                 "plan_search", "provider_blocked"}   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -310,6 +310,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         else None,
         faults=(ep.faults or None) if ep and topology == "plan" else None,              # D119
         run_guard=(ep.run_guard or None) if ep and topology == "plan" else None,        # D122
+        provider_blocked=getattr(trace, "provider_blocked", 0) or None,                # D128
         plan_search=(draft.plan_search if draft else search_rec),                       # D120
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before

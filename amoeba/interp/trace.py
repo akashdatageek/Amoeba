@@ -13,6 +13,7 @@ from typing import Iterator
 from uuid import uuid4
 
 from amoeba.llm.client import ChatResponse, LLMClient, Messages
+from amoeba.llm.cache import is_blocked
 from amoeba.llm.profiles import BOX2_GROUPS
 from amoeba.task.parsers import MissingSections, parse_sections, repair_prompt, require, unglue
 
@@ -25,7 +26,7 @@ EVENT_BOX = {
     "draft_quality": "checks", "quality_gate": "checks", "draft_reused": "handoff", "intake_review": "planner",
     "task_interpretation": "interpret", "interpretation_question": "interpret",                            # D77
     "subject_questions_routed": "interpret", "assumption_stated": "interpret",
-    "truncated": "client", "rate_limited": "client", "cache_miss": "client", "api_error": "client",
+    "truncated": "client", "provider_blocked": "client", "rate_limited": "client", "cache_miss": "client", "api_error": "client",
     "plan_graph": "plan_graph", "dependency_relinked": "plan_graph", "step_input": "plan_step",
     "input_truncated": "plan_step", "collab_round": "plan_step", "review_unreadable": "plan_step",
     "step_done": "step_check", "check_retry": "step_check", "rework": "step_check", "reverify": "step_check",
@@ -62,6 +63,7 @@ class TraceWriter:
         self.log_content = log_content   # also write each call's messages and reply (gen_ai.input/output.messages)
         self.episode_id = episode_id or str(uuid4())
         self.records: list[dict] = []
+        self.provider_blocked = 0              # D128: calls the provider blocked (content_filter), retries included
         self._boxes: list[str | None] = []     # the box of each open span, innermost last (D55)
         self._fh = None
         if self.path:
@@ -161,7 +163,8 @@ class TracedLLM:
     # box: trace
     def chat_messages(self, messages: Messages, seed: int = 0, *, agent_id: str | None = None,
                       agent_name: str | None = None, max_tokens: int | None = None, role: str | None = None,
-                      step: int | None = None, checks=None, needs=(), _retry: bool = False) -> ChatResponse:
+                      step: int | None = None, checks=None, needs=(), _retry: bool = False,
+                      _blocked_retry: bool = False) -> ChatResponse:
         """role: the call's role group (D54; Box 2 callers are known by name). A profile's RoleRouter picks the
         group's model and, when the profile sets one, its reply limit. D97: with a ModelRouter every call states a
         CallSpec (role, step, size, needs, data class, the steps it checks) and the router picks the model."""
@@ -227,6 +230,15 @@ class TracedLLM:
                                                "amoeba.usage.reasoning_tokens": resp.reasoning_tokens or None,
                                                "amoeba.retry": bool(max_tokens) and not _retry})
         self.listener.on_llm_call(agent_id, resp)
+        if is_blocked(resp):           # D128: the provider refused the call; one plain retry, then the caller sees it
+            self.trace.provider_blocked += 1
+            self.trace.event("provider_blocked", {"gen_ai.agent.name": agent_name, "gen_ai.agent.id": agent_id,
+                                                  "gen_ai.response.finish_reasons": [resp.finish_reason],
+                                                  "amoeba.step": step, "amoeba.retry": not _blocked_retry})
+            if not _blocked_retry:
+                return self.chat_messages(messages, seed, agent_id=agent_id, agent_name=agent_name,
+                                          max_tokens=max_tokens, role=role, step=step, checks=checks, needs=needs,
+                                          _retry=_retry, _blocked_retry=True)
         if resp.finish_reason == "length" and max_tokens and not _retry:
             # D27: hidden reasoning can use up the limit; ask once more with double room, then accept whatever comes
             return self.chat_messages(messages, seed, agent_id=agent_id, agent_name=agent_name,
@@ -248,11 +260,17 @@ class TracedLLM:
     # box: split
     def chat_sections(self, system: str, user: str, keys: list[str], seed: int = 0, **ids
                       ) -> tuple[str, dict[str, str]]:
-        """AutoAgents _aask_v1: parse '## Section' blocks; a missing one gets one LLM repair call, then raises."""
-        raw = self.chat(system, user, seed, **ids).content
+        """AutoAgents _aask_v1: parse '## Section' blocks; a missing one gets one LLM repair call, then raises.
+        D128: a reply the provider blocked gets no repair call (it would be blocked too); MissingSections carries
+        blocked=True so the caller counts the turn as blocked, not as a format slip."""
+        resp = self.chat(system, user, seed, **ids)
+        raw = resp.content
         try:
             return raw, self._sections(raw, keys, ids)
         except MissingSections as e:
+            if is_blocked(resp):
+                e.raw, e.blocked = raw, True
+                raise
             raw2 = self.chat(system, repair_prompt(user, raw, keys, str(e)), seed, **ids).content
             try:
                 return raw2, self._sections(raw2, keys, ids)

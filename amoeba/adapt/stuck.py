@@ -11,6 +11,8 @@ meta, its tool calls, the files it made, and the attempt before it when the step
                        or an unfilled request for one of the step's roles)
   missing_data         D127: a fact or figure the step had to find itself was not found (a MISSING DATA line, or a
                        lacked item that names no tool and no earlier step): a research gap, not a missing tool
+  provider_blocked     D128: the model service blocked a helper's replies (finish reason content_filter, even after
+                       one plain retry) and the step did not finish; no edit of the team can fix that
   unreadable_reply     D123: a helper's reply could not be read (a required section missing even after the unglue and
                        the repair call) and the step did not finish: the turns went to replies plain code could not use
   no_file_change       the step owes a file (claimed but missing, a file type in its output line with none made, or
@@ -29,7 +31,8 @@ from amoeba.adapt.config import adapt_config
 
 SIGNAL_CAUSE = {"missing_input": "missing_input", "capability_unfilled": "capability", "repeated_error": "tool_error",
                 "max_turns": "max_turns", "checks_after_retry": "checks", "no_file_change": "claimed_file_missing",
-                "unreadable_reply": "format", "missing_data": "missing_data"}
+                "unreadable_reply": "format", "missing_data": "missing_data",
+                "provider_blocked": "provider_blocked"}
 # D117 Stage C: a lacked item is a missing input (data an earlier step should have given) unless it names a tool
 TOOL_WORDS = re.compile(r"tool|\bapi\b|_api|reader|interpreter|executor|calculator|\bcalc|access|generator|analy[sz]er|"
                         r"\bengine\b|_engine|service|search|network|browser|capability|skill|\blocal\b|local:|script|"
@@ -95,6 +98,15 @@ def _words(text: str) -> set[str]:
 
 
 # box: stuck
+def out_of_turns_item(item: str) -> bool:
+    """D128: a lacked label that names the helper's own turns or time (adapt.yaml diagnoser.out_of_turns_phrases):
+    the step ran out of turns; it is neither a tool nor data."""
+    label = " ".join((item or "").partition(" — ")[0].lower().replace("-", " ").split())
+    phrases = (adapt_config().get("diagnoser") or {}).get("out_of_turns_phrases") or []
+    return any(p in label for p in phrases)
+
+
+# box: stuck
 def is_tool_name(label: str) -> bool:
     """D127: whether a lacked label names a tool or capability: a tool word, or a standard capability name
     (aliases.yaml), and no content word at its end ("email body" is data)."""
@@ -154,15 +166,25 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
         how = "after the retry turn" if meta.get("retried") or meta.get("refine") else "and no retry turn was possible"
         sig.append({"signal": "checks_after_retry",
                     "evidence": [f"check {c['name']} still fails {how}: {c.get('detail', '')[:140]}" for c in failed]})
-    bad = meta.get("unreadable_turns") or []
+    turns = meta.get("unreadable_turns") or []
+    blocked = [b for b in turns if b.get("blocked")]
+    bad = [b for b in turns if not b.get("blocked")]
+    if blocked and not meta.get("finished", False):   # D128: the service refused the replies; not a format slip
+        sig.append({"signal": "provider_blocked",
+                    "evidence": [f"{len(blocked)} of {meta.get('turns') or '?'} turns: the model service blocked the "
+                                 f"reply (content filter), each after one retry"]
+                    + [f"{b.get('agent', '?')}, turn {b.get('turn')}: blocked" for b in blocked][:4]})
     if bad and not meta.get("finished", False):    # D123: replies plain code could not read cost the step its end
         sig.append({"signal": "unreadable_reply",
                     "evidence": [f"{b.get('agent', '?')}, turn {b.get('turn')}: reply not readable — "
                                  f"{(b.get('why') or '')[:140]}" for b in bad]})
+    lacked_all = list(dict.fromkeys([*(meta.get("blocked") or []), *(meta.get("contract_missing") or [])]))
+    turns_out = [x for x in lacked_all if out_of_turns_item(x)]
+    out_of_turns = out_of_turns or bool(turns_out)     # D128: a lacked line that is the helper's own turns
     if out_of_turns:
         sig.append({"signal": "max_turns", "evidence": [f"turns used: {meta.get('turns')}; no Final Output from "
                                                         f"every helper ({reason[:120]})"]})
-    lacked = list(dict.fromkeys([*(meta.get("blocked") or []), *(meta.get("contract_missing") or [])]))
+    lacked = [x for x in lacked_all if x not in turns_out]
     kinds = [classify_lacked(x, meta.get("step"), plan, meta.get("depends_on")) for x in lacked]
     inputs = [k for k in kinds if k["kind"] == "missing_input"]
     inputs += [{"item": x, "kind": "missing_input", "upstream": list(meta.get("depends_on") or [])}
