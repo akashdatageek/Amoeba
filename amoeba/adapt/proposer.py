@@ -216,7 +216,8 @@ def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[st
     for where, text, lim in e.texts():
         if len(text) > lim:
             out.append(f"size: {where}: {len(text)} characters > {lim}")
-        hits = [w for w in cfg["denylist"] if w in text.lower()]
+        low = " ".join(text.lower().split())        # D129: phrases matched at a word start, not inside a word
+        hits = [w for w in cfg["denylist"] if re.search(r"(?<![a-z0-9])" + re.escape(w), low)]
         if hits:
             out.append(f"wording: {where}: denied wording {hits}")
     if e.op in ("add_role_rule", "grant_tool") and p["role"] not in roles_of_step:

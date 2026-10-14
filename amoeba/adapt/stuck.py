@@ -283,7 +283,10 @@ def diagnose(signals: list[dict], config: dict | None = None) -> dict:
     cause = next((c for c in order if c in named), named[0] if named else None)
     evidence = [e for s in signals for e in s["evidence"]][:int(d.get("max_evidence", MAX_EVIDENCE))]
     allowed = list((d.get("allowed_edits") or {}).get(cause, [])) if cause else []
-    out = {"cause": cause, "signals": [s["signal"] for s in signals], "allowed_edits": allowed, "evidence": evidence}
+    out = {"cause": cause, "signals": [s["signal"] for s in signals], "allowed_edits": allowed, "evidence": evidence,
+           # D129: every cause a signal names, in the table's order (the first is `cause`); the code fixes of the
+           # others are tried after the first cause's, before the fix proposer
+           "causes": [c for c in order if c in named] + [c for c in dict.fromkeys(named) if c not in order]}
     for s in signals:
         if s["signal"] == "missing_input":
             out["upstream"], out["missing"] = s["upstream"], s["items"]

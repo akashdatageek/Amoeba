@@ -14,15 +14,16 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 
+from amoeba.adapt.config import adapt_config
 from amoeba.adapt.evidence import EvidenceLog
 from amoeba.adapt.faults import Faults
 from amoeba.adapt.toolmaker import (PREFIX as MADE, ToolLibrary, call_tool, check_code, feasible, install,
                                      parse_tool, self_test as tool_self_test, tool_text, tw_config)
-from amoeba.adapt.fixes import POOL_OFF, candidates, fix_key, limits as fix_limits
+from amoeba.adapt.fixes import POOL_OFF, all_candidates, fix_key, limits as fix_limits, token_cap
 from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
 from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, open_requests, step_signals, waived_view
-from amoeba.capabilities import normalise
+from amoeba.capabilities import normalise, snake
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.citecheck import mislabelled_citations
@@ -633,6 +634,7 @@ class PlanRunner:
         self.step_opts: dict[int, dict] = {}              # D117 Stage C: run options a fix changed, per step
         self.capped: dict[int, set] = {}                  # D117 Stage C: step -> the inputs shortened for it
         self.fixes: list[dict] = []                       # D117 Stage C: every fix tried in this task, in order
+        self.fix_epoch: dict[int, int] = {}               # D129: step made by a split / re-plan -> fixes before it
         self.fix_keys: set[str] = set()                   # a fix is never tried twice
         self.fix_notes: set[tuple] = set()                # (step, note) of rungs skipped, logged once
         self.upstream_rerun: set[int] = set()             # steps re-run once for a missing input
@@ -1937,19 +1939,22 @@ class PlanRunner:
         if not d:
             return None
         lim, why = fix_limits(), ""
+        run_cap = getattr(getattr(self.i.trace, "limits", None), "max_tokens", None)
+        cap_tokens = token_cap(lim, run_cap)                       # D129: a share of the run's cap when larger
+        per_step = int(lim["max_fixes_per_substep"] if n in self.fix_epoch else lim["max_fixes_per_step"])
         while d:
             usd = self.adapt_usd()
-            if sum(f["step"] == n for f in self.fixes) >= int(lim["max_fixes_per_step"]):
-                why = f"limit: {lim['max_fixes_per_step']} fixes per step"
+            if len(self.step_fixes(n)) >= per_step:
+                why = f"limit: {per_step} fixes per " + ("sub-step" if n in self.fix_epoch else "step")
             elif len(self.fixes) >= int(lim["max_fixes_per_task"]):
                 why = f"limit: {lim['max_fixes_per_task']} fixes per task"
-            elif self.adapt_tokens >= int(lim["max_tokens_per_task"]):
-                why = f"limit: adaptation tokens {self.adapt_tokens:,} of {int(lim['max_tokens_per_task']):,}"
+            elif self.adapt_tokens >= cap_tokens:
+                why = f"limit: adaptation tokens {self.adapt_tokens:,} of {cap_tokens:,}"
             elif usd is not None and usd >= float(lim["max_usd_per_task"]):
                 why = f"limit: adaptation cost ${usd:.2f} of ${float(lim['max_usd_per_task']):.2f}"
             if why:
                 break
-            cands, notes = candidates(d, n, self.fix_ctx(n))
+            cands, notes = all_candidates(d, n, self.fix_ctx(n))      # D129: the other causes' code fixes too
             for note in notes:
                 if (n, note) not in self.fix_notes:
                     self.fix_notes.add((n, note))
@@ -1959,6 +1964,8 @@ class PlanRunner:
             if fix is None:                               # Stage D: the fix proposer is the last rung
                 done = self.propose_fix(n, wave, d) if n not in self.proposer_gave_up else "none"
                 if done == "replanned":
+                    for k in self.fixes[-1].get("replaced_by") or []:      # D129: the new steps count their own fixes
+                        self.fix_epoch[k] = len(self.fixes)
                     self.ep.adaptation = self.adapt_summary()
                     return "replanned"
                 if done == "none":
@@ -1990,9 +1997,30 @@ class PlanRunner:
                          "max_input_chars": self.so(n, "max_input_chars")},
                 "capped": bool(self.capped.get(n)), "stock": getattr(self.i, "stock", None) is not None,
                 "upstream_rerun": set(self.upstream_rerun), "attached": self.attached_ids.get(n, []),
+                "unfillable": self.unfillable(n),                       # D129
                 # D127: web tools this run has that the step's helpers do not hold (a missing-data fix)
                 "web_missing": sorted({t for t in WEB_TOOLS if t in self.i.tools for a in agents if t not in a.tools}),
                 **self.make_tool_ctx(n)}
+
+    # box: fixes
+    def step_fixes(self, n: int) -> list[dict]:
+        """D129: the fixes tried for step n since its current version (a step made by a split or a re-plan does not
+        inherit the fixes of the step it replaced)."""
+        return [f for f in self.fixes[self.fix_epoch.get(n, 0):] if f["step"] == n]
+
+    # box: fixes
+    def unfillable(self, n: int) -> list[str]:
+        """D129: capabilities step n lacks that this run cannot supply: a grant for them found nothing in the pool or
+        the local tools, and the tool writer cannot make them (no offline library or no code runner). Box 4 then goes
+        straight to the proposer, whose edits are limited to working without them."""
+        d = (self.artifacts.get(n) or {}).get("meta", {}).get("stuck") or {}
+        if d.get("cause") != "capability" or self.make_tool_ctx(n).get("make_tool"):
+            return []
+        none = {snake(normalise(x)[0]) for f in self.step_fixes(n) if f["kind"] == "grant_tool"
+                and str(f.get("result", "")).startswith("failed: the pool shortlist had nothing to attach")
+                for x in f.get("params", {}).get("items") or []}
+        return sorted(x.partition(" — ")[0].strip() for x in d.get("lacked") or []
+                      if snake(normalise(x.partition(" — ")[0].strip())[0]) in none)
 
     # box: toolmaker
     def make_tool_ctx(self, n: int) -> dict:
@@ -2009,7 +2037,8 @@ class PlanRunner:
         record what happened: the fix, its tokens, the status after and why it failed."""
         self.fix_keys.add(fix_key(fix))
         t0, s0 = self.i.trace.total_tokens, len(self.i.trace.spans("chat"))
-        rec = {"step": n, "try": sum(f["step"] == n for f in self.fixes) + 1, "cause": d["cause"], "kind": fix["kind"],
+        rec = {"step": n, "try": len(self.step_fixes(n)) + 1, "cause": fix.get("for_cause") or d["cause"],
+               "kind": fix["kind"],
                "rung": fix["rung"], "target": fix["target"], "params": fix.get("params", {}),
                "evidence": d["evidence"][:4]}
         self.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.fix": fix["kind"],
@@ -2354,8 +2383,10 @@ class PlanRunner:
         """The last rung for a stuck step: one fix-proposer call (one retry on an invalid reply), plain code's checks,
         then the edit is applied. "applied" (step n was re-run), "replanned" (the plan changed; its steps run next)
         or "none" (no edit allowed, or no valid reply twice: recorded in proposer_gave_up)."""
-        tried_here = {f["kind"] for f in self.fixes if f["step"] == n}
+        tried_here = {f["kind"] for f in self.step_fixes(n)}
+        gone = self.unfillable(n)                     # D129: nothing can supply it: only edits that work without it
         allowed = [a for a in d.get("allowed_edits") or [] if a in D_OPS
+                   and not (gone and a in ("grant_tool", "add_helper_role"))
                    and not (a == "work_around" and d["cause"] == "capability"
                             and not tried_here & set(WORKAROUND_AFTER))                    # user rule (Oct 6)
                    and not (a == "work_around" and d["cause"] == "missing_data" and not tried_here)   # D127
@@ -2383,7 +2414,7 @@ class PlanRunner:
             if not problems:
                 break
             refused, reply = problems, None
-        rec = {"step": n, "try": sum(f["step"] == n for f in self.fixes) + 1, "cause": d["cause"],
+        rec = {"step": n, "try": len(self.step_fixes(n)) + 1, "cause": d["cause"],
                "kind": reply.edit.op if reply else "fix_proposer", "rung": "D", "target": n,
                "params": reply.edit.params if reply else {}, "reason": reply.reason if reply else "",
                "evidence": d["evidence"][:4], "proposer": replies}
@@ -2524,8 +2555,11 @@ class PlanRunner:
                   for c in m.get("checks") or []][:10]
         errors = [f"- {c.get('agent', '?')} {c.get('tool')}: {str(c.get('result') or '')[:150]}"
                   for c in m.get("tool_calls") or [] if not c.get("ok", True)][-5:]
+        gone = self.unfillable(n)
         attempt = "\n".join([f"status: {m['status']} ({m['status_reason'][:300]})", f"turns used: {m.get('turns')}",
                              *(["lacked: " + ", ".join(m["blocked"])] if m.get("blocked") else []),
+                             *([f"no tool for {', '.join(gone)} exists in this run and none can be written: the step "
+                                "must finish without it (state what is not covered)"] if gone else []),   # D129
                              *(["failed tool calls:"] + errors if errors else []), *(["checks:"] + checks if checks else [])])
         team = "\n".join(f"- {a.name}: {(a.description or a.goal or '').strip()[:120]}" for a in self.agents.values())
         skills = sorted({p["name"] for a in self.agents.values() for p in a.pool if p["kind"] == "skill"}
@@ -2542,7 +2576,9 @@ class PlanRunner:
                      + "\nReply again with one valid edit.")
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "fix_proposer", "amoeba.box": "proposer"}):
             resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
-                                            agent_name="fix_proposer", max_tokens=2048, role="planner")
+                                            agent_name="fix_proposer", role="planner",
+                                            max_tokens=int((adapt_config().get("proposer") or {}).get("max_tokens",
+                                                                                                     8192)))   # D129
         self.ep.total_tokens += resp.input_tokens + resp.output_tokens
         self.ep.n_llm_calls += 1
         return resp.content or ""

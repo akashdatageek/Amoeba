@@ -5,13 +5,21 @@ limits:                       # checks the fix proposer's edit must pass (amoeba
   max_text_chars: 300         # a rule, a goal, a done_when or a limitation sentence the proposer writes
   # No text the proposer writes may tell the team to skip checks, citations, the sandbox or the contract.
   # Matched case-insensitively as a substring.
-  denylist: ["skip", "ignore", "without verif", "no citation", "no source", "disable", "bypass", "turn off",
-             "no sandbox", "outside the sandbox", "no check", "don't check", "do not check", "unverified is fine"]
+  # D129: phrases, matched at a word start (a bare "skip" refused harmless text such as "skip the paged endpoint")
+  denylist: ["skip the check", "skip check", "skip verif", "skip the verif", "skip citation", "skip the citation",
+             "skip source", "skip the source", "skip the sandbox", "skip the contract", "skip validation",
+             "skip the test", "skip test", "ignore the check", "ignore check", "ignore the rule", "ignore instruction",
+             "ignore previous", "ignore the contract", "without verif", "no citation", "no source", "disable",
+             "bypass", "turn off", "no sandbox", "outside the sandbox", "no check", "don't check", "do not check",
+             "unverified is fine"]
   # The values a code fix may set a step's run option to (amoeba/adapt/fixes.py, rung 1)
   run_options:
     max_turns: {min: 3, max: 8}
     check_retry_turns: {min: 1, max: 3}
     max_input_chars: {min: 3000, max: 20000}           # characters of one input a step is shown (default 6000)
+
+proposer:                     # D129: the fix proposer's reply room (models that think first need more; a reply cut
+  max_tokens: 8192            # off is asked once more with twice the room, D27)
 
 diagnoser:                    # the stuck causes and the edits each allows (amoeba/adapt/stuck.py)
   # tie order when two causes are found at once: missing_input first (a mixed step is fixed for it, then re-checked)
@@ -34,12 +42,13 @@ diagnoser:                    # the stuck causes and the edits each allows (amoe
     # gap stated is a work_around)
     missing_data: [grant_tool, "set_run_option:max_turns", add_role_rule, work_around, split_step, replan_remaining]
     tool_error: [add_role_rule, grant_tool, "set_run_option:max_turns", add_helper_role, replan_remaining]
+    # D129: replan_remaining is the proposer's last edit for every cause but provider_blocked
     checks: ["set_run_option:check_retry_turns", "set_run_option:max_input_chars", add_role_rule, split_step,
-             add_helper_role]
-    max_turns: ["set_run_option:max_turns", split_step, add_role_rule]
+             add_helper_role, replan_remaining]
+    max_turns: ["set_run_option:max_turns", split_step, add_role_rule, replan_remaining]
     # D123: a reply plain code could not read (a section heading missing even after the unglue and the repair call)
-    format: ["set_run_option:max_turns", add_role_rule, split_step]
-    claimed_file_missing: [add_role_rule, grant_tool, split_step]
+    format: ["set_run_option:max_turns", add_role_rule, split_step, replan_remaining]
+    claimed_file_missing: [add_role_rule, grant_tool, split_step, replan_remaining]
   max_evidence: 8             # evidence lines kept per diagnosis
   # D128: a lacked line that names the helper's own turns is running out of turns (signal max_turns), not a tool
   out_of_turns_phrases: [turn budget, turns budget, turn limit, turns limit, out of turns, ran out of turns,
@@ -73,6 +82,8 @@ adapt:                        # D117 Stage C: in-task code fixes (--adapt on); a
   more_retry_turns: 1         # rung 1: retry turns added (capped by check_retry_turns)
   input_factor: 2             # rung 1: a shortened input's limit is multiplied by this (capped by max_input_chars)
   max_added_helpers: 2        # D117 D (user): helpers the fix proposer may add (add_helper_role) in one task
+  max_fixes_per_substep: 2    # D129: a step made by a split or a re-plan starts its own count (it used to inherit)
+  tokens_share_of_run_cap: 0.25   # D129: with --max-tokens-per-run, the fixes may use this share of it if larger
   stop_when_exhausted: true   # D117 D: the code fixes, then the fix proposer; none recovers the step → the task stops with a report
 
 # D95, kept by D117: where the hash-chained event log is copied off the container. The log itself is each run's

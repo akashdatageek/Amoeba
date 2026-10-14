@@ -949,3 +949,14 @@ blocked has the cause `provider_blocked`, ranked first, whose only fix is more t
 after which the task stops and says the service refused the calls; `result.json` counts them (`provider_blocked`).
 A step that ran out of turns is seen as such even when it also lacked something (its lacked line may even say "turn
 budget"), and `**BLOCKED:**` or `**MISSING INPUT:**` in bold is read like the plain mark.
+
+**D129, Box 4's fix order and limits (Oct 14).** In the same runs Box 4 tried 30 fixes and recovered nothing: reworded
+grants for one capability used up a step's three fixes, a split step inherited its parent's count, no rung knew that
+nothing could supply a capability, and one re-run on Sonnet used the whole 200k allowance. Now a grant's items are
+compared by standard name, so a reworded grant is the same grant; when a grant found nothing and the tool writer cannot
+make the item, the capability is unfillable in this run and the proposer is asked only for edits that work without it
+(work_around, split, re-plan); the code fixes of every cause the signals name are tried before the proposer (a step
+that lacked a tool and ran out of turns gets more turns); a step made by a split or a re-plan counts its own fixes
+(at most two); the allowance is the larger of 200k tokens and a quarter of `--max-tokens-per-run`; the proposer has
+8,192 tokens of reply room; its wording check reads phrases at a word start ("skip the paged endpoint" passes, "skip
+the checks" does not); and `replan_remaining` is its last edit for every cause but `provider_blocked`.
