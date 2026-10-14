@@ -22,11 +22,11 @@ from amoeba.adapt.toolmaker import (PREFIX as MADE, ToolLibrary, call_tool, chec
 from amoeba.adapt.fixes import POOL_OFF, all_candidates, fix_key, limits as fix_limits, token_cap
 from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
-from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, open_requests, step_signals, waived_view
+from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, norm_error, open_requests, step_signals, waived_view
 from amoeba.capabilities import normalise, snake
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
-from amoeba.interp.citecheck import mislabelled_citations
+from amoeba.interp.citecheck import mislabelled_citations, relabel_citations
 from amoeba.interp.dates import undated_figures
 from amoeba.task.deliverables import final_findings
 from amoeba.interp.disputes import disputed_figures, disputes_text, replace_figure, settle
@@ -1290,9 +1290,15 @@ class PlanRunner:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "unverified check: PASS with no re-checking tool call on "
                                                    + self.checkable(n)) if x)
-        mislabelled = mislabelled_citations(text, self.source_texts(), self.citation_exempt(),     # D74
-                                            computed_values(self.computed_results(w)),
-                                            arithmetic=self.opt.cite_arithmetic == "on")   # D104
+        cite = lambda t: mislabelled_citations(t, self.source_texts(), self.citation_exempt(),     # D74
+                                               computed_values(self.computed_results(w)),
+                                               arithmetic=self.opt.cite_arithmetic == "on")   # D104
+        mislabelled, relabelled = cite(text), []
+        if mislabelled:                               # D131: a tag that names the wrong source is corrected by code
+            text, relabelled = relabel_citations(text, mislabelled)
+            if relabelled:
+                mislabelled = cite(text)
+                self.i.trace.event("citation_relabelled", {"amoeba.step": n, "amoeba.relabelled": relabelled[:10]})
         if mislabelled:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "mislabelled citation: " + "; ".join(
@@ -1347,6 +1353,7 @@ class PlanRunner:
                 "checks": checks, "retried": retried, "refine": refine,
                 "unverified_tags_removed": removed,                                # D66
                 "mislabelled_citations": mislabelled,                              # D74
+                "citations_relabelled": relabelled,                                # D131
                 "refine_reason": refine["reason"] if refine else "",
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
                 "stale": False, "stale_because": [],
@@ -1881,6 +1888,7 @@ class PlanRunner:
                     w.tool_results.append(resp)
                     w.calls.append({"agent_id": agent.agent_id, "agent": agent.name, "tool": act, "ok": tool_ok(resp),
                                     "input": inp.strip()[:200], "result": re.sub(r"\s+", " ", resp or "").strip()[:300]})
+                    resp = self.same_error_hint(agent, act, w, resp)                  # D131
                     w.completed += f">{agent.name} ({act}):\n{inp.strip()}\n>Result:\n{resp.strip()}\n"
                 elif FINAL_OUTPUT in act:
                     w.done[agent.agent_id] = inp.strip()
@@ -2692,6 +2700,23 @@ class PlanRunner:
             resp, gap = (injected, None) if injected is not None else \
                 self.i._dispatch(agent, act, inp, step.index, self.ep)
         return act, inp, resp, gap
+
+    # box: plan_step
+    def same_error_hint(self, agent: AgentSpec, tool: str, w: "_Work", resp: str) -> str:
+        """D131: a tool call that fails with the same error as this helper's last call of that tool gets, with its
+        result, what the tool takes (its description) and the other tools the helper holds, so the third call is not
+        the same mistake. Plain code; the helper decides."""
+        mine = [c for c in w.calls if c["agent"] == agent.name and c["tool"] == tool]
+        if len(mine) < 2 or mine[-1]["ok"] or mine[-2]["ok"] or norm_error(mine[-1]["result"]) != norm_error(
+                mine[-2]["result"]):
+            return resp
+        desc = self.i.tools.descriptions().get(tool, "") if hasattr(self.i.tools, "descriptions") else ""
+        others = [t for t in agent.tools if t != tool][:8]
+        self.i.trace.event("repeated_tool_error", {"gen_ai.agent.name": agent.name, "gen_ai.tool.name": tool,
+                                                   "amoeba.step": self.local.step if self.local else None})
+        return (f"{resp}\nNote: this is the same error as your previous {tool} call. {tool} takes: "
+                f"{desc[:200] or 'see its description'}. Change the input, or use another tool you have"
+                + (f" ({', '.join(others)})" if others else "") + ".")
 
     # box: plan_step
     def unreadable_turn(self, agent: AgentSpec, n: int, e: MissingSections, before: int

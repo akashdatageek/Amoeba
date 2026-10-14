@@ -42,7 +42,7 @@ EVENT_BOX = {
     "tool_error": "tools", "tool_limit": "tools", "pool_call": "tools",
     "pool_unavailable": "toolbox", "pool_match": "toolbox", "pool_vet": "toolbox", "pool_pinned": "toolbox",
     "pool_connect_failed": "toolbox", "pool_summary": "toolbox", "pool_pick_reused": "toolbox",   # D70
-    "pool_fallthrough": "toolbox",                                                                    # D127
+    "pool_fallthrough": "toolbox", "citation_relabelled": "provenance", "repeated_tool_error": "plan_step",   # D131                                                                    # D127
     "replan_trigger": "action_obs", "replan_decision": "action_obs", "replan_validated": "action_obs",   # D63
     "plan_version": "action_obs", "requirement_status": "action_obs",
 }

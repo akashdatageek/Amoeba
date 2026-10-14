@@ -63,6 +63,21 @@ def guard_config() -> dict:
     return adapt_config().get("run_guard") or {}
 
 
+# box: runresult
+def planned_model(llm) -> str | None:
+    """D131: the model a real run's calls go to, for team.yaml (written before any call): a profile that limits the
+    router to one registry entry → that entry's model; a plain or cached client → its model; a mock → None (the
+    envelope's default stays)."""
+    from amoeba.llm.cache import CachedLLM
+    from amoeba.llm.router import ModelRouter
+    if isinstance(llm, ModelRouter):
+        names = [n for n in (llm.profile_allowed or llm.allowed or []) if n in llm.registry]
+        return llm.registry[names[0]].model if len(names) == 1 else None
+    if isinstance(llm, (OpenAICompatibleClient, CachedLLM)):
+        return getattr(llm, "model", None) or None
+    return None
+
+
 # box: ov_leave, capreq, runresult
 def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools: ToolRegistry,
             runs_dir: str | Path, seed: int = 0, log_content: bool = False, draft_prompts: str = "d19",
@@ -226,6 +241,10 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         # D61: what became of each request, for the step contract (an unfilled one is a capability the helper lacks)
         cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical,
                                             "status": q.status, "reason": q.reason} for q in requests]
+        label = planned_model(llm)                        # D131: the model the calls will go to, not the default
+        if label:
+            for a in cfg.agents.values():
+                a.model = label
         dump_yaml(cfg, run_dir / "team.yaml")
         restock = (lambda reqs, c, reg, **kw: stock_toolbox(reqs, c, reg, llm, trace, pool, seed, local=box,
                                                            restock=True, picks=None if kw else picks, **kw)) \
@@ -559,7 +578,8 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
         client = OpenAICompatibleClient(base_url=e.base_url, api_key=key, model=e.model, max_tokens=2048,
                                         max_rate_retries=args.max_rate_retries, min_seconds_between_calls=0.0,
                                         merge_system=e.merge_system if args.merge_system is None else args.merge_system,
-                                        reasoning_effort=effort or e.reasoning_effort, temperature=e.temperature)
+                                        reasoning_effort=effort or e.reasoning_effort, temperature=e.temperature,
+                                        request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
         return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
             else client
     allowed_arg = getattr(args, "allowed_models", None)
@@ -612,7 +632,8 @@ def build_llm(args: argparse.Namespace) -> LLMClient:
         client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=m,
                                         max_tokens=profile.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
                                         min_seconds_between_calls=args.min_seconds_between_calls,
-                                        merge_system=merge, reasoning_effort=effort, temperature=profile.temperature)
+                                        merge_system=merge, reasoning_effort=effort, temperature=profile.temperature,
+                                        request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
         return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
             else client
     # a reply limit given on the command line wins over the profile's for that group (D27 flags)
@@ -737,6 +758,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "limits of adapt.yaml `adapt`; when none recovers the step the task stops with adapt_report.md")
     p.add_argument("--inject-fault", action="append", default=[], metavar="CAUSE:STEP[:N]",
                    help=argparse.SUPPRESS)   # D119: test-only, refused unless AMOEBA_TEST_FAULTS=1
+    p.add_argument("--request-timeout-s", type=float, default=600.0,
+                   help="D131: seconds one model call may take before it is ended and retried (with half the reply "
+                        "room); 0 = no limit")
     p.add_argument("--replan", choices=["on", "off"], default="off",
                    help="plan: the Action Observer (D63) — after a wave in which a step lacked a capability, a verify "
                         "step still failed, a step reported a missing input or the team got a tool the plan never "

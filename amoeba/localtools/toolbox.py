@@ -150,6 +150,21 @@ def as_python_command(src: str) -> str:
     return f"python3 - <<'{delim}'\n{src}\n{delim}"
 
 
+# D131: workspace paths helpers write from habit; each means the run's own workspace
+WORKSPACE_ALIASES = ("/workspace", "/mnt/data", "/mnt/workspace", "/home/user/workspace")
+
+
+# box: localtools
+def alias_paths(text: str, workspace: str) -> str:
+    """D131: an absolute path under a habitual workspace root ("/workspace/sources/x.csv") is rewritten to the run's
+    workspace, so the gate does not refuse a path that means the workspace; any other path is left for the gate."""
+    for root in WORKSPACE_ALIASES:
+        if root == workspace:
+            continue
+        text = re.sub(rf"(?<![\w./-]){re.escape(root)}(?=/|\b|$)", workspace, text)
+    return text
+
+
 # box: localtools
 def alias_words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", (text or "").lower()))
@@ -413,6 +428,8 @@ class LocalToolbox:
         if boxed and self.box.expired():               # D96: the run's time limit
             return self.refuse(tool, "run_time_cap", f"{self.box.cfg['run_timeout_s']} s per run", what)
         ws = str(self.workspace.resolve())
+        args = {k: (alias_paths(v, SANDBOX_WORKSPACE if boxed else ws) if isinstance(v, str) else v)
+                for k, v in args.items()}                  # D131: "/workspace/…" is the run's workspace
         if tool == "Bash":
             command = str(args.get("command", ""))
             screened = command.replace(SANDBOX_WORKSPACE, ws) if boxed else command

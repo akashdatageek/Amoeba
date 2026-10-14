@@ -73,10 +73,11 @@ def test_a_plan_step_with_a_mislabelled_citation_is_partial_and_named_in_limitat
     r = run_one(Task(prompt="When is the branch open?"), "plan", llm, envelope, web_registry(HoursProvider()), tmp_path,
                 draft_prompts="d24")
     meta = json.loads((tmp_path / r.run_id / "artifacts" / "step_1.json").read_text())
-    assert meta["status"] == "partial" and "mislabelled citation" in meta["status_reason"]
-    assert {x["claim"] for x in meta["mislabelled_citations"]} == {"8:00am", "4:30pm"}
-    assert all(x["found_in"] == ["S2"] for x in meta["mislabelled_citations"])
-    assert "Mislabelled citation: step 1 cites S1 for '8:00am', which S1 does not contain; it is in S2" in r.answer
+    # D131: both times are only in S2, so plain code corrects the tag instead of marking the step partial
+    assert meta["status"] == "done" and meta["mislabelled_citations"] == []
+    assert meta["citations_relabelled"][0]["from"] == "S1" and meta["citations_relabelled"][0]["to"] == "S2"
+    assert set(meta["citations_relabelled"][0]["claims"]) == {"8:00am", "4:30pm"}
+    assert "Mislabelled citation" not in r.answer
 
 
 # ---- D78: identifiers are whole tokens; a ZIP+4 run together contains its ZIP -------------------------------------

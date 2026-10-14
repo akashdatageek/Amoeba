@@ -189,3 +189,27 @@ def mislabelled_citations(text: str, contents: dict[str, str], exempt: set[str] 
                 found.append({"source": ",".join(ids), "claim": claim, "kind": kind, "found_in": elsewhere[:3],
                               "line": line.strip()[:200]})
     return found
+
+
+# box: provenance
+def relabel_citations(text: str, found: list[dict]) -> tuple[str, list[dict]]:
+    """D131: a tag that names the wrong source is corrected by code when the claims it backs are all in exactly one
+    other source the team was shown ("$1.29 [S6]" when $1.29 is only in S9 → "[S9]"). Only a tag naming one source,
+    and only when every mislabelled claim of that tag on the line points to the same other source. Returns the text
+    and the corrections made ({line, from, to, claims})."""
+    by_tag: dict[tuple[str, str], list[dict]] = {}
+    for f in found:
+        by_tag.setdefault((f["line"], f["source"]), []).append(f)
+    fixes = []
+    for (line, src), items in by_tag.items():
+        targets = {tuple(f.get("found_in") or []) for f in items}
+        if "," in src or len(targets) != 1 or len(next(iter(targets))) != 1:
+            continue
+        to = next(iter(targets))[0]
+        whole = next((l for l in (text or "").splitlines() if l.strip()[:200] == line), None)
+        if whole is None or f"[{src}]" not in whole.upper():
+            continue
+        new = re.sub(rf"\[{re.escape(src)}\]", f"[{to}]", whole, count=1, flags=re.I)
+        text = text.replace(whole, new, 1)
+        fixes.append({"line": line[:160], "from": src, "to": to, "claims": [f["claim"] for f in items]})
+    return text, fixes

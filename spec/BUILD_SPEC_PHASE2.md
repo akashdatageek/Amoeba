@@ -972,3 +972,13 @@ may — ends its done_when with what is delivered instead) and `done_when_reacha
 most six conditions). The Planner's toolbox text now says how many turns a helper has per step and that no tool acts
 outside the run. On the stored plans the checks flag Gemma's r1 report and email steps and its H3 memo, and pass
 Sonnet's plans.
+
+**D131, inside the steps and around the run (Oct 14).** Smaller problems from the same runs, each fixed in general: a
+citation tag that names the wrong source is corrected by plain code when every claim it backs is in exactly one other
+source the team was shown (recorded as `citations_relabelled`; with two candidate sources nothing is guessed and the
+step stays partial as before); a tool call that fails with the same error twice in a row comes back with what the tool
+takes and the helper's other tools; a path under a habitual workspace root (`/workspace`, `/mnt/data`, …) means the
+run's workspace; a model call is ended after `--request-timeout-s` (default 600 s) and asked again with half the reply
+room; and team.yaml names the model the calls go to (the profile's one entry), not the envelope's default. A partial
+step whose output lacks what its done_when states is now caught by the step checks (D130), so problem 18 needs no
+change of its own.
