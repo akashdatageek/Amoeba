@@ -960,3 +960,15 @@ that lacked a tool and ran out of turns gets more turns); a step made by a split
 (at most two); the allowance is the larger of 200k tokens and a quarter of `--max-tokens-per-run`; the proposer has
 8,192 tokens of reply room; its wording check reads phrases at a word start ("skip the paged endpoint" passes, "skip
 the checks" does not); and `replan_remaining` is its last edit for every cause but `provider_blocked`.
+
+**D130, plan checks before Box 3 (Oct 14).** Given every tool, the six plans would mostly have finished, but Gemma's
+done_when conditions only checked that a deliverable existed ("Word document is generated" let through a report
+without its two pages or citations), its email step could only end with "Email is successfully dispatched", and no
+plan knew how many turns a step gets. The quality gate (D28) has three new hard checks, each sent back to the Planner
+with a suggestion: `done_when_properties` (the properties a requirement asks for — citations, dates, pages, a table, a
+chart, a file type, a count — are stated in the done_when or output of a step that covers it; plain code's step checks
+then enforce what is stated), `outside_action_fallback` (a step that must send, post, upload or pay — no tool of the run
+may — ends its done_when with what is delivered instead) and `done_when_reachable` (no exact wording to reproduce, at
+most six conditions). The Planner's toolbox text now says how many turns a helper has per step and that no tool acts
+outside the run. On the stored plans the checks flag Gemma's r1 report and email steps and its H3 memo, and pass
+Sonnet's plans.

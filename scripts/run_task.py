@@ -19,6 +19,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from amoeba.config.io import dump_yaml
+from amoeba.config.schema import Limits
 from amoeba.interp.runtime import Interpreter
 from amoeba.interp.trace import TraceWriter
 from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, describe_api_error
@@ -161,7 +162,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             trace.event("draft_reused", {"amoeba.draft_source": saved_draft.source, "amoeba.task_id": task.id})
         else:
             toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None,
-                                   disabled=disabled_tools)
+                                   disabled=disabled_tools, turns=max_turns or Limits().max_turns)   # D130
             if interpret:             # D77: what the task is about is settled before the Planner drafts
                 interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed, environment=env_text)
                 if interp["ambiguous"] and clarify:              # D116: answers given with --clarify

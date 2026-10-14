@@ -357,7 +357,8 @@ def test_the_answer_step_naming_gaps_stays_done_and_is_not_counted(tmp_path, env
         if n == "2":
             body = f"OUT-2\n{BODY}\nBLOCKED: database_sandbox — no load test was run."
         elif n == "4":
-            body = ("# Memo\n\n## Answer\nStorage 10 TB.\n\n## Limitations\n- BLOCKED: database_sandbox — step 2 "
+            body = ("# Memo\n\n## Answer\nStorage 10 TB.\n\n| risk | level |\n|---|---|\n| load | high |\n\n"
+                    "## Limitations\n- BLOCKED: database_sandbox — step 2 "
                     "could not load-test.\n- BLOCKED: web_search — prices are unverified.")
         else:
             body = f"OUT-{n}\n{BODY}"

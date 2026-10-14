@@ -15,7 +15,34 @@ from amoeba.task.parsers import parse_json_objects, parse_sections
 
 ROLE_FIELDS = ("goal", "skills", "outputs", "success_criteria", "prompt")
 # D28: the checks --quality-gate enforces (a failure sends the draft back for another round)
-HARD_CHECKS = ("requirements_covered", "independent_verification", "summariser", "task_coverage")
+HARD_CHECKS = ("requirements_covered", "independent_verification", "summariser", "task_coverage",
+               "done_when_properties", "outside_action_fallback", "done_when_reachable")   # D130: the last three
+# D130: properties a requirement can ask of a deliverable, each with the words that state it; a step that covers the
+# requirement must state the same property in its done_when, output or do (word forms count alike)
+PROPERTIES = {"citations": r"\bcit(?:e|es|ed|ing|ation|ations)\b|\bsources?\b|\burls?\b|\blinks?\b|\breferences?\b|"
+                           r"\[S\d*\]|\[n\]",
+              "dates": r"\bdat(?:e|es|ed)\b|\bas[- ]of\b|\bretriev\w*\b",
+              "pages": r"\bpages?\b|\bpage count\b",
+              "table": r"\btables?\b|\btabular\b",
+              "chart": r"\bcharts?\b|\bgraphs?\b|\bplots?\b|\bfigure file\b|\bpng\b",
+              "csv": r"\bcsv\b", "spreadsheet": r"\bxlsx\b|\bexcel\b|\bspreadsheets?\b|\bworkbooks?\b",
+              "word document": r"\bdocx\b|\bword\b(?! count)", "pdf": r"\bpdf\b",
+              "slides": r"\bpptx\b|\bslides?\b|\bdecks?\b|\bpresentations?\b"}
+# D130: an action no tool of the run may do (pool tools that act outside are refused, D58; local tools have no network)
+OUTSIDE = re.compile(r"\b(?:send|sends|sending|sent)\b[^.\n]{0,60}\b(?:e-?mail|@|recipient|client|customer|slack|sms|"
+                     r"channel|inbox)|\be-?mail(?:s|ed|ing)?\s+(?:it|them|the|this|to)\b|"
+                     r"\b(?:publish|publishes|publishing|upload|uploads|uploading|submit|submits|submitting|post|posts|"
+                     r"posting)\s+(?:it|them|the|this|to|on)\b|\b(?:pay|pays|paying)\s+(?:for|the|to)\b", re.I)
+FALLBACK = re.compile(r"\bor\b[^.]{0,160}\b(files?|saved|save|drafts?|\.eml|not sent|written|stored|logged|records?)\b|"
+                      r"\bnot sent\b", re.I)
+# D130: a done_when that asks for an exact string the helpers must reproduce (outside the opening line the system
+# itself mandates), and the most conditions one step's done_when may join before it is unlikely in its turns
+EXACT = re.compile(r"\b(?:exact(?:ly)?|verbatim|word[- ]for[- ]word|character[- ]for[- ]character)\b[^.;]{0,60}?"
+                   r"\b(?:string|wording|text|sentence|phrase|title|heading)s?\b|\b(?:string|wording|text|sentence|"
+                   r"phrase|title|heading)s?\b[^.;]{0,60}?\b(?:exact(?:ly)?|verbatim|word[- ]for[- ]word)\b", re.I)
+SYSTEM_LINE = re.compile(r"\b(opening line|first line|first paragraph|mandated (?:opening|first))\b|"
+                         r"\bopen(?:s|ing)? (?:the|its) (?:final )?answer with\b", re.I)
+MAX_CONDITIONS = 6
 VERIFY_WORDS = re.compile(r"\b(verif\w*|check\w*|cross-check\w*|review\w*|validat\w*|audit\w*|reconcil\w*|"
                           r"sanity|double-check\w*|peer review)\b", re.I)
 
@@ -175,10 +202,70 @@ def draft_quality(d: Draft, task_text: str = "") -> dict:
         checks["task_coverage"] = {"ok": None, "detail": "no requirement ids (d19 draft or none written)"
                                    if not req else "no task text given"}
 
+    # 9-11. D130: the done_when of each step states what its requirements ask for, plans for the actions no tool may
+    # do, and is something the helpers can meet in their turns
+    if any(s.covers for s in steps) and req:
+        checks["done_when_properties"] = done_when_properties(d)
+    else:
+        checks["done_when_properties"] = {"ok": None, "detail": "no covers lines or no requirement ids"}
+    checks["outside_action_fallback"] = outside_action_fallback(steps)
+    checks["done_when_reachable"] = done_when_reachable(steps)
+
     oks = [c["ok"] for c in checks.values()]
     return {"checks": checks, "passed": oks.count(True), "failed": oks.count(False), "na": oks.count(None),
             "failed_checks": [k for k, c in checks.items() if c["ok"] is False],
             "hard_failed": [k for k in HARD_CHECKS if checks.get(k, {}).get("ok") is False]}
+
+
+# box: checks
+def properties_in(text: str) -> set[str]:
+    """D130: the deliverable properties a text states (PROPERTIES), and its numbers that size a deliverable."""
+    found = {k for k, rx in PROPERTIES.items() if re.search(rx, text or "", re.I)}
+    return found | {f"#{n}" for n in re.findall(r"\b(\d+)[- ]?(?:pages?|slides?|rows?|items?|repos?|repositories|"
+                                                 r"frameworks?|words?)\b", text or "", re.I)}
+
+
+# box: checks
+def done_when_properties(d: Draft) -> dict:
+    """D130: for every requirement, the properties it asks for (citations, dates, pages, a table, a chart, a file
+    type, a count …) must be stated by a step that covers it, in its done_when or output (what ends the step and what
+    plain code checks; the `do` line is the helper's method, not a check). A done_when that only
+    says the deliverable exists ("the Word document is generated") lets through a deliverable without them."""
+    gaps = {}
+    for rid, text in d.requirements.items():
+        want = properties_in(text)
+        steps = [s for s in d.plan if rid in s.covers]
+        if not want or not steps or SYSTEM_LINE.search(text):     # the mandated opening line is checked by code
+            continue
+        have = set().union(*(properties_in(f"{s.done_when}\n{s.output}") for s in steps))
+        miss = sorted(want - have)
+        if miss:
+            gaps[rid] = {"missing": miss, "steps": [s.index + 1 for s in steps]}
+    return {"ok": not gaps, "gaps": gaps}
+
+
+# box: checks
+def outside_action_fallback(steps: list) -> dict:
+    """D130: a step that must act outside the run (send, post, publish, upload, submit, pay) has no tool that may do
+    it; its done_when must name what is delivered instead (the draft saved as a file and marked NOT SENT)."""
+    bad = [s.index + 1 for s in steps if OUTSIDE.search(f"{s.text}\n{s.do}\n{s.output}\n{s.done_when}")
+           and not FALLBACK.search(s.done_when or "")]
+    return {"ok": not bad, "steps": bad}
+
+
+# box: checks
+def done_when_reachable(steps: list) -> dict:
+    """D130: a done_when the step's helpers cannot meet in their turns: an exact string to reproduce (other than the
+    opening line the system mandates), or more than MAX_CONDITIONS conditions joined in one step."""
+    exact, many = [], []
+    for s in steps:
+        dw = s.done_when or ""
+        if any(not SYSTEM_LINE.search(dw[max(0, m.start() - 80):m.end()]) for m in EXACT.finditer(dw)):
+            exact.append(s.index + 1)
+        parts = [x for x in re.split(r";|,\s+(?:and\s+)?|\band\b", dw) if x.strip()]
+        if len(parts) > MAX_CONDITIONS:
+            many.append({"step": s.index + 1, "conditions": len(parts)})
+    return {"ok": not exact and not many, "exact_match": exact, "too_many_conditions": many}
 
 
 # box: checks
@@ -206,4 +293,23 @@ def gate_suggestions(q: dict) -> str:
             lines.append("Task phrases no requirement keeps (same verb, same object): "
                          + "; ".join(f'"{x}"' for x in tc["missing_phrases"])
                          + ". Add a requirement for each, keeping the task's own verb.")
+    if "done_when_properties" in q["hard_failed"]:
+        g = c["done_when_properties"]["gaps"]
+        lines.append("A done_when that only checks that a deliverable exists lets it through without what the "
+                     "requirement asks: " + "; ".join(f"{r} asks for {', '.join(x['missing'])} and step(s) "
+                                                     f"{', '.join(map(str, x['steps']))} never state it" for r, x in g.items())
+                     + ". Put each property in the done_when of a step that covers the requirement.")
+    if "outside_action_fallback" in q["hard_failed"]:
+        lines.append(f"Step(s) {', '.join(map(str, c['outside_action_fallback']['steps']))} must act outside the run "
+                     "(send, post, upload, pay) and no tool of the run may do that. End their done_when with what is "
+                     "delivered instead, e.g. \"sent, or the message saved as a file and marked NOT SENT\".")
+    if "done_when_reachable" in q["hard_failed"]:
+        r = c["done_when_reachable"]
+        if r["exact_match"]:
+            lines.append(f"Step(s) {', '.join(map(str, r['exact_match']))} ask for an exact string to be reproduced; "
+                         "state what the text must contain instead.")
+        if r["too_many_conditions"]:
+            lines.append("Too many conditions for one step (each helper has a few turns): " + ", ".join(
+                f"step {x['step']} ({x['conditions']})" for x in r["too_many_conditions"])
+                + f". Keep each done_when to at most {MAX_CONDITIONS} conditions, or split the step.")
     return "\n".join(f"{i}. {x}" for i, x in enumerate(lines, 1))
