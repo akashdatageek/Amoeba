@@ -926,3 +926,17 @@ without `--local-tools` there is no code runner and the rung is skipped. A tool 
 (`python -m scripts.tool_library approve <name>`), only while its code is unchanged, and only after its self-test
 passes again. This is the one thing that carries over between tasks, a deliberate exception to D117.
 
+
+**D127, tools reach the helpers that ask for them; missing data is not a missing tool (Oct 14, user decision:
+"don't overfit; solve the architecture problems").** The Sonnet and Gemma runs on H2, H3 and r1
+(`eval/manual/sonnet/REPORT.md`, `eval/manual/gemma/REPORT.md`) lost most stuck steps to tool delivery, on both
+models. Four general changes, none naming a task:
+(1) the names helpers give a code runner ("Bash", "shell", "python", …) are aliases of `code_execution`, and a request
+that names a local tool outright matches it, so such a request reaches `local:Bash`;
+(2) a picked pool tool whose server does not answer (or no longer matches its pins) gives way to the next vetted
+candidate before the request is left unfilled, and on an equal score a local item (sandboxed, no network) comes first;
+(3) a request whose role field names several roles is for each of them (it was dropped as `no_helper`);
+(4) helpers write "MISSING DATA: <what> — <where they looked>" for facts they could not find, and BLOCKED only for
+tools; plain code reads a lacked item with no tool name and no earlier step as `missing_data`, a cause of its own
+(web tools if the helpers lack them, more turns, then the proposer; a work-around after one fix), never as a capability
+to grant.

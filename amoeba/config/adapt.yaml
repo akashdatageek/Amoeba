@@ -15,7 +15,8 @@ limits:                       # checks the fix proposer's edit must pass (amoeba
 
 diagnoser:                    # the stuck causes and the edits each allows (amoeba/adapt/stuck.py)
   # tie order when two causes are found at once: missing_input first (a mixed step is fixed for it, then re-checked)
-  causes: [missing_input, capability, format, tool_error, checks, max_turns, claimed_file_missing]
+  # D127: missing_data (a fact the step had to find and did not) after capability: a tool may be what finds it
+  causes: [missing_input, capability, missing_data, format, tool_error, checks, max_turns, claimed_file_missing]
   # Only edits something can apply: code fixes (add_dependency, rerun_upstream, "set_run_option:<name>" for that one
   # option, grant_tool from the pool, make_tool: D125, a written tool or an approved one from the library) and the fix proposer's edits (add_role_rule, add_helper_role, grant_tool,
   # split_step, replan_remaining, work_around). Code fixes come first, the proposer only after them.
@@ -23,6 +24,9 @@ diagnoser:                    # the stuck causes and the edits each allows (amoe
     missing_input: [add_dependency, rerun_upstream, "set_run_option:max_input_chars", add_role_rule, split_step,
                     replan_remaining]
     capability: [grant_tool, make_tool, add_helper_role, work_around, split_step, replan_remaining]
+    # D127: web tools when the step's helpers lack them, more turns, then the proposer (a narrower done_when with the
+    # gap stated is a work_around)
+    missing_data: [grant_tool, "set_run_option:max_turns", add_role_rule, work_around, split_step, replan_remaining]
     tool_error: [add_role_rule, grant_tool, "set_run_option:max_turns", add_helper_role, replan_remaining]
     checks: ["set_run_option:check_retry_turns", "set_run_option:max_input_chars", add_role_rule, split_step,
              add_helper_role]

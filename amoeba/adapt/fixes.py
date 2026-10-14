@@ -12,6 +12,8 @@ in this task and within the limits, re-runs only the stuck step and re-checks it
   checks          rung 1: more retry turns, then a larger input when an input was shortened
   max_turns       rung 1: more turns
   format          rung 1: more turns (D123: the step runs again with turns to make up for the unreadable ones)
+  missing_data    D127: the step's helpers get the run's web tools when they lack them (rung 2, a registry grant),
+                  else more turns (rung 1)
   capability      rung 2: attach the missing tool or skill from the pool shortlist (pool or local tools must be on;
                   otherwise the rung is skipped with "capability fix unavailable: pool off")
                   rung W (D125): a tool for it, from the approved library or written by the tool writer, when
@@ -105,6 +107,15 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
                             "items": lacking})
         if not d.get("upstream"):
             notes.append("missing input with no upstream step named or matched")
+    elif cause == "missing_data":
+        if ctx.get("web_missing"):                    # the run has web tools that the step's helpers do not hold
+            out.append({"kind": "grant_tool", "rung": 2, "target": n,
+                        "params": {"items": sorted(ctx["web_missing"]), "exclude": []}})
+        f = _option("set_run_option:max_turns", "max_turns", int(opts.get("max_turns", 0)),
+                    int(opts.get("max_turns", 0)) + int(lim["more_turns"]), ranges, n)
+        out += [f] if f else []
+        if not f and not ctx.get("web_missing"):
+            notes.append("missing data: the helpers hold the web tools and more turns are at the maximum")
     elif cause in ("tool_error", "max_turns", "format"):
         f = _option("set_run_option:max_turns", "max_turns", int(opts.get("max_turns", 0)),
                     int(opts.get("max_turns", 0)) + int(lim["more_turns"]), ranges, n)

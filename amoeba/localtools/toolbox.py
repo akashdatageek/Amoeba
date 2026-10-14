@@ -245,16 +245,19 @@ class LocalToolbox:
         return tools + (self.skills if self.exposed else [])
 
     def alias_hits(self, q) -> list[dict]:
-        """Local entries named by an alias whose words all appear in the request's name or standard name."""
+        """Local entries named by an alias whose words all appear in the request's name or standard name, and (D127)
+        a local tool the request names outright ("Bash", "local:Read")."""
         have = alias_words(q.name) | alias_words(q.canonical)
         by_id = {e["id"]: e for e in self.entries()}
-        out = []
+        out = [by_id[f"local:{n}"] for n in self.exposed
+               if {(q.name or "").strip().lower().removeprefix("local:"),
+                   (q.canonical or "").strip().lower().removeprefix("local:")} & {n.lower()}]
         for target, phrases in (self.setup.config.get("aliases") or {}).items():
             if not any(alias_words(p) <= have for p in phrases):
                 continue
             if target.startswith("skill:"):
                 out += [e for e in self.entries() if e["kind"] == "skill" and e["name"] == target[6:]]
-            elif target in by_id:
+            elif target in by_id and by_id[target] not in out:
                 out.append(by_id[target])
         return out
 

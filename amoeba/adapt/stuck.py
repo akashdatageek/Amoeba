@@ -9,6 +9,8 @@ meta, its tool calls, the files it made, and the attempt before it when the step
   max_turns            the helpers ran out of turns before a Final Output
   capability_unfilled  a capability or skill the step needed was requested and not filled (BLOCKED, not declared,
                        or an unfilled request for one of the step's roles)
+  missing_data         D127: a fact or figure the step had to find itself was not found (a MISSING DATA line, or a
+                       lacked item that names no tool and no earlier step): a research gap, not a missing tool
   unreadable_reply     D123: a helper's reply could not be read (a required section missing even after the unglue and
                        the repair call) and the step did not finish: the turns went to replies plain code could not use
   no_file_change       the step owes a file (claimed but missing, a file type in its output line with none made, or
@@ -27,12 +29,18 @@ from amoeba.adapt.config import adapt_config
 
 SIGNAL_CAUSE = {"missing_input": "missing_input", "capability_unfilled": "capability", "repeated_error": "tool_error",
                 "max_turns": "max_turns", "checks_after_retry": "checks", "no_file_change": "claimed_file_missing",
-                "unreadable_reply": "format"}
+                "unreadable_reply": "format", "missing_data": "missing_data"}
 # D117 Stage C: a lacked item is a missing input (data an earlier step should have given) unless it names a tool
 TOOL_WORDS = re.compile(r"tool|\bapi\b|_api|reader|interpreter|executor|calculator|\bcalc|access|generator|analy[sz]er|"
                         r"\bengine\b|_engine|service|search|network|browser|capability|skill|\blocal\b|local:|script|"
                         r"command|python|\bpdf\b|docx|xlsx|excel|spreadsheet|\bword\b|email|route|\bcode\b|\.py\b|bash|"
                         r"sandbox|fetch|curl", re.I)
+# D127: a lacked item whose last word names content (a value, a text, a figure) is data, even when a tool word comes
+# before it ("email body", "API key value"); a tool word at the end keeps it a capability ("pricing API")
+DATA_HEAD = re.compile(r"\b(body|text|content|contents|draft|value|values|figure|figures|number|numbers|estimate|"
+                       r"estimates|rate|rates|price|prices|cost|costs|income|amount|amounts|total|totals|series|"
+                       r"statistic|statistics|stats|details|information|info|record|records|address|addresses|"
+                       r"date|dates|count|counts|share|shares|level|levels|index values|history|list|table)\s*$", re.I)
 INPUT_WORDS = re.compile(r"\bsteps?\s*#?\d|\bprevious steps?\b|\bearlier steps?\b|\bupstream\b|\binputs?\b|"
                          r"\boutputs?\b|\bdeliverables?\b|\bdata\b|\bfiles?\b", re.I)
 STEP_REF = re.compile(r"\bsteps?\s*#?(\d+)(?:\s*(?:,|&|and)\s*(?:step\s*)?(\d+))?", re.I)
@@ -87,16 +95,28 @@ def _words(text: str) -> set[str]:
 
 
 # box: stuck
+def is_tool_name(label: str) -> bool:
+    """D127: whether a lacked label names a tool or capability: a tool word, or a standard capability name
+    (aliases.yaml), and no content word at its end ("email body" is data)."""
+    from amoeba.capabilities import normalise
+    label = (label or "").strip()
+    if DATA_HEAD.search(label.replace("_", " ")):
+        return False
+    return bool(TOOL_WORDS.search(label)) or normalise(label)[1]
+
+
+# box: stuck
 def classify_lacked(item: str, n: int | None, plan: dict | None, deps: list[int] | None = None) -> dict:
-    """One lacked item: {"item", "kind": "missing_input" | "capability", "upstream": [step numbers]}. The label is the
-    text before " — ". A tool word in the label → capability. A step, input, output, data or file named in the label,
-    a step named in the explanation, another step's role, or most of an earlier step's planned output → missing input;
-    the upstream steps are the ones named, else the role's, else the best match among the dependencies."""
+    """One lacked item: {"item", "kind": "missing_input" | "capability" | "missing_data", "upstream": [step numbers]}.
+    The label is the text before " — ". A tool name (is_tool_name) → capability. A step, input, output, data or file
+    named in the label, a step named in the explanation, another step's role, or most of an earlier step's planned
+    output → missing input; the upstream steps are the ones named, else the role's, else the best match among the
+    dependencies. D127: anything else is missing data the step had to find itself (it was a capability before)."""
     label, _, why = (item or "").partition(" — ")
     plan, deps = plan or {}, list(deps or [])
     earlier = [k for k in sorted(plan) if n is None or k < n or k in deps]
     out = {"item": item, "kind": "capability", "upstream": []}
-    if TOOL_WORDS.search(label) and not (INPUT_WORDS.search(label) and STEP_REF.search(why)):
+    if is_tool_name(label) and not (INPUT_WORDS.search(label) and STEP_REF.search(why)):
         return out
     named = sorted({int(g) for m in STEP_REF.finditer(label + " " + why) for g in m.groups() if g} & set(earlier))
     mine = set(plan.get(n, {}).get("roles") or []) if n is not None else set()
@@ -109,6 +129,10 @@ def classify_lacked(item: str, n: int | None, plan: dict | None, deps: list[int]
         out["kind"] = "missing_input"
         out["upstream"] = named or by_role or best or \
             ([k for k in sorted(overlap, key=lambda k: -overlap[k]) if k in deps and overlap[k] > 0][:1] or deps)
+        if not out["upstream"]:                       # nothing earlier could have given it: the step's own research
+            out["kind"] = "missing_data"
+        return out
+    out["kind"] = "missing_data"
     return out
 
 
@@ -149,6 +173,11 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
                     "evidence": [f"missing input: {k['item'][:140]}"
                                  + (f" (from step {', '.join(map(str, k['upstream']))})" if k["upstream"] else "")
                                  for k in inputs]})
+    data = [k["item"] for k in kinds if k["kind"] == "missing_data"]
+    data += [x for x in meta.get("missing_data") or [] if x not in data]          # D127: MISSING DATA lines
+    if data:
+        sig.append({"signal": "missing_data", "items": data,
+                    "evidence": [f"missing data: {x[:140]}" for x in data]})
     lacked = [k["item"] for k in kinds if k["kind"] == "capability"]
     roles = set(meta.get("roles") or [])
     asked = [q for q in unfilled or [] if q.get("for_role") in roles]
@@ -238,4 +267,6 @@ def diagnose(signals: list[dict], config: dict | None = None) -> dict:
             out["upstream"], out["missing"] = s["upstream"], s["items"]
         if s["signal"] == "capability_unfilled":
             out["lacked"] = s.get("items", [])
+        if s["signal"] == "missing_data":
+            out["data"] = s["items"]
     return out

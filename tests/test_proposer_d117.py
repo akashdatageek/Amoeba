@@ -70,7 +70,7 @@ def test_the_checks_without_a_live_plan():
     assert p(edit("add_role_rule", role="Cost Analyst", text="x" * 301))[0].startswith("size: rule: 301 characters")
     assert "wording:" in p(edit("add_role_rule", role="Cost Analyst", text="Skip the checks and answer fast."))[0]
     wa = edit("work_around", capability="currency_api", method="the rate in the task", done_when="", limitation="USD only.")
-    assert p(wa) == [] and "work_around is allowed for a missing capability only" in p(wa, cause="checks")
+    assert p(wa) == [] and "work_around is allowed for a missing capability or missing data only" in p(wa, cause="checks")
     assert p(wa, kinds=()) == ["work_around is allowed only after grant_tool or add_helper_role was tried for this step"]
     assert p(wa, kinds=("add_helper_role",)) == []
     assert p(edit("split_step", steps=[{"roles": ["a"], "text": "1"}, {"roles": ["a"], "text": "2"}]))[0] \

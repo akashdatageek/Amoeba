@@ -566,6 +566,15 @@ def _keyword_checks(spec: str, body: str) -> list[dict]:
 
 
 # box: step_check
+def unmark(text: str) -> str:
+    """D127: a line's markdown emphasis and list/quote markers removed ("**BLOCKED:** x", "- _MISSING DATA_: y"), so a
+    mark a helper put in bold is read like a plain one."""
+    t = re.sub(r"([A-Z]{3,}[A-Z ]*)(\*\*|__|\*|_|`)\s*([:：])", r"\1\3", text or "")
+    t = re.sub(r"(\*\*|__|\*|_|`)(?=\s*[A-Z]{3,}[A-Z ]*\s*[:：])", "", t)
+    return re.sub(r"(?m)^([ \t>*+-]*)", "", t).replace("**", "")
+
+
+# box: step_check
 def blocked_marks(text: str) -> list[str]:
     """D36: the capabilities named in 'BLOCKED: <capability> — ...' lines of a step's output."""
     names = []
@@ -1242,6 +1251,7 @@ class PlanRunner:
         # D40: not for the answer step: its Limitations section names the producers' gaps on purpose
         mentions = blocked_marks(text)
         gaps = [] if answer_step else sorted(set(w.blocked.values()) | set(mentions))
+        data_gaps = [] if answer_step else missing_data_marks(text)            # D127: facts not found, not tools
         # D61 (G1): a capability the helper lacked and did not account for is a gap, answer step included
         undeclared = list(dict.fromkeys(m["name"] for m in found["missing"])) if found else []
         gaps = sorted(set(gaps) | set(undeclared))
@@ -1251,6 +1261,8 @@ class PlanRunner:
         if gaps:
             status = "partial" if wrote else "incomplete"
             reason = "lacked: " + ", ".join(gaps) + ("; checks failed: " + ", ".join(failed) if failed else "")
+        elif data_gaps and wrote:
+            status, reason = "partial", "missing data: " + ", ".join(data_gaps)[:300]
         elif not finished:
             status, reason = "incomplete", "max_turns"
         elif failed:
@@ -1331,6 +1343,7 @@ class PlanRunner:
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
                 "stale": False, "stale_because": [],
                 "missing_inputs": missing_input_marks(text),                       # D63 marks, read by D117
+                "missing_data": data_gaps,                                          # D127 marks, read by D117
                 "fix_of": {k: v for k, v in fixing.items() if k != "note"} if fixing else None,
                 "unreadable_turns": w.unreadable,                                  # D123, read by the stuck watch
                 "finished": finished,
@@ -1970,6 +1983,8 @@ class PlanRunner:
                          "max_input_chars": self.so(n, "max_input_chars")},
                 "capped": bool(self.capped.get(n)), "stock": getattr(self.i, "stock", None) is not None,
                 "upstream_rerun": set(self.upstream_rerun), "attached": self.attached_ids.get(n, []),
+                # D127: web tools this run has that the step's helpers do not hold (a missing-data fix)
+                "web_missing": sorted({t for t in WEB_TOOLS if t in self.i.tools for a in agents if t not in a.tools}),
                 **self.make_tool_ctx(n)}
 
     # box: toolmaker
@@ -2334,7 +2349,9 @@ class PlanRunner:
         or "none" (no edit allowed, or no valid reply twice: recorded in proposer_gave_up)."""
         tried_here = {f["kind"] for f in self.fixes if f["step"] == n}
         allowed = [a for a in d.get("allowed_edits") or [] if a in D_OPS
-                   and not (a == "work_around" and not tried_here & set(WORKAROUND_AFTER))     # user rule (Oct 6)
+                   and not (a == "work_around" and d["cause"] == "capability"
+                            and not tried_here & set(WORKAROUND_AFTER))                    # user rule (Oct 6)
+                   and not (a == "work_around" and d["cause"] == "missing_data" and not tried_here)   # D127
                    and not (a == "add_helper_role" and self.helpers_added >= int(fix_limits()["max_added_helpers"]))]
         if not allowed:
             self.proposer_gave_up[n] = f"fix proposer: no edit allowed for {d['cause']}"
@@ -3161,6 +3178,18 @@ MISSING_INPUT_NOTE = """
 If an input this step needs is missing from your inputs (a step you depend on did not deliver it), do what you can and
 put a line "MISSING INPUT: <what> — <which step should have given it>" in your Final Output."""
 DECISIONS = ("CONTINUE", "REVISE_REMAINING", "ADD_STEP", "REASSIGN_STEP", "DROP_STEP", "ADD_ROLE")
+
+
+# box: step_check
+def missing_data_marks(text: str) -> list[str]:
+    """D127: the 'MISSING DATA: <what> — <where it was looked for>' lines of a step's output (facts or figures the
+    helper searched for and did not find; BLOCKED is for a tool it lacked)."""
+    out = []
+    for m in re.finditer(r"MISSING\s+DATA\s*[:：]\s*(.+)", unmark(text), re.I):
+        x = m.group(1).strip()
+        if x and x.lower() not in ("none", "n/a", "none.") and x not in out:
+            out.append(x)
+    return out
 
 
 # box: step_check

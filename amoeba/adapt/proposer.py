@@ -207,10 +207,12 @@ def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[st
     e, p, out = reply.edit, reply.edit.params, []
     if e.op not in allowed:
         out.append(f"edit {e.op!r} is not allowed for the cause {cause}; allowed: {[a for a in allowed if a in D_OPS]}")
-    if e.op == "work_around" and cause != "capability":
-        out.append("work_around is allowed for a missing capability only")
-    if e.op == "work_around" and not set(tried_kinds) & set(WORKAROUND_AFTER):
+    if e.op == "work_around" and cause not in ("capability", "missing_data"):
+        out.append("work_around is allowed for a missing capability or missing data only")
+    if e.op == "work_around" and cause == "capability" and not set(tried_kinds) & set(WORKAROUND_AFTER):
         out.append("work_around is allowed only after grant_tool or add_helper_role was tried for this step")
+    if e.op == "work_around" and cause == "missing_data" and not tried_kinds:      # D127
+        out.append("work_around is allowed for missing data only after another fix was tried for this step")
     for where, text, lim in e.texts():
         if len(text) > lim:
             out.append(f"size: {where}: {len(text)} characters > {lim}")
