@@ -378,6 +378,7 @@ def names_match(a: str, b: str) -> bool:
     return bool(ka and kb) and (ka == kb or (min(len(ka), len(kb)) >= 4 and (ka in kb or kb in ka)))
 
 
+# box: plan_step
 @lru_cache(maxsize=1)
 def _local_aliases() -> dict[str, list[str]]:
     """localtools.yaml `aliases`: a local tool or skill -> the phrases that name it (read once)."""
