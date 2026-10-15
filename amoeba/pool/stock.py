@@ -34,7 +34,10 @@ from amoeba.tools.registry import ToolRegistry
 PICKER = "pool_picker"
 THINKING = re.compile(r"<(thought|think|thinking)>.*?</\1>", re.S | re.I)
 NONE = "NONE"
-VERSION = re.compile(r"^v?\d+(\.\d+)*([-+][0-9A-Za-z.-]+)?$")
+# D127: a picked tool that fails after the pick (its server does not answer or no longer matches) gives way to the
+# next vetted candidate, in rank order, before the request is left unfilled
+FALL_THROUGH = ("connect_failed", "no_tools", "description_changed", "side_effect")
+VERSION =re.compile(r"^v?\d+(\.\d+)*([-+][0-9A-Za-z.-]+)?$")
 # D58: read-only tools only for now — a tool that says it acts outside (sends, posts, pays, deletes …) is refused.
 # D60: also a tool that creates or changes anything in an outside service or account (a deck, doc or sheet is made
 # locally with local tools instead)
@@ -173,8 +176,12 @@ def vet(e: dict, setup: PoolSetup) -> tuple[str | None, dict, str | None]:
 
 # box: toolbox
 def helpers_for(q, cfg: TeamConfig) -> list[AgentSpec]:
-    """The helper(s) a request is for: its for_role, else every helper whose missing tools name it."""
+    """The helper(s) a request is for: its for_role, else every helper whose missing tools name it. D127: a for_role
+    that names several roles ("Analyst; Verifier", "Analyst and Verifier") is for each role it names."""
     named = [a for a in cfg.agents.values() if q.for_role and a.name == q.for_role]
+    if not named and q.for_role:            # each role whose whole name appears in the field (names may hold "and")
+        named = [a for a in cfg.agents.values() if a.name.strip() and re.search(
+            rf"(?<![\w]){re.escape(a.name.strip())}(?![\w])", q.for_role, re.I)]
     return named or [a for a in cfg.agents.values() if q.name in a.missing_tools]
 
 
@@ -275,6 +282,8 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                             break
                     else:
                         refused.append({"id": e["id"], "reason": v[0]})
+                # D127: on an equal score a local item comes first: it is sandboxed and needs no network
+                shown.sort(key=lambda x: (-x[0], x[1].get("source") != "local"))
                 out["candidates"] = [e["id"] for _, e in shown]
                 trace.event("pool_match", {"amoeba.capability": q.canonical or q.name, "amoeba.kind": q.kind,
                                            "gen_ai.agent.name": q.for_role or None,
@@ -306,48 +315,62 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                         if picks is not None and not fmt:
                             picks.put(q, chosen)
                     summary["llm_calls"] += trace.n_llm_calls - before
-                    entry = next((e for _, e in shown if e["id"] == chosen), None)
-                    out["pool_id"] = chosen or ""
-                    near = entry is not None and entry.get("source") == "local"            # D59
-                    reason, headers, body = verdicts[chosen] if entry else ("pick_none", {}, None)
-                    takers = [a for a in helpers if len(per_helper.get(a.agent_id, set()) - {chosen})
-                              < int(lim["max_per_helper"])]
-                    if reason is None and (not takers or (chosen not in attached
-                                                          and len(attached) >= int(lim["max_per_run"]))):
-                        reason = "cap_reached"
-                    name = (entry["name"] if near else f"pool:{entry['name']}") if entry else ""
-                    if reason is None and entry["kind"] == "tool" and not near and (pool is None or name not in pool.items):
-                        if pool is None:
-                            reg = tools.copy() if reg is tools else reg
-                            pool = PoolTools(setup.connector or SdkConnector(float(lim["timeout_s"])),
-                                             PoolLimits(int(lim["max_calls_per_step"]), float(lim["timeout_s"]),
-                                                        int(lim["max_result_chars"])),
-                                             book=getattr(local, "book", None) or getattr(tools, "web", None)
-                                             or SourceBook(), trace=trace)
-                            reg.pool = pool
-                        try:
-                            listing = pool.connector.tools(entry, headers)
-                        except Exception as e:           # unreachable server: not attached, the run goes on
-                            reason = "connect_failed"
-                            trace.event("pool_connect_failed", {"amoeba.pool.id": entry["id"],
-                                                                "error.type": f"{type(e).__name__}: {e}"[:300]})
-                        else:
-                            digest = listing_digest(listing)
-                            if entry["id"] in pins and pins[entry["id"]].get("tools") != digest:
-                                reason = "description_changed"
-                            elif not listing:
-                                reason = "no_tools"
-                            elif any(side_effect(t["name"], t.get("description", "")) for t in listing):
-                                reason = "side_effect"      # D58: a server that also offers an acting tool
+                    # D127: the pick first, then (only if it fails after the pick) the next vetted candidates
+                    order = [chosen] + ([e["id"] for _, e in shown if e["id"] != chosen
+                                         and e["id"] not in (exclude or set())] if chosen else [])
+                    fell = []
+                    for chosen in order:
+                        entry = next((e for _, e in shown if e["id"] == chosen), None)
+                        near = entry is not None and entry.get("source") == "local"            # D59
+                        reason, headers, body = verdicts[chosen] if entry else ("pick_none", {}, None)
+                        takers = [a for a in helpers if len(per_helper.get(a.agent_id, set()) - {chosen})
+                                  < int(lim["max_per_helper"])]
+                        if reason is None and (not takers or (chosen not in attached
+                                                              and len(attached) >= int(lim["max_per_run"]))):
+                            reason = "cap_reached"
+                        name = (entry["name"] if near else f"pool:{entry['name']}") if entry else ""
+                        if reason is None and entry["kind"] == "tool" and not near \
+                                and (pool is None or name not in pool.items):
+                            if pool is None:
+                                reg = tools.copy() if reg is tools else reg
+                                pool = PoolTools(setup.connector or SdkConnector(float(lim["timeout_s"])),
+                                                 PoolLimits(int(lim["max_calls_per_step"]), float(lim["timeout_s"]),
+                                                            int(lim["max_result_chars"])),
+                                                 book=getattr(local, "book", None) or getattr(tools, "web", None)
+                                                 or SourceBook(), trace=trace)
+                                reg.pool = pool
+                            try:
+                                listing = pool.connector.tools(entry, headers)
+                            except Exception as e:           # unreachable server: not attached, the run goes on
+                                reason = "connect_failed"
+                                trace.event("pool_connect_failed", {"amoeba.pool.id": entry["id"],
+                                                                    "error.type": f"{type(e).__name__}: {e}"[:300]})
                             else:
-                                if entry["id"] not in pins:  # first use: pin what the server says now
-                                    pins[entry["id"]] = {"version": entry.get("version"), "tools": digest}
-                                    pins_changed = True
-                                    trace.event("pool_pinned", {"amoeba.pool.id": entry["id"],
-                                                                "amoeba.pool.tools": sorted(digest)})
-                                pool.add_server(name, entry, headers, listing)
-                                reg.register(name, f"pool tool {entry['name']} (MCP, D56)",
-                                             lambda text, _n=name: pool.call(_n, text))
+                                digest = listing_digest(listing)
+                                if entry["id"] in pins and pins[entry["id"]].get("tools") != digest:
+                                    reason = "description_changed"
+                                elif not listing:
+                                    reason = "no_tools"
+                                elif any(side_effect(t["name"], t.get("description", "")) for t in listing):
+                                    reason = "side_effect"      # D58: a server that also offers an acting tool
+                                else:
+                                    if entry["id"] not in pins:  # first use: pin what the server says now
+                                        pins[entry["id"]] = {"version": entry.get("version"), "tools": digest}
+                                        pins_changed = True
+                                        trace.event("pool_pinned", {"amoeba.pool.id": entry["id"],
+                                                                    "amoeba.pool.tools": sorted(digest)})
+                                    pool.add_server(name, entry, headers, listing)
+                                    reg.register(name, f"pool tool {entry['name']} (MCP, D56)",
+                                                 lambda text, _n=name: pool.call(_n, text))
+                        if reason in FALL_THROUGH and chosen != order[-1]:
+                            fell.append({"id": chosen, "reason": reason})
+                            trace.event("pool_fallthrough", {"amoeba.capability": q.canonical or q.name,
+                                                             "amoeba.pool.id": chosen, "amoeba.reason": reason})
+                            continue
+                        break
+                    out["pool_id"] = chosen or ""
+                    if fell:
+                        out["fell_through"] = fell
                     if reason is None:
                         for a in takers:
                             if near:                  # D59: a local tool, or a local skill (folder copied)

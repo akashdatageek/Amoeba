@@ -14,18 +14,19 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 
+from amoeba.adapt.config import adapt_config
 from amoeba.adapt.evidence import EvidenceLog
 from amoeba.adapt.faults import Faults
 from amoeba.adapt.toolmaker import (PREFIX as MADE, ToolLibrary, call_tool, check_code, feasible, install,
                                      parse_tool, self_test as tool_self_test, tool_text, tw_config)
-from amoeba.adapt.fixes import POOL_OFF, candidates, fix_key, limits as fix_limits
+from amoeba.adapt.fixes import POOL_OFF, all_candidates, fix_key, limits as fix_limits, token_cap
 from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
-from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, open_requests, step_signals, waived_view
-from amoeba.capabilities import normalise
+from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, norm_error, open_requests, step_signals, waived_view
+from amoeba.capabilities import normalise, snake
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
-from amoeba.interp.citecheck import mislabelled_citations
+from amoeba.interp.citecheck import mislabelled_citations, relabel_citations
 from amoeba.interp.dates import undated_figures
 from amoeba.task.deliverables import final_findings
 from amoeba.interp.disputes import disputed_figures, disputes_text, replace_figure, settle
@@ -241,6 +242,9 @@ LAST_TURN_NOTE = ("THIS IS YOUR LAST TURN. No more tool calls: choose Final Outp
                   "you have found so far, with the [S#] of what supports each fact, and say plainly what you could not "
                   "confirm.")
 UNREADABLE = "unreadable"   # D123: the turn's reply had no readable CurrentStep/Action/ActionInput, even after repair
+PROVIDER_BLOCKED = "provider_blocked"   # D128: the model service blocked the reply (content_filter), even after a retry
+PROVIDER_BLOCKED_NOTE = ("error: the model service returned no reply for this turn (it was blocked by the service's "
+                         "content filter). Continue the step from where it stands.")
 UNREADABLE_NOTE = ("error: your reply could not be read ({why}). Write each section heading (## Thought, "
                    "## CurrentStep, ## Action, ## ActionInput) at the start of its own line.")
 LAST_TURN_AGAIN = ("Your last turn must be Final Output with a written conclusion (not a search query or a tool "
@@ -566,10 +570,20 @@ def _keyword_checks(spec: str, body: str) -> list[dict]:
 
 
 # box: step_check
+def unmark(text: str) -> str:
+    """D127: a line's markdown emphasis and list/quote markers removed ("**BLOCKED:** x", "- _MISSING DATA_: y"), so a
+    mark a helper put in bold is read like a plain one."""
+    t = re.sub(r"([A-Z]{3,}[A-Z ]*)(\*\*|__|\*|_|`)\s*([:：])", r"\1\3", text or "")
+    t = re.sub(r"(\*\*|__|\*|_|`)(?=\s*[A-Z]{3,}[A-Z ]*\s*[:：])", "", t)
+    return re.sub(r"(?m)^([ \t>*+-]*)", "", t).replace("**", "")
+
+
+# box: step_check
 def blocked_marks(text: str) -> list[str]:
     """D36: the capabilities named in 'BLOCKED: <capability> — ...' lines of a step's output."""
     names = []
-    for m in re.finditer(r"BLOCKED\s*[:：]\s*`?([A-Za-z][\w ./+-]{0,60}?)`?\s*(?:[—–:;,(\n]|-\s|$)", text or ""):
+    for m in re.finditer(r"BLOCKED\s*[:：]\s*`?([A-Za-z][\w ./+-]{0,60}?)`?\s*(?:[—–:;,(\n]|-\s|$)",
+                         unmark(text)):                                  # D128: "**BLOCKED:**" is read too
         name = m.group(1).strip(" .-")
         if name and name.lower() not in names and name.lower() not in ("none", "n/a"):
             names.append(name)
@@ -620,6 +634,7 @@ class PlanRunner:
         self.step_opts: dict[int, dict] = {}              # D117 Stage C: run options a fix changed, per step
         self.capped: dict[int, set] = {}                  # D117 Stage C: step -> the inputs shortened for it
         self.fixes: list[dict] = []                       # D117 Stage C: every fix tried in this task, in order
+        self.fix_epoch: dict[int, int] = {}               # D129: step made by a split / re-plan -> fixes before it
         self.fix_keys: set[str] = set()                   # a fix is never tried twice
         self.fix_notes: set[tuple] = set()                # (step, note) of rungs skipped, logged once
         self.upstream_rerun: set[int] = set()             # steps re-run once for a missing input
@@ -1242,6 +1257,7 @@ class PlanRunner:
         # D40: not for the answer step: its Limitations section names the producers' gaps on purpose
         mentions = blocked_marks(text)
         gaps = [] if answer_step else sorted(set(w.blocked.values()) | set(mentions))
+        data_gaps = [] if answer_step else missing_data_marks(text)            # D127: facts not found, not tools
         # D61 (G1): a capability the helper lacked and did not account for is a gap, answer step included
         undeclared = list(dict.fromkeys(m["name"] for m in found["missing"])) if found else []
         gaps = sorted(set(gaps) | set(undeclared))
@@ -1251,12 +1267,16 @@ class PlanRunner:
         if gaps:
             status = "partial" if wrote else "incomplete"
             reason = "lacked: " + ", ".join(gaps) + ("; checks failed: " + ", ".join(failed) if failed else "")
+        elif data_gaps and wrote:
+            status, reason = "partial", "missing data: " + ", ".join(data_gaps)[:300]
         elif not finished:
             status, reason = "incomplete", "max_turns"
         elif failed:
             status, reason = "incomplete", "checks failed: " + ", ".join(failed)
         else:
             status, reason = "done", ""
+        if (gaps or data_gaps) and not finished:      # D128: out of turns as well as lacking something
+            reason += "; max_turns"
         if undeclared:
             reason += "; not declared by the helper: " + ", ".join(undeclared)
         if w.unreadable and not finished:            # D123: turns lost to replies that could not be read
@@ -1270,9 +1290,15 @@ class PlanRunner:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "unverified check: PASS with no re-checking tool call on "
                                                    + self.checkable(n)) if x)
-        mislabelled = mislabelled_citations(text, self.source_texts(), self.citation_exempt(),     # D74
-                                            computed_values(self.computed_results(w)),
-                                            arithmetic=self.opt.cite_arithmetic == "on")   # D104
+        cite = lambda t: mislabelled_citations(t, self.source_texts(), self.citation_exempt(),     # D74
+                                               computed_values(self.computed_results(w)),
+                                               arithmetic=self.opt.cite_arithmetic == "on")   # D104
+        mislabelled, relabelled = cite(text), []
+        if mislabelled:                               # D131: a tag that names the wrong source is corrected by code
+            text, relabelled = relabel_citations(text, mislabelled)
+            if relabelled:
+                mislabelled = cite(text)
+                self.i.trace.event("citation_relabelled", {"amoeba.step": n, "amoeba.relabelled": relabelled[:10]})
         if mislabelled:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "mislabelled citation: " + "; ".join(
@@ -1313,7 +1339,7 @@ class PlanRunner:
                 self.i.trace.event("claimed_file_missing", {"amoeba.step": n, "amoeba.files": missing})
         # D61 (G6): what went wrong, for rework — a step that only lacked a capability cannot be fixed by a rework
         causes = [c for c, hit in (("capability", bool(gaps)), ("checks", bool(failed)),
-                                   ("max_turns", not finished and not gaps), ("unused_tool", bool(unused)),
+                                   ("max_turns", not finished), ("unused_tool", bool(unused)),   # D128: with gaps too
                                    ("claimed_file_missing", bool(missing))) if hit]
         origins = self.ledger_update(n, prov.pop("figures"))                               # D43
         meta = {"step": n, "wave": wave, "roles": [a.name for a in agents_all], "covers": step.covers,
@@ -1327,10 +1353,12 @@ class PlanRunner:
                 "checks": checks, "retried": retried, "refine": refine,
                 "unverified_tags_removed": removed,                                # D66
                 "mislabelled_citations": mislabelled,                              # D74
+                "citations_relabelled": relabelled,                                # D131
                 "refine_reason": refine["reason"] if refine else "",
                 "verification": verifier, "rework_of": rework, "reverify_of": reverify, "rerun_of_stale": rerun,
                 "stale": False, "stale_because": [],
                 "missing_inputs": missing_input_marks(text),                       # D63 marks, read by D117
+                "missing_data": data_gaps,                                          # D127 marks, read by D117
                 "fix_of": {k: v for k, v in fixing.items() if k != "note"} if fixing else None,
                 "unreadable_turns": w.unreadable,                                  # D123, read by the stuck watch
                 "finished": finished,
@@ -1844,8 +1872,9 @@ class PlanRunner:
                                                  template)
                 w.contributions.append({"turn": w.turn + 1, "agent": agent.name, "action": act,
                                         "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
-                if act == UNREADABLE:                    # D123: nothing readable to pass on; the helper is told
-                    w.unreadable.append({"agent": agent.name, "turn": w.turn + 1, "why": resp})
+                if act in (UNREADABLE, PROVIDER_BLOCKED):   # D123: nothing readable to pass on; the helper is told
+                    w.unreadable.append({"agent": agent.name, "turn": w.turn + 1, "why": resp,
+                                         "blocked": act == PROVIDER_BLOCKED})               # D128
                     w.completed += f">{agent.name} (reply not readable):\n>Result:\n{resp}\n"
                     continue
                 w.last_message = inp.strip()
@@ -1859,6 +1888,7 @@ class PlanRunner:
                     w.tool_results.append(resp)
                     w.calls.append({"agent_id": agent.agent_id, "agent": agent.name, "tool": act, "ok": tool_ok(resp),
                                     "input": inp.strip()[:200], "result": re.sub(r"\s+", " ", resp or "").strip()[:300]})
+                    resp = self.same_error_hint(agent, act, w, resp)                  # D131
                     w.completed += f">{agent.name} ({act}):\n{inp.strip()}\n>Result:\n{resp.strip()}\n"
                 elif FINAL_OUTPUT in act:
                     w.done[agent.agent_id] = inp.strip()
@@ -1917,19 +1947,22 @@ class PlanRunner:
         if not d:
             return None
         lim, why = fix_limits(), ""
+        run_cap = getattr(getattr(self.i.trace, "limits", None), "max_tokens", None)
+        cap_tokens = token_cap(lim, run_cap)                       # D129: a share of the run's cap when larger
+        per_step = int(lim["max_fixes_per_substep"] if n in self.fix_epoch else lim["max_fixes_per_step"])
         while d:
             usd = self.adapt_usd()
-            if sum(f["step"] == n for f in self.fixes) >= int(lim["max_fixes_per_step"]):
-                why = f"limit: {lim['max_fixes_per_step']} fixes per step"
+            if len(self.step_fixes(n)) >= per_step:
+                why = f"limit: {per_step} fixes per " + ("sub-step" if n in self.fix_epoch else "step")
             elif len(self.fixes) >= int(lim["max_fixes_per_task"]):
                 why = f"limit: {lim['max_fixes_per_task']} fixes per task"
-            elif self.adapt_tokens >= int(lim["max_tokens_per_task"]):
-                why = f"limit: adaptation tokens {self.adapt_tokens:,} of {int(lim['max_tokens_per_task']):,}"
+            elif self.adapt_tokens >= cap_tokens:
+                why = f"limit: adaptation tokens {self.adapt_tokens:,} of {cap_tokens:,}"
             elif usd is not None and usd >= float(lim["max_usd_per_task"]):
                 why = f"limit: adaptation cost ${usd:.2f} of ${float(lim['max_usd_per_task']):.2f}"
             if why:
                 break
-            cands, notes = candidates(d, n, self.fix_ctx(n))
+            cands, notes = all_candidates(d, n, self.fix_ctx(n))      # D129: the other causes' code fixes too
             for note in notes:
                 if (n, note) not in self.fix_notes:
                     self.fix_notes.add((n, note))
@@ -1939,6 +1972,8 @@ class PlanRunner:
             if fix is None:                               # Stage D: the fix proposer is the last rung
                 done = self.propose_fix(n, wave, d) if n not in self.proposer_gave_up else "none"
                 if done == "replanned":
+                    for k in self.fixes[-1].get("replaced_by") or []:      # D129: the new steps count their own fixes
+                        self.fix_epoch[k] = len(self.fixes)
                     self.ep.adaptation = self.adapt_summary()
                     return "replanned"
                 if done == "none":
@@ -1970,7 +2005,30 @@ class PlanRunner:
                          "max_input_chars": self.so(n, "max_input_chars")},
                 "capped": bool(self.capped.get(n)), "stock": getattr(self.i, "stock", None) is not None,
                 "upstream_rerun": set(self.upstream_rerun), "attached": self.attached_ids.get(n, []),
+                "unfillable": self.unfillable(n),                       # D129
+                # D127: web tools this run has that the step's helpers do not hold (a missing-data fix)
+                "web_missing": sorted({t for t in WEB_TOOLS if t in self.i.tools for a in agents if t not in a.tools}),
                 **self.make_tool_ctx(n)}
+
+    # box: fixes
+    def step_fixes(self, n: int) -> list[dict]:
+        """D129: the fixes tried for step n since its current version (a step made by a split or a re-plan does not
+        inherit the fixes of the step it replaced)."""
+        return [f for f in self.fixes[self.fix_epoch.get(n, 0):] if f["step"] == n]
+
+    # box: fixes
+    def unfillable(self, n: int) -> list[str]:
+        """D129: capabilities step n lacks that this run cannot supply: a grant for them found nothing in the pool or
+        the local tools, and the tool writer cannot make them (no offline library or no code runner). Box 4 then goes
+        straight to the proposer, whose edits are limited to working without them."""
+        d = (self.artifacts.get(n) or {}).get("meta", {}).get("stuck") or {}
+        if d.get("cause") != "capability" or self.make_tool_ctx(n).get("make_tool"):
+            return []
+        none = {snake(normalise(x)[0]) for f in self.step_fixes(n) if f["kind"] == "grant_tool"
+                and str(f.get("result", "")).startswith("failed: the pool shortlist had nothing to attach")
+                for x in f.get("params", {}).get("items") or []}
+        return sorted(x.partition(" — ")[0].strip() for x in d.get("lacked") or []
+                      if snake(normalise(x.partition(" — ")[0].strip())[0]) in none)
 
     # box: toolmaker
     def make_tool_ctx(self, n: int) -> dict:
@@ -1987,7 +2045,8 @@ class PlanRunner:
         record what happened: the fix, its tokens, the status after and why it failed."""
         self.fix_keys.add(fix_key(fix))
         t0, s0 = self.i.trace.total_tokens, len(self.i.trace.spans("chat"))
-        rec = {"step": n, "try": sum(f["step"] == n for f in self.fixes) + 1, "cause": d["cause"], "kind": fix["kind"],
+        rec = {"step": n, "try": len(self.step_fixes(n)) + 1, "cause": fix.get("for_cause") or d["cause"],
+               "kind": fix["kind"],
                "rung": fix["rung"], "target": fix["target"], "params": fix.get("params", {}),
                "evidence": d["evidence"][:4]}
         self.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.fix": fix["kind"],
@@ -2332,9 +2391,13 @@ class PlanRunner:
         """The last rung for a stuck step: one fix-proposer call (one retry on an invalid reply), plain code's checks,
         then the edit is applied. "applied" (step n was re-run), "replanned" (the plan changed; its steps run next)
         or "none" (no edit allowed, or no valid reply twice: recorded in proposer_gave_up)."""
-        tried_here = {f["kind"] for f in self.fixes if f["step"] == n}
+        tried_here = {f["kind"] for f in self.step_fixes(n)}
+        gone = self.unfillable(n)                     # D129: nothing can supply it: only edits that work without it
         allowed = [a for a in d.get("allowed_edits") or [] if a in D_OPS
-                   and not (a == "work_around" and not tried_here & set(WORKAROUND_AFTER))     # user rule (Oct 6)
+                   and not (gone and a in ("grant_tool", "add_helper_role"))
+                   and not (a == "work_around" and d["cause"] == "capability"
+                            and not tried_here & set(WORKAROUND_AFTER))                    # user rule (Oct 6)
+                   and not (a == "work_around" and d["cause"] == "missing_data" and not tried_here)   # D127
                    and not (a == "add_helper_role" and self.helpers_added >= int(fix_limits()["max_added_helpers"]))]
         if not allowed:
             self.proposer_gave_up[n] = f"fix proposer: no edit allowed for {d['cause']}"
@@ -2359,7 +2422,7 @@ class PlanRunner:
             if not problems:
                 break
             refused, reply = problems, None
-        rec = {"step": n, "try": sum(f["step"] == n for f in self.fixes) + 1, "cause": d["cause"],
+        rec = {"step": n, "try": len(self.step_fixes(n)) + 1, "cause": d["cause"],
                "kind": reply.edit.op if reply else "fix_proposer", "rung": "D", "target": n,
                "params": reply.edit.params if reply else {}, "reason": reply.reason if reply else "",
                "evidence": d["evidence"][:4], "proposer": replies}
@@ -2500,8 +2563,11 @@ class PlanRunner:
                   for c in m.get("checks") or []][:10]
         errors = [f"- {c.get('agent', '?')} {c.get('tool')}: {str(c.get('result') or '')[:150]}"
                   for c in m.get("tool_calls") or [] if not c.get("ok", True)][-5:]
+        gone = self.unfillable(n)
         attempt = "\n".join([f"status: {m['status']} ({m['status_reason'][:300]})", f"turns used: {m.get('turns')}",
                              *(["lacked: " + ", ".join(m["blocked"])] if m.get("blocked") else []),
+                             *([f"no tool for {', '.join(gone)} exists in this run and none can be written: the step "
+                                "must finish without it (state what is not covered)"] if gone else []),   # D129
                              *(["failed tool calls:"] + errors if errors else []), *(["checks:"] + checks if checks else [])])
         team = "\n".join(f"- {a.name}: {(a.description or a.goal or '').strip()[:120]}" for a in self.agents.values())
         skills = sorted({p["name"] for a in self.agents.values() for p in a.pool if p["kind"] == "skill"}
@@ -2518,7 +2584,9 @@ class PlanRunner:
                      + "\nReply again with one valid edit.")
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "fix_proposer", "amoeba.box": "proposer"}):
             resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
-                                            agent_name="fix_proposer", max_tokens=2048, role="planner")
+                                            agent_name="fix_proposer", role="planner",
+                                            max_tokens=int((adapt_config().get("proposer") or {}).get("max_tokens",
+                                                                                                     8192)))   # D129
         self.ep.total_tokens += resp.input_tokens + resp.output_tokens
         self.ep.n_llm_calls += 1
         return resp.content or ""
@@ -2634,6 +2702,23 @@ class PlanRunner:
         return act, inp, resp, gap
 
     # box: plan_step
+    def same_error_hint(self, agent: AgentSpec, tool: str, w: "_Work", resp: str) -> str:
+        """D131: a tool call that fails with the same error as this helper's last call of that tool gets, with its
+        result, what the tool takes (its description) and the other tools the helper holds, so the third call is not
+        the same mistake. Plain code; the helper decides."""
+        mine = [c for c in w.calls if c["agent"] == agent.name and c["tool"] == tool]
+        if len(mine) < 2 or mine[-1]["ok"] or mine[-2]["ok"] or norm_error(mine[-1]["result"]) != norm_error(
+                mine[-2]["result"]):
+            return resp
+        desc = self.i.tools.descriptions().get(tool, "") if hasattr(self.i.tools, "descriptions") else ""
+        others = [t for t in agent.tools if t != tool][:8]
+        self.i.trace.event("repeated_tool_error", {"gen_ai.agent.name": agent.name, "gen_ai.tool.name": tool,
+                                                   "amoeba.step": self.local.step if self.local else None})
+        return (f"{resp}\nNote: this is the same error as your previous {tool} call. {tool} takes: "
+                f"{desc[:200] or 'see its description'}. Change the input, or use another tool you have"
+                + (f" ({', '.join(others)})" if others else "") + ".")
+
+    # box: plan_step
     def unreadable_turn(self, agent: AgentSpec, n: int, e: MissingSections, before: int
                         ) -> tuple[str, str, str, str | None]:
         """D123: a reply still missing a required section after the unglue and the repair call fails only this turn:
@@ -2643,10 +2728,13 @@ class PlanRunner:
         for rec in self.i.trace.spans("chat")[before:]:
             self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                            rec.get("gen_ai.usage.output_tokens", 0))
+        blocked = bool(getattr(e, "blocked", False))         # D128: blocked by the service, not a format slip
         why = f"missing sections {e.missing}"
         self.i.trace.event("unreadable_reply", {"amoeba.box": "plan_step", "amoeba.step": n,
                                                 "gen_ai.agent.name": agent.name, "amoeba.missing": e.missing,
-                                                "amoeba.found": e.found[:8]})
+                                                "amoeba.found": e.found[:8], "amoeba.provider_blocked": blocked})
+        if blocked:
+            return PROVIDER_BLOCKED, "", PROVIDER_BLOCKED_NOTE, None
         return UNREADABLE, "", UNREADABLE_NOTE.format(why=why), None
 
     # ---- D63: the Action Observer (mid-run re-plan) ----------------------------------------------------------------
@@ -3164,9 +3252,21 @@ DECISIONS = ("CONTINUE", "REVISE_REMAINING", "ADD_STEP", "REASSIGN_STEP", "DROP_
 
 
 # box: step_check
+def missing_data_marks(text: str) -> list[str]:
+    """D127: the 'MISSING DATA: <what> — <where it was looked for>' lines of a step's output (facts or figures the
+    helper searched for and did not find; BLOCKED is for a tool it lacked)."""
+    out = []
+    for m in re.finditer(r"MISSING\s+DATA\s*[:：]\s*(.+)", unmark(text), re.I):
+        x = m.group(1).strip()
+        if x and x.lower() not in ("none", "n/a", "none.") and x not in out:
+            out.append(x)
+    return out
+
+
+# box: step_check
 def missing_input_marks(text: str) -> list[str]:
     """D63: the 'MISSING INPUT: <what>' lines of a step's output."""
-    return [m.group(1).strip() for m in re.finditer(r"MISSING\s+INPUT\s*[:：]\s*(.+)", text or "", re.I)]
+    return [m.group(1).strip() for m in re.finditer(r"MISSING\s+INPUT\s*[:：]\s*(.+)", unmark(text), re.I)]
 
 
 def head_tail(text: str, limit: int) -> str:

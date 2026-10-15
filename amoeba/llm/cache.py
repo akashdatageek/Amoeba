@@ -25,6 +25,16 @@ class CacheMiss(RuntimeError):
     error string: the run stops with error "cache_miss" instead of falling back to a live call."""
 
 
+# D128: the finish reasons a provider gives a reply it blocked (an empty reply, not the model's answer)
+BLOCKED_FINISH = ("content_filter", "refusal", "safety", "blocked")
+
+
+# box: client
+def is_blocked(resp) -> bool:
+    """D128: a reply the provider blocked: one of BLOCKED_FINISH as its finish reason and nothing written."""
+    return getattr(resp, "finish_reason", None) in BLOCKED_FINISH and not (getattr(resp, "content", "") or "").strip()
+
+
 def cache_key(parts: dict) -> str:
     return hashlib.sha256(json.dumps(parts, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
@@ -82,6 +92,8 @@ class CachedLLM(LLMClient):
         if self.store.mode == "replay":
             raise CacheMiss(f"no cached reply (model {self.model}, key {k[:12]}) in {self.store.dir}")
         resp = self.inner.chat_messages(messages, seed, max_tokens=max_tokens)
+        if is_blocked(resp):
+            return resp                     # D128: a reply the provider blocked is never stored (a retry asks again)
         self.store.put(k, {"key": k, "model": self.model, "max_tokens": max_tokens,
                            "temperature": getattr(self.inner, "temperature", None),
                            "namespace": self.store.namespace, "messages": messages, "response": asdict(resp)})

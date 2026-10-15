@@ -70,12 +70,16 @@ class OpenAICompatibleClient(LLMClient):
     def __init__(self, base_url: str | None, api_key: str, model: str,
                  temperature: float | None = 0.2, max_tokens: int = 2048, max_rate_retries: int = 5,
                  min_seconds_between_calls: float = 0.0, sleep: Callable[[float], None] = time.sleep,
-                 merge_system: bool = False, reasoning_effort: str | None = None):
+                 merge_system: bool = False, reasoning_effort: str | None = None,
+                 request_timeout_s: float | None = None):
         from openai import OpenAI  # imported lazily so tests never need it
 
         # D48: the SDK's own retries are off; rate limits are retried below, where each wait is recorded
-        self._client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
-        self._connect = lambda: OpenAI(api_key=api_key, base_url=base_url, max_retries=0)   # D111: rebuilt on a new proxy
+        # D131: request_timeout_s ends a call that hangs (a 26-minute planner call on Gemma); the retry below then asks
+        # again with half the reply room, so a model that thinks at length has less to think through
+        extra = {"timeout": float(request_timeout_s)} if request_timeout_s else {}
+        self._client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0, **extra)
+        self._connect = lambda: OpenAI(api_key=api_key, base_url=base_url, max_retries=0, **extra)   # D111: new proxy
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -132,6 +136,9 @@ class OpenAICompatibleClient(LLMClient):
                 wait = after if after is not None else min(60.0, 2.0 * 2 ** len(retries))
                 retries.append({"status": status, "wait_s": wait, "attempt": len(retries) + 1,
                                 "retry_after": after, "error": lost})
+                if lost == "timeout" and kw.get("max_tokens"):          # D131: less room after a call that hung
+                    kw["max_tokens"] = max(1024, int(kw["max_tokens"]) // 2)
+                    retries[-1]["max_tokens_after"] = kw["max_tokens"]
                 if lost == "connection" and refresh_proxy() is not None:   # D111: the proxy moved; reconnect
                     self._client = self._connect()
                     retries[-1]["proxy_refreshed"] = True

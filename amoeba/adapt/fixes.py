@@ -12,6 +12,9 @@ in this task and within the limits, re-runs only the stuck step and re-checks it
   checks          rung 1: more retry turns, then a larger input when an input was shortened
   max_turns       rung 1: more turns
   format          rung 1: more turns (D123: the step runs again with turns to make up for the unreadable ones)
+  provider_blocked  D128: rung 1, more turns once (the refusals come and go); then the task stops and says so
+  missing_data    D127: the step's helpers get the run's web tools when they lack them (rung 2, a registry grant),
+                  else more turns (rung 1)
   capability      rung 2: attach the missing tool or skill from the pool shortlist (pool or local tools must be on;
                   otherwise the rung is skipped with "capability fix unavailable: pool off")
                   rung W (D125): a tool for it, from the approved library or written by the tool writer, when
@@ -31,7 +34,8 @@ GENERIC = {"step", "steps", "data", "input", "inputs", "output", "outputs", "mis
 POOL_OFF = "capability fix unavailable: pool off"
 LIMIT_DEFAULTS = {"max_fixes_per_step": 3, "max_fixes_per_task": 8, "max_tokens_per_task": 200000,
                   "max_usd_per_task": 1.0, "more_turns": 3, "more_retry_turns": 1, "input_factor": 2,
-                  "stop_when_exhausted": True, "max_added_helpers": 2}
+                  "stop_when_exhausted": True, "max_added_helpers": 2, "max_fixes_per_substep": 2,
+                  "tokens_share_of_run_cap": 0.25}
 
 
 # box: fixes
@@ -41,11 +45,25 @@ def limits(config: dict | None = None) -> dict:
 
 
 # box: fixes
+def token_cap(lim: dict, run_cap: int | None) -> int:
+    """D129: the tokens all fixes of one task may use: max_tokens_per_task, or a share of the run's own token cap
+    (--max-tokens-per-run) when that is larger, so a model with long contexts is not stopped by a cap set for a small
+    one."""
+    base = int(lim["max_tokens_per_task"])
+    return max(base, int(float(lim.get("tokens_share_of_run_cap") or 0) * run_cap)) if run_cap else base
+
+
+# box: fixes
 def fix_key(fix: dict) -> str:
     """What makes two fixes the same (a failed fix is never repeated): its kind, the step it changes and its values
-    (lists of names compared as sets)."""
+    (lists of names compared as sets). D129: a grant's items are compared by standard name (aliases.yaml), so a
+    reworded request for the same capability ("send_email", "Send Email") is the same grant."""
     norm = lambda v: sorted(set(v), key=str) if isinstance(v, list) and all(isinstance(x, str) for x in v) else v
-    return json.dumps([fix["kind"], fix.get("target"), {k: norm(v) for k, v in (fix.get("params") or {}).items()}],
+    params = dict(fix.get("params") or {})
+    if fix["kind"] == "grant_tool" and isinstance(params.get("items"), list):
+        from amoeba.capabilities import normalise, snake
+        params["items"] = [snake(normalise(x)[0]) for x in params["items"]]
+    return json.dumps([fix["kind"], fix.get("target"), {k: norm(v) for k, v in params.items()}],
                       sort_keys=True)          # D124: a list that only repeats an item is the same fix
 
 
@@ -105,7 +123,16 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
                             "items": lacking})
         if not d.get("upstream"):
             notes.append("missing input with no upstream step named or matched")
-    elif cause in ("tool_error", "max_turns", "format"):
+    elif cause == "missing_data":
+        if ctx.get("web_missing"):                    # the run has web tools that the step's helpers do not hold
+            out.append({"kind": "grant_tool", "rung": 2, "target": n,
+                        "params": {"items": sorted(ctx["web_missing"]), "exclude": []}})
+        f = _option("set_run_option:max_turns", "max_turns", int(opts.get("max_turns", 0)),
+                    int(opts.get("max_turns", 0)) + int(lim["more_turns"]), ranges, n)
+        out += [f] if f else []
+        if not f and not ctx.get("web_missing"):
+            notes.append("missing data: the helpers hold the web tools and more turns are at the maximum")
+    elif cause in ("tool_error", "max_turns", "format", "provider_blocked"):
         f = _option("set_run_option:max_turns", "max_turns", int(opts.get("max_turns", 0)),
                     int(opts.get("max_turns", 0)) + int(lim["more_turns"]), ranges, n)
         out += [f] if f else []
@@ -123,6 +150,8 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
         items = sorted({x.partition(" — ")[0].strip() for x in d.get("lacked") or []})
         if not ctx.get("stock"):
             notes.append(POOL_OFF)
+        elif ctx.get("unfillable"):                   # D129: the pool had nothing and nothing can be written
+            notes.append("capability unfillable in this run: " + ", ".join(ctx["unfillable"]))
         else:
             out.append({"kind": "grant_tool", "rung": 2, "target": n,
                         "params": {"items": items, "exclude": sorted(ctx.get("attached") or [])}})
@@ -137,3 +166,27 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
     kept = [f for f in out if f["kind"] in allowed]
     notes += [f"{f['kind']}: not allowed for {cause} (adapt.yaml)" for f in out if f["kind"] not in allowed]
     return kept, notes
+
+
+# box: fixes
+def all_candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[list[dict], list[str]]:
+    """D129: the code fixes of the diagnosis's first cause, then those of every other cause its signals name (each
+    allowed by its own row of the table), before the fix proposer: a step that lacked a tool AND ran out of turns gets
+    more turns once the tool fixes are used up. A step the service blocked gets only its own fix."""
+    cfg = config or adapt_config()
+    table = (cfg.get("diagnoser") or {}).get("allowed_edits") or {}
+    causes = [c for c in (d.get("causes") or [d.get("cause")]) if c]
+    if d.get("cause") == "provider_blocked":
+        causes = ["provider_blocked"]
+    out, notes, seen = [], [], set()
+    for i, c in enumerate(causes):
+        dd = d if i == 0 else {**d, "cause": c, "allowed_edits": list(table.get(c) or [])}
+        got, why = candidates(dd, n, ctx, cfg)
+        for f in got:
+            k = fix_key(f)
+            if k not in seen:
+                seen.add(k)
+                out.append({**f, "for_cause": c} if i else f)
+        notes += why if i == 0 else [w for w in why if not w.startswith("no code fix for the cause")]
+    return out, notes
+

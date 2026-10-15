@@ -1,0 +1,331 @@
+team_id: 24af67ea-bdc0-4cb2-ad4c-412db27ab0d1
+version: 1
+parent_version: null
+name: team-plan-probe-h2
+topology: plan
+agents:
+  8a94f6ae-0892-46ea-ad73-ebc1d472b011:
+    agent_id: 8a94f6ae-0892-46ea-ad73-ebc1d472b011
+    name: Economic Data Researcher
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Specialist in retrieving and validating official government economic
+      statistics. Responsible for ensuring data provenance and providing exact citations.
+    role_prompt: 'You are a Senior Economic Data Researcher. Your goal is to gather
+      the exact nominal median household income for the United States and Indiana
+      from 2015 to 2023 using the U.S. Census Bureau (preferably the Current Population
+      Survey). Additionally, gather the annual average Consumer Price Index for All
+      Urban Consumers (CPI-U) from the BLS for the same period. For every single number
+      you find, you must provide the exact URL to the page or table where that number
+      is located. Format your output as a clean markdown table with columns: Year,
+      US Nominal Income, IN Nominal Income, CPI-U Value, and Source URL. Double-check
+      that you are using ''Median Household Income'' and not ''Mean'' or ''Per Capita''.'
+    max_history: 5
+    missing_tools:
+    - web_search
+    - fetch_url
+    is_summariser: false
+    goal: Provide a verified dataset of nominal incomes and CPI values with full citations.
+    skills:
+    - government data retrieval
+    - economic source validation
+    - citation management
+    outputs:
+    - artifact: Raw Data Table
+      format: 'table: Year | US Nominal Income | IN Nominal Income | CPI-U Value |
+        Source URL'
+    success_criteria:
+    - Every figure has a corresponding official URL
+    - Data covers all years from 2015-2023
+    - Sources are exclusively Census and BLS
+    constraints:
+    - Must use official government sources only
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  1781bee5-1d68-4568-b5be-acd7fbdc6f74:
+    agent_id: 1781bee5-1d68-4568-b5be-acd7fbdc6f74
+    name: Data Analyst
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Expert in economic calculations and data visualization. Responsible
+      for inflation adjustments and artifact generation.
+    role_prompt: 'You are a Senior Data Analyst. You will receive a table of nominal
+      incomes and CPI values. Your first task is to calculate the real median household
+      income for 2023 dollars using the formula: Real Value = Nominal Value * (CPI_2023
+      / CPI_Year). Then, calculate the percentage change from 2015 to 2023 for both
+      nominal and real values for both the US and Indiana. Use Python to: 1. Create
+      a CSV file containing all raw and calculated figures. 2. Create a high-quality
+      bar chart (PNG) comparing the real median household income of Indiana vs the
+      US across the years 2015-2023. Ensure the chart has clear labels, a legend,
+      and a title. Output the calculated values in a markdown table and provide the
+      files.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Transform raw nominal data into real values and produce the required CSV
+      and PNG files.
+    skills:
+    - inflation adjustment
+    - financial mathematics
+    - matplotlib
+    - pandas
+    outputs:
+    - artifact: Calculated Data Table
+      format: 'table: Year | US Nominal | US Real | IN Nominal | IN Real'
+    - artifact: Figures CSV
+      format: 'csv: all figures'
+    - artifact: Comparison Chart
+      format: 'png: bar chart of real income'
+    success_criteria:
+    - Real values are correctly adjusted to 2023 dollars
+    - Percentage changes are mathematically accurate
+    - CSV and PNG are generated and formatted correctly
+    constraints:
+    - Use 2023 as the base year for all real value calculations
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  9465c605-eddb-4ebf-8089-e8b7e28cca48:
+    agent_id: 9465c605-eddb-4ebf-8089-e8b7e28cca48
+    name: Delivery Lead
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 5
+    suggestions: ''
+    description: Cross-functional lead responsible for final quality assurance, requirements
+      traceability, and synthesis.
+    role_prompt: 'You are the Principal Delivery Lead. Your role is to assemble the
+      final response. You will receive raw data, calculated data, a CSV, and a PNG.
+      Your final output must: 1. Clearly state which Census survey (e.g., CPS) and
+      which BLS index (e.g., CPI-U) were used and provide a professional justification
+      for these choices. 2. Present the nominal and real values and percentage changes
+      in a clear format. 3. Ensure every single figure is accompanied by its citation/source
+      URL provided by the researcher. 4. Include the CSV and PNG artifacts. Do not
+      perform new calculations; if you find a discrepancy, flag it for the analyst.
+      Your goal is a polished, professional delivery that meets every requirement
+      of the original task.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Assemble the final deliverable ensuring all requirements are met and justified.
+    skills:
+    - technical writing
+    - quality assurance
+    - requirements traceability
+    outputs:
+    - artifact: Final Report
+      format: 'memo: including justification, citations, and links to artifacts'
+    success_criteria:
+    - All R1-R11 requirements are explicitly satisfied
+    - Justification is logically sound
+    - Citations are present for every figure
+    constraints:
+    - Must not create new analysis; only assemble and edit
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 8a94f6ae-0892-46ea-ad73-ebc1d472b011
+  dst: 1781bee5-1d68-4568-b5be-acd7fbdc6f74
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 1781bee5-1d68-4568-b5be-acd7fbdc6f74
+  dst: 8a94f6ae-0892-46ea-ad73-ebc1d472b011
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 1781bee5-1d68-4568-b5be-acd7fbdc6f74
+  dst: 9465c605-eddb-4ebf-8089-e8b7e28cca48
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 8a94f6ae-0892-46ea-ad73-ebc1d472b011
+  dst: 9465c605-eddb-4ebf-8089-e8b7e28cca48
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 8a94f6ae-0892-46ea-ad73-ebc1d472b011
+exit: 9465c605-eddb-4ebf-8089-e8b7e28cca48
+plan:
+- index: 0
+  agent_ids:
+  - 8a94f6ae-0892-46ea-ad73-ebc1d472b011
+  text: '[Economic Data Researcher]: Data Gathering'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R9
+  depends_on: []
+  do: '
+
+    - Search for US Census Bureau median household income for US and Indiana (2015-2023).
+
+    - Search for BLS annual average CPI-U (2015-2023).
+
+    - Extract values and save the exact source URLs for each.'
+  output: 'table: Year | US Nominal Income | IN Nominal Income | CPI-U Value | Source
+    URL'
+  done_when: All 9 years of data for all three variables are collected with URLs.
+- index: 1
+  agent_ids:
+  - 1781bee5-1d68-4568-b5be-acd7fbdc6f74
+  text: '[Data Analyst]: Calculation and Visualization'
+  kind: work
+  covers:
+  - R4
+  - R5
+  - R7
+  - R8
+  - R10
+  - R11
+  depends_on:
+  - 1
+  do: '
+
+    - Use Python to calculate real income for 2023 dollars.
+
+    - Calculate % change (nominal and real) from 2015 to 2023.
+
+    - Generate the CSV file containing all data.
+
+    - Generate the PNG bar chart comparing real incomes.'
+  output: 'table: Calculated values; code: python script; csv: figures.csv; png: chart.png'
+  done_when: CSV and PNG are generated and the calculation table is complete.
+- index: 2
+  agent_ids:
+  - 8a94f6ae-0892-46ea-ad73-ebc1d472b011
+  text: '[Economic Data Researcher]: Data Verification'
+  kind: verify
+  covers:
+  - R4
+  - R5
+  depends_on:
+  - 2
+  do: '
+
+    - Spot-check the Analyst''s real income calculations using a calculator.
+
+    - Verify that the nominal values used in the calculations match the original source
+    data.'
+  output: 'memo: Verification results (Pass/Fail)'
+  done_when: All sampled calculations are verified as correct.
+- index: 3
+  agent_ids:
+  - 9465c605-eddb-4ebf-8089-e8b7e28cca48
+  text: '[Delivery Lead]: Final Assembly'
+  kind: work
+  covers:
+  - R6
+  - R9
+  depends_on:
+  - 2
+  - 3
+  do: '
+
+    - Write the justification for the use of CPS and CPI-U.
+
+    - Assemble the final report including the tables, citations, and artifacts.
+
+    - Ensure every figure is cited.'
+  output: 'memo: Final Report with CSV and PNG'
+  done_when: All requirements R1-R11 are satisfied in the final output.
+requirements:
+  R1: Gather nominal median household income for Indiana (2015-2023) from official
+    U.S. Census Bureau survey estimates.
+  R2: Gather nominal median household income for the United States (2015-2023) from
+    official U.S. Census Bureau survey estimates.
+  R3: Gather official BLS price index values (2015-2023) for inflation adjustment.
+  R4: Calculate real median household income expressed in 2023 dollars for both Indiana
+    and the US.
+  R5: Calculate the percentage change (nominal and real) for both Indiana and the
+    US from 2015 to 2023.
+  R6: State and justify the specific Census survey and BLS price index used.
+  R7: Deliver a CSV file containing all figures (nominal, adjusted, and percentage
+    changes).
+  R8: Deliver a bar chart (PNG) comparing the real median household income.
+  R9: Cite every figure used in the analysis.
+  R10: Report the nominal values.
+  R11: Report the adjusted values.
+max_inner_turns: 3
+meta:
+  task_id: probe-h2-income
+  draft_rounds: 2
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: python_interpreter
+    for_role: Data Analyst
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: web_search
+    for_role: Economic Data Researcher
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Economic Data Researcher
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool

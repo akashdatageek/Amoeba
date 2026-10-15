@@ -314,9 +314,10 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
 
 # box: planner
 def toolbox_text(envelope: Envelope, web: bool = False, local: bool = False, pool: bool = False,
-                 disabled=()) -> str:
+                 disabled=(), turns: int | None = None) -> str:
     """D68: every tool Box 3 will really have, and how a role gets it, for the Planner and both observers.
-    disabled: D80 --disable-tools — tools taken out of this run are not listed."""
+    disabled: D80 --disable-tools — tools taken out of this run are not listed. turns: D130 — the turns each helper
+    has per step, so the plan sizes its steps and done_when conditions to them."""
     off = set(disabled or ())
     lines = [f"- {n}: {envelope.tool_descriptions.get(n, '')} (installed)" for n in envelope.allowed_tool_names
              if n not in off]
@@ -340,6 +341,12 @@ def toolbox_text(envelope: Envelope, web: bool = False, local: bool = False, poo
     if pool:
         lines.append("- a tool pool: plain code matches every capability request against cached MCP servers and "
                      "skills; a request may be filled or may stay unfilled, so a step must say what to do without it")
+    if web or local or pool:                           # D130: what no tool may do, and how much one step can do
+        lines.append("- no tool acts outside the run (sends email, posts, publishes, uploads or pays): a step that "
+                     "would do so saves the result as a file and says it was not sent")
+    if turns:
+        lines.append(f"- each helper has at most {turns} turns per step (one tool call or note per turn): size each "
+                     "step and its done_when to what its helpers can finish in that many turns")
     return "\n".join(lines) or "None"
 
 

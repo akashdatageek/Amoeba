@@ -1,0 +1,255 @@
+Source: S8
+URL: https://crewclaw.com/blog/openclaw-github-repository-guide
+Title: OpenClaw GitHub Repo: Structure, Install & First Agent (2026)
+
+GuideOpenClawFebruary 23, 2026·8 min read
+
+# OpenClaw GitHub Repo: Clone, Install & Build Your First Agent
+
+Go from zero to a running AI agent in 5 minutes. Clone the OpenClaw repo, install the CLI, configure your first SOUL.md, and deploy to Telegram or VPS. Everything you need to get started with the open-source agent framework.
+
+## What is the OpenClaw GitHub Repository?
+
+The OpenClaw GitHub repository is the official open-source home of the OpenClaw AI agent framework. It contains the complete source code for the CLI, the gateway server, the skills system, agent configuration templates, and documentation. Everything you need to build, run, and deploy AI agents with OpenClaw lives in this single repository.
+
+The repository is publicly accessible, which means anyone can clone it, inspect the code, submit issues, and contribute pull requests. For most users, interacting with the repo directly is not required since you can install OpenClaw via npm. But if you want to understand how the framework works under the hood, customize it for your needs, or contribute back to the project, the GitHub repository is where you start.
+
+The repo also serves as the central hub for community discussion. The Issues tab is where bugs are reported and features are requested. Pull requests are where contributions are reviewed and merged. And the release history gives you a clear timeline of every version, feature, and fix.
+
+## Repository Structure
+
+The OpenClaw codebase is organized into a clear directory structure. Understanding this layout helps you navigate the code, find what you need, and know where to make changes if you are contributing.
+
+OpenClaw repository layout
+
+```
+openclaw/ ├── agents/ # Default agent templates and examples │ ├── researcher/ # Research agent template │ ├── writer/ # Content writer template │ └── ... ├── gateway/ # Gateway server (HTTP + WebSocket) │ ├── server.js # Main gateway entry point │ ├── routes/ # API route handlers │ └── channels/ # Telegram, Slack, Discord, Email ├── skills/ # Built-in skills (browser, scraper, etc.) │ ├── browser/ # Web browsing skill │ ├── scraper/ # Content scraping skill │ ├── file/ # File management skill │ └── ... ├── cli/ # Command-line interface │ ├── commands/ # CLI command definitions │ └── utils/ # CLI helper utilities ├── docs/ # Documentation and guides ├── package.json # Dependencies and scripts └── README.md # Project overview and quickstart
+```
+
+### agents/
+
+The agents directory contains default agent templates that ship with OpenClaw. Each subdirectory is a complete agent workspace with a SOUL.md file, and in some cases additional configuration files. These templates serve as starting points for your own agents. You can copy a template, modify the SOUL.md to match your use case, and register it with the CLI.
+
+### gateway/
+
+The gateway is the runtime engine of OpenClaw. It is a Node.js server that handles incoming messages, routes them to the correct agent, manages sessions, and communicates with LLM providers. The channels subdirectory contains the integrations for Telegram, Slack, Discord, and Email. When you run `openclaw gateway start`, this is the code that executes.
+
+### skills/
+
+Skills are plug-and-play capabilities you can give your agents. The skills directory contains every built-in skill, each in its own subdirectory with its implementation and configuration. When you add `browser: Search the web` to your SOUL.md, the gateway loads the corresponding skill from this directory.
+
+### cli/
+
+The CLI directory contains the command-line interface you interact with when you run `openclaw` in your terminal. Each command (agents add, gateway start, agent --message, etc.) is defined in the commands subdirectory. If you want to understand how a CLI command works or propose a new one, this is where to look.
+
+## How to Clone and Install from GitHub
+
+There are two ways to get OpenClaw on your machine: installing the published package via npm, or cloning the repository directly from GitHub. Here is how to do both.
+
+### Option 1: Install via npm (recommended for most users)
+
+If you just want to use OpenClaw to build and run agents, install it globally with npm. This is the fastest path to a working setup.
+
+Install OpenClaw via npm
+
+```
+# Install globally npm install -g openclaw # Verify installation openclaw --version # Start building your first agent mkdir my-agent && cd my-agent openclaw init
+```
+
+### Option 2: Clone from GitHub (for contributors and developers)
+
+If you want to inspect the source code, contribute to the project, or run the development version, clone the repository directly.
+
+Clone and install from GitHub
+
+```
+# Clone the repository git clone https://github.com/openclaw/openclaw.git cd openclaw # Install dependencies npm install # Link the CLI globally for development npm link # Verify it works openclaw --version # Run the test suite npm test
+```
+
+After cloning, you have the full source code locally. You can explore every directory, make changes, run the test suite, and submit pull requests. The `npm link` command makes your local development version available as the global `openclaw` command, so you can test your changes immediately.
+
+## Key Files You Should Know
+
+The OpenClaw framework is built around a few critical files. Whether you are using the framework or contributing to it, understanding these files is essential.
+
+#### SOUL.md
+
+The core configuration file for every OpenClaw agent. It defines the agent's identity, personality, rules, skills, and behavior in plain markdown. One SOUL.md file equals one agent. This is the file you will spend the most time editing when building agents. See our detailed guide on SOUL.md to learn every section and option available.
+
+#### AGENTS.md
+
+The multi-agent orchestration file. When you have more than one agent, AGENTS.md defines the team roster and handoff rules. It lists each agent by name and describes the workflow for how they collaborate. The gateway reads this file to know which agents exist and how messages should be routed between them using the @mention system.
+
+#### TOOLS.md
+
+The skills and tools reference file. It documents every built-in skill available in OpenClaw, including usage instructions and configuration options. When you want to add a capability to your agent, TOOLS.md is the reference for what is available and how to enable it in your SOUL.md.
+
+#### HEARTBEAT.md
+
+The scheduled tasks configuration file. HEARTBEAT.md lets you define cron-like recurring tasks for your agents. You can schedule an agent to run a research report every morning, send a summary every evening, or check for updates at a set interval. Each entry specifies the schedule, the target agent, and the message to send.
+
+Example HEARTBEAT.md
+
+```
+# Scheduled Tasks ## Morning Report - Schedule: Every day at 9:00 AM - Agent: @researcher - Message: Run the daily SEO performance report ## Weekly Summary - Schedule: Every Monday at 10:00 AM - Agent: @writer - Message: Compile the weekly content performance summary
+```
+
+## Contributing to OpenClaw
+
+OpenClaw is an open-source project that welcomes contributions from the community. Whether you want to fix a bug, add a feature, improve documentation, or create a new skill, here is how to contribute.
+
+### Step 1: Fork and clone
+
+Fork the OpenClaw repository to your GitHub account, then clone your fork locally. This gives you a personal copy where you can make changes without affecting the main repository.
+
+Fork and clone workflow
+
+```
+# Fork on GitHub first, then clone your fork git clone https://github.com/YOUR_USERNAME/openclaw.git cd openclaw npm install # Add upstream remote to stay in sync git remote add upstream https://github.com/openclaw/openclaw.git # Create a feature branch git checkout -b feature/my-new-skill
+```
+
+### Step 2: Make your changes
+
+Follow the existing code style and patterns. If you are adding a new skill, look at how existing skills are structured in the skills directory. If you are fixing a bug, include a test that reproduces the issue. Run the test suite with `npm test` to make sure your changes do not break anything.
+
+### Step 3: Submit a pull request
+
+Push your branch to your fork and open a pull request against the main OpenClaw repository. Write a clear description of what your PR does, why it is needed, and how to test it. The maintainers will review your code and provide feedback. Most PRs are reviewed within a few days.
+
+Submit your contribution
+
+```
+# Stage and commit your changes git add . git commit -m "Add new calendar skill for scheduling" # Push to your fork git push origin feature/my-new-skill # Open a pull request on GitHub # Go to https://github.com/openclaw/openclaw/pulls # Click "New pull request" and select your branch
+```
+
+Contributions do not have to be code. Documentation improvements, bug reports with clear reproduction steps, and well-described feature requests are all valuable contributions to the project.
+
+## Common GitHub Issues and Solutions
+
+When working with the OpenClaw GitHub repository, you may run into common issues. Here are the most frequent problems and their solutions.
+
+#### npm install fails with permission errors
+
+This happens when installing globally without proper permissions. On macOS and Linux, use nvm (Node Version Manager) to manage your Node.js installation, which avoids permission issues entirely. Alternatively, configure npm to use a different directory for global installs. Do not use sudo with npm install.
+
+#### Gateway fails to start after cloning
+
+Ensure you ran npm install in the project root after cloning. Check that your Node.js version is 18 or higher with node --version. If the issue persists, delete the node\_modules directory and package-lock.json, then run npm install again for a clean installation.
+
+#### Agent not responding after registration
+
+Verify the agent is registered correctly with openclaw agents list. Check that your LLM API key is configured (the gateway logs will show authentication errors if the key is missing or invalid). Ensure the gateway is running with openclaw gateway status. If you see session errors, clear sessions with the command listed in the OpenClaw troubleshooting docs.
+
+#### Git merge conflicts when pulling updates
+
+If you have modified files in the repository and pull new changes, you may get merge conflicts. The safest approach is to keep your custom agents in a separate directory outside the cloned repository, or use a fork and rebase workflow. For SOUL.md files, resolve conflicts by keeping the newer version and re-applying your customizations.
+
+#### Skills not loading or throwing errors
+
+Some skills have additional dependencies (for example, the browser skill requires a Chromium installation). Check the specific skill's README in the skills directory for requirements. Run openclaw skills list to see which skills are available and properly installed.
+
+## Skip the Setup -- Use CrewClaw
+
+Cloning the repository, navigating the codebase, writing SOUL.md files from scratch, and configuring the gateway is the manual path. It works, but it takes time and assumes familiarity with the terminal, Git, and Node.js.
+
+CrewClaw generates everything for you. Pick a role from the library, configure your agent with a visual interface, and download a complete, ready-to-deploy agent package. The SOUL.md, directory structure, skills configuration, and deployment instructions are all included. No cloning, no dependency debugging, no guesswork.
+
+It costs $9 one-time per agent. You get a production-ready OpenClaw agent package in under 5 minutes instead of spending 30 minutes reading through the repository and writing configuration files from scratch.
+
+## Related Guides
+
+[SOUL.md Guide
+
+Create an AI agent with one file](/blog/soul-md-create-ai-agent)[Agent Teams Guide
+
+Build multi-agent crews with agents.md](/blog/openclaw-agent-teams-guide)[Deploy to Telegram
+
+Run your agent 24/7 on Telegram](/blog/how-to-deploy-ai-agent-telegram)[OpenClaw vs CrewAI
+
+Side-by-side framework comparison](/blog/openclaw-vs-crewai)[Run OpenClaw on Gemma 4 Locally
+
+Local model setup, real costs, and gotchas](/blog/openclaw-gemma4-local-agent)[Hermes Agent Setup Guide
+
+Install and run the other popular harness](/blog/hermes-agent-setup-guide)
+
+## Frequently Asked Questions
+
+### Is the OpenClaw GitHub repository free to use?
+
+Yes. OpenClaw is fully open-source and available under a permissive license. You can clone the repository, use the framework, and build agents at no cost. The only expense is the LLM API calls your agents make, unless you use local models through Ollama.
+
+### What are the system requirements to run OpenClaw from GitHub?
+
+OpenClaw requires Node.js 18 or higher and npm. It runs on macOS, Linux, and Windows (via WSL). You also need an API key from at least one supported LLM provider (Anthropic, OpenAI, Google, or a local Ollama installation). The framework itself is lightweight and does not require significant hardware resources.
+
+### How often is the OpenClaw GitHub repository updated?
+
+The OpenClaw repository receives regular updates, typically multiple times per week. The maintainers push new features, bug fixes, and documentation improvements consistently. You can watch the repository on GitHub to receive notifications for new releases and changes.
+
+### Can I use OpenClaw without cloning the GitHub repository?
+
+Yes. You can install OpenClaw globally using npm with a single command: npm install -g openclaw. This installs the CLI and framework without needing to clone the repository. Cloning is only necessary if you want to contribute to the project, inspect the source code, or run the development version.
+
+### Where do I report bugs or request features for OpenClaw?
+
+Use the Issues tab on the OpenClaw GitHub repository. For bugs, include your OpenClaw version, operating system, the steps to reproduce, and any error messages. For feature requests, describe the use case and why the feature would be valuable. The maintainers are responsive and label issues for easy tracking.
+
+### How do I keep my local OpenClaw installation up to date with GitHub?
+
+If you installed via npm, run npm update -g openclaw. If you cloned the repository, navigate to the project directory and run git pull followed by npm install. Both approaches will bring you to the latest version. Check the CHANGELOG or release notes for breaking changes before updating.
+
+## Build your agent in 5 minutes
+
+Skip the GitHub setup. CrewClaw generates a complete OpenClaw agent package with SOUL.md, skills, and deployment instructions. Pick a role, configure, and download.
+
+[Read the Setup Guide](/blog/openclaw-setup-guide-2026)[Create Your Agent](/create-agent)
+
+Want this without the setup?
+
+Pick a pre-built AI employee and deploy in 60 seconds. No config needed.
+
+[📋OrionProject Manager](/agents/project-manager)[✍️EchoContent Writer](/agents/content-writer)[📊MetricData Analyst](/agents/data-analyst)
+
+[Browse 228+ Agent Templates](/agents)One-time payment. Own the code.
+
+## Deploy a Ready-Made AI Agent
+
+Skip the setup. Pick a template and deploy in 60 seconds.
+
+[📋
+
+Orion
+
+Project Manager](/agents/project-manager)[✍️
+
+Echo
+
+Content Writer](/agents/content-writer)[📊
+
+Data Analyst](/agents/data-analyst)
+
+[Browse all 228+ agent templates →](/agents)
+
+## Or Get the Whole Team
+
+Multi-agent crews pre-configured to work together. Cheaper than buying singles.
+
+[✍️4 agents · $29
+
+Automate Content Pipeline: 4-Agent SEO + Writing + Social Team
+
+Automate content pipeline end-to-end with 4 AI agents that handle keyword research, drafting, scheduling, and social distribution for solo founders and lean teams.](/use-cases/automate-content-pipeline)[🚀3 agents · $19
+
+AI DevOps Automation: 3-Agent CI/CD, Code Review, and QA Team
+
+AI DevOps automation team that runs CI/CD monitoring, PR review, and regression testing on autopilot for solo developers and small startup engineering teams.](/use-cases/devops-automation)
+
+[See all team bundles →](/use-cases)
+
+## Get a Working AI Employee
+
+Pick a role. Your AI employee starts working in 60 seconds. WhatsApp, Telegram, Slack & Discord. No setup required.
+
+[Get Your AI Employee](/create-agent)
+
+✓ One-time payment✓ Own the code✓ Money-back guarantee

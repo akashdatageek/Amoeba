@@ -926,3 +926,59 @@ without `--local-tools` there is no code runner and the rung is skipped. A tool 
 (`python -m scripts.tool_library approve <name>`), only while its code is unchanged, and only after its self-test
 passes again. This is the one thing that carries over between tasks, a deliberate exception to D117.
 
+
+**D127, tools reach the helpers that ask for them; missing data is not a missing tool (Oct 14, user decision:
+"don't overfit; solve the architecture problems").** The Sonnet and Gemma runs on H2, H3 and r1
+(`eval/manual/sonnet/REPORT.md`, `eval/manual/gemma/REPORT.md`) lost most stuck steps to tool delivery, on both
+models. Four general changes, none naming a task:
+(1) the names helpers give a code runner ("Bash", "shell", "python", …) are aliases of `code_execution`, and a request
+that names a local tool outright matches it, so such a request reaches `local:Bash`;
+(2) a picked pool tool whose server does not answer (or no longer matches its pins) gives way to the next vetted
+candidate before the request is left unfilled, and on an equal score a local item (sandboxed, no network) comes first;
+(3) a request whose role field names several roles is for each of them (it was dropped as `no_helper`);
+(4) helpers write "MISSING DATA: <what> — <where they looked>" for facts they could not find, and BLOCKED only for
+tools; plain code reads a lacked item with no tool name and no earlier step as `missing_data`, a cause of its own
+(web tools if the helpers lack them, more turns, then the proposer; a work-around after one fix), never as a capability
+to grant.
+
+**D128, Box 4 names the real cause (Oct 14).** On Claude, 47 of 145 calls came back empty with finish reason
+`content_filter`; each got a repair call (blocked too) and Box 4 called the step's cause "format" or "capability" and
+spent its fixes on edits that could not help. Now a blocked reply is retried once as it was (never stored in the
+response cache), gets no repair call, and in routed mode goes to the next candidate model; a step whose turns were
+blocked has the cause `provider_blocked`, ranked first, whose only fix is more turns once (the refusals come and go),
+after which the task stops and says the service refused the calls; `result.json` counts them (`provider_blocked`).
+A step that ran out of turns is seen as such even when it also lacked something (its lacked line may even say "turn
+budget"), and `**BLOCKED:**` or `**MISSING INPUT:**` in bold is read like the plain mark.
+
+**D129, Box 4's fix order and limits (Oct 14).** In the same runs Box 4 tried 30 fixes and recovered nothing: reworded
+grants for one capability used up a step's three fixes, a split step inherited its parent's count, no rung knew that
+nothing could supply a capability, and one re-run on Sonnet used the whole 200k allowance. Now a grant's items are
+compared by standard name, so a reworded grant is the same grant; when a grant found nothing and the tool writer cannot
+make the item, the capability is unfillable in this run and the proposer is asked only for edits that work without it
+(work_around, split, re-plan); the code fixes of every cause the signals name are tried before the proposer (a step
+that lacked a tool and ran out of turns gets more turns); a step made by a split or a re-plan counts its own fixes
+(at most two); the allowance is the larger of 200k tokens and a quarter of `--max-tokens-per-run`; the proposer has
+8,192 tokens of reply room; its wording check reads phrases at a word start ("skip the paged endpoint" passes, "skip
+the checks" does not); and `replan_remaining` is its last edit for every cause but `provider_blocked`.
+
+**D130, plan checks before Box 3 (Oct 14).** Given every tool, the six plans would mostly have finished, but Gemma's
+done_when conditions only checked that a deliverable existed ("Word document is generated" let through a report
+without its two pages or citations), its email step could only end with "Email is successfully dispatched", and no
+plan knew how many turns a step gets. The quality gate (D28) has three new hard checks, each sent back to the Planner
+with a suggestion: `done_when_properties` (the properties a requirement asks for — citations, dates, pages, a table, a
+chart, a file type, a count — are stated in the done_when or output of a step that covers it; plain code's step checks
+then enforce what is stated), `outside_action_fallback` (a step that must send, post, upload or pay — no tool of the run
+may — ends its done_when with what is delivered instead) and `done_when_reachable` (no exact wording to reproduce, at
+most six conditions). The Planner's toolbox text now says how many turns a helper has per step and that no tool acts
+outside the run. On the stored plans the checks flag Gemma's r1 report and email steps and its H3 memo, and pass
+Sonnet's plans.
+
+**D131, inside the steps and around the run (Oct 14).** Smaller problems from the same runs, each fixed in general: a
+citation tag that names the wrong source is corrected by plain code when every claim it backs is in exactly one other
+source the team was shown (recorded as `citations_relabelled`; with two candidate sources nothing is guessed and the
+step stays partial as before); a tool call that fails with the same error twice in a row comes back with what the tool
+takes and the helper's other tools; a path under a habitual workspace root (`/workspace`, `/mnt/data`, …) means the
+run's workspace; a model call is ended after `--request-timeout-s` (default 600 s) and asked again with half the reply
+room; and team.yaml names the model the calls go to (the profile's one entry), not the envelope's default. A partial
+step whose output lacks what its done_when states is now caught by the step checks (D130), so problem 18 needs no
+change of its own.

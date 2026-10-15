@@ -475,7 +475,9 @@ def test_a_recorded_pick_is_reused_by_the_next_run_of_the_task(cache, skills, tm
                       picks=SharedPicks(picks, task.id))
         chosen.append((q.pool_id, len(llm.calls_of("pool_picker"))))
         b.finish()
-    assert chosen == [("io.example/py-sandbox", 1), ("io.example/py-sandbox", 0), ("io.example/py-sandbox", 0)]
+    # the recorded pick is reused (one picker call in three runs); D127: its server does not answer offline, so each
+    # run falls through to the next vetted candidate, local:Bash
+    assert chosen == [("local:Bash", 1), ("local:Bash", 0), ("local:Bash", 0)]
     assert json.loads(picks.read_text()) == {task.id: {"tool|code_execution|Researcher": "io.example/py-sandbox"}}
 
 

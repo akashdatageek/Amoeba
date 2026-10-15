@@ -1,0 +1,213 @@
+Source: S26
+URL: https://www.spheron.network/blog/langgraph-vs-crewai-vs-autogen-2026
+Title: LangGraph vs CrewAI vs AutoGen: Best AI Agent Framework 2026 | Spheron Blog
+
+Comparison
+
+# LangGraph vs CrewAI vs AutoGen: Best AI Agent Framework 2026
+
+[Back to Blog](/blog/)Written by [Mitrasish, Co-founder & CTO, Spheron](/authors/mitrasish/ "Co-founder & CTO, Spheron")Aug 18, 2026
+
+LangGraph vs CrewAIBest AI Agent Framework 2026LangGraph vs CrewAI vs AutoGenProduction AI Agent FrameworkMulti-Agent Orchestration FrameworkAgent Framework ComparisonCrewAILangGraphMicrosoft Agent Framework
+
+![LangGraph vs CrewAI vs AutoGen: Best AI Agent Framework 2026](/blog/langgraph-vs-crewai-vs-autogen-2026.webp)
+
+LangGraph vs CrewAI is the wrong comparison on its own. The real question in 2026 is LangGraph vs CrewAI vs AutoGen, and only two of the three are still worth building new production systems on. AutoGen was moved to [maintenance mode by Microsoft](https://github.com/microsoft/autogen), meaning it receives bug fixes and security patches but no new features, and the project's own README now tells new users to start with Microsoft Agent Framework instead.
+
+That single fact reframes the whole comparison. This isn't another single-framework tutorial: we already have deep dives on LangGraph vs LangChain, deploying CrewAI in production, and self-hosting Microsoft Agent Framework. This post exists to answer the question those posts don't: which one do you actually build on in 2026, and what does it cost to run.
+
+## LangGraph vs CrewAI vs AutoGen: What Actually Differs
+
+The three frameworks model "an agent system" in fundamentally different ways, and that model determines almost everything downstream: how you debug a failure, how you add a human approval step, and how much boilerplate you write before anything runs.
+
+| Framework | Core model | State management | GitHub stars (Aug 2026) |
+| --- | --- | --- | --- |
+| LangGraph | Directed graph of nodes and edges | Explicit typed state, checkpointed | 39,876 |
+| CrewAI | Role-based crews (+ event-driven Flows) | Sequential/hierarchical task pipeline, or Flow-managed state | 57,217 |
+| AutoGen | Conversational agent pairs / group chats | In-memory conversation history | 60,475 |
+
+Notice the stars run backwards from the recommendation. AutoGen has the most GitHub stars of the three, and it's the one in maintenance mode. Star count reflects years of accumulated legacy adoption, not what you should pick today. CrewAI sits second with 57,217 stars and an actively developed roadmap; LangGraph has the fewest stars but the most architectural depth for complex control flow. Don't let star count alone drive this decision.
+
+### LangGraph's StateGraph, Checkpointing, and Explicit State
+
+LangGraph treats an agent as a directed graph. Nodes are Python functions, edges are transitions, and the state passed between them is an explicit typed object you define yourself:
+
+python
+
+```
+from langgraph.graph import StateGraph, END from typing import TypedDict class AgentState(TypedDict): messages: list tool_calls_remaining: int approval_status: str graph = StateGraph(AgentState) graph.add_node("agent", agent_node) graph.add_node("tools", tool_node) graph.add_conditional_edges("agent", should_continue) graph.add_edge("tools", "agent") app = graph.compile(checkpointer=checkpointer)
+```
+
+Every field the agent tracks is visible in the `AgentState` definition. Nothing is buried in an implicit message buffer. Pair that with a `AsyncPostgresSaver` checkpointer and you get full state persistence after every node: a spot instance interruption resumes from the last completed node instead of restarting the whole run. For a 10-node graph, that's the difference between losing zero LLM calls and losing nine of them. Our [LangGraph vs LangChain guide](/blog/langgraph-vs-langchain/) covers the checkpointing internals and the migration path from LangChain's `AgentExecutor` in more depth.
+
+### CrewAI's Crews (Autonomous Roles) and Flows (Event-Driven Control)
+
+CrewAI's original primitive is the Crew: a set of agents with a role, a goal, and a backstory, executing tasks sequentially or hierarchically with the framework handling delegation and result aggregation.
+
+python
+
+```
+from crewai import Agent, Task, Crew, Process researcher = Agent(role="Research Analyst", goal="Find accurate information", backstory="...") writer = Agent(role="Technical Writer", goal="Produce clear content", backstory="...") crew = Crew(agents=[researcher, writer], tasks=[research_task, writing_task], process=Process.sequential) result = crew.kickoff(inputs={"topic": "agent framework comparison"})
+```
+
+That's the fastest path to a working multi-agent pipeline of the three frameworks. The tradeoff historically was control: a Crew reasons autonomously about its own execution, which is great for open-ended research or synthesis tasks and worse for anything that needs deterministic, auditable steps.
+
+CrewAI's answer, launched in 2025, is Flows: an event-driven orchestration layer using `@start`, `@listen`, and `@router` decorators to define explicit, deterministic control flow, CrewAI's direct answer to LangGraph-style graph control. Most production CrewAI systems don't pick one or the other. A Flow controls the overall process and calls Crews for the specific steps that need autonomous, role-based reasoning, giving you LangGraph-like predictability at the top level with CrewAI's fast-to-build autonomy where it's actually useful. Our [CrewAI production deployment guide](/blog/deploy-crewai-gpu-cloud-production-multi-agent-guide/) walks through GPU sizing and self-hosted vLLM wiring for real crews.
+
+### AutoGen's Conversational Multi-Agent Pattern, and Why It's in Maintenance Mode
+
+AutoGen models multi-agent systems as conversations: agent pairs or group chats exchanging messages, with code execution as a first-class primitive. It was, for a long time, the framework most teams reached for when they needed two or more LLMs talking to each other and running code.
+
+Then Microsoft folded AutoGen's orchestration ideas and Semantic Kernel's enterprise integration patterns into a single successor. [Microsoft Agent Framework 1.0](https://learn.microsoft.com/en-us/agent-framework/migration-guide/from-autogen/) reached general availability in April 2026, and it's the framework Microsoft is actively developing: a production agent runtime, CodeAct mode (agents write and execute Python instead of emitting JSON tool calls), a built-in multi-agent graph with supervisor routing, and first-class MCP client integration. AutoGen itself continues to receive bug fixes and security patches, so an existing AutoGen deployment won't break, but Microsoft's own guidance is explicit: new users should start with Microsoft Agent Framework.
+
+If your actual need is agents built on different frameworks talking to each other rather than picking one framework outright, the [A2A (Agent2Agent) protocol guide](/blog/deploy-a2a-agent2agent-multi-agent-gpu-cloud/) covers that interoperability layer, which sidesteps this decision entirely for cross-framework use cases.
+
+## Production Readiness: Observability, Human-in-the-Loop, and Failure Recovery
+
+This is the section that actually separates a framework you can ship on from one that breaks six months in. The industry data on agent pilots is not encouraging: [88% of enterprise AI pilots never reach production](https://www.cio.com/article/3850763/88-of-ai-pilots-fail-to-reach-production-but-thats-not-all-on-it.html), according to IDC research done with Lenovo, which found that for every 33 AI proofs of concept a company launches, only four graduate to production. That stat is about pilots stalling before they ship at all, a separate question from what AI delivers once it's actually running: [NVIDIA's 2026 State of AI Report](https://blogs.nvidia.com/blog/state-of-ai-report-2026/), a survey of 3,200+ enterprise respondents, found 88% saw AI increase revenue somewhere in the business and 87% saw AI reduce annual costs. A March 2026 survey of [650 enterprise technology leaders by Digital Applied](https://www.digitalapplied.com/blog/ai-agent-scaling-gap-march-2026-pilot-to-production) found the top cited scaling gaps were integration complexity (63%), output quality at volume (58%), and monitoring and observability (54%). None of those are framework popularity problems. They're production-readiness problems, and this is where LangGraph, CrewAI, and Microsoft Agent Framework genuinely diverge.
+
+### Observability: LangSmith vs CrewAI AMP vs AutoGen Tracing
+
+LangSmith is LangGraph's native observability layer. Its free Developer tier includes 5,000 traces/month with 14-day retention; the Plus tier runs $39/seat/month with 10,000 included traces before overage pricing kicks in. Every node execution in a LangGraph run shows up as a span with token counts and latency, which matters when you're debugging a failure buried in the middle of a 10-node graph.
+
+CrewAI's equivalent is AMP, its managed platform. The free Basic tier covers 50 executions/month; Enterprise is custom-priced and adds SSO and on-prem or private deployment. Every AMP tier still requires bringing your own LLM API keys, so AMP's pricing is for the orchestration and observability layer, not inference. CrewAI reports 2 billion agent executions in the trailing 12 months and 150+ enterprise customers as of 2026, which is a meaningfully larger production footprint than the GitHub star gap between CrewAI and LangGraph would suggest.
+
+AutoGen's tracing is comparatively thin: OpenTelemetry-style instrumentation exists, but there's no first-party managed observability product actively being developed for it, which is what you'd expect from a maintenance-mode project. Microsoft Agent Framework inherits better observability tooling as part of its unified 1.0 release.
+
+Both LangGraph and CrewAI also work cleanly with third-party observability tools like Langfuse, which traces LLM calls automatically via LiteLLM instrumentation regardless of which orchestration framework sits on top.
+
+### Human-in-the-Loop and Interrupts
+
+LangGraph has the most explicit primitive here: `interrupt_before` and `interrupt_after` pause graph execution at a named node, hand state to a human reviewer, and resume from exactly that point once approved.
+
+python
+
+```
+app = graph.compile( checkpointer=checkpointer, interrupt_before=["execute_code"] )
+```
+
+CrewAI's Flows can implement an equivalent pattern using `@router` to branch into a "wait for approval" state, but it's a pattern you build rather than a first-class primitive the way LangGraph's `interrupt_before` is. AutoGen supports human input via a `human_input_mode` setting on an agent, which is functional for simple approve/reject gates but doesn't give you LangGraph's replay-from-any-checkpoint debugging.
+
+For regulated workflows or anything where a wrong agent action is expensive, this is often the deciding factor over raw capability.
+
+### Failure Recovery, Retries, and Token Overhead
+
+This is where the production data gets uncomfortable. [Foundra's 2026 production reliability analysis](https://www.foundra.ai/key-reads/ai-agent-production-reliability-testing-2026) measured a 56.6% task success rate across 6,259 deployed agents and 4.5 million runs. Nearly half of production agent runs fail on some axis, which means retry and recovery design isn't an edge case, it's the majority of what determines whether an agent system is usable.
+
+LangGraph's checkpointing gives you resume-from-last-node recovery natively. CrewAI gives you `max_iter` on each agent (retry budget per task) and `max_execution_time` per task, plus hierarchical mode where a manager LLM can re-delegate a failed worker's task with added context, at the cost of noticeably more LLM calls than sequential mode. AutoGen's retry story is the weakest of the three: conversation-based state means a failed run more often means restarting the conversation from scratch rather than resuming a specific step.
+
+If durable, step-level recovery across long-running workflows is your primary requirement and you'd rather not build it inside the agent framework at all, the [durable execution engines guide covering Temporal, Inngest, and Restate](/blog/ai-agent-workflow-orchestration-temporal-inngest-restate-gpu-cloud/) is worth reading as an alternative or complement to framework-native checkpointing: these tools handle retries and state persistence at the workflow-engine layer, independent of which agent framework calls into them.
+
+## LangGraph vs CrewAI: Which Framework Fits Which Team, and What It Costs to Run on GPU Cloud
+
+The honest answer to "which framework is best" is that it depends on your control-flow requirements and your team's existing stack, not on which one has more stars.
+
+### Decision Matrix by Team Profile and Use Case
+
+| Your situation | Recommended framework | Why |
+| --- | --- | --- |
+| Need branching, retries, checkpointed resume, or compliance audit trails | LangGraph | Explicit typed state, native checkpointing, `interrupt_before`/`after` |
+| Want a working multi-agent pipeline shipped this week, roles are well-defined | CrewAI (Crews) | Least boilerplate, role/goal/backstory model |
+| Need CrewAI's speed plus deterministic top-level control | CrewAI (Flows + Crews) | Flow orchestrates, Crews execute the autonomous steps |
+| Already on Azure/Semantic Kernel, need enterprise integration | Microsoft Agent Framework | Unified 1.0 successor, CodeAct mode, MCP client built in |
+| Currently running AutoGen in production | Keep it running, plan migration | Maintenance mode: bug fixes only, no new features |
+| Need agents on different frameworks to interoperate | A2A protocol on top of any of the above | Sidesteps the single-framework choice |
+| Scaling past a single crew/graph into a fleet | Any of the above + MCP orchestration layer | Framework choice matters less at fleet scale than autoscaling design |
+
+### Token Cost and GPU Sizing for Each Framework on Self-Hosted Models
+
+None of the three frameworks care what's behind the LLM call. LangGraph, CrewAI, and Microsoft Agent Framework are all backend-agnostic: point them at an OpenAI-compatible endpoint and they work identically whether that endpoint is a managed API or a self-hosted vLLM server. Framework choice does not change your GPU sizing math; agent count, model size, and concurrency do. Spheron's [platform overview](https://docs.spheron.ai/overview) covers instance provisioning if you're setting up a self-hosted backend for the first time.
+
+Here's a first-hand comparison, run against live Spheron pricing. A 3-agent workflow (regardless of framework) using a 32B model in FP8 needs roughly 35GB for weights, plus 1.5GB of KV-cache per concurrent agent slot at a 4096-token context. That fits comfortably on an [L40S](/gpu-rental/l40s/) with headroom for 2-3 concurrent requests. Push to a 70B model or more than 4 concurrent hierarchical agents and you need an [H100](/gpu-rental/h100/) or [A100](/gpu-rental/a100/) with 80GB of VRAM.
+
+Current Spheron on-demand GPU pricing, fetched live for this post:
+
+| GPU | On-demand | Spot |
+| --- | --- | --- |
+| A100 80GB | $1.48/hr | $1.15/hr |
+| L40S 48GB | $0.96/hr | $0.86/hr |
+| H100 SXM5 80GB | $2.65/hr | $2.20/hr |
+| H200 141GB | $4.79/hr | $3.31/hr |
+| B200 192GB | $9.36/hr | $5.34/hr |
+
+> Pricing fluctuates based on GPU availability. The prices above are based on **18 Aug 2026** and may have changed. Check [current GPU pricing →](/pricing/) for live rates.
+
+Run the same 5-agent workflow (regardless of whether it's a LangGraph graph, a CrewAI crew, or an AutoGen group chat) at 2,000 requests/day against a 32B open-weight model and an L40S at $0.96/hr costs about $23/day flat, running 24/7 whether you use it or not. The equivalent volume against a frontier API model easily clears $100/day at that request count, based on the token-cost math in our CrewAI production deployment guide. For a general treatment of GPU sizing for agent workloads independent of framework, the [GPU infrastructure for AI agents playbook](/blog/gpu-infrastructure-ai-agents-2026/) and the [CPU-to-GPU ratio guide](/blog/cpu-to-gpu-ratio-agentic-ai-inference/) cover the right-sizing math in more depth. For memory across sessions rather than within a single graph or crew run, all three frameworks pair with external memory backends like Mem0 or Zep, covered in our [agent memory infrastructure guide](/blog/agent-memory-gpu-cloud-mem0-zep-guide/).
+
+### Migrating Off AutoGen Without Starting Over
+
+If you have an AutoGen system in production today, nothing breaks immediately: maintenance mode means bug fixes and security patches keep flowing. But new feature development has stopped, and every AutoGen tutorial or Stack Overflow answer written from mid-2026 onward assumes you're on Microsoft Agent Framework instead.
+
+The migration is more tractable than it sounds, because the actual conceptual jump from AutoGen's conversational pattern to MAF's supervisor-routed multi-agent graph is smaller than the jump from AutoGen to LangGraph or CrewAI. Your tool definitions and prompts carry over largely unchanged; what changes is the orchestration wrapper. Microsoft's own migration guide walks through the API mapping in detail, and our [Microsoft Agent Framework self-hosting guide](/blog/microsoft-agent-framework-self-host-gpu-cloud/) covers the GPU backend side: swapping an Azure OpenAI model client for a self-hosted vLLM endpoint, which is a three-line code change once the MAF agent structure is in place.
+
+If you'd rather re-architect around a different control model entirely while you're already touching the code, this is also a reasonable moment to evaluate LangGraph's checkpointed graph model or CrewAI's Flows against what AutoGen's conversational pattern was actually giving you. Teams that chose AutoGen for its code-execution-as-primitive design often find CrewAI's Flows with a code-writing worker agent gets them the same behavior with an actively maintained framework underneath it.
+
+---
+
+> Whichever framework you land on, the orchestration layer isn't what determines your production latency or cost, the inference backend is. Self-hosting LangGraph, CrewAI, or Microsoft Agent Framework against a bare-metal GPU on Spheron cuts per-token cost once you're past prototype volume.
+>
+> [L40S GPU on Spheron →](/gpu-rental/l40s/) | [H100 GPU on Spheron →](/gpu-rental/h100/) | [View all GPU pricing →](/pricing/)
+
+FAQ / 04
+
+## Frequently Asked Questions
+
+No. Microsoft moved AutoGen to maintenance mode, meaning it now gets only bug fixes and security patches, no new features. The project's own README tells new users to start with Microsoft Agent Framework instead, the unified successor to AutoGen and Semantic Kernel that reached general availability in April 2026. If you're already running AutoGen in production, it will keep working, but plan your next build on LangGraph, CrewAI, or Microsoft Agent Framework.
+
+It depends on how much explicit control you need over execution state. LangGraph's StateGraph and checkpointing give you fine-grained control over branching, retries, and human-in-the-loop interrupts, which matters for compliance-heavy or long-running workflows. CrewAI's Crews get a role-based team running with far less boilerplate, and its Flows layer (event-driven, with @start/@listen/@router decorators) adds LangGraph-style deterministic control when a Crew alone isn't enough. Teams that need auditable state transitions lean LangGraph; teams that want to ship a working multi-agent pipeline this week lean CrewAI.
+
+All three orchestration layers are free and open source to self-host; you only pay for the LLM inference and, optionally, a managed observability or deployment layer. LangGraph Platform (managed deployment) starts at $35/month, and LangSmith's free tier includes 5,000 traces/month with 14-day retention before its $39/seat/month Plus tier kicks in. CrewAI's AMP platform has a free Basic tier for 50 executions/month, scaling to custom-priced Enterprise. The GPU bill for self-hosted inference is usually the larger cost once you're past prototyping; an on-demand H100 on Spheron runs $2.65/hr as of this post's publish date.
+
+A Crew is CrewAI's original execution mode: a team of agents with defined roles that reason autonomously about how to complete a task, running sequentially or hierarchically. A Flow is an event-driven orchestration layer added in 2025, using @start, @listen, and @router decorators to define deterministic control flow, similar in spirit to LangGraph's graph model. Most production CrewAI systems use both together: a Flow controls the overall process and calls into one or more Crews for the steps that genuinely need autonomous, role-based reasoning.
+
+[Back to all posts](/blog/)
+
+## Related Reading
+
+[More on AI Agents →](/blog/topics/ai-agents/)
+
+[![Agentic RAG on GPU Cloud: Deploy Embedding, Vector Search, and LLM on One Stack (2026)](/blog/agentic-rag-gpu-infrastructure-guide.webp)
+
+Pillar Guide
+
+### Agentic RAG on GPU Cloud: Deploy Embedding, Vector Search, and LLM on One Stack (2026)
+
+Apr 10, 2026](/blog/agentic-rag-gpu-infrastructure-guide/)[![LangGraph Studio Production Deployment on GPU Cloud: Self-Hosted Multi-Agent Workflows (2026)](/blog/langgraph-studio-production-deployment-gpu-cloud.webp)
+
+Tutorial
+
+### LangGraph Studio Production Deployment on GPU Cloud: Self-Hosted Multi-Agent Workflows (2026)
+
+May 1, 2026](/blog/langgraph-studio-production-deployment-gpu-cloud/)[![Scale AI Agent Fleets on GPU Cloud: MCP Orchestration and Autoscaling Guide (2026)](/blog/scale-ai-agent-fleets-gpu-cloud-mcp-orchestration.webp)
+
+Engineering
+
+### Scale AI Agent Fleets on GPU Cloud: MCP Orchestration and Autoscaling Guide (2026)
+
+Apr 19, 2026](/blog/scale-ai-agent-fleets-gpu-cloud-mcp-orchestration/)[![Case Study: Running 100 Concurrent AI Agent Tasks on Bare Metal GPUs](/blog/100-concurrent-ai-agents-case-study.webp)
+
+Case Study
+
+### Case Study: Running 100 Concurrent AI Agent Tasks on Bare Metal GPUs
+
+Mar 17, 2026](/blog/100-concurrent-ai-agents-case-study/)[![AI Agent Infrastructure: Self-Hosted GPU Sizing (2026)](/blog/ai-agent-infrastructure-self-hosted-gpu-sizing-2026.webp)
+
+Engineering
+
+### AI Agent Infrastructure: Self-Hosted GPU Sizing (2026)
+
+Aug 19, 2026](/blog/ai-agent-infrastructure-self-hosted-gpu-sizing-2026/)
+
+Try It Yourself
+
+### Try It on Real GPUs
+
+The GPUs behind these guides are the ones you can rent here: H100s, H200s, B200s, and more, billed per minute with no contracts and no minimum. Pick one and you are live in under two minutes.
+
+Deploy Time
+
+< 2 min
+
+Uptime SLA
+
+GPU Models

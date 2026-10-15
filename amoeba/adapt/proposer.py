@@ -207,14 +207,17 @@ def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[st
     e, p, out = reply.edit, reply.edit.params, []
     if e.op not in allowed:
         out.append(f"edit {e.op!r} is not allowed for the cause {cause}; allowed: {[a for a in allowed if a in D_OPS]}")
-    if e.op == "work_around" and cause != "capability":
-        out.append("work_around is allowed for a missing capability only")
-    if e.op == "work_around" and not set(tried_kinds) & set(WORKAROUND_AFTER):
+    if e.op == "work_around" and cause not in ("capability", "missing_data"):
+        out.append("work_around is allowed for a missing capability or missing data only")
+    if e.op == "work_around" and cause == "capability" and not set(tried_kinds) & set(WORKAROUND_AFTER):
         out.append("work_around is allowed only after grant_tool or add_helper_role was tried for this step")
+    if e.op == "work_around" and cause == "missing_data" and not tried_kinds:      # D127
+        out.append("work_around is allowed for missing data only after another fix was tried for this step")
     for where, text, lim in e.texts():
         if len(text) > lim:
             out.append(f"size: {where}: {len(text)} characters > {lim}")
-        hits = [w for w in cfg["denylist"] if w in text.lower()]
+        low = " ".join(text.lower().split())        # D129: phrases matched at a word start, not inside a word
+        hits = [w for w in cfg["denylist"] if re.search(r"(?<![a-z0-9])" + re.escape(w), low)]
         if hits:
             out.append(f"wording: {where}: denied wording {hits}")
     if e.op in ("add_role_rule", "grant_tool") and p["role"] not in roles_of_step:

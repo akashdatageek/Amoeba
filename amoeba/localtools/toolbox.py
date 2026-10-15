@@ -150,6 +150,21 @@ def as_python_command(src: str) -> str:
     return f"python3 - <<'{delim}'\n{src}\n{delim}"
 
 
+# D131: workspace paths helpers write from habit; each means the run's own workspace
+WORKSPACE_ALIASES = ("/workspace", "/mnt/data", "/mnt/workspace", "/home/user/workspace")
+
+
+# box: localtools
+def alias_paths(text: str, workspace: str) -> str:
+    """D131: an absolute path under a habitual workspace root ("/workspace/sources/x.csv") is rewritten to the run's
+    workspace, so the gate does not refuse a path that means the workspace; any other path is left for the gate."""
+    for root in WORKSPACE_ALIASES:
+        if root == workspace:
+            continue
+        text = re.sub(rf"(?<![\w./-]){re.escape(root)}(?=/|\b|$)", workspace, text)
+    return text
+
+
 # box: localtools
 def alias_words(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", (text or "").lower()))
@@ -245,16 +260,19 @@ class LocalToolbox:
         return tools + (self.skills if self.exposed else [])
 
     def alias_hits(self, q) -> list[dict]:
-        """Local entries named by an alias whose words all appear in the request's name or standard name."""
+        """Local entries named by an alias whose words all appear in the request's name or standard name, and (D127)
+        a local tool the request names outright ("Bash", "local:Read")."""
         have = alias_words(q.name) | alias_words(q.canonical)
         by_id = {e["id"]: e for e in self.entries()}
-        out = []
+        out = [by_id[f"local:{n}"] for n in self.exposed
+               if {(q.name or "").strip().lower().removeprefix("local:"),
+                   (q.canonical or "").strip().lower().removeprefix("local:")} & {n.lower()}]
         for target, phrases in (self.setup.config.get("aliases") or {}).items():
             if not any(alias_words(p) <= have for p in phrases):
                 continue
             if target.startswith("skill:"):
                 out += [e for e in self.entries() if e["kind"] == "skill" and e["name"] == target[6:]]
-            elif target in by_id:
+            elif target in by_id and by_id[target] not in out:
                 out.append(by_id[target])
         return out
 
@@ -410,6 +428,8 @@ class LocalToolbox:
         if boxed and self.box.expired():               # D96: the run's time limit
             return self.refuse(tool, "run_time_cap", f"{self.box.cfg['run_timeout_s']} s per run", what)
         ws = str(self.workspace.resolve())
+        args = {k: (alias_paths(v, SANDBOX_WORKSPACE if boxed else ws) if isinstance(v, str) else v)
+                for k, v in args.items()}                  # D131: "/workspace/…" is the run's workspace
         if tool == "Bash":
             command = str(args.get("command", ""))
             screened = command.replace(SANDBOX_WORKSPACE, ws) if boxed else command
