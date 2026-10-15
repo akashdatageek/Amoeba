@@ -15,7 +15,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Callable
 
-from amoeba.llm.client import ChatResponse, LLMClient, Messages
+from amoeba.llm.client import ChatResponse, LLMClient, Messages, tools_kw
 
 MODES = ("record", "replay", "off")
 
@@ -74,24 +74,27 @@ class CachedLLM(LLMClient):
         self.inner, self.model = inner, inner.model
         self.store = _Store(folder, "llm", mode, namespace)
 
-    def key(self, messages: Messages, max_tokens: int | None) -> str:
+    def key(self, messages: Messages, max_tokens: int | None, tools: list | None = None) -> str:
         parts = {"model": self.model, "messages": messages, "max_tokens": max_tokens,
                  "temperature": getattr(self.inner, "temperature", None), "namespace": self.store.namespace}
+        if tools:                            # D132: the tools offered change the request
+            parts["tools"] = tools
         opts = getattr(self.inner, "request_options", None)
         if opts and any(opts.values()):      # D49: --merge-system / --reasoning-effort change the request
             parts["options"] = opts
         return cache_key(parts)
 
-    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
+                      tools: list | None = None) -> ChatResponse:
         if self.store.mode == "off":
-            return self.inner.chat_messages(messages, seed, max_tokens=max_tokens)
-        k = self.key(messages, max_tokens)
+            return self.inner.chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools))
+        k = self.key(messages, max_tokens, tools)
         hit = self.store.get(k)
         if hit is not None:
             return ChatResponse(**{**hit["response"], "cached": True})
         if self.store.mode == "replay":
             raise CacheMiss(f"no cached reply (model {self.model}, key {k[:12]}) in {self.store.dir}")
-        resp = self.inner.chat_messages(messages, seed, max_tokens=max_tokens)
+        resp = self.inner.chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools))
         if is_blocked(resp):
             return resp                     # D128: a reply the provider blocked is never stored (a retry asks again)
         self.store.put(k, {"key": k, "model": self.model, "max_tokens": max_tokens,

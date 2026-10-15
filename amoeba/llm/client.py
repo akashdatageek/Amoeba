@@ -6,6 +6,7 @@ Phase 1 only records those counts in the trace; nothing enforces them.
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 from abc import ABC, abstractmethod
@@ -31,6 +32,7 @@ class ChatResponse:
     cached: bool = False               # D46: served from the response cache, not the model
     retries: list = field(default_factory=list)   # D48: [{status, wait_s, attempt, retry_after}] before this reply
     throttle_wait_s: float = 0.0       # D48: time waited for --min-seconds-between-calls
+    tool_calls: list = field(default_factory=list)   # D132: native tool calls, [{"name", "input"}] in reply order
 
 
 # box: client
@@ -44,7 +46,15 @@ class LLMClient(ABC):
 
     @abstractmethod
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
-        """max_tokens: this call's reply limit; None = the client's default (D24: the Planner asks for more)."""
+        """max_tokens: this call's reply limit; None = the client's default (D24: the Planner asks for more).
+        D132: a client that can call tools natively also takes `tools=` (OpenAI function specs) and returns the
+        calls in ChatResponse.tool_calls; callers pass it only when they want native tool calling."""
+
+
+# box: client
+def tools_kw(tools: list | None) -> dict:
+    """D132: `tools=` only when there are tools, so a client without native tool calling is called as before."""
+    return {"tools": tools} if tools else {}
 
 
 def _reasoning_tokens(usage) -> tuple[int, str | None]:
@@ -113,10 +123,13 @@ class OpenAICompatibleClient(LLMClient):
         self._last_call = time.monotonic()
         return max(0.0, wait)
 
-    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
+                      tools: list | None = None) -> ChatResponse:
         t0 = time.perf_counter()
         kw = dict(model=self.model, messages=merge_system(messages) if self.merge_system else messages,
                   max_tokens=max_tokens or self.max_tokens)
+        if tools:                                      # D132: native tool calling
+            kw["tools"] = tools
         if self.temperature is not None:               # None: not sent (Claude's endpoint rejects values below 1)
             kw["temperature"] = self.temperature
         if self.reasoning_effort is not None:          # sent only when set (D49)
@@ -146,8 +159,10 @@ class OpenAICompatibleClient(LLMClient):
                 self._last_call = time.monotonic()
         usage = getattr(resp, "usage", None)
         reasoning, source = _reasoning_tokens(usage)
+        calls = [{"name": t.function.name, "input": t.function.arguments or ""}
+                 for t in (getattr(resp.choices[0].message, "tool_calls", None) or []) if getattr(t, "function", None)]
         return ChatResponse(
-            content=resp.choices[0].message.content or "",
+            content=resp.choices[0].message.content or "", tool_calls=calls,
             finish_reason=getattr(resp.choices[0], "finish_reason", None),
             reasoning_tokens=reasoning, reasoning_source=source,
             input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
@@ -290,14 +305,16 @@ class MockLLMClient(LLMClient):
             return self._responder(messages, seed)
         raise RuntimeError(f"MockLLMClient: no scripted response for kind={kind!r}")
 
-    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
+                      tools: list | None = None) -> ChatResponse:
         kind = self.classify(messages)
         content = self._next(kind, messages, seed)
         self.calls.append({"kind": kind, "messages": messages, "seed": seed, "response": content,
-                           "max_tokens": max_tokens})
+                           "max_tokens": max_tokens, "tools": tools})
         n_in = sum(len(m.get("content", "")) for m in messages) // 4
-        return ChatResponse(content=content, input_tokens=n_in, output_tokens=len(content) // 4,
-                            model=self.model, finish_reason="stop")
+        calls = mock_tool_calls(content, tools) if tools else []
+        return ChatResponse(content="" if calls else content, input_tokens=n_in, output_tokens=len(content) // 4,
+                            model=self.model, finish_reason="tool_calls" if calls else "stop", tool_calls=calls)
 
     def calls_of(self, kind: str) -> list[dict]:
         return [c for c in self.calls if c["kind"] == kind]
@@ -305,3 +322,23 @@ class MockLLMClient(LLMClient):
     @property
     def n_calls(self) -> int:
         return len(self.calls)
+
+
+# box: toymock
+def mock_tool_calls(content: str, tools: list) -> list[dict]:
+    """D132: the mock answers a native-tools call by turning a scripted text action (## Action / ## ActionInput)
+    into one tool call, so every scripted test can run with native tool calling too. A reply without those
+    sections stays text."""
+    act = re.search(r"(?ms)^##\s*Action\s*\n(.*?)(?=^##\s|\Z)", content)
+    inp = re.search(r"(?ms)^##\s*ActionInput\s*\n(.*)\Z", content)      # the input may hold ## headings
+    if not act:
+        return []
+    return [{"name": tool_fn_name(act.group(1).strip()),
+             "input": json.dumps({"input": (inp.group(1).strip() if inp else "")})}]
+
+
+# box: client
+def tool_fn_name(name: str) -> str:
+    """D132: a tool name as a function name the APIs accept (letters, digits, _ and -, at most 64): 'local:Bash' →
+    'local_Bash', 'Final Output' → 'Final_Output'. The plan runner keeps the map back to the real name."""
+    return re.sub(r"[^A-Za-z0-9_-]", "_", name or "")[:64] or "tool"

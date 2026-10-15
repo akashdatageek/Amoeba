@@ -13,7 +13,7 @@ from typing import Callable
 
 import yaml
 
-from amoeba.llm.client import ChatResponse, LLMClient, Messages
+from amoeba.llm.client import ChatResponse, LLMClient, Messages, tools_kw
 
 MODELS = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
 ROLE_GROUPS = ("planner", "observers", "workers", "reviewers", "summariser", "pool")   # pool: D56's picker
@@ -107,8 +107,9 @@ class RoleRouter(LLMClient):
     def route(self, group: str | None) -> tuple[LLMClient, int | None]:
         return self.by_group.get(group, self.default), self.max_tokens.get(group)
 
-    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
-        return self.default.chat_messages(messages, seed, max_tokens=max_tokens)
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
+                      tools: list | None = None) -> ChatResponse:
+        return self.default.chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools))
 
     @property
     def models(self) -> dict[str, str]:

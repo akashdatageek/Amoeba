@@ -255,6 +255,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             web = getattr(tools, "web", None)
             if workspace_sources and box is not None and web is not None and topology == "plan":   # D107
                 web.on_data = lambda rec, _b=box, _w=web: _b.save_source(rec, _w)
+            plan_options = resolve_native(plan_options, llm, trace)                   # D132
             ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
                              stock=restock, max_agents=envelope.max_agents, timezone=timezone).run(cfg, task, seed)
             answer, error = ep.answer, ep.error
@@ -514,7 +515,26 @@ def cli_plan_options(args: argparse.Namespace):
                        cite_arithmetic=getattr(args, "cite_arithmetic", "off"),
                        final_check=getattr(args, "deliverable_check", "off"),
                        xlsx_formulas=getattr(args, "xlsx_formulas", "off"), adapt=getattr(args, "adapt", "off"),
-                       faults=tuple(getattr(args, "inject_fault", ()) or ()), **extra)
+                       faults=tuple(getattr(args, "inject_fault", ()) or ()),
+                       native_tools=getattr(args, "native_tools", "off"),
+                       tool_access=getattr(args, "tool_access", "asked"),
+                       failed_step=getattr(args, "failed_step", "run"), **extra)
+
+
+# box: runresult
+def resolve_native(plan_options, llm, trace):
+    """D132: --native-tools auto becomes on when every model this run may route a helper call to supports native tool
+    calling (models.yaml `supports.tools`), off otherwise; the choice is a trace event."""
+    if plan_options is None or getattr(plan_options, "native_tools", "off") != "auto":
+        return plan_options
+    from dataclasses import replace as _replace
+    inner = getattr(llm, "llm", llm)
+    inner = getattr(inner, "inner", inner)                 # a response cache around the router
+    on = bool(getattr(inner, "can_use", None) and inner.can_use("tools"))
+    trace.event("native_tools", {"amoeba.box": "client", "amoeba.native_tools": "on" if on else "off",
+                                 "amoeba.why": "every model supports tools" if on else
+                                 "a model the run may use has no native tool calling"})
+    return _replace(plan_options, native_tools="on" if on else "off")
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -731,6 +751,17 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan, with --local-tools on: after a step that made an .xlsx file, plain code checks that "
                         "totals and derived cells are formulas, not typed numbers; a typed one fails the check with the "
                         "cell names and earns the retry turn (D113)")
+    p.add_argument("--native-tools", choices=["auto", "on", "off"], default="auto",
+                   help="plan: helpers call their tools through the model's native tool calling, not the text "
+                        "sections ## Action / ## ActionInput; auto = on when every model the run may use has "
+                        "supports.tools in models.yaml (D132)")
+    p.add_argument("--tool-access", choices=["core", "asked"], default="core",
+                   help="plan: core = every helper holds the core tools (web, calc, local Bash/Write/Read) and "
+                        "find_tool, with no 'unavailable' lines and no use-or-declare demand; asked = only what Box 2 "
+                        "asked for and the toolbox step attached (D132)")
+    p.add_argument("--failed-step", choices=["dependents", "run"], default="dependents",
+                   help="plan: dependents = a step with no output blocks only the steps that need it, the others still "
+                        "run (a stuck step no fix recovered no longer stops the task); run = the earlier behaviour (D133)")
     p.add_argument("--cite-arithmetic", choices=["on", "off"], default="on",
                    help="plan: the citation check (D74) leaves out a number the line shows as a calculation's result "
                         "(after = or ≈), a power's base and exponent, and the years of a range; the operands are "

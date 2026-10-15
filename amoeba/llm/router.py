@@ -35,7 +35,7 @@ from typing import Callable
 
 import yaml
 
-from amoeba.llm.client import ChatResponse, LLMClient, Messages
+from amoeba.llm.client import ChatResponse, LLMClient, Messages, tools_kw
 from amoeba.llm.cache import is_blocked
 
 MODELS = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
@@ -324,7 +324,8 @@ class ModelRouter(LLMClient):
         return chosen, dec
 
     # -- a call
-    def call(self, spec: CallSpec, messages: Messages, seed: int, max_tokens: int | None) -> tuple[ChatResponse, dict]:
+    def call(self, spec: CallSpec, messages: Messages, seed: int, max_tokens: int | None,
+             tools: list | None = None) -> tuple[ChatResponse, dict]:
         while True:
             name, dec = self.route(spec)
             cool = self.bucket(name).cooling()
@@ -340,7 +341,7 @@ class ModelRouter(LLMClient):
                     self.sleep(cool)
             dec["rate_wait_s"] = round(self.bucket(name).acquire(spec.prompt_tokens + (max_tokens or 0)), 2)
             try:
-                resp = self.client(name).chat_messages(messages, seed, max_tokens=max_tokens)
+                resp = self.client(name).chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools))
             except Exception as e:
                 status = getattr(e, "status_code", None)
                 if status == 429:
@@ -370,7 +371,7 @@ class ModelRouter(LLMClient):
                 name = others[0]
                 dec["chosen"], dec["family"] = name, self.registry[name].family
                 dec["rate_wait_s"] = round(self.bucket(name).acquire(spec.prompt_tokens + (max_tokens or 0)), 2)
-                resp = self.client(name).chat_messages(messages, seed, max_tokens=max_tokens)
+                resp = self.client(name).chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools))
             self._account(name, resp, dec)
             if spec.step is not None and spec.role in ("worker", "summariser"):
                 self.step_family[spec.step] = self.registry[name].family
@@ -388,10 +389,22 @@ class ModelRouter(LLMClient):
         u["usd"] = round(u["usd"] + usd, 8)
         dec["usd"] = round(dec.get("usd", 0.0) + usd, 8)
 
-    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
+                      tools: list | None = None) -> ChatResponse:
         resp, _ = self.call(CallSpec(role="worker", prompt_tokens=estimate_tokens(messages),
-                                     max_output=max_tokens or 0), messages, seed, max_tokens)
+                                     max_output=max_tokens or 0, needs=frozenset({"tools"} if tools else ())),
+                            messages, seed, max_tokens, tools)
         return resp
+
+    def can_use(self, feature: str) -> bool:
+        """D132: every model this router may pick has `feature` in its `supports` (e.g. native tool calling)."""
+        names = [self.fixed] if self.mode == "fixed" else [
+            n for n in self.registry
+            if (self.profile_allowed is None or n in self.profile_allowed)
+            and (self.allowed is None or n in self.allowed)
+            and not (self.registry[n].api_key_env and not self.env.get(self.registry[n].api_key_env))]
+        return bool(names) and all(n in self.registry and (self.registry[n].supports or {}).get(feature)
+                                   for n in names)
 
     def summary(self) -> dict:
         """For result.json: per-model calls, tokens and USD, and the counts that matter."""

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Iterator
 from uuid import uuid4
 
-from amoeba.llm.client import ChatResponse, LLMClient, Messages
+from amoeba.llm.client import ChatResponse, LLMClient, Messages, tools_kw
 from amoeba.llm.cache import is_blocked
 from amoeba.llm.profiles import BOX2_GROUPS
 from amoeba.task.parsers import MissingSections, parse_sections, repair_prompt, require, unglue
@@ -164,7 +164,7 @@ class TracedLLM:
     def chat_messages(self, messages: Messages, seed: int = 0, *, agent_id: str | None = None,
                       agent_name: str | None = None, max_tokens: int | None = None, role: str | None = None,
                       step: int | None = None, checks=None, needs=(), _retry: bool = False,
-                      _blocked_retry: bool = False) -> ChatResponse:
+                      _blocked_retry: bool = False, tools: list | None = None) -> ChatResponse:
         """role: the call's role group (D54; Box 2 callers are known by name). A profile's RoleRouter picks the
         group's model and, when the profile sets one, its reply limit. D97: with a ModelRouter every call states a
         CallSpec (role, step, size, needs, data class, the steps it checks) and the router picks the model."""
@@ -189,10 +189,11 @@ class TracedLLM:
             try:
                 if routed:                                 # D97: the router decides, and the decision is logged
                     from amoeba.llm.router import NoModelAvailable, spec_for
-                    spec = spec_for(agent_name, group, messages, max_tokens, step, checks or (), needs,
+                    spec = spec_for(agent_name, group, messages, max_tokens, step, checks or (),
+                                    (*needs, "tools") if tools else needs,      # D132: only models that call tools
                                     getattr(llm, "data_class", self.data_class))
                     try:
-                        resp, dec = llm.call(spec, messages, seed, max_tokens)
+                        resp, dec = llm.call(spec, messages, seed, max_tokens, **tools_kw(tools))
                     except NoModelAvailable:
                         self.trace.event("route", {"amoeba.box": "router", **_route_attrs(llm.decisions[-1])})
                         self.trace.event("no_model", {"amoeba.box": "router", "amoeba.role": spec.role,
@@ -201,7 +202,7 @@ class TracedLLM:
                     rec["gen_ai.request.model"] = llm.registry[dec["chosen"]].model
                     self.trace.event("route", {"amoeba.box": "router", **_route_attrs(dec)})
                 else:
-                    resp = llm.chat_messages(messages, seed, max_tokens=max_tokens)
+                    resp = llm.chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools))
             except Exception as e:     # D48: the rate-limit waits before a call that still failed are logged too
                 self._log_retries(getattr(e, "amoeba_retries", []), agent_name, failed=True)
                 raise
@@ -210,8 +211,11 @@ class TracedLLM:
                 rec["amoeba.rate_limit_retries"] = len(resp.retries)
             if resp.throttle_wait_s:
                 rec["amoeba.throttle_wait_s"] = resp.throttle_wait_s
+            if tools:
+                rec["amoeba.native_tools"] = len(tools)           # D132: the call offered tools natively
             if self.trace.log_content:
-                rec["gen_ai.output.messages"] = [{"role": "assistant", "content": resp.content}]
+                rec["gen_ai.output.messages"] = [{"role": "assistant", "content": resp.content,
+                                                  **({"tool_calls": resp.tool_calls} if resp.tool_calls else {})}]
             rec["gen_ai.response.model"] = resp.model or llm.model   # D54: the exact name the API returned
             rec["gen_ai.usage.input_tokens"] = resp.input_tokens
             rec["gen_ai.usage.output_tokens"] = resp.output_tokens
@@ -238,12 +242,12 @@ class TracedLLM:
             if not _blocked_retry:
                 return self.chat_messages(messages, seed, agent_id=agent_id, agent_name=agent_name,
                                           max_tokens=max_tokens, role=role, step=step, checks=checks, needs=needs,
-                                          _retry=_retry, _blocked_retry=True)
+                                          _retry=_retry, _blocked_retry=True, tools=tools)
         if resp.finish_reason == "length" and max_tokens and not _retry:
             # D27: hidden reasoning can use up the limit; ask once more with double room, then accept whatever comes
             return self.chat_messages(messages, seed, agent_id=agent_id, agent_name=agent_name,
                                       max_tokens=2 * max_tokens, role=role, step=step, checks=checks, needs=needs,
-                                      _retry=True)
+                                      _retry=True, tools=tools)
         return resp
 
     def _log_retries(self, retries: list, agent_name: str | None, failed: bool = False) -> None:

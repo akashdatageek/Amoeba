@@ -982,3 +982,24 @@ run's workspace; a model call is ended after `--request-timeout-s` (default 600 
 room; and team.yaml names the model the calls go to (the profile's one entry), not the envelope's default. A partial
 step whose output lacks what its done_when states is now caught by the step checks (D130), so problem 18 needs no
 change of its own.
+
+**D132, helpers choose their tools (Oct 15).** The Box 4 probe (one fuel-surcharge task, eval/manual/probe_box4) found
+two faults in how tools reach a helper. First, Claude refused 57–80% of Sonnet's calls with an empty `content_filter`
+reply; on the stored step-1 prompt the refusal was deterministic and went away only when the tools were declared
+natively and the text protocol was removed — Claude answers a tool-using step with its own tool calls, and Amoeba's
+`## Action / ## ActionInput` sections made the endpoint refuse. Second, the toolbox step granted `local:Bash` but kept
+"Bash" in the helper's missing list, so the prompt said "Tool Bash is unavailable" next to "you may use local:Bash" and
+the helpers wrote BLOCKED: Bash and built no file. Now: with `--native-tools` (auto = on when every model the run may use
+has `supports.tools`, which claude-sonnet now has) each helper turn offers its tools through native tool calling and reads
+the first call back; a wish or a BLOCKED line for a tool the helper holds is never announced as unavailable nor counted as
+lacked (`held_tool`); and with `--tool-access core` (the default) every helper holds the core tools (web, calc, local
+Bash/Write/Read) and `find_tool`, which searches the pool and local tools mid-step and attaches the match, with no
+use-or-declare demand. Code still decides what exists, vets it, runs every call and logs it; the model chooses.
+
+**D133, a failed step blocks only what needs it (Oct 15).** In the same probe a step with no output either let its
+dependents run on empty input (adapt off: about 1M tokens for steps 5–8) or stopped the whole task (adapt on: the
+independent ATRI step never ran). With `--failed-step dependents` (the default) a step whose input step ended with no
+output is skipped (`blocked_upstream`, no call) and its dependents wait in turn; every other step runs; a stuck step no
+fix recovered no longer stops the task; and a skipped answer step gives an answer assembled by plain code from the
+outputs that exist, under a header naming the failed and skipped steps.
+
