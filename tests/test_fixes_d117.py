@@ -212,6 +212,9 @@ def test_a_registry_tool_is_granted_without_the_pool_step(task, envelope, trace,
             return reply("Final Output", f"OUT-1\n{BODY}\nBLOCKED: calc — nothing to compute with")
         return good(n)
     def ask_calc(cfg):                   # an open request for the tool the grant gives
+        for a in cfg.agents.values():    # D132: the helper must really lack calc (one that holds it is not missing it)
+            if a.name == "Cost Analyst":
+                a.tools = [t for t in a.tools if t != "calc"]
         cfg.meta.setdefault("capability_requests", []).append(
             {"name": "calc", "kind": "tool", "for_role": "Cost Analyst", "status": "unfilled", "reason": "no_helper"})
     llm, cfg, ep = run(task, envelope, trace, tools, script, stock=fake_stock(calls), setup_cfg=ask_calc)

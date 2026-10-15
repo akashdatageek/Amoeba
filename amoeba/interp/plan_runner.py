@@ -11,6 +11,7 @@ import json
 import re
 from uuid import uuid4
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from datetime import date
 from pathlib import Path
 
@@ -40,6 +41,8 @@ from amoeba.llm.limits import RunLimitReached, estimate
 from amoeba.llm.profiles import role_group
 from amoeba.llm.router import NoModelAvailable
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
+from amoeba.llm.cache import is_blocked
+from amoeba.llm.client import tool_fn_name
 from amoeba.localtools.claims import claimed_files
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text, full_action_input
 from pydantic import ValidationError
@@ -50,6 +53,18 @@ from amoeba.task.quality import VERIFY_WORDS
 from amoeba.tools.web import WEB_TOOLS
 
 PLAN_SECTIONS = ["CurrentStep", "Action", "ActionInput"]   # Thought is asked for but not required
+FIND_TOOL = "find_tool"                                    # D132: search the pool and local tools mid-step
+FIND_TOOL_TEXT = ("describe in plain words a capability you need and do not hold (for example 'convert a docx to "
+                  "pdf'); the matching tool or skill from the pool or the local toolbox is attached to you and "
+                  "described in the reply, to call from your next turn")
+NATIVE_FORMAT = ("# How to act\nCall exactly one of your tools per turn through tool calling; its result comes back "
+                 "to you next turn. Put the tool's input in its `input` argument (plain text, or JSON when the tool "
+                 "takes JSON). When this step's output is complete, call Final_Output with the whole step output as "
+                 "`input`. Do not write a tool call as text.")
+NATIVE_SPECIAL = {FINAL_OUTPUT: "end the step: `input` is the whole step output, in the form the step's output line "
+                                "asks for", PRINT: "leave a note for your teammates in this step (uses a turn)",
+                  FIND_TOOL: FIND_TOOL_TEXT}
+FIND_LIMITS = {"per_step": 3, "per_run": 10}                 # D132: find_tool searches
 PLAN_MAX_TOKENS = 8192                                     # per helper call (D27 room; flat keeps the client default)
 
 
@@ -119,6 +134,21 @@ class PlanOptions:
     max_added_steps: int = 3         # D63: steps added per run, over all accepted decisions
     domain_checks: tuple = ()        # D102: the niche profile's checks (amoeba/checks/<name>.py) after each step
     faults: tuple = ()               # D119: injected faults (test-only, --inject-fault; amoeba/adapt/faults.py)
+    # D132: on = each helper turn offers the helper's tools through the model's native tool calling (OpenAI `tools`)
+    # and reads the call back, in place of the text sections ## Action / ## ActionInput (Claude's endpoint answers a
+    # text tool protocol with an empty content_filter reply). run_task resolves --native-tools auto from the models'
+    # `supports.tools`. Library default off: the text protocol.
+    native_tools: str = "off"
+    # D132: core = every helper (not the summariser) holds the core tools (the web tools, calc, local Bash/Write/Read
+    # when the run has them) and `find_tool`, which searches the pool and local tools mid-step and attaches what it
+    # finds; no "X is unavailable" lines and no use-or-declare demand for tools. asked = the earlier behaviour (Box 2's
+    # wishes, the toolbox step, D61's tool items). Library default asked.
+    tool_access: str = "asked"
+    # D133: dependents = a step that ended with no output (or was skipped) blocks only the steps that depend on it,
+    # which are skipped (status blocked_upstream); the independent steps still run and a stuck step no fix recovered no
+    # longer stops the task. run = the earlier behaviour (dependents run on empty input; with --adapt on the task
+    # stops at a stuck step). Library default run.
+    failed_step: str = "run"
 
 
 class PlanGraphError(ValueError):
@@ -346,6 +376,52 @@ def cap_key(name: str) -> str:
 def names_match(a: str, b: str) -> bool:
     ka, kb = cap_key(a), cap_key(b)
     return bool(ka and kb) and (ka == kb or (min(len(ka), len(kb)) >= 4 and (ka in kb or kb in ka)))
+
+
+@lru_cache(maxsize=1)
+def _local_aliases() -> dict[str, list[str]]:
+    """localtools.yaml `aliases`: a local tool or skill -> the phrases that name it (read once)."""
+    import yaml
+    from amoeba.localtools.toolbox import CONFIG_FILE
+    try:
+        return dict((yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8")) or {}).get("aliases") or {})
+    except OSError:
+        return {}
+
+
+# box: plan_step
+def held_tool(a: AgentSpec, name: str) -> str | None:
+    """D132: the tool or skill helper `a` holds that does what `name` asks for — a wish Box 2 wrote ("Bash"), a
+    capability request or a BLOCKED line — or None. Plain code from names only: the name itself; the local tool it
+    names ("Bash" = "local:Bash", "local" = any local tool); its standard name (aliases.yaml: "python_interpreter" =
+    code_execution); a local alias (localtools.yaml: "code execution" -> local:Bash); a skill by its name ("xlsx
+    skill" = skill xlsx). A wrong match can only drop a "missing" line for a tool the helper really has."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    if name in a.tools:
+        return name
+    low = name.lower().removeprefix("local:")
+    local = [t for t in a.tools if t.startswith("local:")]
+    if low in ("local", "local tools", "local tool") and local:
+        return local[0]
+    hit = next((t for t in local if t[6:].lower() == low), None) or next((t for t in a.tools if t.lower() == low), None)
+    if hit:
+        return hit
+    canon = normalise(name)[0]
+    if canon in a.tools:
+        return canon
+    words = set(re.findall(r"[a-z0-9]+", f"{name} {canon}".lower().replace("_", " ")))
+    skills = [p["name"] for p in a.pool if p.get("kind") == "skill"]
+    for target, phrases in _local_aliases().items():
+        if not any(set(re.findall(r"[a-z0-9]+", p.lower())) <= words for p in phrases):
+            continue
+        if target.startswith("skill:") and target[6:] in skills:
+            return f"skill {target[6:]}"
+        if target in a.tools:
+            return target
+    bare = words - {"skill", "skills", "tool"}
+    return next((f"skill {k}" for k in skills if bare and bare <= {k.lower()}), None)
 
 
 # box: step_check
@@ -652,6 +728,42 @@ class PlanRunner:
         self.no_last_turn: set[int] = set()               # D119 max_turns fault: steps whose last turn is not forced
         self.finish_skipped: dict[str, int] = {}          # D122: extras skipped in finish mode, by kind
 
+    # box: step_check
+    def held_gaps(self, agents: list[AgentSpec], gaps: list[str], w: "_Work") -> dict[str, str]:
+        """D132: the lacked items a helper of the step holds (item -> the tool it holds) and did not call and fail
+        with in this step. Such a line is not a missing capability: the helper had it and chose not to use it."""
+        out = {}
+        for g in gaps:
+            for a in agents:
+                t = held_tool(a, g)
+                if t and not any(c["agent_id"] == a.agent_id and c["tool"] == t and not c["ok"] for c in w.calls):
+                    out[g] = t
+                    break
+        return out
+
+    # box: plan_step
+    def grant_core_tools(self) -> None:
+        """D132 (--tool-access core): every helper but the summariser holds the core tools this run has — the web
+        tools, calc, local Bash/Write/Read — and find_tool when the pool or the local toolbox can be searched. The
+        helper chooses among them each turn; nothing is demanded."""
+        core = [*(WEB_TOOLS if self.web is not None else ()), *(["calc"] if "calc" in self.i.tools else [])]
+        local = [f"local:{n}" for n in ("Bash", "Write", "Read")
+                 if self.local is not None and n in getattr(self.local, "exposed", [])]
+        find = self.i.stock is not None          # run_task gives a stock function only when the pool or local tools exist
+        for a in self.agents.values():
+            if a.is_summariser:
+                continue
+            for t in core:
+                if t not in a.tools:
+                    a.tools.append(t)
+            for t in local:
+                self.local.attach_tool(a, t, self.i.tools, request="core")
+            if find and FIND_TOOL not in a.tools:
+                a.tools.append(FIND_TOOL)
+            a.missing_tools = [t for t in a.missing_tools if not held_tool(a, t)]
+        self.i.trace.event("core_tools", {"amoeba.box": "plan_step", "amoeba.core": core + local,
+                                          "amoeba.find_tool": find})
+
     # ---- D61: the step contract ---------------------------------------------------------------------------------
     # box: step_check
     def contract(self, agents: list[AgentSpec]) -> dict[str, dict]:
@@ -666,6 +778,10 @@ class PlanRunner:
                 x and x in a.tools for x in (q["name"], q.get("canonical"), normalise(q["name"])[0]))
             needs = list(dict.fromkeys([*(t for t in a.missing_tools if t not in a.tools), *(q["name"] for q in asked
                                                              if q.get("for_role") == a.name and not have(q))]))
+            needs = [x for x in needs if not held_tool(a, x)]     # D132: a wish for a tool it holds is no need
+            if self.opt.tool_access == "core":                    # D132: no use-or-declare demand for tools
+                out[a.name] = {"agent_id": a.agent_id, "needs": [], "items": []}
+                continue
             items = [{"name": p["name"], "aliases": [p["name"], p.get("request", "")], "tools": [p["name"]]}
                      for p in a.pool if p["kind"] == "tool" and p.get("source") != "local"]
             local = [p for p in a.pool if p.get("source") == "local"]
@@ -866,6 +982,8 @@ class PlanRunner:
         if self.web is not None:
             self.grant_web_tools()
             self.i.trace.event("web_tools", {"amoeba.web.provider": self.web.provider.name, **self.web.limits.as_trace()})
+        if self.opt.tool_access == "core":                # D132
+            self.grant_core_tools()
         ws = waves(self.cfg.plan)
         deps = dependencies(self.cfg.plan)
         self.answer_n = self._answer_step(ws)
@@ -888,10 +1006,18 @@ class PlanRunner:
                 w += 1
                 deps = dependencies(self.cfg.plan)
                 for n in nums:   # sequential for now; the wave number is recorded so parallel runs keep the same trace
+                    by = self.failed_upstream(deps[n]) if self.opt.failed_step == "dependents" else []
+                    if by:                                                          # D133: only its dependents wait
+                        self.skip_step(n, w, by)
+                        continue
                     self.run_step(self.steps[n], w, deps[n])
                     fixed = None
                     if self.opt.adapt == "on" and not self.finish_skip("fixes", bool(self.artifacts[n]["meta"].get("stuck"))):
                         fixed = self.fix_stuck(n, w)                                 # D117 Stages C–D
+                    if fixed == "stop" and self.opt.failed_step == "dependents":    # D133: the rest still runs
+                        self.i.trace.event("stuck_step_kept_going", {"amoeba.step": n,
+                                                                     "amoeba.cause": (self.exhausted or {}).get("cause")})
+                        fixed = None
                     if fixed == "stop":                                             # no fix recovered it
                         self.ep.faults = self.faults.summary()
                         return self.stop_report(n)
@@ -927,8 +1053,52 @@ class PlanRunner:
         if self.answer_n is None:                          # D41: several final steps, none the summariser's
             return self.assemble_by_code(ws[-1])
         art = self.artifacts[self.answer_n]
+        if art["meta"].get("blocked_upstream"):           # D133: the answer step could not run
+            return self.answer_without_summary()
         status = art["meta"]["status"]
         return art["text"], (None if status == "done" else status)
+
+    # box: plan_graph
+    def no_output(self, d: int) -> bool:
+        """D133: step d ended without an output a later step could use (or was skipped itself)."""
+        art = self.artifacts.get(d)
+        return art is not None and (bool(art["meta"].get("blocked_upstream"))
+                                    or (art["meta"].get("status") != "done" and not (art["text"] or "").strip()))
+
+    # box: plan_graph
+    def failed_upstream(self, deps: list[int]) -> list[int]:
+        return [d for d in deps if self.no_output(d)]
+
+    # box: plan_graph
+    def skip_step(self, n: int, wave: int, by: list[int]) -> None:
+        """D133 (--failed-step dependents): a step whose input step ended with no output is not run on empty input;
+        it is saved as incomplete with `blocked_upstream`, and its own dependents wait in turn."""
+        meta = {"step": n, "wave": wave, "status": "incomplete", "turns": 0, "rework_of": None, "checks": [],
+                "status_reason": f"blocked upstream: step(s) {', '.join(map(str, by))} ended with no output",
+                "blocked_upstream": by, "roles": [self.agents[a].name for a in self.steps[n].agent_ids]}
+        self.i.trace.event("step_skipped", {"amoeba.step": n, "amoeba.blocked_by": by})
+        self._save(n, wave, "", meta, {})
+
+    # box: plan_graph
+    def answer_without_summary(self) -> tuple[str | None, str]:
+        """D133: the answer step was skipped because a step it needs has no output. Plain code assembles the
+        outputs that exist (in plan order) under a header naming the steps that failed and the ones skipped."""
+        order = [number(st) for st in self.cfg.plan]
+        have = [k for k in order if k in self.artifacts and (self.artifacts[k]["text"] or "").strip()]
+        skipped = [k for k in order if self.artifacts.get(k, {}).get("meta", {}).get("blocked_upstream")]
+        failed = [k for k in order if k not in have and k not in skipped]
+        self.i.trace.event("answer_without_summary", {"amoeba.steps": have, "amoeba.failed": failed,
+                                                      "amoeba.skipped": skipped})
+        code = (f"blocked_upstream: step(s) {', '.join(map(str, failed)) or 'none'} ended with no output; "
+                f"skipped {', '.join(map(str, skipped))}")
+        if not have:
+            return None, code
+        why = (f"**Why the answer step did not run:** step(s) {', '.join(map(str, failed))} ended with no output, so "
+               f"the steps that need them were skipped ({', '.join(map(str, skipped))}).")
+        text = self.partial_answer(why, have, failed + skipped)
+        if self.dir:
+            (self.dir / "answer.md").write_text(text + "\n", encoding="utf-8")
+        return text, f"{code}; answer assembled from step(s) {', '.join(map(str, have))}"
 
     # box: plan_graph
     def finish_skip(self, kind: str, needed: bool) -> bool:
@@ -1257,6 +1427,10 @@ class PlanRunner:
         # D40: not for the answer step: its Limitations section names the producers' gaps on purpose
         mentions = blocked_marks(text)
         gaps = [] if answer_step else sorted(set(w.blocked.values()) | set(mentions))
+        held = self.held_gaps(agents, gaps, w)            # D132: "BLOCKED: Bash" from a helper holding local:Bash
+        if held:
+            self.i.trace.event("blocked_but_held", {"amoeba.step": n, "amoeba.items": held})
+            gaps = [g for g in gaps if g not in held]
         data_gaps = [] if answer_step else missing_data_marks(text)            # D127: facts not found, not tools
         # D61 (G1): a capability the helper lacked and did not account for is a gap, answer step included
         undeclared = list(dict.fromkeys(m["name"] for m in found["missing"])) if found else []
@@ -2652,7 +2826,8 @@ class PlanRunner:
                       step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
                       tools=str(tools), turns_left=turns_left,
                       unavailable="\n".join([UNAVAILABLE.format(name=t) for t in agent.missing_tools
-                                              if t not in agent.tools]
+                                              if t not in agent.tools and not held_tool(agent, t)   # D132
+                                              and self.opt.tool_access != "core"]
                                              + pool_tool_notes(agent)))   # D56
         c = self.current_contract.get(agent.name)
         if c and (c["needs"] or c["items"]):     # D61: what plain code will check, on the helper's prompt
@@ -2667,6 +2842,8 @@ class PlanRunner:
                                                 "amoeba.step": n}):
             before = self.i.trace.n_llm_calls
             group = role_group(is_summariser=agent.is_summariser, reviewing=self.is_verification(step))   # D54
+            if self.opt.native_tools == "on":             # D132: the model's own tool calling
+                return self.native_turn(agent, step, n, system, user, tools, last, group, before)
             try:
                 raw, sec = self.i.llm.chat_sections(system, user, PLAN_SECTIONS, self.ep.seed,
                                                   agent_id=agent.agent_id, agent_name=agent.name,
@@ -2696,10 +2873,116 @@ class PlanRunner:
                 act, inp = sec["Action"].strip(), full_action_input(raw, sec["ActionInput"])
                 if FINAL_OUTPUT not in act:
                     return "no action", inp, "", None
-            injected = self.faults.tool_result(n, act) if act in agent.tools else None   # D119 tool_error
-            resp, gap = (injected, None) if injected is not None else \
-                self.i._dispatch(agent, act, inp, step.index, self.ep)
+            return self.act(agent, step, n, act, inp)
         return act, inp, resp, gap
+
+    # box: plan_step
+    def act(self, agent: AgentSpec, step: PlanStep, n: int, act: str, inp: str) -> tuple[str, str, str, str | None]:
+        """Run the helper's chosen action: find_tool (D132) here, everything else through the Interpreter."""
+        if act == FIND_TOOL and FIND_TOOL in agent.tools:
+            return act, inp, self.find_tool(agent, inp, n), None
+        injected = self.faults.tool_result(n, act) if act in agent.tools else None   # D119 tool_error
+        resp, gap = (injected, None) if injected is not None else \
+            self.i._dispatch(agent, act, inp, step.index, self.ep)
+        return act, inp, resp, gap
+
+    # box: plan_step
+    def native_specs(self, tools: list[str]) -> tuple[list[dict], dict[str, str]]:
+        """D132: the helper's tools as function specs (one string argument `input`) and the map back from the
+        function name to the tool's real name."""
+        descs = self.i.tools.descriptions() if hasattr(self.i.tools, "descriptions") else {}
+        specs, back = [], {}
+        for t in tools:
+            fn = tool_fn_name(t)
+            back[fn] = t
+            specs.append({"type": "function", "function": {
+                "name": fn, "description": (NATIVE_SPECIAL.get(t) or descs.get(t) or t)[:600],
+                "parameters": {"type": "object", "properties": {"input": {"type": "string"}}, "required": ["input"]}}})
+        return specs, back
+
+    # box: plan_step
+    def native_turn(self, agent: AgentSpec, step: PlanStep, n: int, system: str, user: str, tools: list[str],
+                    last: bool, group: str, before: int) -> tuple[str, str, str, str | None]:
+        """D132: one helper turn with native tool calling. The prompt's # Format section (the text protocol) is
+        replaced by NATIVE_FORMAT; the first tool call is the action. A reply with text and no call is taken as the
+        step's output (Final Output); a blocked reply is a provider_blocked turn (D128); an empty one is unreadable."""
+        user = user.split("\n# Format\n")[0].rstrip() + "\n\n" + NATIVE_FORMAT
+        specs, back = self.native_specs(tools)
+        try:
+            resp = self.i.llm.chat_messages([{"role": "system", "content": system}, {"role": "user", "content": user}],
+                                            self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
+                                            max_tokens=PLAN_MAX_TOKENS, role=group, tools=specs,
+                                            **self.route_ids(n, step))
+        except NoModelAvailable as e:
+            return "no_model", f"BLOCKED: no_model — {str(e)[:200]}", "", "no_model"
+        raw = resp.content + ("\n" + json.dumps(resp.tool_calls) if resp.tool_calls else "")
+        for rec in self.i.trace.spans("chat")[before:]:
+            self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
+                           rec.get("gen_ai.usage.output_tokens", 0))
+        if resp.tool_calls:
+            call = resp.tool_calls[0]
+            act = back.get(call["name"], call["name"])
+            try:
+                args = json.loads(call.get("input") or "{}")
+            except ValueError:
+                args = call.get("input") or ""
+            inp = args.get("input", json.dumps(args)) if isinstance(args, dict) else str(args)
+            inp = inp if isinstance(inp, str) else json.dumps(inp)
+            if len(resp.tool_calls) > 1:
+                self.i.trace.event("native_calls_dropped", {"amoeba.step": n, "gen_ai.agent.name": agent.name,
+                                                            "amoeba.dropped": [c["name"] for c in resp.tool_calls[1:]]})
+        elif resp.content.strip() and not is_blocked(resp):
+            act, inp = FINAL_OUTPUT, resp.content.strip()
+            self.i.trace.event("native_text_as_output", {"amoeba.step": n, "gen_ai.agent.name": agent.name})
+        else:
+            e = MissingSections(["tool call"], [])
+            e.raw, e.blocked = raw, is_blocked(resp)
+            return self.unreadable_turn(agent, n, e, self.i.trace.n_llm_calls)
+        if last and act != FINAL_OUTPUT:                  # D76: only the step output is taken on the last turn
+            self.i.trace.event("last_turn_forced", {"amoeba.step": n, "gen_ai.agent.name": agent.name,
+                                                    "amoeba.asked_for": act[:80]})
+            return "no action", inp, "", None
+        return self.act(agent, step, n, act, inp)
+
+    # box: plan_step
+    def find_tool(self, agent: AgentSpec, need: str, n: int) -> str:
+        """D132: the helper's own search for a capability it lacks, mid-step. Plain code builds one request from its
+        words, the toolbox step (pool and local tools, vetted as at the start) picks and attaches the match to this
+        helper, and the reply says what it now holds. Capped per step and per run (FIND_LIMITS)."""
+        need = (need or "").strip()[:200]
+        used = getattr(self, "_finds", {})
+        self._finds = used
+        if not need:
+            return "find_tool: say what you need in plain words."
+        if used.get(n, 0) >= FIND_LIMITS["per_step"] or sum(used.values()) >= FIND_LIMITS["per_run"]:
+            return "find_tool: the search limit is reached; work with the tools you hold."
+        used[n] = used.get(n, 0) + 1
+        before = set(agent.tools) | {p["name"] for p in agent.pool}
+        req = CapabilityRequest(name=need, kind="skill" if "skill" in need.lower() else "tool", for_role=agent.name,
+                                source="planner")
+        cfg = self.cfg.model_copy(update={"agents": self.agents})
+        try:
+            reg, summary = self.i.stock([req], cfg, self.i.tools)
+        except Exception as e:                            # a failed search is the helper's tool result, not a crash
+            self.i.trace.event("find_tool", {"amoeba.step": n, "gen_ai.agent.name": agent.name, "amoeba.need": need,
+                                             "amoeba.error": str(e)[:200]})
+            return f"find_tool: the search failed ({type(e).__name__}); work with the tools you hold."
+        self.i.tools = reg
+        self.pool = getattr(reg, "pool", None) or self.pool
+        self.local = getattr(reg, "local", None) or self.local
+        got = [x for x in (set(agent.tools) | {p["name"] for p in agent.pool}) - before]
+        self.cfg.meta.setdefault("capability_requests", []).append(
+            {"name": req.name, "for_role": agent.name, "canonical": req.canonical, "status": req.status,
+             "reason": req.reason, "source": "find_tool"})
+        self.i.trace.event("find_tool", {"amoeba.step": n, "gen_ai.agent.name": agent.name, "amoeba.need": need,
+                                         "amoeba.attached": sorted(got), "amoeba.status": req.status})
+        if not got:
+            return (f"find_tool: nothing in the pool or the local toolbox matches '{need}'. Work with the tools you "
+                    f"hold ({', '.join(t for t in agent.tools if t != FIND_TOOL)}), or say what could not be done.")
+        descs = self.i.tools.descriptions() if hasattr(self.i.tools, "descriptions") else {}
+        lines = [f"- {g}: {(descs.get(g) or next((p.get('text', '') for p in agent.pool if p['name'] == g), ''))[:300]}"
+                 for g in sorted(got)]
+        return "find_tool: attached to you now (call it from your next turn):\n" + "\n".join(lines)
 
     # box: plan_step
     def same_error_hint(self, agent: AgentSpec, tool: str, w: "_Work", resp: str) -> str:

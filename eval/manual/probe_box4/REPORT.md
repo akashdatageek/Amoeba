@@ -122,6 +122,27 @@ These are one off run and two on runs, on a provider that blocked 57–77% of ca
    - D128's retry-once rule also doubles every blocked call: 26 blocked calls per stuck step, all billed for input.
    - Routing could not help either: the `claude-sonnet` profile leaves one candidate, so there was no other model to fall back to.
 
+## Follow-up: what the "content filter" really is (A/B after the runs)
+
+This used direct calls to the same endpoint and model with run `d97f9e59`'s first step-1 prompt. It cost about $0.32 in all.
+
+| Prompt variant | Calls | Result |
+|---|---|---|
+| As sent by Amoeba (text `## Action / ## ActionInput` format, no tools declared) | 10 | 10 `content_filter`, 0 output tokens |
+| Without the `local:Bash` / `local:Write` paragraphs and the contract line | 10 | 10 `content_filter` |
+| Each other section removed in turn (task, role card, step, inputs, facts, tools) | 8 | all `content_filter` |
+| The `# Format` section removed | 1 | the model writes a native tool call as text (`<invoke name="fetch_url">`, `finish_reason: tool_calls`) |
+| The format headings renamed (`## Chosen tool`, `## Tool input`) | 2 | 2 `content_filter` |
+| Tools declared natively, `# Format` section kept | 3 | 3 `content_filter` |
+| **Tools declared natively, `# Format` section removed** | 2 | **2 proper tool calls**: `fetch_url` of the EIA PADD 2 page and `web_search`, in parallel |
+
+What this shows:
+- The block is deterministic for this prompt. It is not random, and it is not about the shell-tool wording.
+- Claude Sonnet 5.5 answers a tool-using step with native tool use. Amoeba's text protocol for tools (pick a tool by writing `## Action`) makes the OpenAI-compatible endpoint return an empty `content_filter` reply.
+- Planning calls, which ask for text sections but offer no tools, mostly pass.
+
+So issue 3 below is really issue 1's native-tool-calling point, and that point becomes the first fix, not a later one.
+
 ## Recommended changes
 
 These are from the discussion after the runs. No code was changed in this session.
