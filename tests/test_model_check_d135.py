@@ -116,7 +116,9 @@ def test_v2_probes_use_the_typed_builders():
     by = {x["probe"]: x["status"] for x in r["probes"]}
     assert by == {k: "ok" for k in by}, by
     assert all(c.get("schema") is not None for c in client.calls if c["kind"] in
-               ("interpreter", "planner", "agent_observer", "plan_observer", "pool_picker"))
+               ("interpreter", "agent_observer", "plan_observer", "pool_picker"))
+    assert all(c.get("schema") is None and '"plan"' in c["messages"][-1]["content"]      # D142: free-form check params
+               for c in client.calls_of("planner"))
     fixc = client.calls_of("fix_proposer")[0]                 # free-form params: json_prompt, the schema in the prompt
     assert fixc.get("schema") is None and "matches this JSON schema" in fixc["messages"][-1]["content"]
 

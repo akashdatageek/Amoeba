@@ -77,6 +77,7 @@ class PlanStep(BaseModel):
     do: str = ""
     output: str = ""
     done_when: str = ""
+    checks: list[dict] = Field(default_factory=list)   # D142: the step's typed checks, run by Box 3 (task/contract.py)
 
 
 # box: teamconfig

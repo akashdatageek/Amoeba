@@ -117,6 +117,16 @@ class RequestOut(BaseModel):
     example_output: str
 
 
+class CheckOut(BaseModel):
+    """D142: one typed step check from the fixed vocabulary (task/contract.py VOCAB)."""
+    name: Literal["file_exists", "docx_pages_max", "docx_words_between", "docx_has_table", "xlsx_rows_min",
+                  "xlsx_columns", "xlsx_has_formulas", "csv_rows_min", "csv_columns", "image_exists",
+                  "output_has_table", "output_has_list", "output_mentions", "cites_every_figure", "figures_dated",
+                  "verdict_present", "not_sent_fallback"]
+    params: dict = Field(default_factory=dict, description="the check's parameters, e.g. {\"n\": 3}")
+    covers: list[str] = Field(description="the requirement ids this check proves")
+
+
 class StepOut(BaseModel):
     number: int
     roles: list[str]
@@ -127,6 +137,7 @@ class StepOut(BaseModel):
     do: str
     output: str = Field(description="the artifact, starting with format markers: table:, list:, code:, memo:")
     done_when: str
+    checks: list[CheckOut] = Field(default_factory=list, description="D142: what plain code checks when the step ends")
 
 
 # box: planner
@@ -244,7 +255,9 @@ def plan_markdown(p: "PlanOut") -> str:
         steps.append(f"{s.number}. [{', '.join(s.roles)}]: {s.title}\n   kind: {s.kind}\n"
                      f"   covers: {', '.join(s.covers) or 'none'}\n"
                      f"   depends_on: {', '.join(map(str, s.depends_on)) or 'none'}\n   do: {s.do}\n"
-                     f"   output: {s.output}\n   done_when: {s.done_when}")
+                     f"   output: {s.output}\n   done_when: {s.done_when}" +
+                     (f"\n   checks: {json.dumps([c.model_dump(mode='json') for c in s.checks], ensure_ascii=False)}"
+                      if s.checks else ""))
     oq = "\n".join(f"- question: {q.question} | assumption: {q.assumption}" for q in p.open_questions) or "None"
     return ("## Requirements:\n" + ("\n".join(f"{r.id}: {r.text}" for r in p.requirements) or "None") +
             "\n\n## Givens and Assumptions:\n" + ("\n".join(f"- {g}" for g in p.givens) or "None") +

@@ -35,7 +35,8 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
 
     if topology == "flat":
         plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text, kind=s.kind, covers=s.covers,
-                         depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when)   # D24 detail
+                         depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when,   # D24 detail
+                         checks=s.checks)   # D142
                 for s in draft.plan]
         edges = [Edge(src=a, dst=b, type="sequential")
                  for s1, s2 in pairwise(plan) for a in s1.agent_ids for b in s2.agent_ids]
@@ -60,7 +61,8 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
     elif topology == "plan":   # D31: the plan runner over depends_on (amoeba/interp/plan_runner.py)
         from amoeba.interp.plan_runner import PLAN_MAX_TOKENS, number, relink
         plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text, kind=s.kind, covers=s.covers,
-                         depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when)
+                         depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when,
+                         checks=s.checks)                                                     # D142
                 for s in draft.plan]
         written = {i + 1: list(w.get("depends_on") or []) for i, w in enumerate(draft.rounds[-1].plan)} \
             if draft.rounds else {}

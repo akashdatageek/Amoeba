@@ -284,6 +284,9 @@ def plan_card(agent: AgentSpec) -> str:
 # box: plan_step
 def step_detail(step: PlanStep) -> str:
     extra = [f"{k}: {getattr(step, k)}" for k in ("do", "output", "done_when") if getattr(step, k)]
+    if step.checks:                       # D142: what plain code checks when the step ends (none: unchanged)
+        from amoeba.task.contract import checks_text
+        extra.append(f"checked by plain code when you finish: {checks_text(step.checks)}")
     return "\n".join([step.text, *extra])
 
 
@@ -738,6 +741,7 @@ class PlanRunner:
         self.artifacts: dict[int, dict] = {}     # step number -> {"text", "meta"}
         self.reworked: set[int] = set()          # D34: at most one rework per step
         self.ledger: dict[str, dict] = {}        # D43: figure -> its first status and the step that first wrote it
+        self.contract_results: dict[int, list[dict]] = {}   # D142: each step's typed check results
         self.own_results: dict[int, dict] = {}   # D90: each verify step's own result, made once
         self.inferred_logged: set[int] = set()   # D37: steps whose verifier status came from the keyword fallback
         self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
@@ -1456,6 +1460,8 @@ class PlanRunner:
         own, visible = self._sources(n, deps)
         prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,   # D33
                                 self.computed_results(w), self.web_ids())
+        planned = self.planned_checks(step, n, text, prov, answer_step)                     # D142
+        checks += planned
         found = self.contract_check(contract, w, text) if contract else None                # D61 (G1, G2)
         produced = self.answer_gaps(n, text) if on and answer_step else None               # D61 (G5)
         items = (self.contract_findings(found) if found else []) + (self.answer_findings(produced) if produced else [])
@@ -1477,6 +1483,8 @@ class PlanRunner:
             own, visible = self._sources(n, deps)
             prov = check_provenance(text, visible, self.task.prompt, inputs, w.tool_results,
                                     self.computed_results(w), self.web_ids())
+            planned = self.planned_checks(step, n, text, prov, answer_step)                 # D142
+            checks += planned
             found = self.contract_check(contract, w, text) if contract else None
             produced = self.answer_gaps(n, text) if produced is not None else None
             refine["after"] = refine_counts(checks, prov, len((self.contract_findings(found) if found else [])
@@ -1601,6 +1609,7 @@ class PlanRunner:
                 "blocked_canonical": sorted({normalise(g)[0] for g in gaps}), "sources": own,
                 "visible_source_ids": sorted(visible), "provenance": prov, "figure_origins": origins,
                 "checks": checks, "retried": retried, "refine": refine,
+                "contract_checks": planned,                                        # D142
                 "unverified_tags_removed": removed,                                # D66
                 "mislabelled_citations": mislabelled,                              # D74
                 "citations_relabelled": relabelled,                                # D131
@@ -1695,6 +1704,23 @@ class PlanRunner:
         from amoeba.checks import run_checks
         return run_checks(["xlsx_formulas"], text, {"xlsx_files": books, "task": self.task.prompt, "step": n})
 
+    # box: step_check
+    def planned_checks(self, step: PlanStep, n: int, text: str, prov: dict, answer_step: bool) -> list[dict]:
+        """D142: the step's typed checks (Box 2's contract) on its output and its workspace files (every file for the
+        answer step); each result is kept for the final requirement check."""
+        if not step.checks:
+            return []
+        from amoeba.task.contract import run_checks
+        files = [str(self.local.workspace / f["path"]) for f in self.files_of(None if answer_step else n)] \
+            if self.local is not None else []
+        out = run_checks(step.checks, {"text": text, "files": files, "untagged": prov.get("untagged", 0),
+                                       "undated": undated_figures(text, self.web_ids()),
+                                       "verdict": parse_verdict_block(text)[0]})
+        self.contract_results[n] = out
+        self.i.trace.event("contract_checks", {"amoeba.step": n, "amoeba.passed": sum(c["pass"] for c in out),
+                                               "amoeba.failed": [c["check"] for c in out if not c["pass"]]})
+        return out
+
     # box: plan_summary
     def final_answer_check(self, text: str) -> dict:
         """D105 + D110 (amended): the final answer against Box 2's requirements, the promised files against the
@@ -1705,7 +1731,8 @@ class PlanRunner:
         made = [Path(f["path"]).name for f in self.files_of()] if self.local is not None else None
         undated = undated_figures(text, self.web_ids()) if self.opt.dated == "on" else []
         return final_check(text, self.cfg.requirements or {}, texts, made, undated,
-                           check_requirements=self.opt.final_check == "on")
+                           check_requirements=self.opt.final_check == "on",
+                           checks=[c for cs in self.contract_results.values() for c in cs])      # D142
 
     @staticmethod
     def computed_results(w: "_Work") -> list[str]:

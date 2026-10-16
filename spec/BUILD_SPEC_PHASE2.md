@@ -1065,6 +1065,13 @@ v2 is a user-approved deviation from the CLAUDE.md rule to copy AutoAgents/Agent
 decision, Oct 15 2026). Legacy prompts are kept unchanged under --protocol legacy. Design:
 docs/design/D141_protocol_v2_all_calls.md.
 
+**D142, the plan–execution contract (Oct 16, audit Phase D).** Each plan step can carry typed checks from a fixed
+vocabulary, each naming the requirements it proves. Box 2's gate sends a plan back when a requirement has no check,
+when a check is malformed, or when a step cannot meet its checks. Box 3 runs the checks when the step ends, and a
+failure is treated like any failed check. The final requirement check counts a requirement as met only when its
+checks passed and the answer body (not the Limitations section) covers it. Design:
+docs/design/D142_plan_execution_contract.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

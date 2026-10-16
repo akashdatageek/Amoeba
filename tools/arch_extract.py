@@ -291,7 +291,10 @@ BOXES: list[dict] = [
                "compute, compare and more) must reach a requirement or a given; a phrase ends at sentence "
                "punctuation, not inside an email address or a decimal.",
                "With the quality gate on, a draft failing a must-have check goes back to the planner for one more "
-               "round with the failed checks listed, within the round cap."],
+               "round with the failed checks listed, within the round cap.",
+               "D142: three HARD checks on the plan's typed step checks: every requirement has a check "
+               "(requirements_checked), every check is in the vocabulary with good parameters (checks_valid), and each "
+               "step can meet its checks (checks_reachable)."],
          proposes="The final draft text.",
          disposes="Everything listed here; the original project trusted the AI for all of it.",
          anchors=[("amoeba/task/draft.py::draft_team", "# publish", None), "amoeba/task/draft.py::pick_summariser",
@@ -514,7 +517,10 @@ BOXES: list[dict] = [
                "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked.",
                "D138: an unreadable review counts as REVISE after one repair call, never AGREE; find_tool and failed "
                "calls are not re-checks; a corrected dispute figure marks its consumers stale; a verifier can read the "
-               "full text of an input it saw cut (inputs/step_<d>.md)."],
+               "full text of an input it saw cut (inputs/step_<d>.md).",
+               "D142: after Final Output, plain code runs the step's typed checks (files, Word, Excel, CSV, images, "
+               "tables, lists, terms, citations, dates, verdict, NOT SENT) and a failed one is a failed check like any "
+               "other."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",
@@ -635,7 +641,9 @@ BOXES: list[dict] = [
                "are left out of result.json when there are none.",
                "D120: plan_search (with --plan-search on): the decision and why, the queries kept and refused with "
                "their reasons, each search's [P#] results and where the draft cited them (used_in), the lines "
-               "screened out and the tokens; left out when the flag is off."],
+               "screened out and the tokens; left out when the flag is off.",
+               "D142: a requirement is met only when every check covering it passed and its key terms are above the "
+               "Limitations section; only under Limitations it is reported_missing; met_legacy keeps the old measure."],
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,

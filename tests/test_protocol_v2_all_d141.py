@@ -235,7 +235,8 @@ def test_draft_team_v2_runs_on_typed_replies(envelope):
     d = draft_team(task, llm, envelope, trace)
     assert [r.name for r in d.created_roles] == ["Analyst", "Writer"] and len(d.plan) == 2
     assert d.plan[0].covers == ["R1"]
-    assert {c["schema"] for c in llm.calls} == {S.PlanOut, S.ReviewOut}
+    assert {c["schema"] for c in llm.calls} == {None, S.ReviewOut}       # PlanOut goes as json_prompt (D142 params)
+    assert '"plan"' in llm.calls_of("planner")[0]["messages"][-1]["content"]
     for c in llm.calls:
         assert banned_words(c["messages"][-1]["content"]) == []
 

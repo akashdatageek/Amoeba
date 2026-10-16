@@ -227,6 +227,7 @@ class DraftPlanStep(BaseModel):
     do: str = ""
     output: str = ""
     done_when: str = ""
+    checks: list[dict] = Field(default_factory=list)          # D142: typed checks {name, params, covers} (contract.py)
 
 
 class DraftRound(BaseModel):
