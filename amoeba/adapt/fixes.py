@@ -32,10 +32,9 @@ from amoeba.adapt.config import adapt_config
 GENERIC = {"step", "steps", "data", "input", "inputs", "output", "outputs", "missing", "file", "files", "raw",
            "provided", "previous", "earlier", "upstream", "results", "result", "the", "and", "from", "of", "for"}
 POOL_OFF = "capability fix unavailable: pool off"
-LIMIT_DEFAULTS = {"max_fixes_per_step": 3, "max_fixes_per_task": 8, "max_tokens_per_task": 200000,
+LIMIT_DEFAULTS = {"max_fixes_per_step": 3, "max_fixes_per_task": 8, "fix_tokens_per_attempt": 6,
                   "max_usd_per_task": 1.0, "more_turns": 3, "more_retry_turns": 1, "input_factor": 2,
-                  "stop_when_exhausted": True, "max_added_helpers": 2, "max_fixes_per_substep": 2,
-                  "tokens_share_of_run_cap": 0.25}
+                  "stop_when_exhausted": True, "max_added_helpers": 2, "max_fixes_per_substep": 2}
 
 
 # box: fixes
@@ -45,12 +44,11 @@ def limits(config: dict | None = None) -> dict:
 
 
 # box: fixes
-def token_cap(lim: dict, run_cap: int | None) -> int:
-    """D129: the tokens all fixes of one task may use: max_tokens_per_task, or a share of the run's own token cap
-    (--max-tokens-per-run) when that is larger, so a model with long contexts is not stopped by a cap set for a small
-    one."""
-    base = int(lim["max_tokens_per_task"])
-    return max(base, int(float(lim.get("tokens_share_of_run_cap") or 0) * run_cap)) if run_cap else base
+def token_cap(lim: dict, avg_attempt: float) -> int:
+    """D151: the tokens all fixes of one task may use: `fix_tokens_per_attempt` times the run's average step-attempt
+    cost so far, so the allowance scales with the model (one that reads or thinks three times as much gets three
+    times the room). D129's allowance (a fixed 200,000, or a quarter of the run cap when larger) is replaced."""
+    return int(float(lim["fix_tokens_per_attempt"]) * max(avg_attempt, 0))
 
 
 # box: fixes

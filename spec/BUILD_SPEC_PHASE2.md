@@ -1112,6 +1112,12 @@ more turns) is never tried again on that step, whatever its value. After one fai
 proposer, which reads the evidence and can change the step; code fixes of untried kinds follow only if the proposer has
 nothing. Design: docs/design/D150_fix_tries.md.
 
+**D151, budgets scale with the model and are shared fairly (Oct 16, after run 71d2f910).** The tokens all fixes of a
+task may use are six times the run's average step-attempt cost so far, not a fixed 200,000. With a run token cap, each
+step may spend 1.5 times its fair part of what is left when it starts; a step that reaches it stops retrying and is
+reported as kept_going with the reason, and the rest of the cap stays for the steps not yet run. Design:
+docs/design/D151_fair_budgets.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

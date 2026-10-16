@@ -73,18 +73,25 @@ tool_writer:                  # D125: Box 4 writes a missing tool (amoeba/adapt/
 run_guard:                    # D122: limits that must not throw away nearly finished work (amoeba/llm/limits.py)
   stall_calls: 60             # stop a plan run after this many model calls with no progress (0 = off; calls, never tokens)
   finish_share: 0.85          # with a hard cap (--max-tokens-per-run / --max-calls-per-run): finish mode after this share
+  # D151: with --max-tokens-per-run, each step may spend (attempts, fixes, rework) this times its fair share of what
+  # is left when it starts: (cap - used) / steps not yet run. A step that reaches it stops retrying (kept_going, with
+  # the reason) and the rest of the cap stays for the steps not yet run. 1.5 lets a hard step borrow half a share.
+  step_share: 1.5
 
 adapt:                        # D117 Stage C: in-task code fixes (--adapt on); all limits are enforced by plain code
   max_fixes_per_step: 3       # fixes tried for one stuck step (a re-run of its upstream step counts as one)
   max_fixes_per_task: 8       # fixes tried in one task
-  max_tokens_per_task: 200000 # tokens all fix attempts of one task may use (checked before each fix)
+  # D151 (was max_tokens_per_task: 200000, a fixed number): the tokens all fix attempts of one task may use are this
+  # many times the run's average step-attempt cost so far (checked before each fix). A fix re-runs the step, and a
+  # re-run with more turns or a longer input costs about 1.5-2 first attempts, plus a proposer call: 6 attempts' worth
+  # is room for about three fixes, the per-step limit, on any model.
+  fix_tokens_per_attempt: 6
   max_usd_per_task: 1.0       # the same in dollars, when the model has a price (amoeba/config/prices.yaml)
   more_turns: 3               # rung 1: turns added by a "more turns" fix (capped by limits.run_options.max_turns)
   more_retry_turns: 1         # rung 1: retry turns added (capped by check_retry_turns)
   input_factor: 2             # rung 1: a shortened input's limit is multiplied by this (capped by max_input_chars)
   max_added_helpers: 2        # D117 D (user): helpers the fix proposer may add (add_helper_role) in one task
   max_fixes_per_substep: 2    # D129: a step made by a split or a re-plan starts its own count (it used to inherit)
-  tokens_share_of_run_cap: 0.25   # D129: with --max-tokens-per-run, the fixes may use this share of it if larger
   # D117 D: the code fixes, then the fix proposer; none recovers the step → the task stops with a report. D145: this
   # applies only with --failed-step run; under D133 (dependents, the default) the step is reported as kept_going and
   # only its dependents are skipped. false means "never stop" in both modes. A provider_blocked step always stops.

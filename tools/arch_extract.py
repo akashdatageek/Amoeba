@@ -459,7 +459,9 @@ BOXES: list[dict] = [
                "A dependency on a step the planner wrote but Box 2 dropped is pointed at that step's own "
                "dependencies, and the change is logged.",
                "An unknown step number or a loop stops the team from being built, before any AI call.",
-               "Steps whose inputs are ready form a wave; waves run one after another (the wave is logged)."],
+               "Steps whose inputs are ready form a wave; waves run one after another (the wave is logged).",
+               "D151: with a run token cap, each step may spend 1.5 times its fair part of what is left; a step that "
+               "reaches it stops retrying (kept_going) and the later steps still run."],
          proposes="The depends_on lines (from the planner).",
          disposes="Plain code builds the graph, the order and what each step may see.",
          anchors=["amoeba/interp/plan_runner.py::waves", "amoeba/interp/plan_runner.py::dependencies",
@@ -896,7 +898,9 @@ BOXES: list[dict] = [
                "naming the refusal categories; a held tool is never granted again; a re-plan drops only the stuck step's "
                "dependents and must pass Box 2's HARD checks.",
                "D150: a fix kind that failed on a step is never tried again on it, and after one failed code fix the fix "
-               "proposer goes next."],
+               "proposer goes next.",
+               "D151: the fixes' token allowance is six times the run's average step-attempt cost so far, so it scales "
+               "with the model."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code picks, applies and judges each fix (success: the step ends done).",
          anchors=["amoeba/adapt/fixes.py::candidates", "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",

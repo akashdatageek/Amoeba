@@ -256,7 +256,7 @@ def test_with_the_pool_off_the_capability_rung_is_skipped_and_the_task_stops_wit
 
 
 def test_the_token_cap_stops_further_fixes(task, envelope, trace, tools, monkeypatch):
-    monkeypatch.setattr(pr, "fix_limits", lambda: {**limits(), "max_tokens_per_task": 1})
+    monkeypatch.setattr(pr, "fix_limits", lambda: {**limits(), "fix_tokens_per_attempt": 0.001})
 
     def script(messages, seed):
         n = step_no(messages)
