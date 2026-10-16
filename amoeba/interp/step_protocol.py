@@ -26,6 +26,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from amoeba.llm.client import validate_reply
+
 FINAL = "Final Output"          # the tool's real name in the plan runner (FINAL_OUTPUT); its function name is Final_Output
 PRINT = "Print"
 FIND_TOOL = "find_tool"
@@ -124,12 +126,15 @@ def check_args(tool: str, args, schema: dict, final_kind: str | None = None) -> 
     if not isinstance(args, dict):
         return "arguments that are not a JSON object"
     if tool == FINAL:
+        model = ResolverOutput if final_kind == "resolve" else FinalOutput
+        if validate_reply(model, args) is not None:        # D139: nulls and enum case as the provider sends them
+            return None
         try:
-            (ResolverOutput if final_kind == "resolve" else FinalOutput).model_validate(args)
+            model.model_validate(args)
         except ValidationError as e:
             return "fields that do not fit: " + "; ".join(f"{'.'.join(map(str, x['loc']))}: {x['msg']}"
                                                           for x in e.errors()[:4])
-        return None
+        return "fields that do not fit"
     props, required = schema.get("properties") or {}, schema.get("required") or []
     missing = [k for k in required if k not in args or (args[k] in ("", None) and (tool, k) not in EMPTY_OK)]
     if missing:
@@ -171,7 +176,7 @@ def typed_input(tool: str, args: dict, schema: dict) -> str:
 def final_text(args: dict) -> str:
     """The typed end of a step as the text the legacy readers parse: Verdict first, the output, one BLOCKED / NOT
     NEEDED / MISSING DATA / MISSING INPUT line per item, the Issues last."""
-    fo = FinalOutput.model_validate(args)
+    fo = FinalOutput.model_validate(validate_reply(FinalOutput, args) or args)
     lines = [f"Verdict: {fo.verdict}"] if fo.verdict else []
     lines.append(fo.output.strip())
     lines += [f"BLOCKED: {x.strip()}" for x in fo.blocked if x.strip()]
@@ -187,7 +192,7 @@ def final_text(args: dict) -> str:
 # box: plan_step
 def typed_verdict(args: dict) -> tuple[str | None, str]:
     """(verdict, issues) of a typed end of a verify step, as parse_verdict_block returns them."""
-    fo = FinalOutput.model_validate(args)
+    fo = FinalOutput.model_validate(validate_reply(FinalOutput, args) or args)
     return fo.verdict, "\n".join(f"{i}. {x.strip()}" for i, x in enumerate(fo.issues, 1)) if fo.issues else \
         ("none" if fo.verdict else "")
 
@@ -195,7 +200,7 @@ def typed_verdict(args: dict) -> tuple[str | None, str]:
 # box: plan_step
 def resolver_text(args: dict) -> str:
     """The resolver's typed figures as the blocks parse_resolution reads (settle() unchanged)."""
-    ro = ResolverOutput.model_validate(args)
+    ro = ResolverOutput.model_validate(validate_reply(ResolverOutput, args) or args)
     return "\n\n".join(f"Figure {f.n}\nValue: {f.value}\nEvidence: {f.evidence}\nVerdict: {f.verdict}"
                        for f in ro.figures)
 

@@ -1045,6 +1045,15 @@ longer mistaken for outside actions under a niche profile. Design: docs/design/D
 
 Design: docs/design/D138_box3_bugs.md.
 
+**D139, the model layer finished (Oct 16, audit Phase C).**
+- Structured replies are always validated by plain code. Enum case does not matter, and a provider null falls back
+  to the field's default.
+- Every field is required in the schema sent to Claude, with optional fields made nullable.
+- A step's unchanging head is cached by the provider.
+- A block that is not a reasoning refusal gets one retry with the compact variant of its prompt.
+
+Design: docs/design/D139_model_layer.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

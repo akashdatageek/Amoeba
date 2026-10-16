@@ -18,7 +18,8 @@ import json
 import time
 from typing import Callable
 
-from amoeba.llm.client import (ChatResponse, LLMClient, Messages, RATE_STATUS, dropped, retry_after, spend_cap)
+from amoeba.llm.client import (ChatResponse, LLMClient, Messages, RATE_STATUS, dropped, parse_schema_reply,
+                               retry_after, spend_cap)
 
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 THINKING_DISPLAYS = ("summarized", "omitted")
@@ -39,7 +40,10 @@ class SchemaTooComplex(ValueError):
 def claude_schema(model_or_schema) -> dict:
     """D134: a pydantic model's JSON schema (or a JSON schema dict) in the subset Claude's structured outputs take:
     every object closed (additionalProperties false), no numeric or length bounds, no minItems above 1, no
-    recursion, and at most SCHEMA_LIMITS optional fields and unions in all. Raises SchemaTooComplex otherwise."""
+    recursion, and at most SCHEMA_LIMITS optional fields and unions in all. Raises SchemaTooComplex otherwise.
+    D139: every field is required; a field that was optional becomes nullable (anyOf with null), so the model always
+    writes it (null when it has nothing). The reply is validated by the pydantic model in code (validate_reply), so
+    a bound dropped here is still enforced there."""
     schema = model_or_schema.model_json_schema() if hasattr(model_or_schema, "model_json_schema") else \
         json.loads(json.dumps(model_or_schema))
     defs = schema.get("$defs") or {}
@@ -78,7 +82,12 @@ def claude_schema(model_or_schema) -> dict:
                                        f"structured outputs need named fields")
             out["additionalProperties"] = False
             props = out.get("properties") or {}
-            count["optional"] += len([p for p in props if p not in (out.get("required") or [])])
+            optional = [p for p in props if p not in (out.get("required") or [])]
+            count["optional"] += len(optional)
+            for p in optional:                           # D139: required, and nullable instead of optional
+                props[p] = nullable(props[p])
+            if props:
+                out["required"] = list(props)
         return out
 
     result = walk(schema, ())
@@ -87,6 +96,27 @@ def claude_schema(model_or_schema) -> dict:
             raise SchemaTooComplex(f"{count[k]} {'optional fields' if k == 'optional' else 'unions'} "
                                    f"(Claude's structured outputs take at most {cap})")
     return result
+
+
+# box: client
+def nullable(schema: dict) -> dict:
+    """D139: a property schema that also allows null (an optional field made required)."""
+    if not isinstance(schema, dict):
+        return schema
+    branches = schema.get("anyOf")
+    if isinstance(branches, list):
+        return schema if any(b.get("type") == "null" for b in branches if isinstance(b, dict)) else \
+            {**schema, "anyOf": [*branches, {"type": "null"}]}
+    if schema.get("type") == "null":
+        return schema
+    keep = {k: v for k, v in schema.items() if k != "description"}
+    out = {"anyOf": [keep, {"type": "null"}]}
+    if "description" in schema:
+        out["description"] = schema["description"]
+    return out
+
+
+to_claude_schema = claude_schema          # D139: the audit prompt's name for it
 
 
 # box: client
@@ -124,6 +154,29 @@ def claude_messages(messages: Messages) -> tuple[str, list[dict]]:
         else:
             out.append({"role": role, "content": blocks})
     return system, out
+
+
+# where a step prompt stops being the same from turn to turn (D139): everything before it is cached
+CACHE_BREAKS = ("\n# Work done so far",)
+
+
+# box: client
+def cache_stable_head(msgs: list[dict]) -> None:
+    """D139: with cache_prefix, the last user message is split at its first CACHE_BREAKS marker into a cached block
+    (task, role card, step, inputs) and the per-turn rest, so a step's later turns read the head from Claude's prompt
+    cache. Order of the cached prefix: tool list, system text, then this head."""
+    for m in reversed(msgs):
+        if m["role"] != "user":
+            continue
+        blocks = m["content"]
+        if not blocks or blocks[0].get("type") != "text":
+            return
+        text = blocks[0]["text"]
+        cut = min((text.find(b) for b in CACHE_BREAKS if b in text), default=-1)
+        if cut > 0:
+            blocks[0:1] = [{"type": "text", "text": text[:cut], "cache_control": {"type": "ephemeral"}},
+                           {"type": "text", "text": text[cut:]}]
+        return
 
 
 # box: client
@@ -182,6 +235,8 @@ class AnthropicClient(LLMClient):
             kw["tools"] = claude_tools(tools)
             if cache:
                 kw["tools"][-1]["cache_control"] = {"type": "ephemeral"}
+        if cache:
+            cache_stable_head(msgs)                       # D139: the step prompt's part that does not change per turn
         config: dict = {}
         effort = effort or self.effort
         if effort:
@@ -245,11 +300,7 @@ class AnthropicClient(LLMClient):
         content = "".join(text)
         parsed = None
         if schema is not None and stop != "refusal" and content.strip():
-            try:
-                parsed = schema.model_validate_json(content).model_dump(mode="json") if hasattr(
-                    schema, "model_validate_json") else json.loads(content)
-            except ValueError:
-                parsed = None          # the caller sees parsed=None and the raw text (json_prompt repairs it)
+            parsed = parse_schema_reply(schema, content)   # D139: validated in code (enum case, nulls); None if not
         return ChatResponse(
             content=content, tool_calls=calls, finish_reason=FINISH.get(stop, stop),
             input_tokens=fresh + read + write,            # the whole prompt; cache_* say how much of it was cached

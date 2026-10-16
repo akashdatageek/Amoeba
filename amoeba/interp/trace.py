@@ -27,7 +27,7 @@ EVENT_BOX = {
     "task_interpretation": "interpret", "interpretation_question": "interpret",                            # D77
     "subject_questions_routed": "interpret", "assumption_stated": "interpret",
     "truncated": "client", "provider_blocked": "client", "rate_limited": "client", "cache_miss": "client", "api_error": "client",
-    "prompt_asks_for_reasoning": "client",                                                            # D134
+    "prompt_asks_for_reasoning": "client", "compact_retry": "client",                                 # D134, D139
     "plan_graph": "plan_graph", "dependency_relinked": "plan_graph", "step_input": "plan_step",
     "input_truncated": "plan_step", "collab_round": "plan_step", "review_unreadable": "plan_step",
     "step_done": "step_check", "check_retry": "step_check", "rework": "step_check", "reverify": "step_check",
@@ -193,7 +193,8 @@ class TracedLLM:
     def chat_messages(self, messages: Messages, seed: int = 0, *, agent_id: str | None = None,
                       agent_name: str | None = None, max_tokens: int | None = None, role: str | None = None,
                       step: int | None = None, checks=None, needs=(), _retry: bool = False,
-                      _blocked_retry: bool = False, tools: list | None = None, **opts) -> ChatResponse:
+                      _blocked_retry: bool = False, tools: list | None = None, compact: Messages | None = None,
+                      **opts) -> ChatResponse:
         """role: the call's role group (D54; Box 2 callers are known by name). A profile's RoleRouter picks the
         group's model and, when the profile sets one, its reply limit. D97: with a ModelRouter every call states a
         CallSpec (role, step, size, needs, data class, the steps it checks) and the router picks the model.
@@ -297,6 +298,13 @@ class TracedLLM:
                     "gen_ai.agent.name": agent_name, "amoeba.step": step, "amoeba.prompt_files": files,
                     "amoeba.note": "the model refused because this prompt asks it to write out its reasoning "
                                    "(a '## Thought' section); the turn is unreadable — fix the prompt (--protocol v2)"})
+            elif compact and not _blocked_retry:
+                # D139: any other block is sent once more, as the compact variant of the same prompt (D141)
+                self.trace.event("compact_retry", {"gen_ai.agent.name": agent_name, "amoeba.step": step,
+                                                   "amoeba.refusal_category": category})
+                return self.chat_messages(compact, seed, agent_id=agent_id, agent_name=agent_name,
+                                          max_tokens=max_tokens, role=role, step=step, checks=checks, needs=needs,
+                                          _retry=_retry, _blocked_retry=True, tools=tools, **opts)
         if resp.finish_reason == "length" and max_tokens and not _retry:
             # D27: hidden reasoning can use up the limit; ask once more with double room, then accept whatever comes
             return self.chat_messages(messages, seed, agent_id=agent_id, agent_name=agent_name,

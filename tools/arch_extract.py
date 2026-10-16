@@ -754,7 +754,10 @@ BOXES: list[dict] = [
                "it was; a refusal because the prompt asks for written-out reasoning is a loud "
                "prompt_asks_for_reasoning line naming the prompt file, and the run summary says so.",
                "D135: scripts/model_check.py checks a model before use with one tiny call per call type and one "
-               "structured call per output mode, and can set the registry entry's supports flags."],
+               "structured call per output mode, and can set the registry entry's supports flags.",
+               "D139: every structured reply is validated by plain code (enum case ignored, provider nulls fall back to "
+               "defaults); the schema sent to Claude makes every field required and optional ones nullable; with "
+               "cache_prefix the step prompt's stable head is cached; a non-reasoning block gets one compact retry."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/anthropic_client.py::AnthropicClient",

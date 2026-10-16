@@ -3046,7 +3046,7 @@ class PlanRunner:
         try:
             resp = self.i.llm.chat_messages([{"role": "system", "content": system}, {"role": "user", "content": user}],
                                             self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
-                                            max_tokens=PLAN_MAX_TOKENS, role=group, tools=specs,
+                                            max_tokens=PLAN_MAX_TOKENS, role=group, tools=specs, cache_prefix=True,   # D139
                                             **self.route_ids(n, step))
         except NoModelAvailable as e:
             return "no_model", f"BLOCKED: no_model — {str(e)[:200]}", "", "no_model"

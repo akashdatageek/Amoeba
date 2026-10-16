@@ -78,15 +78,67 @@ def opts_kw(opts: dict) -> dict:
 # box: client
 def parse_schema_reply(schema, content: str) -> dict | None:
     """D134: a reply's JSON validated by the call's pydantic model (a dict), or None when it is not valid JSON for
-    that model."""
+    that model. D139: through validate_reply (enum case, nulls for optional fields)."""
     text = (content or "").strip()
     m = re.search(r"(?s)```(?:json)?\s*(.*?)```", text)
     text = m.group(1).strip() if m else text
     try:
-        return schema.model_validate_json(text).model_dump(mode="json") if hasattr(schema, "model_validate_json") \
-            else json.loads(text)
+        data = json.loads(text)
     except ValueError:
         return None
+    return validate_reply(schema, data)
+
+
+# box: client
+def validate_reply(schema, data) -> dict | None:
+    """D139: a structured reply validated by its pydantic model in code (a bound the provider's schema dropped is
+    still enforced here). Enum values are matched case-insensitively (a model may change their case), and a null
+    the provider required for an optional field (to_claude_schema) falls back to the field's default. Returns the
+    validated dict, or None."""
+    if not hasattr(schema, "model_validate"):
+        return data if isinstance(data, dict) else None
+    from pydantic import ValidationError
+    js = schema.model_json_schema()
+    fixed = _enum_case(data, js, js.get("$defs") or {})
+    for attempt in (fixed, _drop_nulls(fixed)):
+        try:
+            return schema.model_validate(attempt).model_dump(mode="json")
+        except (ValidationError, ValueError, TypeError):
+            continue
+    return None
+
+
+def _enum_case(data, node: dict, defs: dict):
+    """Enum strings matched case-insensitively against the JSON schema's enums."""
+    if isinstance(node, dict) and "$ref" in node:
+        node = defs.get(node["$ref"].split("/")[-1], {})
+    if not isinstance(node, dict):
+        return data
+    if isinstance(data, str):
+        enums = [e for e in node.get("enum") or [] if isinstance(e, str)]
+        for b in node.get("anyOf") or []:
+            b = defs.get(b["$ref"].split("/")[-1], {}) if isinstance(b, dict) and "$ref" in b else b
+            enums += [e for e in (b.get("enum") or []) if isinstance(e, str)] if isinstance(b, dict) else []
+        return next((e for e in enums if e.lower() == data.lower()), data)
+    if isinstance(data, list):
+        items = node.get("items") or next((b.get("items") for b in node.get("anyOf") or []
+                                           if isinstance(b, dict) and b.get("items")), {})
+        return [_enum_case(x, items, defs) for x in data]
+    if isinstance(data, dict):
+        props = node.get("properties") or next((
+            (defs.get(b["$ref"].split("/")[-1], {}) if "$ref" in b else b).get("properties") for b in
+            node.get("anyOf") or [] if isinstance(b, dict)
+            and (defs.get(b.get("$ref", "#/x/").split("/")[-1], {}) if "$ref" in b else b).get("properties")), {})
+        return {k: _enum_case(v, props.get(k, {}), defs) for k, v in data.items()}
+    return data
+
+
+def _drop_nulls(data):
+    if isinstance(data, dict):
+        return {k: _drop_nulls(v) for k, v in data.items() if v is not None}
+    if isinstance(data, list):
+        return [_drop_nulls(x) for x in data]
+    return data
 
 
 def _reasoning_tokens(usage) -> tuple[int, str | None]:
