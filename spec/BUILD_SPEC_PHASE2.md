@@ -1012,3 +1012,17 @@ outputs, effort, a thinking summary, prompt caching, and the refusal category. A
 unchanged (D128's retry was blocked every time). A reasoning refusal is named loudly with the prompt file that caused
 it. Other refusals go to the next model in routed mode, and Box 4's report names the categories. The old route stays as
 `claude-sonnet-compat`. Design: docs/design/D134_anthropic_client.md.
+
+**D136, a clean step protocol in native mode (Oct 16).** With `--protocol v2` and native tool calling, a helper is
+never asked to write text sections. The v2 step prompts (ours) and plain code's notes speak only of tool calls. Each
+tool takes typed arguments that plain code checks before running it, and the step ends with a typed `Final_Output`.
+Plain code turns that into the same BLOCKED / MISSING / Verdict lines as before, so the stuck watch, the verify reader
+and the dispute resolver work unchanged. Without native tool calling the steps fall back to legacy and the run says
+so. The default stays `legacy` for now. Design: docs/design/D136_protocol_v2.md.
+
+### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
+
+- **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
+  text is copied verbatim from AutoAgents / AgentVerse. The v2 prompt files are ours (`# source: ours — DEVIATION
+  D136`). The verbatim files and T11 stay untouched, and `--protocol legacy` keeps them in force. Recorded also in
+  BUILD_SPEC_PHASE1.md §11.

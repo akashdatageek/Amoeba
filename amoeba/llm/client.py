@@ -383,8 +383,32 @@ def mock_tool_calls(content: str, tools: list) -> list[dict]:
     inp = re.search(r"(?ms)^##\s*ActionInput\s*\n(.*)\Z", content)      # the input may hold ## headings
     if not act:
         return []
-    return [{"name": tool_fn_name(act.group(1).strip()),
-             "input": json.dumps({"input": (inp.group(1).strip() if inp else "")})}]
+    fn, text = tool_fn_name(act.group(1).strip()), (inp.group(1).strip() if inp else "")
+    return [{"name": fn, "input": json.dumps(mock_args(fn, text, tools))}]
+
+
+# box: toymock
+def mock_args(fn: str, text: str, tools: list) -> dict:
+    """D136: a scripted ActionInput as the arguments the offered tool takes: `input` for a one-string tool (D132); for
+    a typed tool (v2) a JSON object whose keys it takes (file_path read as path), else the text as its one required
+    argument; Final_Output with plain text keeps `input` (the plan runner's text fallback)."""
+    spec = next(((t.get("function") or t) for t in tools or [] if isinstance(t, dict)
+                 and (t.get("function") or t).get("name") == fn), None)
+    props = ((spec or {}).get("parameters") or {}).get("properties") or {} if spec else {}
+    if not props or "input" in props:
+        return {"input": text}
+    try:
+        obj = json.loads(text)
+    except ValueError:
+        obj = None
+    if isinstance(obj, dict):
+        obj = {("path" if k == "file_path" and "path" in props else k): v for k, v in obj.items()}
+        if set(obj) <= set(props):
+            return obj
+    required = ((spec or {}).get("parameters") or {}).get("required") or list(props)
+    if fn != "Final_Output" and len(required) == 1:
+        return {required[0]: text}
+    return {"input": text}
 
 
 # box: client

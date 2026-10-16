@@ -43,6 +43,9 @@ from amoeba.llm.router import NoModelAvailable
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.llm.cache import is_blocked
 from amoeba.llm.client import tool_fn_name
+from amoeba.interp.step_protocol import (HOW_TO_ACT, HOW_TO_ACT_TEXT, PROVIDER_BLOCKED_NOTE_V2, UNREADABLE_NOTE_V2,  # D136
+                                         bad_call_text, check_args, final_text, resolver_text, tool_schema,
+                                         typed_input, typed_verdict, v2_text)
 from amoeba.localtools.claims import claimed_files
 from amoeba.interp.runtime import BLOCKED, FINAL_OUTPUT, PRINT, UNAVAILABLE, _output_text, full_action_input
 from pydantic import ValidationError
@@ -61,6 +64,8 @@ NATIVE_FORMAT = ("# How to act\nCall exactly one of your tools per turn through 
                  "to you next turn. Put the tool's input in its `input` argument (plain text, or JSON when the tool "
                  "takes JSON). When this step's output is complete, call Final_Output with the whole step output as "
                  "`input`. Do not write a tool call as text.")
+NATIVE_SPECIAL_V2 = {"Final Output": "end the step with its typed fields; only `output` is passed on to later steps",
+                     "Print": "leave a note for your teammates in this step (uses a turn)"}   # D136
 NATIVE_SPECIAL = {FINAL_OUTPUT: "end the step: `input` is the whole step output, in the form the step's output line "
                                 "asks for", PRINT: "leave a note for your teammates in this step (uses a turn)",
                   FIND_TOOL: FIND_TOOL_TEXT}
@@ -149,6 +154,10 @@ class PlanOptions:
     # longer stops the task. run = the earlier behaviour (dependents run on empty input; with --adapt on the task
     # stops at a stuck step). Library default run.
     failed_step: str = "run"
+    # D136: v2 = in native tool-calling mode the step prompts are the v2 files (no text sections), every tool takes
+    # typed arguments plain code checks, and the step ends with a typed Final_Output (amoeba/interp/step_protocol.py).
+    # Without native tool calling the steps fall back to legacy (event protocol_fallback). Default legacy.
+    protocol: str = "legacy"
 
 
 class PlanGraphError(ValueError):
@@ -716,6 +725,7 @@ class PlanRunner:
         self.fixes: list[dict] = []                       # D117 Stage C: every fix tried in this task, in order
         self.fix_epoch: dict[int, int] = {}               # D129: step made by a split / re-plan -> fixes before it
         self.fix_keys: set[str] = set()                   # a fix is never tried twice
+        self.typed_verdicts: dict[int, tuple] = {}        # D136: verify step -> (verdict, issues) of a typed Final_Output
         self.fix_notes: set[tuple] = set()                # (step, note) of rungs skipped, logged once
         self.upstream_rerun: set[int] = set()             # steps re-run once for a missing input
         self.attached_ids: dict[int, list] = {}           # step -> pool ids a grant gave it
@@ -988,6 +998,10 @@ class PlanRunner:
             self.i.trace.event("web_tools", {"amoeba.web.provider": self.web.provider.name, **self.web.limits.as_trace()})
         if self.opt.tool_access == "core":                # D132
             self.grant_core_tools()
+        if self.opt.protocol == "v2" and not self.v2:     # D136: v2 needs native tool calling
+            self.i.trace.event("protocol_fallback", {"amoeba.box": "plan_step", "amoeba.asked": "v2",
+                                                     "amoeba.used": "legacy",
+                                                     "amoeba.why": "no native tool calling on this run's models"})
         ws = waves(self.cfg.plan)
         deps = dependencies(self.cfg.plan)
         self.answer_n = self._answer_step(ws)
@@ -1556,6 +1570,8 @@ class PlanRunner:
                          "unverified_check": bool(unchecked)})
         if verifier:
             meta["verdict"], meta["issues"] = parse_verdict_block(text)
+            if n in self.typed_verdicts:                                           # D136: the typed fields win
+                meta["verdict"], meta["issues"] = self.typed_verdicts.pop(n)
             if mine is not None:                                                   # D90: both sides, recorded
                 meta["verifier_own"] = {k: v for k, v in mine.items() if k != "tool_results"}
                 meta["comparison"] = {"verdict": meta["verdict"], "issues": meta["issues"],
@@ -2824,11 +2840,23 @@ class PlanRunner:
         return {"step": n, "checks": checks}
 
     # box: plan_step
+    @property
+    def v2(self) -> bool:
+        """D136: protocol v2 is in force (asked for, and the run calls tools natively)."""
+        return self.opt.protocol == "v2" and self.opt.native_tools == "on"
+
+    # box: plan_step
     def _turn(self, agent: AgentSpec, step: PlanStep, n: int, inputs: str, completed: str, turns_left: int,
               extra: str = "", template: str = "") -> tuple[str, str, str, str | None]:
         last = turns_left <= 1 and n not in self.no_last_turn   # D76: the last turn ends the step with a conclusion
         tools = [FINAL_OUTPUT] if last else list(agent.tools) + [PRINT, FINAL_OUTPUT]
-        user = render(template or PROMPT.plan_step, task=self.task.prompt, today=self.i.clock["line"], deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
+        template = template or PROMPT.plan_step
+        kind = "resolve" if template == PROMPT.plan_resolve else None
+        if self.v2:                                       # D136: the v2 variant of the step prompt
+            template = {PROMPT.plan_step: PROMPT.plan_step_v2, PROMPT.plan_resolve: PROMPT.plan_resolve_v2,
+                        PROMPT.plan_verify_own: PROMPT.plan_verify_own_v2}.get(template, template)
+        anchor = HOW_TO_ACT if self.v2 and HOW_TO_ACT in template else "\n# Format\n"
+        user = render(template, task=self.task.prompt, today=self.i.clock["line"], deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
                       step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
                       tools=str(tools), turns_left=turns_left,
                       unavailable="\n".join([UNAVAILABLE.format(name=t) for t in agent.missing_tools
@@ -2839,9 +2867,11 @@ class PlanRunner:
         if c and (c["needs"] or c["items"]):     # D61: what plain code will check, on the helper's prompt
             items = [*(f"{x} (asked for, not available)" for x in c["needs"]),
                      *(f"{x['name']} (given to you)" for x in c["items"])]
-            user = user.replace("\n# Format\n", f"\n{CONTRACT_LINE.format(items='; '.join(items))}\n\n# Format\n", 1)
+            user = user.replace(anchor, f"\n{CONTRACT_LINE.format(items='; '.join(items))}\n{anchor}", 1)
         if last:
-            user = user.replace("\n# Format\n", f"\n{LAST_TURN_NOTE}\n\n# Format\n", 1)
+            user = user.replace(anchor, f"\n{LAST_TURN_NOTE}\n{anchor}", 1)
+        if self.v2:                                       # D136: plain code's notes worded for v2
+            user = v2_text(user)
         system = render(PROMPT.plan_step_system, name=agent.name)
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.id": agent.agent_id, "gen_ai.agent.name": agent.name,
                                                 "amoeba.box": "plan_summary" if self.is_summary_step(step) else "plan_step",
@@ -2849,7 +2879,7 @@ class PlanRunner:
             before = self.i.trace.n_llm_calls
             group = role_group(is_summariser=agent.is_summariser, reviewing=self.is_verification(step))   # D54
             if self.opt.native_tools == "on":             # D132: the model's own tool calling
-                return self.native_turn(agent, step, n, system, user, tools, last, group, before)
+                return self.native_turn(agent, step, n, system, user, tools, last, group, before, kind)
             try:
                 raw, sec = self.i.llm.chat_sections(system, user, PLAN_SECTIONS, self.ep.seed,
                                                   agent_id=agent.agent_id, agent_name=agent.name,
@@ -2893,27 +2923,38 @@ class PlanRunner:
         return act, inp, resp, gap
 
     # box: plan_step
-    def native_specs(self, tools: list[str]) -> tuple[list[dict], dict[str, str]]:
+    def native_specs(self, tools: list[str], kind: str | None = None) -> tuple[list[dict], dict[str, str]]:
         """D132: the helper's tools as function specs (one string argument `input`) and the map back from the
-        function name to the tool's real name."""
+        function name to the tool's real name. D136 (v2): typed arguments (step_protocol.tool_schema)."""
         descs = self.i.tools.descriptions() if hasattr(self.i.tools, "descriptions") else {}
         specs, back = [], {}
         for t in tools:
             fn = tool_fn_name(t)
             back[fn] = t
+            params = tool_schema(t, self.mcp_schema(t), kind) if self.v2 else \
+                {"type": "object", "properties": {"input": {"type": "string"}}, "required": ["input"]}
+            desc = (NATIVE_SPECIAL_V2.get(t) if self.v2 else None) or NATIVE_SPECIAL.get(t) or descs.get(t) or t
             specs.append({"type": "function", "function": {
-                "name": fn, "description": (NATIVE_SPECIAL.get(t) or descs.get(t) or t)[:600],
-                "parameters": {"type": "object", "properties": {"input": {"type": "string"}}, "required": ["input"]}}})
+                "name": fn, "description": (v2_text(desc) if self.v2 else desc)[:600], "parameters": params}})
         return specs, back
 
     # box: plan_step
+    def mcp_schema(self, tool: str) -> dict | None:
+        """D136: a pool tool's MCP input schema when it offers one tool (a pool entry with several tools keeps the
+        one `input` argument, which names the tool)."""
+        items = getattr(self.pool, "items", None) or {}
+        listing = (items.get(tool) or {}).get("listing") or []
+        return listing[0].get("input_schema") if len(listing) == 1 else None
+
+    # box: plan_step
     def native_turn(self, agent: AgentSpec, step: PlanStep, n: int, system: str, user: str, tools: list[str],
-                    last: bool, group: str, before: int) -> tuple[str, str, str, str | None]:
+                    last: bool, group: str, before: int, kind: str | None = None) -> tuple[str, str, str, str | None]:
         """D132: one helper turn with native tool calling. The prompt's # Format section (the text protocol) is
         replaced by NATIVE_FORMAT; the first tool call is the action. A reply with text and no call is taken as the
         step's output (Final Output); a blocked reply is a provider_blocked turn (D128); an empty one is unreadable."""
-        user = user.split("\n# Format\n")[0].rstrip() + "\n\n" + NATIVE_FORMAT
-        specs, back = self.native_specs(tools)
+        if "\n# Format\n" in user:                       # D136: the v2 prompts carry their own # How to act
+            user = user.split("\n# Format\n")[0].rstrip() + "\n\n" + (HOW_TO_ACT_TEXT if self.v2 else NATIVE_FORMAT)
+        specs, back = self.native_specs(tools, kind)
         try:
             resp = self.i.llm.chat_messages([{"role": "system", "content": system}, {"role": "user", "content": user}],
                                             self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
@@ -2925,6 +2966,7 @@ class PlanRunner:
         for rec in self.i.trace.spans("chat")[before:]:
             self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                            rec.get("gen_ai.usage.output_tokens", 0))
+        bad = None
         if resp.tool_calls:
             call = resp.tool_calls[0]
             act = back.get(call["name"], call["name"])
@@ -2932,8 +2974,11 @@ class PlanRunner:
                 args = json.loads(call.get("input") or "{}")
             except ValueError:
                 args = call.get("input") or ""
-            inp = args.get("input", json.dumps(args)) if isinstance(args, dict) else str(args)
-            inp = inp if isinstance(inp, str) else json.dumps(inp)
+            if self.v2:                                   # D136: typed arguments, checked by plain code
+                inp, bad = self.typed_call(agent, n, act, args, kind)
+            else:
+                inp = args.get("input", json.dumps(args)) if isinstance(args, dict) else str(args)
+                inp = inp if isinstance(inp, str) else json.dumps(inp)
             if len(resp.tool_calls) > 1:
                 self.i.trace.event("native_calls_dropped", {"amoeba.step": n, "gen_ai.agent.name": agent.name,
                                                             "amoeba.dropped": [c["name"] for c in resp.tool_calls[1:]]})
@@ -2948,7 +2993,39 @@ class PlanRunner:
             self.i.trace.event("last_turn_forced", {"amoeba.step": n, "gen_ai.agent.name": agent.name,
                                                     "amoeba.asked_for": act[:80]})
             return "no action", inp, "", None
+        if bad is not None:                               # D136: not run; the helper sees the schema and an example
+            return ("bad_call" if act == FINAL_OUTPUT else act), inp, bad, None
         return self.act(agent, step, n, act, inp)
+
+    # box: plan_step
+    def typed_call(self, agent: AgentSpec, n: int, act: str, args, kind: str | None) -> tuple[str, str | None]:
+        """D136: one v2 call's arguments → (the tool's input, None), or (the raw input, the bad-call result) when they
+        do not fit. Final_Output's typed fields become the marker text the legacy readers parse; a Final_Output with
+        the old single `input` is taken as the output text (the fallback)."""
+        if act == FINAL_OUTPUT and isinstance(args, dict) and set(args) <= {"input"}:
+            return str(args.get("input") or ""), None
+        schema = tool_schema(act, self.mcp_schema(act), kind)
+        problem = check_args(act, args, schema, kind)
+        if problem:
+            self.i.trace.event("tool_args_rejected", {"amoeba.box": "plan_step", "amoeba.step": n,
+                                                      "gen_ai.agent.name": agent.name, "gen_ai.tool.name": act,
+                                                      "amoeba.problem": problem[:200]})
+            return json.dumps(args, ensure_ascii=False)[:2000] if isinstance(args, dict) else str(args)[:2000], \
+                bad_call_text(act, problem, schema)
+        if act == FINAL_OUTPUT:
+            if kind == "resolve":
+                return resolver_text(args), None
+            verdict = typed_verdict(args)
+            if verdict[0]:
+                self.typed_verdicts[n] = verdict
+            self.i.trace.event("final_output_typed", {"amoeba.box": "plan_step", "amoeba.step": n,
+                                                      "gen_ai.agent.name": agent.name,
+                                                      "amoeba.status": args.get("status"),
+                                                      **{f"amoeba.{k}": len(args.get(k) or []) for k in
+                                                         ("blocked", "missing_data", "missing_input", "not_needed",
+                                                          "issues")}})
+            return final_text(args), None
+        return typed_input(act, args, schema), None
 
     # box: plan_step
     def find_tool(self, agent: AgentSpec, need: str, n: int) -> str:
@@ -3028,8 +3105,8 @@ class PlanRunner:
         if category == REASONING_REFUSED:                     # D134: the prompt's fault; an unreadable turn
             return UNREADABLE, "", REASONING_REFUSED_NOTE, None
         if blocked:
-            return PROVIDER_BLOCKED, "", PROVIDER_BLOCKED_NOTE, None
-        return UNREADABLE, "", UNREADABLE_NOTE.format(why=why), None
+            return PROVIDER_BLOCKED, "", PROVIDER_BLOCKED_NOTE_V2 if self.v2 else PROVIDER_BLOCKED_NOTE, None
+        return UNREADABLE, "", (UNREADABLE_NOTE_V2 if self.v2 else UNREADABLE_NOTE).format(why=why), None
 
     # ---- D63: the Action Observer (mid-run re-plan) ----------------------------------------------------------------
     # box: action_obs

@@ -467,10 +467,14 @@ BOXES: list[dict] = [
                "most 2 rounds (--collab critique); the step keeps one output.",
                "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked "
                "for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT "
-               "NEEDED with a reason."],
+               "NEEDED with a reason.",
+               "D136 (--protocol v2, with native tool calling): the step prompt asks for no text sections; each tool "
+               "takes typed arguments that plain code checks before running it (a bad call gets the schema and an "
+               "example), and the step ends with Final_Output's typed fields, which plain code turns into the usual "
+               "BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy."],
          proposes="One action and its input per turn; the step's output.",
          disposes="Plain code decides what the helper sees, runs the tools, and caps the turns.",
-         prompts=["plan_step", "plan_step_system", "plan_critique"],
+         prompts=["plan_step", "plan_step_system", "plan_critique", "plan_step_v2"],
          anchors=["amoeba/interp/plan_runner.py::PlanRunner.run_step", "amoeba/interp/plan_runner.py::PlanRunner._loop",
                   "amoeba/interp/plan_runner.py::PlanRunner._turn", "amoeba/interp/plan_runner.py::plan_card",
                   "amoeba/interp/plan_runner.py::step_detail", "amoeba/interp/runtime.py::full_action_input",

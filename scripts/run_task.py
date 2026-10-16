@@ -54,7 +54,7 @@ from amoeba.adapt.config import adapt_config
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
-                 "plan_search", "provider_blocked", "reasoning_refusals"}   # left out of result.json when None (Phase 1 records unchanged)
+                 "plan_search", "provider_blocked", "reasoning_refusals", "protocol"}   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -171,6 +171,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     search_rec = None             # D120: the search before planning (None: --plan-search off)
     cfg = None
     stated: dict = {}
+    protocol = None                                   # D136: set once the plan options are resolved
     try:
         if saved_draft is not None:   # D45: reuse a saved Box 2 draft; no drafting call is made
             draft = saved_draft.draft
@@ -257,6 +258,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             if workspace_sources and box is not None and web is not None and topology == "plan":   # D107
                 web.on_data = lambda rec, _b=box, _w=web: _b.save_source(rec, _w)
             plan_options = resolve_native(plan_options, llm, trace)                   # D132
+            protocol = protocol_used(plan_options)                                     # D136
             ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
                              stock=restock, max_agents=envelope.max_agents, timezone=timezone).run(cfg, task, seed)
             answer, error = ep.answer, ep.error
@@ -334,6 +336,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         run_guard=(ep.run_guard or None) if ep and topology == "plan" else None,        # D122
         provider_blocked=getattr(trace, "provider_blocked", 0) or None,                # D128
         reasoning_refusals=getattr(trace, "reasoning_refusals", None) or None,         # D134
+        protocol=protocol,                                                             # D136
         plan_search=(draft.plan_search if draft else search_rec),                       # D120
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
@@ -351,6 +354,17 @@ def models_of(llm, trace) -> dict:
             requested = {"all": asked[0]} if len(asked) == 1 else {"calls": asked}
     returned = sorted({s["gen_ai.response.model"] for s in trace.spans("chat") if s.get("gen_ai.response.model")})
     return {"requested": requested, "returned": returned}
+
+
+# box: runresult
+def protocol_used(plan_options) -> dict | None:
+    """D136: the step protocol asked for and the one used (v2 needs native tool calling); None for legacy."""
+    asked = getattr(plan_options, "protocol", "legacy") if plan_options is not None else "legacy"
+    if asked != "v2":
+        return None
+    native = getattr(plan_options, "native_tools", "off") == "on"
+    return {"asked": "v2", "used": "v2" if native else "legacy",
+            "why": "native tool calling" if native else "no native tool calling on this run's models"}
 
 
 # box: runresult
@@ -536,7 +550,8 @@ def cli_plan_options(args: argparse.Namespace):
                        faults=tuple(getattr(args, "inject_fault", ()) or ()),
                        native_tools=getattr(args, "native_tools", "off"),
                        tool_access=getattr(args, "tool_access", "asked"),
-                       failed_step=getattr(args, "failed_step", "run"), **extra)
+                       failed_step=getattr(args, "failed_step", "run"),
+                       protocol=getattr(args, "protocol", "legacy"), **extra)                     # D136
 
 
 # box: runresult
@@ -775,6 +790,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: helpers call their tools through the model's native tool calling, not the text "
                         "sections ## Action / ## ActionInput; auto = on when every model the run may use has "
                         "supports.tools in models.yaml (D132)")
+    p.add_argument("--protocol", choices=["legacy", "v2"], default="legacy",
+                   help="plan: v2 = in native tool-calling mode the step prompts have no text sections, tools take typed "
+                        "arguments and the step ends with a typed Final_Output (D136); without native tool calling the "
+                        "steps fall back to legacy and the summary says so")
     p.add_argument("--tool-access", choices=["core", "asked"], default="core",
                    help="plan: core = every helper holds the core tools (web, calc, local Bash/Write/Read) and "
                         "find_tool, with no 'unavailable' lines and no use-or-declare demand; asked = only what Box 2 "
@@ -1014,6 +1033,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"    {describe(r.usage)}")                                                    # D47
         for line in reasoning_refusal_lines(r.reasoning_refusals):                         # D134: loud
             print(line)
+        if r.protocol and r.protocol["used"] != r.protocol["asked"]:                      # D136
+            print(f"    protocol {r.protocol['asked']} asked; steps used {r.protocol['used']} ({r.protocol['why']})")
         if r.status == "needs_clarification":                                              # D116
             q = (r.interpretation or {}).get("pending") or []
             for x in q:
