@@ -467,10 +467,14 @@ BOXES: list[dict] = [
                "most 2 rounds (--collab critique); the step keeps one output.",
                "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked "
                "for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT "
-               "NEEDED with a reason."],
+               "NEEDED with a reason.",
+               "D136 (--protocol v2, with native tool calling): the step prompt asks for no text sections; each tool "
+               "takes typed arguments that plain code checks before running it (a bad call gets the schema and an "
+               "example), and the step ends with Final_Output's typed fields, which plain code turns into the usual "
+               "BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy."],
          proposes="One action and its input per turn; the step's output.",
          disposes="Plain code decides what the helper sees, runs the tools, and caps the turns.",
-         prompts=["plan_step", "plan_step_system", "plan_critique"],
+         prompts=["plan_step", "plan_step_system", "plan_critique", "plan_step_v2"],
          anchors=["amoeba/interp/plan_runner.py::PlanRunner.run_step", "amoeba/interp/plan_runner.py::PlanRunner._loop",
                   "amoeba/interp/plan_runner.py::PlanRunner._turn", "amoeba/interp/plan_runner.py::plan_card",
                   "amoeba/interp/plan_runner.py::step_detail", "amoeba/interp/runtime.py::full_action_input",
@@ -734,9 +738,16 @@ BOXES: list[dict] = [
                "D122: no token cap by default; a runaway guard stops a plan run after --stall-calls model calls with "
                "no progress (default 60; calls, never tokens; armed once the plan runner starts). With an optional "
                "hard cap the plan runner enters finish mode past 85% of it, and a stopped plan run returns its "
-               "finished steps as a partial answer."],
+               "finished steps as a partial answer.",
+               "D134: provider: anthropic sends Claude's calls through its own Messages API (structured outputs, "
+               "effort, thinking summary, prompt caching, refusal categories). A blocked reply is never retried as "
+               "it was; a refusal because the prompt asks for written-out reasoning is a loud "
+               "prompt_asks_for_reasoning line naming the prompt file, and the run summary says so.",
+               "D135: scripts/model_check.py checks a model before use with one tiny call per call type and one "
+               "structured call per output mode, and can set the registry entry's supports flags."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
+                  "amoeba/llm/anthropic_client.py::AnthropicClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
                   "amoeba/llm/cache.py::CachedLLM", "amoeba/llm/limits.py::RunLimits",
                   "amoeba/llm/limits.py::estimate", "amoeba/llm/profiles.py::RoleRouter",

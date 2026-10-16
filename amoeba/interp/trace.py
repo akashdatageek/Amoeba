@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Iterator
 from uuid import uuid4
 
-from amoeba.llm.client import ChatResponse, LLMClient, Messages, tools_kw
+from amoeba.llm.client import ChatResponse, LLMClient, Messages, opts_kw, tools_kw
 from amoeba.llm.cache import is_blocked
 from amoeba.llm.profiles import BOX2_GROUPS
 from amoeba.task.parsers import MissingSections, parse_sections, repair_prompt, require, unglue
@@ -27,6 +27,7 @@ EVENT_BOX = {
     "task_interpretation": "interpret", "interpretation_question": "interpret",                            # D77
     "subject_questions_routed": "interpret", "assumption_stated": "interpret",
     "truncated": "client", "provider_blocked": "client", "rate_limited": "client", "cache_miss": "client", "api_error": "client",
+    "prompt_asks_for_reasoning": "client",                                                            # D134
     "plan_graph": "plan_graph", "dependency_relinked": "plan_graph", "step_input": "plan_step",
     "input_truncated": "plan_step", "collab_round": "plan_step", "review_unreadable": "plan_step",
     "step_done": "step_check", "check_retry": "step_check", "rework": "step_check", "reverify": "step_check",
@@ -64,6 +65,7 @@ class TraceWriter:
         self.episode_id = episode_id or str(uuid4())
         self.records: list[dict] = []
         self.provider_blocked = 0              # D128: calls the provider blocked (content_filter), retries included
+        self.reasoning_refusals: list[dict] = []   # D134: refusals because a prompt asks for the model's reasoning
         self._boxes: list[str | None] = []     # the box of each open span, innermost last (D55)
         self._fh = None
         if self.path:
@@ -152,6 +154,33 @@ def _route_attrs(dec: dict) -> dict:
     return {f"amoeba.route.{k}": v for k, v in dec.items()}
 
 
+PROMPTS_DIR = Path(__file__).resolve().parents[1] / "config" / "prompts"
+
+
+# box: trace
+def _signatures() -> dict[str, str]:
+    """D134: each prompt file's first long literal line (no {placeholder}), which a rendered prompt contains."""
+    if not hasattr(_signatures, "cache"):
+        sig = {}
+        for f in sorted(PROMPTS_DIR.glob("*.txt")):
+            for line in f.read_text(encoding="utf-8").splitlines()[1:]:
+                if len(line.strip()) >= 30 and "{" not in line:
+                    sig[f.name] = line.strip()
+                    break
+        _signatures.cache = sig
+    return _signatures.cache
+
+
+# box: trace
+def prompt_sources(messages: Messages) -> list[str]:
+    """D134: the prompt files (amoeba/config/prompts) a call's messages were rendered from, found by each file's
+    first literal line; the files that ask for a '## Thought' section come first."""
+    text = "\n".join(str(m.get("content") or "") for m in messages)
+    found = [f for f, line in _signatures().items() if line in text]
+    thought = [f for f in found if "## Thought" in (PROMPTS_DIR / f).read_text(encoding="utf-8")]
+    return thought + [f for f in found if f not in thought]
+
+
 class TracedLLM:
     """Wraps an LLMClient so every call emits one ``chat`` span carrying the token counts the API returned."""
 
@@ -164,10 +193,12 @@ class TracedLLM:
     def chat_messages(self, messages: Messages, seed: int = 0, *, agent_id: str | None = None,
                       agent_name: str | None = None, max_tokens: int | None = None, role: str | None = None,
                       step: int | None = None, checks=None, needs=(), _retry: bool = False,
-                      _blocked_retry: bool = False, tools: list | None = None) -> ChatResponse:
+                      _blocked_retry: bool = False, tools: list | None = None, **opts) -> ChatResponse:
         """role: the call's role group (D54; Box 2 callers are known by name). A profile's RoleRouter picks the
         group's model and, when the profile sets one, its reply limit. D97: with a ModelRouter every call states a
-        CallSpec (role, step, size, needs, data class, the steps it checks) and the router picks the model."""
+        CallSpec (role, step, size, needs, data class, the steps it checks) and the router picks the model.
+        D134: opts (schema, effort, thinking_display, cache_prefix) go to the client as they are."""
+        opts = opts_kw(opts)
         group = role or BOX2_GROUPS.get(agent_name or "")
         routed = hasattr(self.llm, "call") and hasattr(self.llm, "route") and hasattr(self.llm, "registry")
         if routed:
@@ -193,7 +224,7 @@ class TracedLLM:
                                     (*needs, "tools") if tools else needs,      # D132: only models that call tools
                                     getattr(llm, "data_class", self.data_class))
                     try:
-                        resp, dec = llm.call(spec, messages, seed, max_tokens, **tools_kw(tools))
+                        resp, dec = llm.call(spec, messages, seed, max_tokens, **tools_kw(tools), **opts)
                     except NoModelAvailable:
                         self.trace.event("route", {"amoeba.box": "router", **_route_attrs(llm.decisions[-1])})
                         self.trace.event("no_model", {"amoeba.box": "router", "amoeba.role": spec.role,
@@ -202,7 +233,7 @@ class TracedLLM:
                     rec["gen_ai.request.model"] = llm.registry[dec["chosen"]].model
                     self.trace.event("route", {"amoeba.box": "router", **_route_attrs(dec)})
                 else:
-                    resp = llm.chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools))
+                    resp = llm.chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools), **opts)
             except Exception as e:     # D48: the rate-limit waits before a call that still failed are logged too
                 self._log_retries(getattr(e, "amoeba_retries", []), agent_name, failed=True)
                 raise
@@ -226,6 +257,19 @@ class TracedLLM:
             if resp.reasoning_tokens:
                 rec["amoeba.usage.reasoning_tokens"] = resp.reasoning_tokens
                 rec["amoeba.usage.reasoning_source"] = resp.reasoning_source
+            if resp.cache_read_tokens:                     # D134: the provider's prompt cache (Messages API)
+                rec["amoeba.usage.cache_read_tokens"] = resp.cache_read_tokens
+            if resp.cache_write_tokens:
+                rec["amoeba.usage.cache_write_tokens"] = resp.cache_write_tokens
+            if resp.refusal_category:
+                rec["amoeba.refusal_category"] = resp.refusal_category
+            if opts.get("schema") is not None:
+                rec["amoeba.schema"] = getattr(opts["schema"], "__name__", str(opts["schema"]))
+                rec["amoeba.schema_parsed"] = resp.parsed is not None
+            if opts.get("effort"):
+                rec["amoeba.effort"] = opts["effort"]
+            if resp.thinking_summary and self.trace.log_content:
+                rec["amoeba.thinking_summary"] = resp.thinking_summary
             if resp.finish_reason == "length":   # D24: the reply was cut off at max_tokens — flag it
                 rec["amoeba.truncated"] = True
                 self.trace.event("truncated", {"gen_ai.agent.name": agent_name, "gen_ai.agent.id": agent_id,
@@ -234,20 +278,30 @@ class TracedLLM:
                                                "amoeba.usage.reasoning_tokens": resp.reasoning_tokens or None,
                                                "amoeba.retry": bool(max_tokens) and not _retry})
         self.listener.on_llm_call(agent_id, resp)
-        if is_blocked(resp):           # D128: the provider refused the call; one plain retry, then the caller sees it
+        if is_blocked(resp):
+            # D134 (replaces D128's one identical retry, which was blocked the same way every time): no retry here.
+            # A refusal because the prompt asks for the model's reasoning is the prompt's fault and is named loudly;
+            # any other block (a category, or none) is the caller's turn to handle (routed mode already asked the next
+            # candidate model, router.py)
             self.trace.provider_blocked += 1
+            category = resp.refusal_category
             self.trace.event("provider_blocked", {"gen_ai.agent.name": agent_name, "gen_ai.agent.id": agent_id,
                                                   "gen_ai.response.finish_reasons": [resp.finish_reason],
-                                                  "amoeba.step": step, "amoeba.retry": not _blocked_retry})
-            if not _blocked_retry:
-                return self.chat_messages(messages, seed, agent_id=agent_id, agent_name=agent_name,
-                                          max_tokens=max_tokens, role=role, step=step, checks=checks, needs=needs,
-                                          _retry=_retry, _blocked_retry=True, tools=tools)
+                                                  "amoeba.refusal_category": category,
+                                                  "amoeba.step": step, "amoeba.retry": False})
+            if category == "reasoning_extraction":
+                files = prompt_sources(messages)
+                rec = {"agent": agent_name, "step": step, "prompt_files": files}
+                self.trace.reasoning_refusals.append(rec)
+                self.trace.event("prompt_asks_for_reasoning", {
+                    "gen_ai.agent.name": agent_name, "amoeba.step": step, "amoeba.prompt_files": files,
+                    "amoeba.note": "the model refused because this prompt asks it to write out its reasoning "
+                                   "(a '## Thought' section); the turn is unreadable — fix the prompt (--protocol v2)"})
         if resp.finish_reason == "length" and max_tokens and not _retry:
             # D27: hidden reasoning can use up the limit; ask once more with double room, then accept whatever comes
             return self.chat_messages(messages, seed, agent_id=agent_id, agent_name=agent_name,
                                       max_tokens=2 * max_tokens, role=role, step=step, checks=checks, needs=needs,
-                                      _retry=True, tools=tools)
+                                      _retry=True, tools=tools, **opts)
         return resp
 
     def _log_retries(self, retries: list, agent_name: str | None, failed: bool = False) -> None:
@@ -273,7 +327,7 @@ class TracedLLM:
             return raw, self._sections(raw, keys, ids)
         except MissingSections as e:
             if is_blocked(resp):
-                e.raw, e.blocked = raw, True
+                e.raw, e.blocked, e.category = raw, True, resp.refusal_category    # D134: the refusal category
                 raise
             raw2 = self.chat(system, repair_prompt(user, raw, keys, str(e)), seed, **ids).content
             try:

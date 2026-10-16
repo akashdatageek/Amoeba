@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -58,3 +59,20 @@ def mock(**script) -> MockLLMClient:
         script.setdefault("plan_summariser", script["plan_worker"])
         script.setdefault("plan_critic", ["## Verdict\nAGREE\n\n## Issues\nnone\n"])   # D51 reviewers agree
     return MockLLMClient(script=script)
+
+
+# D136: AMOEBA_TEST_PROTOCOL=v2 runs a test module with every PlanOptions in native tool-calling mode and protocol v2
+# unless the test sets those itself (tests/test_protocol_v2_d136.py runs the Box 4 tests this way).
+if os.environ.get("AMOEBA_TEST_PROTOCOL") == "v2":
+    from amoeba.interp.plan_runner import PlanOptions
+
+    _plain_init = PlanOptions.__init__
+
+    def _v2_init(self, *a, **kw):
+        _plain_init(self, *a, **kw)
+        if "native_tools" not in kw:
+            self.native_tools = "on"
+        if "protocol" not in kw:
+            self.protocol = "v2"
+
+    PlanOptions.__init__ = _v2_init

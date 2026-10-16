@@ -11,6 +11,8 @@
 #   max_tokens        the reply limit of calls that set none of their own (the client default is 2048)
 #   temperature       a number, or omit (not sent); absent: 0.2, the client default. Claude's OpenAI-compatible
 #                     endpoint rejects values below 1 (400), so its profile omits it
+#   provider          D134: anthropic → Claude's own Messages API (amoeba/llm/anthropic_client.py: structured outputs,
+#                     effort, refusal categories, prompt caching); absent → the OpenAI-compatible client
 #   roles             optional, per role group: {model: ..., max_tokens: ...}. Groups: planner, observers (both
 #                     Box 2 checkers), workers (Box 3 helpers), reviewers (boss_reviewers critics, the plan runner's
 #                     verify steps and critique reviews), summariser (the role that writes the final answer),
@@ -47,10 +49,17 @@ profiles:
     model: gemini-3.5-flash
     api_key_env: GEMINI_API_KEY
 
-  claude-sonnet:                 # Claude Sonnet 5.5 through Claude's OpenAI-compatible endpoint (an Anthropic key)
+  claude-sonnet:                 # Claude Sonnet 5.5 through Claude's Messages API (D134; an Anthropic key)
+    provider: anthropic
     base_url: https://api.anthropic.com/v1/
     model: claude-sonnet-5-5
     api_key_env: CLAUDE_API_KEY    # not ANTHROPIC_API_KEY
+    temperature: omit              # never sent on the Messages API (only the default is accepted)
+
+  claude-sonnet-compat:          # the same model through Claude's OpenAI-compatible endpoint (the route before D134)
+    base_url: https://api.anthropic.com/v1/
+    model: claude-sonnet-5-5
+    api_key_env: CLAUDE_API_KEY
     temperature: omit              # the endpoint rejects temperatures below 1; it also ignores seed and
                                    # reasoning_effort, so neither is set here
 
@@ -97,7 +106,7 @@ registry:
     merge_system: true
 
   claude-sonnet-5-5:              # --profile claude-sonnet fixes the plan runner's router to this entry
-    provider: anthropic
+    provider: anthropic            # D134: the Messages API (amoeba/llm/anthropic_client.py)
     base_url: https://api.anthropic.com/v1/
     model: claude-sonnet-5-5
     api_key_env: CLAUDE_API_KEY
@@ -105,9 +114,27 @@ registry:
     size_tier: large
     context_window: 200000
     max_output: 32768
-    supports: {json: true, tools: true, vision: true}    # D132: native tool calling (the endpoint answers a text
+    supports: {json: true, tools: true, vision: true, output_mode: schema}    # D132: native tool calling (the endpoint answers a text
                                                          # tool protocol with an empty content_filter reply)
-    price: {input: 2.00, output: 10.00}                  # USD per 1M tokens (user-given, 2026-10-13)
+    checked_at: 2026-10-16            # D135: scripts/model_check.py
+    price: {input: 2.00, output: 10.00, cache_read: 0.20, cache_write: 2.50}   # USD per 1M tokens (user-given
+                                                         # 2026-10-13; cache prices: Claude's pricing page, D134)
+    rate: {rpm: null, tpm: null, rpd: null}
+    privacy: cloud
+    temperature: omit
+
+  claude-sonnet-5-5-compat:       # --profile claude-sonnet-compat: the same model on the OpenAI-compatible endpoint
+    provider: anthropic-openai-compat
+    base_url: https://api.anthropic.com/v1/
+    model: claude-sonnet-5-5
+    api_key_env: CLAUDE_API_KEY
+    family: claude
+    size_tier: large
+    context_window: 200000
+    max_output: 32768
+    supports: {json: true, tools: true, vision: true, output_mode: schema}
+    checked_at: 2026-10-16            # D135: scripts/model_check.py
+    price: {input: 2.00, output: 10.00}
     rate: {rpm: null, tpm: null, rpd: null}
     privacy: cloud
     temperature: omit

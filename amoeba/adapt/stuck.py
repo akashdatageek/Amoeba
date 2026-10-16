@@ -170,9 +170,11 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
     blocked = [b for b in turns if b.get("blocked")]
     bad = [b for b in turns if not b.get("blocked")]
     if blocked and not meta.get("finished", False):   # D128: the service refused the replies; not a format slip
-        sig.append({"signal": "provider_blocked",
+        cats = [b.get("category") for b in blocked]
+        why = f"refusal categories: {', '.join(sorted(set(cats)))}" if all(cats) else "content filter, no category given"
+        sig.append({"signal": "provider_blocked", "categories": sorted({c for c in cats if c}),     # D134
                     "evidence": [f"{len(blocked)} of {meta.get('turns') or '?'} turns: the model service blocked the "
-                                 f"reply (content filter), each after one retry"]
+                                 f"reply ({why})"]
                     + [f"{b.get('agent', '?')}, turn {b.get('turn')}: blocked" for b in blocked][:4]})
     if bad and not meta.get("finished", False):    # D123: replies plain code could not read cost the step its end
         sig.append({"signal": "unreadable_reply",

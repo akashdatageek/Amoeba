@@ -9,7 +9,7 @@ from tests.test_plan_runner import plan_team, step_no
 def silent_two(messages, seed):
     """Step 2's helper never writes a readable reply, as when the service blocks every turn: no output."""
     n = step_no(messages)
-    return "nothing readable here" if n == "2" else good(n)
+    return "" if n == "2" else good(n)          # empty: unreadable in the text and the native protocol (D136)
 
 
 def run(task, envelope, trace, tools, opts):

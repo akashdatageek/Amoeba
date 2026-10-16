@@ -1003,3 +1003,32 @@ output is skipped (`blocked_upstream`, no call) and its dependents wait in turn;
 fix recovered no longer stops the task; and a skipped answer step gives an answer assembled by plain code from the
 outputs that exist, under a header naming the failed and skipped steps.
 
+**D134, Claude through its own API; refusals by category (Oct 16).** The probe re-run was blocked in planning. The
+reason was not the task: 13 prompt files ask the model for a "## Thought" section, and Sonnet 5.5 refuses to write out
+its reasoning (`reasoning_extraction`). Claude's OpenAI-compatible endpoint hid that: an empty `content_filter`
+reply with no reason, while response_format, strict, reasoning_effort and seed were silently ignored. With
+`provider: anthropic` (profile `claude-sonnet`), Claude's calls now go through its own Messages API: structured
+outputs, effort, a thinking summary, prompt caching, and the refusal category. A blocked reply is no longer retried
+unchanged (D128's retry was blocked every time). A reasoning refusal is named loudly with the prompt file that caused
+it. Other refusals go to the next model in routed mode, and Box 4's report names the categories. The old route stays as
+`claude-sonnet-compat`. Design: docs/design/D134_anthropic_client.md.
+
+**D135, check a model before using it (Oct 16).** `python -m scripts.model_check <profile>` makes one tiny call per
+call type, each through the real prompt builders and stopped after its own call. It then makes one structured call per
+output mode, and records what came back: ok, blocked with its category, or unreadable, with cost. With `--write` it
+sets the registry entry's `supports` flags. A prompt that asks for written-out reasoning fails the check and is
+named. Design: docs/design/D135_model_check.md.
+
+**D136, a clean step protocol in native mode (Oct 16).** With `--protocol v2` and native tool calling, a helper is
+never asked to write text sections. The v2 step prompts (ours) and plain code's notes speak only of tool calls. Each
+tool takes typed arguments that plain code checks before running it, and the step ends with a typed `Final_Output`.
+Plain code turns that into the same BLOCKED / MISSING / Verdict lines as before, so the stuck watch, the verify reader
+and the dispute resolver work unchanged. Without native tool calling the steps fall back to legacy and the run says
+so. The default stays `legacy` for now. Design: docs/design/D136_protocol_v2.md.
+
+### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
+
+- **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
+  text is copied verbatim from AutoAgents / AgentVerse. The v2 prompt files are ours (`# source: ours — DEVIATION
+  D136`). The verbatim files and T11 stay untouched, and `--protocol legacy` keeps them in force. Recorded also in
+  BUILD_SPEC_PHASE1.md §11.

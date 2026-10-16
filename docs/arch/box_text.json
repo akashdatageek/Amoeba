@@ -912,7 +912,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "a5b8c72",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -1060,6 +1060,7 @@
       "scripts/run_task.py::interpretation_of",
       "scripts/run_task.py::models_of",
       "scripts/run_task.py::planned_model",
+      "scripts/run_task.py::protocol_used",
       "scripts/run_task.py::provenance_of",
       "scripts/run_task.py::refinement_of",
       "scripts/run_task.py::resolve_native"
@@ -1090,7 +1091,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "f61ec267af34fa34",
+  "facts_hash": "b777c021c04ac0e1",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -1811,7 +1812,7 @@
   ]
  },
  "client": {
-  "checked_at": "a937618",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -1820,9 +1821,9 @@
      "fields": [],
      "key": "amoeba/llm/client.py::OpenAICompatibleClient",
      "methods": [
-      "__init__(self, base_url: str | None, api_key: str, model: str, temperature: float=0.2, max_tokens: int=2048, max_rate_retries: int=5, min_seconds_between_calls: float=0.0, sleep: Callable[[float], None]=time.sleep, merge_system: bool=False, reasoning_effort: str | None=None)",
+      "__init__(self, base_url: str | None, api_key: str, model: str, temperature: float | None=0.2, max_tokens: int=2048, max_rate_retries: int=5, min_seconds_between_calls: float=0.0, sleep: Callable[[float], None]=time.sleep, merge_system: bool=False, reasoning_effort: str | None=None, request_timeout_s: float | None=None)",
       "request_options(self) -> dict",
-      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None) -> ChatResponse"
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None, tools: list | None=None, schema=None, **opts) -> ChatResponse"
      ],
      "signature": null
     },
@@ -1839,6 +1840,19 @@
      "methods": [
       "chat(self, system: str, user: str, seed: int=0, max_tokens: int | None=None) -> ChatResponse",
       "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None) -> ChatResponse"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "D134: Claude's Messages API. `client` is for tests (a stand-in object with `messages.create`); a real run builds",
+     "fields": [],
+     "key": "amoeba/llm/anthropic_client.py::AnthropicClient",
+     "methods": [
+      "__init__(self, api_key: str, model: str, max_tokens: int=2048, max_rate_retries: int=5, sleep: Callable[[float], None]=time.sleep, request_timeout_s: float | None=None, effort: str | None=None, thinking_display: str='omitted', cache_prefix: bool=False, base_url: str | None=None, client=None)",
+      "request(self, messages: Messages, max_tokens: int | None=None, tools: list | None=None, schema=None, effort: str | None=None, thinking_display: str | None=None, cache_prefix: bool | None=None) -> dict",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None, tools: list | None=None, schema=None, effort: str | None=None, thinking_display: str | None=None, cache_prefix: bool | None=None) -> ChatResponse",
+      "response(self, resp, schema=None, retries: list | None=None, latency_ms: int=0) -> ChatResponse"
      ],
      "signature": null
     },
@@ -1889,6 +1903,30 @@
       [
        "throttle_wait_s",
        "float"
+      ],
+      [
+       "tool_calls",
+       "list"
+      ],
+      [
+       "parsed",
+       "dict | None"
+      ],
+      [
+       "thinking_summary",
+       "str | None"
+      ],
+      [
+       "refusal_category",
+       "str | None"
+      ],
+      [
+       "cache_read_tokens",
+       "int"
+      ],
+      [
+       "cache_write_tokens",
+       "int"
       ]
      ],
      "key": "amoeba/llm/client.py::ChatResponse",
@@ -1913,8 +1951,8 @@
      "key": "amoeba/llm/cache.py::CachedLLM",
      "methods": [
       "__init__(self, inner: LLMClient, folder: str | Path, mode: str='record', namespace: str='')",
-      "key(self, messages: Messages, max_tokens: int | None) -> str",
-      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None) -> ChatResponse"
+      "key(self, messages: Messages, max_tokens: int | None, tools: list | None=None, schema=None, effort: str | None=None, **_display) -> str",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None, tools: list | None=None, **opts) -> ChatResponse"
      ],
      "signature": null
     },
@@ -1987,7 +2025,7 @@
      "methods": [
       "__init__(self, profile: str, default: LLMClient, by_group: dict[str, LLMClient] | None=None, max_tokens: dict[str, int] | None=None)",
       "route(self, group: str | None) -> tuple[LLMClient, int | None]",
-      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None) -> ChatResponse",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None, tools: list | None=None, **opts) -> ChatResponse",
       "models(self) -> dict[str, str]"
      ],
      "signature": null
@@ -2011,9 +2049,9 @@
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/anthropic_client.py::make_client",
       "amoeba/llm/cache.py::CachedLLM",
       "amoeba/llm/cache.py::_Store.get",
-      "amoeba/llm/client.py::OpenAICompatibleClient",
       "amoeba/llm/profiles.py::build_router",
       "amoeba/llm/profiles.py::get_profile",
       "amoeba/llm/toy_mock.py::toy_mock_client",
@@ -2054,6 +2092,69 @@
     },
     {
      "callees": [],
+     "doc": "A pydantic schema that Claude's structured outputs cannot take (recursion, too many optional fields or",
+     "fields": [],
+     "key": "amoeba/llm/anthropic_client.py::SchemaTooComplex",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D134: OpenAI-style messages → (system text, Messages-API messages). System messages are joined into the",
+     "key": "amoeba/llm/anthropic_client.py::claude_messages",
+     "signature": "claude_messages(messages: Messages) -> tuple[str, list[dict]]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/anthropic_client.py::SchemaTooComplex",
+      "amoeba/llm/anthropic_client.py::claude_schema.walk",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D134: a pydantic model's JSON schema (or a JSON schema dict) in the subset Claude's structured outputs take:",
+     "key": "amoeba/llm/anthropic_client.py::claude_schema",
+     "signature": "claude_schema(model_or_schema) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D134: OpenAI function specs → Messages-API tools (name, description, input_schema).",
+     "key": "amoeba/llm/anthropic_client.py::claude_tools",
+     "signature": "claude_tools(tools: list | None) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "",
+     "key": "amoeba/llm/anthropic_client.py::is_anthropic",
+     "signature": "is_anthropic(provider: str | None) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/llm/anthropic_client.py::AnthropicClient",
+      "amoeba/llm/anthropic_client.py::is_anthropic",
+      "amoeba/llm/client.py::OpenAICompatibleClient"
+     ],
+     "doc": "D134: `provider: anthropic` → AnthropicClient (the Messages API); anything else → the OpenAI-compatible client",
+     "key": "amoeba/llm/anthropic_client.py::make_client",
+     "signature": "make_client(provider: str | None, *, base_url: str | None, api_key: str, model: str, max_tokens: int=2048, max_rate_retries: int=5, min_seconds_between_calls: float=0.0, merge_system: bool=False, reasoning_effort: str | None=None, temperature: float | None=0.2, request_timeout_s: float | None=None) -> LLMClient"
+    },
+    {
+     "callees": [],
      "doc": "Wraps a web SearchProvider (D32). The real provider is built only when a live call is needed, so replay",
      "fields": [],
      "key": "amoeba/llm/cache.py::CachedProvider",
@@ -2069,6 +2170,14 @@
     },
     {
      "callees": [
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "D128: a reply the provider blocked: one of BLOCKED_FINISH as its finish reason and nothing written.",
+     "key": "amoeba/llm/cache.py::is_blocked",
+     "signature": "is_blocked(resp) -> bool"
+    },
+    {
+     "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
@@ -2078,6 +2187,296 @@
      "doc": "D73: the time of the live call travels with a web result (a page, or each search hit), so a replayed result",
      "key": "amoeba/llm/cache.py::stamped",
      "signature": "stamped(result)"
+    },
+    {
+     "callees": [],
+     "doc": "D134: the per-call options that are set (schema, effort, thinking_display, cache_prefix), so a wrapper passes",
+     "key": "amoeba/llm/client.py::opts_kw",
+     "signature": "opts_kw(opts: dict) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D134: a reply's JSON validated by the call's pydantic model (a dict), or None when it is not valid JSON for",
+     "key": "amoeba/llm/client.py::parse_schema_reply",
+     "signature": "parse_schema_reply(schema, content: str) -> dict | None"
+    },
+    {
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub"
+     ],
+     "doc": "D132: a tool name as a function name the APIs accept (letters, digits, _ and -, at most 64): 'local:Bash' →",
+     "key": "amoeba/llm/client.py::tool_fn_name",
+     "signature": "tool_fn_name(name: str) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "D132: `tools=` only when there are tools, so a client without native tool calling is called as before.",
+     "key": "amoeba/llm/client.py::tools_kw",
+     "signature": "tools_kw(tools: list | None) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "Lets through only `allow` calls of each kind (MockLLMClient's classification of the prompt) and keeps each",
+     "fields": [],
+     "key": "scripts/model_check.py::Gate",
+     "methods": [
+      "__init__(self, inner: LLMClient)",
+      "chat_messages(self, messages, seed=0, max_tokens=None, **kw)"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "The gate stopped the pipeline after the probe's own call.",
+     "fields": [],
+     "key": "scripts/model_check.py::Probed",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "The structured reply every output-mode probe asks for.",
+     "fields": [
+      [
+       "weekly_cost_eur",
+       "float"
+      ],
+      [
+       "working",
+       "str"
+      ],
+      [
+       "unit",
+       "str"
+      ]
+     ],
+     "key": "scripts/model_check.py::ToyAnswer",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The loud lines for probes refused because their prompt asks for written-out reasoning.",
+     "key": "scripts/model_check.py::failures",
+     "signature": "failures(result: dict) -> list[str]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "scripts/model_check.py::last",
+     "signature": "last(gate: Gate, kind: str) -> ChatResponse | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/checks/__init__.py::run_checks",
+      "amoeba/llm/anthropic_client.py::make_client",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/limits.py::load_prices",
+      "amoeba/llm/profiles.py::get_profile",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/eval_draft.py::parse_args",
+      "scripts/model_check.py::failures",
+      "scripts/model_check.py::registry_entry",
+      "scripts/model_check.py::run_checks",
+      "scripts/model_check.py::table",
+      "scripts/model_check.py::write_supports",
+      "scripts/run_task.py::parse_args"
+     ],
+     "doc": "",
+     "key": "scripts/model_check.py::main",
+     "signature": "main(argv: list[str] | None=None) -> int"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::is_blocked"
+     ],
+     "doc": "",
+     "key": "scripts/model_check.py::outcome",
+     "signature": "outcome(resp: ChatResponse | None, readable: bool) -> tuple[str, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/anthropic_client.py::AnthropicClient.chat_messages",
+      "amoeba/llm/anthropic_client.py::claude_schema",
+      "amoeba/llm/cache.py::CachedLLM.chat_messages",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/cache.py::is_blocked",
+      "amoeba/llm/client.py::LLMClient.chat_messages",
+      "amoeba/llm/client.py::MockLLMClient.chat_messages",
+      "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
+      "amoeba/llm/client.py::parse_schema_reply",
+      "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/llm/router.py::ModelRouter.chat_messages",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/eval_draft.py::Recording.chat_messages",
+      "scripts/model_check.py::Gate.chat_messages",
+      "scripts/model_check.py::schema_messages"
+     ],
+     "doc": "One call (json_prompt: plus one repair call) in one output mode; ok when the reply validates as ToyAnswer.",
+     "key": "scripts/model_check.py::probe_mode",
+     "signature": "probe_mode(llm: TracedLLM, gate: Gate, mode: str, seed: int)"
+    },
+    {
+     "callees": [
+      "amoeba/pool/stock.py::pick",
+      "amoeba/task/models.py::CapabilityRequest",
+      "amoeba/task/saved_drafts.py::pick",
+      "scripts/model_check.py::last"
+     ],
+     "doc": "",
+     "key": "scripts/model_check.py::probe_pick",
+     "signature": "probe_pick(llm: TracedLLM, gate: Gate, seed: int)"
+    },
+    {
+     "callees": [
+      "amoeba/safety/envelope.py::Envelope.from_registry",
+      "amoeba/task/draft.py::draft_team",
+      "amoeba/task/models.py::Task",
+      "amoeba/tools/registry.py::default_registry",
+      "scripts/model_check.py::last"
+     ],
+     "doc": "The planner's first draft and the first observer's review (draft_team, the CLI's default d19 prompts).",
+     "key": "scripts/model_check.py::probe_planner_and_observer",
+     "signature": "probe_planner_and_observer(llm: TracedLLM, gate: Gate, seed: int)"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/proposer.py::allowed_text",
+      "amoeba/adapt/proposer.py::parse_fix",
+      "amoeba/config/prompts/__init__.py::render",
+      "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/anthropic_client.py::AnthropicClient.chat_messages",
+      "amoeba/llm/cache.py::CachedLLM.chat_messages",
+      "amoeba/llm/client.py::LLMClient.chat_messages",
+      "amoeba/llm/client.py::MockLLMClient.chat_messages",
+      "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
+      "amoeba/llm/profiles.py::RoleRouter.chat_messages",
+      "amoeba/llm/router.py::ModelRouter.chat_messages",
+      "scripts/eval_draft.py::Recording.chat_messages",
+      "scripts/model_check.py::Gate.chat_messages"
+     ],
+     "doc": "",
+     "key": "scripts/model_check.py::probe_proposer",
+     "signature": "probe_proposer(llm: TracedLLM, gate: Gate, seed: int)"
+    },
+    {
+     "callees": [
+      "amoeba/task/interpret.py::parse_entities",
+      "amoeba/task/interpret.py::read_task",
+      "scripts/model_check.py::last"
+     ],
+     "doc": "",
+     "key": "scripts/model_check.py::probe_reading",
+     "signature": "probe_reading(llm: TracedLLM, gate: Gate, seed: int)"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanOptions",
+      "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/runtime.py::Interpreter",
+      "amoeba/interp/runtime.py::Interpreter.run",
+      "amoeba/task/models.py::Task",
+      "amoeba/tools/registry.py::default_registry",
+      "scripts/model_check.py::last",
+      "scripts/model_check.py::toy_team"
+     ],
+     "doc": "",
+     "key": "scripts/model_check.py::probe_step",
+     "signature": "probe_step(llm: TracedLLM, gate: Gate, seed: int, protocol: str)"
+    },
+    {
+     "callees": [
+      "amoeba/llm/anthropic_client.py::is_anthropic",
+      "amoeba/llm/router.py::load_registry"
+     ],
+     "doc": "The registry entry of a profile: same model, same route (D134).",
+     "key": "scripts/model_check.py::registry_entry",
+     "signature": "registry_entry(profile) -> str | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/trace.py::TraceWriter",
+      "amoeba/interp/trace.py::TraceWriter.spans",
+      "amoeba/interp/trace.py::TracedLLM",
+      "amoeba/interp/trace.py::prompt_sources",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/limits.py::estimate",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/model_check.py::Gate",
+      "scripts/model_check.py::outcome",
+      "scripts/model_check.py::spent"
+     ],
+     "doc": "Every probe on `client` (the real client, or a mock in the test). Stops before a probe once the budget is",
+     "key": "scripts/model_check.py::run_checks",
+     "signature": "run_checks(client: LLMClient, model: str, budget: float, protocol: str='v2', seed: int=0, clock=time.perf_counter) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "scripts/model_check.py::schema_messages",
+     "signature": "schema_messages(extra: str='') -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/trace.py::TraceWriter.spans",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/llm/limits.py::estimate",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "scripts/model_check.py::spent",
+     "signature": "spent(trace: TraceWriter, model: str) -> float"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "scripts/model_check.py::table",
+     "signature": "table(result: dict) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/config/schema.py::AgentSpec",
+      "amoeba/config/schema.py::PlanStep",
+      "amoeba/config/schema.py::PromptRef",
+      "amoeba/config/schema.py::TeamConfig"
+     ],
+     "doc": "One helper, one step, the calculator: enough for one real step turn.",
+     "key": "scripts/model_check.py::toy_team",
+     "signature": "toy_team() -> TeamConfig"
+    },
+    {
+     "callees": [
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "Set supports.tools / supports.output_mode / checked_at of one registry entry in models.yaml, keeping every",
+     "key": "scripts/model_check.py::write_supports",
+     "signature": "write_supports(entry: str, supports: dict, checked_at: str, path: Path=MODELS) -> str"
     },
     {
      "callees": [
@@ -2095,14 +2494,94 @@
    "checks": [],
    "guards": [
     [
+     "correct",
+     "if kind == 'text'",
+     "add b.text or ''"
+    ],
+    [
+     "correct",
+     "if kind == 'thinking' and getattr(b, 'thinking', None)",
+     "add b.thinking"
+    ],
+    [
+     "correct",
+     "if kind == 'tool_use'",
+     "add {'id': getattr(b, 'id', None), 'name': b.name, 'input': json.dumps(getattr(b, 'input', None) or {}, ensure_ascii=False)}"
+    ],
+    [
+     "correct",
+     "if m.get('content')",
+     "add {'type': 'text', 'text': m['content']}"
+    ],
+    [
+     "correct",
+     "if spent(trace, model) >= budget",
+     "add {'probe': name, 'status': 'skipped', 'note': f'budget ${budget:.2f} spent'}"
+    ],
+    [
+     "decide",
+     "if 'anyOf' in out or 'oneOf' in out",
+     "set count['unions'] += 1"
+    ],
+    [
+     "decide",
+     "if 'oneOf' in out",
+     "set out['anyOf'] = out.pop('oneOf')"
+    ],
+    [
      "decide",
      "if 'pool' not in by_group and 'workers' in by_group",
      "set by_group['pool'] = by_group['workers']"
     ],
     [
      "decide",
+     "if (thinking_display or self.thinking_display) == 'summarized'",
+     "set kw['thinking'] = {'type': 'adaptive', 'display': 'summarized'}"
+    ],
+    [
+     "decide",
      "if args.llm == 'mock'",
      "set mock = toy_mock_client()"
+    ],
+    [
+     "decide",
+     "if cache",
+     "set kw['tools'][-1]['cache_control'] = {'type': 'ephemeral'}"
+    ],
+    [
+     "decide",
+     "if client is None",
+     "set extra = {'timeout': float(request_timeout_s)} if request_timeout_s else {}"
+    ],
+    [
+     "decide",
+     "if config",
+     "set kw['output_config'] = config"
+    ],
+    [
+     "decide",
+     "if effort",
+     "set config['effort'] = effort"
+    ],
+    [
+     "decide",
+     "if effort",
+     "set parts['effort'] = effort"
+    ],
+    [
+     "decide",
+     "if getattr(self.inner, 'cache_tag', None)",
+     "set parts['api'] = self.inner.cache_tag"
+    ],
+    [
+     "decide",
+     "if isinstance(ref, str) and ref.startswith('#/$defs/')",
+     "set name = ref.split('/')[-1]"
+    ],
+    [
+     "decide",
+     "if k == 'properties' and isinstance(v, dict)",
+     "set out[k] = {name: walk(sub, stack) for name, sub in v.items()}"
     ],
     [
      "decide",
@@ -2121,6 +2600,11 @@
     ],
     [
      "decide",
+     "if lost == 'timeout' and kw.get('max_tokens')",
+     "set kw['max_tokens'] = max(1024, int(kw['max_tokens']) // 2)"
+    ],
+    [
+     "decide",
      "if m not in clients",
      "set clients[m] = make(m)"
     ],
@@ -2133,6 +2617,16 @@
      "decide",
      "if mode == 'fixed'",
      "set profile = replace(profile, roles={g: {k: v for k, v in r.items() if k != 'model'} for g, r"
+    ],
+    [
+     "decide",
+     "if mode == 'schema'",
+     "set resp = llm.chat_messages(schema_messages(), seed, agent_name='model_check', max_tokens=102"
+    ],
+    [
+     "decide",
+     "if mode == 'submit_tool'",
+     "set spec = {'type': 'function', 'function': {'name': 'submit_toy_answer', 'description': 'subm"
     ],
     [
      "decide",
@@ -2156,6 +2650,11 @@
     ],
     [
      "decide",
+     "if out.get('type') == 'object' or 'properties' in out",
+     "set extra = node.get('additionalProperties')"
+    ],
+    [
+     "decide",
      "if p > self._progress",
      "set self._progress, self._mark = (p, calls)"
     ],
@@ -2166,8 +2665,33 @@
     ],
     [
      "decide",
+     "if role == 'tool'",
+     "set role = 'user'"
+    ],
+    [
+     "decide",
+     "if schema is not None",
+     "set config['format'] = {'type': 'json_schema', 'schema': claude_schema(schema)}"
+    ],
+    [
+     "decide",
+     "if schema is not None",
+     "set kw['response_format'] = {'type': 'json_schema', 'json_schema': {'name': getattr(schema, '_"
+    ],
+    [
+     "decide",
+     "if schema is not None",
+     "set parts['schema'] = getattr(schema, '__name__', str(schema))"
+    ],
+    [
+     "decide",
      "if self._inner is None",
      "set self._inner = self._make()"
+    ],
+    [
+     "decide",
+     "if self.allow[kind] <= 0",
+     "set self.stopped_at = kind"
     ],
     [
      "decide",
@@ -2176,12 +2700,92 @@
     ],
     [
      "decide",
+     "if self.temperature is not None",
+     "set kw['temperature'] = self.temperature"
+    ],
+    [
+     "decide",
+     "if status not in (*RATE_STATUS, OVERLOADED) and lost is None or len(retries) >= self.max_rate_retries or spend_cap(e)",
+     "set e.amoeba_retries = retries"
+    ],
+    [
+     "decide",
      "if status not in RATE_STATUS and lost is None or len(retries) >= self.max_rate_retries or spend_cap(e)",
      "set e.amoeba_retries = retries"
     ],
     [
+     "decide",
+     "if system",
+     "set kw['system'] = [{'type': 'text', 'text': system, **({'cache_control': {'type': 'ephemeral'"
+    ],
+    [
+     "decide",
+     "if tools",
+     "set kw['tools'] = claude_tools(tools)"
+    ],
+    [
+     "decide",
+     "if tools",
+     "set kw['tools'] = tools"
+    ],
+    [
+     "decide",
+     "if tools",
+     "set parts['tools'] = tools"
+    ],
+    [
+     "decide",
+     "if when is None",
+     "set at = sup + 1"
+    ],
+    [
+     "fallback",
+     "'' if usd is None else f'{usd:.4f}'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'ok' if readable else 'unreadable'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'optional fields' if k == 'optional' else 'unions'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'plan_step_v2.txt' if protocol == 'v2' else 'plan_step.txt'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'reported' if thinking else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'text, no tool call' if resp and resp.content else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'true' if supports['tools'] else 'false'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "('planner', 'observer') if name == 'planner+observer' else (name,)",
+     "choose value"
+    ],
+    [
      "fallback",
      "(m.group(1) if m.re is _LINE else m.group(0)).rstrip('/') if m else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "2 if result['reasoning_refusals'] else 0",
      "choose value"
     ],
     [
@@ -2206,13 +2810,48 @@
     ],
     [
      "fallback",
+     "[span] if span else spans",
+     "choose value"
+    ],
+    [
+     "fallback",
      "after if after is not None else min(60.0, 2.0 * 2 ** len(retries))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "args if isinstance(args, dict) else {'input': args}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "base_url.rstrip('/').removesuffix('/v1') if base_url else None",
      "choose value"
     ],
     [
      "fallback",
      "calls - self._mark if calls - self._mark >= self.stall_calls else None",
      "choose value"
+    ],
+    [
+     "fallback",
+     "dict((kv.split(':', 1) for kv in m.group(2).split(','))) if m else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "add {'probe': name, 'status': 'error', 'note': f\"{type(e).__name__}: {' '.join(str(e).split())[:160]}\"}"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "pass"
+    ],
+    [
+     "fallback",
+     "except Exception",
+     "set ok = False"
     ],
     [
      "fallback",
@@ -2231,7 +2870,77 @@
     ],
     [
      "fallback",
+     "except Probed",
+     "pass"
+    ],
+    [
+     "fallback",
+     "except Probed",
+     "set got = None"
+    ],
+    [
+     "fallback",
+     "except Probed",
+     "set resp = None"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "return None"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "set args = {'input': raw}"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "set parsed = None"
+    ],
+    [
+     "fallback",
+     "f\"tool call: {resp.tool_calls[0]['name']}\" if ok else 'text, no tool call' if resp and resp.content else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "getattr(details, 'category', None) if stop == 'refusal' else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "getattr(usage, 'output_tokens_details', None) if usage is not None else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "got if name == 'planner+observer' else (got,)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "int((clock() - t0) * 1000) if not span else span.get('latency_ms')",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "int(getattr(od, 'thinking_tokens', 0) or 0) if od is not None else 0",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "json.loads(raw) if isinstance(raw, str) else dict(raw or {})",
+     "choose value"
+    ],
+    [
+     "fallback",
      "load_prices() if prices is None else prices",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "m.get('tool_calls') or [] if role == 'assistant' else []",
      "choose value"
     ],
     [
@@ -2241,7 +2950,32 @@
     ],
     [
      "fallback",
+     "m.group(1).strip() if m else text",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "max(by_model, key=lambda m: len(by_model[m])) if chat_spans else model",
+     "choose value"
+    ],
+    [
+     "fallback",
      "merge_system(messages) if self.merge_system else messages",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "model_or_schema.model_json_schema() if hasattr(model_or_schema, 'model_json_schema') else json.loads(json.dumps(model_or_schema))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "next((s for s in spans if s.get('gen_ai.agent.name') == {'planner': 'planner', 'observer': 'agent_observer'}.get(label)), None) if name == 'planner+observer' else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "note[0] if note else ''",
      "choose value"
     ],
     [
@@ -2251,12 +2985,62 @@
     ],
     [
      "fallback",
+     "out.relative_to(ROOT) if out.is_relative_to(ROOT) else out",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "parse_schema_reply(schema, content) if schema is not None else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "profile.merge_system if args.merge_system is None else args.merge_system",
      "choose value"
     ],
     [
      "fallback",
+     "prompt_sources(next((m for k, m, r in gate.replies if r is resp), [])) if status == 'blocked' else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "resp.content if resp else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "schema.model_validate_json(content).model_dump(mode='json') if hasattr(schema, 'model_validate_json') else json.loads(content)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "schema.model_validate_json(text).model_dump(mode='json') if hasattr(schema, 'model_validate_json') else json.loads(text)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "self.cache_prefix if cache_prefix is None else cache_prefix",
+     "choose value"
+    ],
+    [
+     "fallback",
      "self.min_interval - (time.monotonic() - self._last_call) if self._last_call else 0.0",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "walk(v, stack) if k != 'required' else v",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'base_url': root} if root else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'cache_control': {'type': 'ephemeral'}} if cache else {}",
      "choose value"
     ],
     [
@@ -2276,12 +3060,42 @@
     ],
     [
      "fallback",
+     "{'timeout': float(request_timeout_s)} if request_timeout_s else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'tools': tools} if tools else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
      "{**r, 'fetched_at': r.get('fetched_at') or at} if isinstance(r, dict) else r",
      "choose value"
     ],
     [
      "filter",
+     "keep only if c['name'] == 'submit_toy_answer'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if e.model == profile.model and is_anthropic(e.provider) == is_anthropic(profile.provider)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if getattr(t, 'function', None)",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if k != 'model'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k == kind",
      "drop the rest"
     ],
     [
@@ -2296,6 +3110,31 @@
     ],
     [
      "filter",
+     "keep only if modes.get(m) == 'ok'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if not x.get('amoeba.cache_hit')",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if p not in (out.get('required') or [])",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r is resp",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r.get('category') == 'reasoning_extraction'",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if r.get('max_tokens') and (keep_max_tokens is None or g in keep_max_tokens)",
      "drop the rest"
     ],
@@ -2305,14 +3144,104 @@
      "drop the rest"
     ],
     [
+     "filter",
+     "keep only if r['probe'] == 'step (native tools)'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r['probe'].startswith('output mode')",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if re.match('^    checked_at:', l)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if re.match('^    supports:', l)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if re.match('^  \\\\S', lines[i]) or re.match('^\\\\S', lines[i])",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if re.match(f'^  {re.escape(entry)}:\\\\s*(#.*)?$', l)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if s.get('gen_ai.agent.name') == {'planner': 'planner', 'observer': 'agent_observer'}.get(label)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if v is not None",
+     "drop the rest"
+    ],
+    [
      "loop cap",
      "while True",
      "loop ends"
     ],
     [
+     "loop cap",
+     "while at < len(block) and re.match('^\\\\s+#', block[at])",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if bad",
+     "raise TypeError"
+    ],
+    [
+     "reject",
+     "if count[k] > cap",
+     "raise SchemaTooComplex"
+    ],
+    [
+     "reject",
+     "if effort is not None and effort not in EFFORTS",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if effort not in EFFORTS",
+     "raise ValueError"
+    ],
+    [
+     "reject",
+     "if extra not in (None, False) and (not out.get('properties'))",
+     "raise SchemaTooComplex"
+    ],
+    [
+     "reject",
+     "if k == 'minItems' and isinstance(v, int) and (v > 1)",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if k in ('minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf', 'minLength', 'maxLength', 'maxItems', 'pattern', 'title', 'default', '$defs')",
+     "skip (continue)"
+    ],
+    [
+     "reject",
+     "if name in stack",
+     "raise SchemaTooComplex"
+    ],
+    [
      "reject",
      "if not (self.sends_seed and getattr(e, 'status_code', None) == 400 and ('seed' in str(e)))",
      "raise "
+    ],
+    [
+     "reject",
+     "if not blocks",
+     "skip (continue)"
     ],
     [
      "reject",
@@ -2331,8 +3260,18 @@
     ],
     [
      "reject",
+     "if role == 'system'",
+     "skip (continue)"
+    ],
+    [
+     "reject",
      "if self.store.mode == 'replay'",
      "raise CacheMiss"
+    ],
+    [
+     "reject",
+     "if thinking_display not in THINKING_DISPLAYS",
+     "raise ValueError"
     ],
     [
      "stop",
@@ -2343,6 +3282,26 @@
      "stop",
      "if hit is not None",
      "return hit['result']"
+    ],
+    [
+     "stop",
+     "if is_anthropic(provider)",
+     "return AnthropicClient(api_key=api_key, model=model, max_tokens=max_tokens, max_rate_retries=max_rate_retries, request_timeout_s=request_timeout_s, base_url=base_url)"
+    ],
+    [
+     "stop",
+     "if is_blocked(resp)",
+     "return ('blocked', resp.refusal_category)"
+    ],
+    [
+     "stop",
+     "if is_blocked(resp)",
+     "return resp"
+    ],
+    [
+     "stop",
+     "if isinstance(node, list)",
+     "return [walk(x, stack) for x in node]"
     ],
     [
      "stop",
@@ -2363,6 +3322,16 @@
      "stop",
      "if not (self.max_tokens or self.max_calls)",
      "return False"
+    ],
+    [
+     "stop",
+     "if not isinstance(node, dict)",
+     "return node"
+    ],
+    [
+     "stop",
+     "if not key",
+     "return 1"
     ],
     [
      "stop",
@@ -2391,13 +3360,23 @@
     ],
     [
      "stop",
+     "if parse_schema_reply(ToyAnswer, resp.content) is not None or is_blocked(resp)",
+     "return (resp, parse_schema_reply(ToyAnswer, resp.content) is not None, '')"
+    ],
+    [
+     "stop",
+     "if resp is None",
+     "return ('error', None)"
+    ],
+    [
+     "stop",
      "if self.store.mode == 'off'",
      "return live()"
     ],
     [
      "stop",
      "if self.store.mode == 'off'",
-     "return self.inner.chat_messages(messages, seed, max_tokens=max_tokens)"
+     "return self.inner.chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools), **opts)"
     ]
    ],
    "kind": "code",
@@ -2406,6 +3385,8 @@
     "AgentResult.output_tokens",
     "AgentSpec.max_tokens",
     "AgentSpec.temperature",
+    "ChatResponse.cache_read_tokens",
+    "ChatResponse.cache_write_tokens",
     "ChatResponse.input_tokens",
     "ChatResponse.latency_ms",
     "ChatResponse.output_tokens",
@@ -2413,19 +3394,23 @@
     "ChatResponse.throttle_wait_s",
     "Episode.latency_ms",
     "Episode.seed",
+    "ModelEntry.temperature",
+    "OVERLOADED",
     "RunLimits.finish_share",
-    "WebLimits.max_results"
+    "WebLimits.max_results",
+    "make_client.max_rate_retries",
+    "make_client.max_tokens",
+    "make_client.min_seconds_between_calls",
+    "make_client.temperature",
+    "run_checks.seed"
    ],
    "prompts": {},
    "title": "AI connection"
   },
-  "facts_hash": "81cbc18f18c79aa4",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "ac249b01d8ff8377",
-  "seed_hash": "c3e0a1294e3b69ca",
+  "facts_hash": "c888e9067d9da9d0",
+  "seed_hash": "04698a9763fdd4c5",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
-  "source": "hand (model: still true)",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
    "Waits out rate limits (HTTP 429/503: up to five retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message, set the reasoning effort and count hidden reasoning tokens.",
@@ -2436,7 +3421,9 @@
    "D97: with --routing routed (Amoeba's default) every call goes through the per-call model router (see Model router) and each registry model gets its own client; fixed (the baselines' default) and role keep this profile path.",
    "D111: on a dropped connection the proxy is read fresh (AMOEBA_PROXY_FILE); if it moved, the client reconnects through the new one. result.json records status ok, agent_error, infra_error, no_deliverable or needs_clarification.",
    "D117 D: the offline stand-in (--llm mock) answers the fix proposer with no edit, so a stuck step in an offline run ends in the stop report instead of a crash (D119's injected pairs found it).",
-   "D122: no token cap by default; a runaway guard stops a plan run after --stall-calls model calls with no progress (default 60; calls, never tokens; armed once the plan runner starts). With an optional hard cap the plan runner enters finish mode past 85% of it, and a stopped plan run returns its finished steps as a partial answer."
+   "D122: no token cap by default; a runaway guard stops a plan run after --stall-calls model calls with no progress (default 60; calls, never tokens; armed once the plan runner starts). With an optional hard cap the plan runner enters finish mode past 85% of it, and a stopped plan run returns its finished steps as a partial answer.",
+   "D134: provider: anthropic sends Claude's calls through its own Messages API (structured outputs, effort, thinking summary, prompt caching, refusal categories). A blocked reply is never retried as it was; a refusal because the prompt asks for written-out reasoning is a loud prompt_asks_for_reasoning line naming the prompt file, and the run summary says so.",
+   "D135: scripts/model_check.py checks a model before use with one tiny call per call type and one structured call per output mode, and can set the registry entry's supports flags."
   ]
  },
  "critics": {
@@ -3885,7 +4872,7 @@
   ]
  },
  "free_text": {
-  "checked_at": "a937618",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -3925,6 +4912,7 @@
       "scripts/run_task.py::parse_args",
       "scripts/run_task.py::parse_clarify",
       "scripts/run_task.py::quality_gate_on",
+      "scripts/run_task.py::reasoning_refusal_lines",
       "scripts/run_task.py::run_one"
      ],
      "doc": "",
@@ -4099,7 +5087,7 @@
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "049cbdb9e34eeb27",
+  "facts_hash": "e77de74d102aac09",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
@@ -4487,7 +5475,7 @@
   ]
  },
  "interpret": {
-  "checked_at": "a937618",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -4495,6 +5483,7 @@
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/anthropic_client.py::AnthropicClient.chat_messages",
       "amoeba/llm/cache.py::CachedLLM.chat_messages",
       "amoeba/llm/client.py::LLMClient.chat_messages",
       "amoeba/llm/client.py::MockLLMClient.chat_messages",
@@ -4504,7 +5493,8 @@
       "amoeba/memory/context.py::context_text",
       "amoeba/task/interpret.py::decide",
       "amoeba/task/interpret.py::parse_entities",
-      "scripts/eval_draft.py::Recording.chat_messages"
+      "scripts/eval_draft.py::Recording.chat_messages",
+      "scripts/model_check.py::Gate.chat_messages"
      ],
      "doc": "The interpretation step: one call, then plain code decides. environment: D102's Environment section of the",
      "key": "amoeba/task/interpret.py::read_task",
@@ -4575,6 +5565,7 @@
       "amoeba/interp/plan_runner.py::parse_decision",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/anthropic_client.py::AnthropicClient.chat_messages",
       "amoeba/llm/cache.py::CachedLLM.chat_messages",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::LLMClient.chat_messages",
@@ -4589,7 +5580,8 @@
       "amoeba/task/plan_search.py::readings_text",
       "amoeba/task/plan_search.py::run_searches",
       "amoeba/task/plan_search.py::vet_queries",
-      "scripts/eval_draft.py::Recording.chat_messages"
+      "scripts/eval_draft.py::Recording.chat_messages",
+      "scripts/model_check.py::Gate.chat_messages"
      ],
      "doc": "The whole step: the decision call (one retry), the checks, the searches, the screening. Returns the record",
      "key": "amoeba/task/plan_search.py::search_before_planning",
@@ -4759,6 +5751,7 @@
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/anthropic_client.py::AnthropicClient.chat_messages",
       "amoeba/llm/cache.py::CachedLLM.chat_messages",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/llm/cache.py::_Store.get",
@@ -4773,7 +5766,8 @@
       "amoeba/task/plan_search.py::without_plan_ids.strip",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search",
-      "scripts/eval_draft.py::Recording.chat_messages"
+      "scripts/eval_draft.py::Recording.chat_messages",
+      "scripts/model_check.py::Gate.chat_messages"
      ],
      "doc": "Box 1 (D101): {family, how, ...} for a free-text task. Rules first; only if none decides, one routed call",
      "key": "amoeba/task/interpret.py::classify_family",
@@ -5526,11 +6520,11 @@
    },
    "title": "Task interpretation and family (D77, D101)"
   },
-  "facts_hash": "5fce6c46f4e31e2e",
+  "facts_hash": "133293066b98b69c",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "b431f2f67866c69f",
   "sentence": "Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a clear winner, asks the user one question, or makes the answer state its assumption.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "One call reads the task (and the read-only user context from --context: location, organisation, role) and lists the key entities and terms that could be read more than one way — names, abbreviations, acronyms, likely voice-input errors such as \"P and W\" for \"PNW\" — each reading with a one-line reason and a confidence.",
    "Plain code: a reading whose confidence beats the next by {DOMINANCE_GAP} or more (DOMINANCE_GAP) (or the only one) is the working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question (the readings + other); without it the top reading is an assumption.",
@@ -6794,7 +7788,7 @@
   ]
  },
  "niche": {
-  "checked_at": "a937618",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -6966,7 +7960,8 @@
       "amoeba/checks/__init__.py::run_checks",
       "amoeba/interp/plan_runner.py::PlanRunner.computed_results",
       "amoeba/llm/cache.py::_Store.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "scripts/model_check.py::run_checks"
      ],
      "doc": "D102: the niche profile's domain checks over this step's output and evidence (the task, the step's inputs,",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.domain_checks",
@@ -6975,7 +7970,8 @@
     {
      "callees": [
       "amoeba/checks/__init__.py::run_checks",
-      "amoeba/interp/plan_runner.py::PlanRunner.files_of"
+      "amoeba/interp/plan_runner.py::PlanRunner.files_of",
+      "scripts/model_check.py::run_checks"
      ],
      "doc": "D113: totals and derived cells of the workbooks this step made must be formulas.",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.xlsx_checks",
@@ -7249,7 +8245,7 @@
    "prompts": {},
    "title": "Niche profiles (D102)"
   },
-  "facts_hash": "183c9a0b154ed3f5",
+  "facts_hash": "68af2c500dab39b9",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "d219f1b6cf765c75",
   "sentence": "One file per environment says which tools and models are allowed, the limits, what counts as done, the domain's rules and words, and which domain checks run; plain code enforces it.",
@@ -7301,7 +8297,7 @@
   ]
  },
  "ov_around": {
-  "checked_at": "a5b8c72",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -7318,8 +8314,8 @@
       "load(self, name: str) -> int",
       "role_tier(self, role: str) -> str",
       "route(self, spec: CallSpec) -> tuple[str, dict]",
-      "call(self, spec: CallSpec, messages: Messages, seed: int, max_tokens: int | None, tools: list | None=None) -> tuple[ChatResponse, dict]",
-      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None, tools: list | None=None) -> ChatResponse",
+      "call(self, spec: CallSpec, messages: Messages, seed: int, max_tokens: int | None, tools: list | None=None, **opts) -> tuple[ChatResponse, dict]",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None, tools: list | None=None, **opts) -> ChatResponse",
       "can_use(self, feature: str) -> bool",
       "summary(self) -> dict",
       "models(self) -> dict[str, str]"
@@ -7336,6 +8332,8 @@
     "AgentSpec.max_tokens",
     "CallSpec.max_output",
     "CallSpec.prompt_tokens",
+    "ChatResponse.cache_read_tokens",
+    "ChatResponse.cache_write_tokens",
     "ChatResponse.input_tokens",
     "ChatResponse.output_tokens",
     "ChatResponse.reasoning_tokens",
@@ -7346,7 +8344,7 @@
    "prompts": {},
    "title": "Around every box"
   },
-  "facts_hash": "7bb276eed97a3d41",
+  "facts_hash": "0f061f4bbe36bca3",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "ac6fefe917436cc9",
   "sentence": "The model router behind every AI call and the niche profile every run obeys.",
@@ -7356,7 +8354,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "a5b8c72",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -7421,6 +8419,7 @@
       "scripts/run_task.py::interpretation_of",
       "scripts/run_task.py::models_of",
       "scripts/run_task.py::planned_model",
+      "scripts/run_task.py::protocol_used",
       "scripts/run_task.py::provenance_of",
       "scripts/run_task.py::refinement_of",
       "scripts/run_task.py::resolve_native"
@@ -7456,14 +8455,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "e740167636949cd7",
+  "facts_hash": "20022d0fcc6ad38e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
-  "sentence": "Every run saves thirty-one files, including the team, draft, logs, tool data, results, reports, settings, and native resolution records.",
+  "sentence": "Every run saves thirty-two files, including the team, draft, logs, tool data, results, reports, settings, native resolution records, and the communication protocol.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed ({run_one.seed}), the fault summary, the fault details, the plan search findings, the tool library, the planned model, and the native resolution record.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed ({run_one.seed}), the fault summary, the fault details, the plan search findings, the tool library, the planned model, the protocol used, and the native resolution record.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -8328,7 +9327,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "a5b8c72",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -8443,6 +9442,7 @@
       "amoeba/interp/plan_runner.py::step_detail",
       "amoeba/interp/runtime.py::Interpreter._record",
       "amoeba/interp/runtime.py::full_action_input",
+      "amoeba/interp/step_protocol.py::v2_text",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TraceWriter.spans",
@@ -8589,9 +9589,23 @@
     },
     {
      "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D136: a pool tool's MCP input schema when it offers one tool (a pool entry with several tools keeps the",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.mcp_schema",
+     "signature": "mcp_schema(self, tool: str) -> dict | None"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner.mcp_schema",
+      "amoeba/interp/step_protocol.py::tool_schema",
+      "amoeba/interp/step_protocol.py::v2_text",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::tool_fn_name",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -8599,7 +9613,7 @@
      ],
      "doc": "D132: the helper's tools as function specs (one string argument `input`) and the map back from the",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.native_specs",
-     "signature": "native_specs(self, tools: list[str]) -> tuple[list[dict], dict[str, str]]"
+     "signature": "native_specs(self, tools: list[str], kind: str | None=None) -> tuple[list[dict], dict[str, str]]"
     },
     {
      "callees": [
@@ -8608,11 +9622,13 @@
       "amoeba/interp/plan_runner.py::PlanRunner.act",
       "amoeba/interp/plan_runner.py::PlanRunner.native_specs",
       "amoeba/interp/plan_runner.py::PlanRunner.route_ids",
+      "amoeba/interp/plan_runner.py::PlanRunner.typed_call",
       "amoeba/interp/plan_runner.py::PlanRunner.unreadable_turn",
       "amoeba/interp/runtime.py::Interpreter._record",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.spans",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/anthropic_client.py::AnthropicClient.chat_messages",
       "amoeba/llm/cache.py::CachedLLM.chat_messages",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/cache.py::is_blocked",
@@ -8624,11 +9640,12 @@
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/parsers.py::MissingSections",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
-      "scripts/eval_draft.py::Recording.chat_messages"
+      "scripts/eval_draft.py::Recording.chat_messages",
+      "scripts/model_check.py::Gate.chat_messages"
      ],
      "doc": "D132: one helper turn with native tool calling. The prompt's # Format section (the text protocol) is",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.native_turn",
-     "signature": "native_turn(self, agent: AgentSpec, step: PlanStep, n: int, system: str, user: str, tools: list[str], last: bool, group: str, before: int) -> tuple[str, str, str, str | None]"
+     "signature": "native_turn(self, agent: AgentSpec, step: PlanStep, n: int, system: str, user: str, tools: list[str], last: bool, group: str, before: int, kind: str | None=None) -> tuple[str, str, str, str | None]"
     },
     {
      "callees": [
@@ -8648,6 +9665,26 @@
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner.mcp_schema",
+      "amoeba/interp/step_protocol.py::bad_call_text",
+      "amoeba/interp/step_protocol.py::check_args",
+      "amoeba/interp/step_protocol.py::final_text",
+      "amoeba/interp/step_protocol.py::resolver_text",
+      "amoeba/interp/step_protocol.py::tool_schema",
+      "amoeba/interp/step_protocol.py::typed_input",
+      "amoeba/interp/step_protocol.py::typed_verdict",
+      "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D136: one v2 call's arguments → (the tool's input, None), or (the raw input, the bad-call result) when they",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.typed_call",
+     "signature": "typed_call(self, agent: AgentSpec, n: int, act: str, args, kind: str | None) -> tuple[str, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/runtime.py::Interpreter._record",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.spans",
@@ -8657,6 +9694,12 @@
      "doc": "D123: a reply still missing a required section after the unglue and the repair call fails only this turn:",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.unreadable_turn",
      "signature": "unreadable_turn(self, agent: AgentSpec, n: int, e: MissingSections, before: int) -> tuple[str, str, str, str | None]"
+    },
+    {
+     "callees": [],
+     "doc": "D136: protocol v2 is in force (asked for, and the run calls tools natively).",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.v2",
+     "signature": "v2(self) -> bool"
     },
     {
      "callees": [
@@ -8696,6 +9739,178 @@
      "doc": "The text within about `limit` characters: head, the result lines of the middle, tail. Unchanged when it",
      "key": "amoeba/interp/shorten.py::shorten",
      "signature": "shorten(text: str, limit: int) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "The typed end of a step (v2). status is the helper's own word; plain code still decides the step's status",
+     "fields": [
+      [
+       "status",
+       "Literal['done', 'partial', 'blocked']"
+      ],
+      [
+       "output",
+       "str"
+      ],
+      [
+       "blocked",
+       "list[str]"
+      ],
+      [
+       "missing_data",
+       "list[str]"
+      ],
+      [
+       "missing_input",
+       "list[str]"
+      ],
+      [
+       "not_needed",
+       "list[str]"
+      ],
+      [
+       "verdict",
+       "Literal['PASS', 'FAIL'] | None"
+      ],
+      [
+       "issues",
+       "list[str]"
+      ]
+     ],
+     "key": "amoeba/interp/step_protocol.py::FinalOutput",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "n",
+       "int"
+      ],
+      [
+       "value",
+       "str"
+      ],
+      [
+       "evidence",
+       "str"
+      ],
+      [
+       "verdict",
+       "Literal['WORKER', 'CHECK', 'NEITHER', 'UNRESOLVED']"
+      ]
+     ],
+     "key": "amoeba/interp/step_protocol.py::ResolverFigure",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [
+      [
+       "figures",
+       "list[ResolverFigure]"
+      ]
+     ],
+     "key": "amoeba/interp/step_protocol.py::ResolverOutput",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/step_protocol.py::example",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The tool result of a call whose arguments do not fit: what it takes and an example (worded like D131's",
+     "key": "amoeba/interp/step_protocol.py::bad_call_text",
+     "signature": "bad_call_text(tool: str, problem: str, schema: dict) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "What a native-mode (v2) prompt still says of the text protocol (empty when clean).",
+     "key": "amoeba/interp/step_protocol.py::banned_words",
+     "signature": "banned_words(text: str) -> list[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "Plain code's check of one call's arguments: None when they fit the schema, else what is wrong. The typed end",
+     "key": "amoeba/interp/step_protocol.py::check_args",
+     "signature": "check_args(tool: str, args, schema: dict, final_kind: str | None=None) -> str | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/interp/step_protocol.py::example",
+     "signature": "example(tool: str, schema: dict) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "The typed end of a step as the text the legacy readers parse: Verdict first, the output, one BLOCKED / NOT",
+     "key": "amoeba/interp/step_protocol.py::final_text",
+     "signature": "final_text(args: dict) -> str"
+    },
+    {
+     "callees": [],
+     "doc": "The resolver's typed figures as the blocks parse_resolution reads (settle() unchanged).",
+     "key": "amoeba/interp/step_protocol.py::resolver_text",
+     "signature": "resolver_text(args: dict) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/anthropic_client.py::claude_schema",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The JSON schema of a tool's arguments in v2: the typed table, a pool tool's MCP input schema, the typed end",
+     "key": "amoeba/interp/step_protocol.py::tool_schema",
+     "signature": "tool_schema(tool: str, mcp_schema: dict | None=None, final_kind: str | None=None) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "The input string the tool's runner takes, from checked arguments.",
+     "key": "amoeba/interp/step_protocol.py::typed_input",
+     "signature": "typed_input(tool: str, args: dict, schema: dict) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "(verdict, issues) of a typed end of a verify step, as parse_verdict_block returns them.",
+     "key": "amoeba/interp/step_protocol.py::typed_verdict",
+     "signature": "typed_verdict(args: dict) -> tuple[str | None, str]"
+    },
+    {
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub"
+     ],
+     "doc": "A rendered step prompt with the legacy notes worded for v2 (plain text replacements; the v2 templates",
+     "key": "amoeba/interp/step_protocol.py::v2_text",
+     "signature": "v2_text(text: str) -> str"
     }
    ],
    "checks": [],
@@ -8707,11 +9922,6 @@
     ],
     [
      "correct",
-     "if act in (UNREADABLE, PROVIDER_BLOCKED)",
-     "add {'agent': agent.name, 'turn': w.turn + 1, 'why': resp, 'blocked': act == PROVIDER_BLOCKED}"
-    ],
-    [
-     "correct",
      "if act in agent.tools",
      "add resp"
     ],
@@ -8719,6 +9929,11 @@
      "correct",
      "if find and FIND_TOOL not in a.tools",
      "add FIND_TOOL"
+    ],
+    [
+     "correct",
+     "if fo.verdict",
+     "add 'Issues:' + ('' if fo.issues else ' none')"
     ],
     [
      "correct",
@@ -8737,6 +9952,11 @@
     ],
     [
      "decide",
+     "if '\\n# Format\\n' in user",
+     "set user = user.split('\\n# Format\\n')[0].rstrip() + '\\n\\n' + (HOW_TO_ACT_TEXT if self.v2 else "
+    ],
+    [
+     "decide",
      "if (gaps or data_gaps) and (not finished)",
      "set reason += '; max_turns'"
     ],
@@ -8744,6 +9964,16 @@
      "decide",
      "if FINAL_OUTPUT in act",
      "set w.done[agent.agent_id] = inp.strip()"
+    ],
+    [
+     "decide",
+     "if act == FINAL_OUTPUT",
+     "set verdict = typed_verdict(args)"
+    ],
+    [
+     "decide",
+     "if act in (UNREADABLE, PROVIDER_BLOCKED)",
+     "set cat = getattr(self, '_refusal_category', None)"
     ],
     [
      "decide",
@@ -8818,7 +10048,7 @@
     [
      "decide",
      "if last",
-     "set user = user.replace('\\n# Format\\n', f'\\n{LAST_TURN_NOTE}\\n\\n# Format\\n', 1)"
+     "set user = user.replace(anchor, f'\\n{LAST_TURN_NOTE}\\n{anchor}', 1)"
     ],
     [
      "decide",
@@ -8864,6 +10094,11 @@
      "decide",
      "if mode == 'off'",
      "set prov_items = []"
+    ],
+    [
+     "decide",
+     "if n in self.typed_verdicts",
+     "set meta['verdict'], meta['issues'] = self.typed_verdicts.pop(n)"
     ],
     [
      "decide",
@@ -8952,6 +10187,11 @@
     ],
     [
      "decide",
+     "if schema.get('additionalProperties') is False",
+     "set extra = [k for k in args if k not in props]"
+    ],
+    [
+     "decide",
      "if self.local is not None",
      "set claimed = claimed_files(text)"
     ],
@@ -8972,8 +10212,33 @@
     ],
     [
      "decide",
+     "if self.v2",
+     "set inp, bad = self.typed_call(agent, n, act, args, kind)"
+    ],
+    [
+     "decide",
+     "if self.v2",
+     "set template = {PROMPT.plan_step: PROMPT.plan_step_v2, PROMPT.plan_resolve: PROMPT.plan_resolv"
+    ],
+    [
+     "decide",
+     "if self.v2",
+     "set user = v2_text(user)"
+    ],
+    [
+     "decide",
+     "if set(args) == {'input'}",
+     "set v = args['input']"
+    ],
+    [
+     "decide",
      "if summarising or (on and answer_step)",
      "set text, added = self.enforce_limitations(text)"
+    ],
+    [
+     "decide",
+     "if tool in TYPED",
+     "set props = TYPED[tool][0]"
     ],
     [
      "decide",
@@ -9007,6 +10272,11 @@
     ],
     [
      "decide",
+     "if verdict[0]",
+     "set self.typed_verdicts[n] = verdict"
+    ],
+    [
+     "decide",
      "if verifier",
      "set meta['verdict'], meta['issues'] = parse_verdict_block(text)"
     ],
@@ -9037,6 +10307,16 @@
     ],
     [
      "fallback",
+     "'' if fo.issues else ' none'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "', required' if k in (schema.get('required') or []) else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'; checks failed: ' + ', '.join(failed) if failed else ''",
      "choose value"
     ],
@@ -9057,6 +10337,21 @@
     ],
     [
      "fallback",
+     "'\\n'.join((f'{i}. {x.strip()}' for i, x in enumerate(fo.issues, 1))) if fo.issues else 'none' if fo.verdict else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'bad_call' if act == FINAL_OUTPUT else act",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'none' if fo.verdict else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'partial' if status == 'done' else status",
      "choose value"
     ],
@@ -9068,6 +10363,11 @@
     [
      "fallback",
      "'plan_summary' if self.is_summary_step(step) else 'plan_step'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'resolve' if template == PROMPT.plan_resolve else None",
      "choose value"
     ],
     [
@@ -9087,7 +10387,37 @@
     ],
     [
      "fallback",
+     "HOW_TO_ACT if self.v2 and HOW_TO_ACT in template else '\\n# Format\\n'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "HOW_TO_ACT_TEXT if self.v2 else NATIVE_FORMAT",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "NATIVE_SPECIAL_V2.get(t) if self.v2 else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "PROMPT.plan_summarise if summarising else PROMPT.plan_step",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "PROVIDER_BLOCKED_NOTE_V2 if self.v2 else PROVIDER_BLOCKED_NOTE",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "ResolverOutput if final_kind == 'resolve' else FinalOutput",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "UNREADABLE_NOTE_V2 if self.v2 else UNREADABLE_NOTE",
      "choose value"
     ],
     [
@@ -9118,6 +10448,11 @@
     [
      "fallback",
      "[] if answer_step else sorted(set(w.blocked.values()) | set(mentions))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[f'Verdict: {fo.verdict}'] if fo.verdict else []",
      "choose value"
     ],
     [
@@ -9169,6 +10504,11 @@
      "fallback",
      "except OSError",
      "return {}"
+    ],
+    [
+     "fallback",
+     "except ValidationError",
+     "return 'fields that do not fit: ' + '; '.join((f\"{'.'.join(map(str, x['loc']))}: {x['msg']}\" for x in e.errors()[:4]))"
     ],
     [
      "fallback",
@@ -9242,6 +10582,11 @@
     ],
     [
      "fallback",
+     "json.dumps(args, ensure_ascii=False)[:2000] if isinstance(args, dict) else str(args)[:2000]",
+     "choose value"
+    ],
+    [
+     "fallback",
      "len((self.contract_findings(found) if found else []) + (self.answer_findings(produced) if produced else [])) if on else None",
      "choose value"
     ],
@@ -9263,6 +10608,11 @@
     [
      "fallback",
      "list(dict.fromkeys((u['name'] for u in found['unused']))) if found else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "listing[0].get('input_schema') if len(listing) == 1 else None",
      "choose value"
     ],
     [
@@ -9372,6 +10722,26 @@
     ],
     [
      "fallback",
+     "tool_schema(t, self.mcp_schema(t), kind) if self.v2 else {'type': 'object', 'properties': {'input': {'type': 'string'}}, 'required': ['input']}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "v2_text(desc) if self.v2 else desc",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'category': cat} if cat else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
      "{k: v for k, v in fixing.items() if k != 'note'} if fixing else None",
      "choose value"
     ],
@@ -9427,6 +10797,26 @@
     ],
     [
      "filter",
+     "keep only if k in (schema.get('required') or props)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k in props and (props[k] or {}).get('type') in TYPES and (not isinstance(v, TYPES[props[k]['type']]))",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k not in args or (args[k] in ('', None) and (tool, k) not in EMPTY_OK)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k not in props",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if normalise(n)[0] == 'web_search'",
      "drop the rest"
     ],
@@ -9463,6 +10853,11 @@
     [
      "filter",
      "keep only if r['verdict'] == 'unresolved'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if re.search(pattern, text or '')",
      "drop the rest"
     ],
     [
@@ -9516,6 +10911,11 @@
      "drop the rest"
     ],
     [
+     "filter",
+     "keep only if x.strip()",
+     "drop the rest"
+    ],
+    [
      "loop cap",
      "for i in range(len(lines) - 1, head[-1] if head else -1, -1)",
      "loop ends"
@@ -9557,18 +10957,38 @@
     ],
     [
      "stop",
+     "if act == FINAL_OUTPUT and isinstance(args, dict) and (set(args) <= {'input'})",
+     "return (str(args.get('input') or ''), None)"
+    ],
+    [
+     "stop",
      "if act == FIND_TOOL and FIND_TOOL in agent.tools",
      "return (act, inp, self.find_tool(agent, inp, n), None)"
     ],
     [
      "stop",
+     "if bad is not None",
+     "return ('bad_call' if act == FINAL_OUTPUT else act, inp, bad, None)"
+    ],
+    [
+     "stop",
      "if blocked",
-     "return (PROVIDER_BLOCKED, '', PROVIDER_BLOCKED_NOTE, None)"
+     "return (PROVIDER_BLOCKED, '', PROVIDER_BLOCKED_NOTE_V2 if self.v2 else PROVIDER_BLOCKED_NOTE, None)"
     ],
     [
      "stop",
      "if canon in a.tools",
      "return canon"
+    ],
+    [
+     "stop",
+     "if category == REASONING_REFUSED",
+     "return (UNREADABLE, '', REASONING_REFUSED_NOTE, None)"
+    ],
+    [
+     "stop",
+     "if extra",
+     "return f\"unknown argument(s) {', '.join(extra)}\""
     ],
     [
      "stop",
@@ -9579,6 +10999,11 @@
      "stop",
      "if hit",
      "return hit"
+    ],
+    [
+     "stop",
+     "if kind == 'resolve'",
+     "return (resolver_text(args), None)"
     ],
     [
      "stop",
@@ -9602,6 +11027,16 @@
     ],
     [
      "stop",
+     "if mcp_schema and (mcp_schema.get('properties') or {})",
+     "return mcp_schema"
+    ],
+    [
+     "stop",
+     "if missing",
+     "return f\"no {', '.join(missing)}\""
+    ],
+    [
+     "stop",
      "if name in a.tools",
      "return name"
     ],
@@ -9614,6 +11049,11 @@
      "stop",
      "if not got",
      "return f\"find_tool: nothing in the pool or the local toolbox matches '{need}'. Work with the tools you hold ({', '.join((t for t in agent.tools if t != FIND_TOOL))}), or say what could not be done.\""
+    ],
+    [
+     "stop",
+     "if not isinstance(args, dict)",
+     "return 'arguments that are not a JSON object'"
     ],
     [
      "stop",
@@ -9632,13 +11072,18 @@
     ],
     [
      "stop",
+     "if problem",
+     "return (json.dumps(args, ensure_ascii=False)[:2000] if isinstance(args, dict) else str(args)[:2000], bad_call_text(act, problem, schema))"
+    ],
+    [
+     "stop",
      "if room - len(line) - 1 < 0",
      "stop (break)"
     ],
     [
      "stop",
      "if self.opt.native_tools == 'on'",
-     "return self.native_turn(agent, step, n, system, user, tools, last, group, before)"
+     "return self.native_turn(agent, step, n, system, user, tools, last, group, before, kind)"
     ],
     [
      "stop",
@@ -9657,6 +11102,31 @@
     ],
     [
      "stop",
+     "if tool == FINAL",
+     "return None"
+    ],
+    [
+     "stop",
+     "if tool == FINAL",
+     "return claude_schema(ResolverOutput if final_kind == 'resolve' else FinalOutput)"
+    ],
+    [
+     "stop",
+     "if tool == FINAL",
+     "return {'status': 'done', 'output': '<the whole step output>', 'blocked': [], 'missing_data': []}"
+    ],
+    [
+     "stop",
+     "if tool in TYPED",
+     "return TYPED[tool][1]"
+    ],
+    [
+     "stop",
+     "if tool in TYPED",
+     "return TYPED[tool][2](args)"
+    ],
+    [
+     "stop",
      "if used + len(l) + 1 > head_room",
      "stop (break)"
     ],
@@ -9669,6 +11139,11 @@
      "stop",
      "if used.get(n, 0) >= FIND_LIMITS['per_step'] or sum(used.values()) >= FIND_LIMITS['per_run']",
      "return 'find_tool: the search limit is reached; work with the tools you hold.'"
+    ],
+    [
+     "stop",
+     "if wrong",
+     "return 'the wrong type for ' + ', '.join((f\"{k} (wants {props[k]['type']})\" for k in wrong))"
     ]
    ],
    "kind": "llm",
@@ -9683,22 +11158,23 @@
    "prompts": {
     "plan_critique": "b17054bc5a21",
     "plan_step": "640189e1b625",
-    "plan_step_system": "daf8cf4bba11"
+    "plan_step_system": "daf8cf4bba11",
+    "plan_step_v2": "ca329d378f03"
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "8bb79fc9646574a0",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "270a58d016f6ddfa",
+  "facts_hash": "5d510097bc4dae0e",
+  "seed_hash": "6dac01b44db172f0",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "model: rewritten",
+  "source": "hand",
   "what": [
-   "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, the outputs of the steps it depends on, and a list of local files it can reference.",
-   "It must tag every figure with a source id [S#] or [unverified], check for mislabelled citations, verify spreadsheet data, resolve any figure disputes, mark missing data, and mark what it could not do as BLOCKED: <capability>.",
-   "It picks one action per turn: a tool, Print, or Final Output; if no model is available, the reply is unreadable, or a provider blocks the request, it reports a blocked status; it may search for tools mid-step if needed; up to {Limits.max_turns} turns per step.",
-   "With --web-tools, a role that asked for web search, lacks specific tools, or is performing research gets web_search and fetch_url; if the task is time-sensitive, it is notified to use fresh information; if local files are available, it is provided with a summary of those files and their source identifiers.",
-   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles, the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); if verification is enabled, the verifier may perform its own check, including resolving disputed figures, checking final findings, and marking missing inputs, before the final output is kept; if the system determines a step or rework is unnecessary, it may skip those processes.",
-   "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason."
+   "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
+   "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
+   "It picks one action per turn: a tool, Print, or Final Output; up to {Limits.max_turns} turns per step.",
+   "With --web-tools, a role that asked for web search also gets web_search and fetch_url.",
+   "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); the step keeps one output.",
+   "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason.",
+   "D136 (--protocol v2, with native tool calling): the step prompt asks for no text sections; each tool takes typed arguments that plain code checks before running it (a bad call gets the schema and an example), and the step ends with Final_Output's typed fields, which plain code turns into the usual BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy."
   ]
  },
  "plan_summary": {
@@ -10633,7 +12109,7 @@
   ]
  },
  "proposer": {
-  "checked_at": "1e41d32",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -10903,6 +12379,7 @@
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/anthropic_client.py::AnthropicClient.chat_messages",
       "amoeba/llm/cache.py::CachedLLM.chat_messages",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::LLMClient.chat_messages",
@@ -10913,7 +12390,8 @@
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
       "amoeba/tools/registry.py::ToolRegistry.names",
-      "scripts/eval_draft.py::Recording.chat_messages"
+      "scripts/eval_draft.py::Recording.chat_messages",
+      "scripts/model_check.py::Gate.chat_messages"
      ],
      "doc": "The proposer's input, kept small: the task, the step's card, the diagnosis, the last attempt's errors and",
      "key": "amoeba/interp/plan_runner.py::PlanRunner._proposer_call",
@@ -10983,7 +12461,7 @@
    },
    "title": "Fix proposer (D117 Stage D)"
   },
-  "facts_hash": "a1bcb0f54e23ebd9",
+  "facts_hash": "e743b8b935d1a8bc",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "26d95855171d5479",
   "sentence": "The last rung: one AI call proposes one edit for the stuck step; plain code checks it, applies it to the live plan and re-runs the step.",
@@ -12192,7 +13670,7 @@
   },
   "facts_hash": "ff7ce559e226b1f2",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "e1fb7af5c0de817b",
+  "rejected_hash": "e9a2a9473d0e3b21",
   "seed_hash": "98554a3d1a5efb46",
   "sentence": "Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters that are never relaxed, then a preference for the role (none is set since D117), the role's default or the cheapest of the right size.",
   "source": "model: kept",
@@ -12634,9 +14112,11 @@
   },
   "facts_hash": "d2df326cb08fa04b",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "bd97b1938d71e6e2",
   "seed_hash": "09aed73abc98a57d",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
   "source": "model: kept",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
@@ -12982,7 +14462,7 @@
   ]
  },
  "split": {
-  "checked_at": "1e41d32",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -13084,7 +14564,7 @@
     [
      "decide",
      "if is_blocked(resp)",
-     "set e.raw, e.blocked = (raw, True)"
+     "set e.raw, e.blocked, e.category = (raw, True, resp.refusal_category)"
     ],
     [
      "decide",
@@ -13153,7 +14633,7 @@
    "prompts": {},
    "title": "Split sections"
   },
-  "facts_hash": "a3e08b517eaeaaf4",
+  "facts_hash": "faa953e5e88b30c4",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "5b7681afa126eb34",
   "sentence": "Cuts each AI reply into its labelled parts; if a part is missing or the reply is blocked, the system attempts to fix it or retries once.",
@@ -13161,7 +14641,7 @@
   "what": [
    "Every AI reply in drafting and in step-by-step work is cut at its '##' headings into named parts. Only a '##' that starts a line (or follows a closing tag, as in '</thought>## Thought') is a heading; one in the middle of a line, such as a lesson echoed inside a role's JSON, is text.",
    "If a required part is missing, the system first tries to unglue headings from text; if that fails, the AI is asked once more with the error attached.",
-   "If the retry still lacks it or the reply is blocked, drafting stops with an error (or the run ends with a parse error)."
+   "If the retry still lacks it, the reply is blocked, or the system identifies a refusal, drafting stops with an error (or the run ends with a parse error)."
   ]
  },
  "stage_e": {
@@ -15957,7 +17437,7 @@
   },
   "facts_hash": "83d577f004b42524",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "a7fa3273d35ae02e",
+  "rejected_hash": "fc8a5200c52ed8e2",
   "seed_hash": "ec288792550b2470",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code. D117: the in-task capability fix calls it again with no AI pick.",
   "source": "model: kept",
@@ -15977,7 +17457,7 @@
   ]
  },
  "toolmaker": {
-  "checked_at": "a937618",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -16000,6 +17480,7 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/adapt/toolmaker.py::tw_config",
+      "amoeba/llm/anthropic_client.py::claude_schema.walk",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -16172,6 +17653,7 @@
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/trace.py::TraceWriter.span",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/anthropic_client.py::AnthropicClient.chat_messages",
       "amoeba/llm/cache.py::CachedLLM.chat_messages",
       "amoeba/llm/client.py::LLMClient.chat_messages",
       "amoeba/llm/client.py::MockLLMClient.chat_messages",
@@ -16179,7 +17661,8 @@
       "amoeba/llm/profiles.py::RoleRouter.chat_messages",
       "amoeba/llm/router.py::ModelRouter.chat_messages",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
-      "scripts/eval_draft.py::Recording.chat_messages"
+      "scripts/eval_draft.py::Recording.chat_messages",
+      "scripts/model_check.py::Gate.chat_messages"
      ],
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::PlanRunner._tool_writer_call",
@@ -16233,10 +17716,11 @@
    },
    "title": "Tool writer and tool library (D125)"
   },
-  "facts_hash": "8d7c2595f01ce821",
+  "facts_hash": "ef45583ad039cb46",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "58455422af4b27cd",
   "sentence": "When a stuck step lacks a tool the pool cannot give, one AI call writes a small Python tool; plain code checks it, runs its self-test in the sandbox and only then gives it to the step.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "Plain code decides first: the missing capability must name a file type an offline library can make (adapt.yaml tool_writer.libraries: docx, xlsx, pptx, pdf, png, svg, csv, json) and the run must have a code runner (the local toolbox's sandboxed Bash). Anything else goes to the fix proposer.",
    "An approved library tool for the capability (same name, then same file type) is tried first, only while its code matches the sha256 the user approved, and only after its self-test passes again.",
@@ -16992,7 +18476,7 @@
   ]
  },
  "toymock": {
-  "checked_at": "a5b8c72",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -17016,7 +18500,7 @@
      "methods": [
       "__init__(self, script: dict[str, list[str] | Responder] | None=None, responses: list[str] | None=None, responder: Responder | None=None, model: str='mock')",
       "classify(cls, messages: Messages) -> str",
-      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None, tools: list | None=None) -> ChatResponse",
+      "chat_messages(self, messages: Messages, seed: int=0, max_tokens: int | None=None, tools: list | None=None, schema=None, **opts) -> ChatResponse",
       "calls_of(self, kind: str) -> list[dict]",
       "n_calls(self) -> int"
      ],
@@ -17024,7 +18508,19 @@
     },
     {
      "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D136: a scripted ActionInput as the arguments the offered tool takes: `input` for a one-string tool (D132); for",
+     "key": "amoeba/llm/client.py::mock_args",
+     "signature": "mock_args(fn: str, text: str, tools: list) -> dict"
+    },
+    {
+     "callees": [
       "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/llm/client.py::mock_args",
       "amoeba/llm/client.py::tool_fn_name",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
       "amoeba/tools/web.py::SearchProvider.search",
@@ -17038,8 +18534,23 @@
    "checks": [],
    "guards": [
     [
+     "decide",
+     "if isinstance(content, dict)",
+     "set content = json.dumps(content)"
+    ],
+    [
+     "decide",
+     "if isinstance(obj, dict)",
+     "set obj = {'path' if k == 'file_path' and 'path' in props else k: v for k, v in obj.items()}"
+    ],
+    [
      "fallback",
      "'' if calls else content",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'path' if k == 'file_path' and 'path' in props else k",
      "choose value"
     ],
     [
@@ -17049,8 +18560,18 @@
     ],
     [
      "fallback",
+     "((spec or {}).get('parameters') or {}).get('properties') or {} if spec else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
      "(signature,) if isinstance(signature, str) else signature",
      "choose value"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "set obj = None"
     ],
     [
      "fallback",
@@ -17069,12 +18590,22 @@
     ],
     [
      "fallback",
+     "parse_schema_reply(schema, content) if schema is not None and (not calls) else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "src.pop(0) if len(src) > 1 else src[0]",
      "choose value"
     ],
     [
      "filter",
      "keep only if c['kind'] == kind",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if isinstance(t, dict) and (t.get('function') or t).get('name') == fn",
      "drop the rest"
     ],
     [
@@ -17089,6 +18620,16 @@
     ],
     [
      "stop",
+     "if fn != 'Final_Output' and len(required) == 1",
+     "return {required[0]: text}"
+    ],
+    [
+     "stop",
+     "if isinstance(content, ChatResponse)",
+     "return content"
+    ],
+    [
+     "stop",
      "if isinstance(src, list) and src",
      "return src.pop(0) if len(src) > 1 else src[0]"
     ],
@@ -17099,6 +18640,11 @@
     ],
     [
      "stop",
+     "if not props or 'input' in props",
+     "return {'input': text}"
+    ],
+    [
+     "stop",
      "if self._responder is not None",
      "return self._responder(messages, seed)"
     ],
@@ -17106,6 +18652,11 @@
      "stop",
      "if self._responses",
      "return self._responses.pop(0)"
+    ],
+    [
+     "stop",
+     "if set(obj) <= set(props)",
+     "return obj"
     ]
    ],
    "kind": "llm",
@@ -17120,11 +18671,11 @@
    "prompts": {},
    "title": "Offline stand-in AI"
   },
-  "facts_hash": "2308523dd8011946",
+  "facts_hash": "1f34d4335acee5d3",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "369f64886d776560",
   "sentence": "A scripted pretend AI that answers the practice jobs correctly, so everything runs without a real AI.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Recognises which role is being asked from a fixed phrase in the prompt.",
    "Answers from a script: a two-helper team, agreeing checkers, the calculator for sums, agreeing reviewers, or simulated tool calls.",
@@ -17132,7 +18683,7 @@
   ]
  },
  "trace": {
-  "checked_at": "a5b8c72",
+  "checked_at": "c5f9e93",
   "facts": {
    "anchors": [
     {
@@ -17168,6 +18719,7 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/checks/calc.py::check",
@@ -17179,12 +18731,15 @@
       "amoeba/interp/trace.py::TracedLLM._log_retries",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
       "amoeba/interp/trace.py::_route_attrs",
+      "amoeba/interp/trace.py::prompt_sources",
+      "amoeba/llm/anthropic_client.py::AnthropicClient.chat_messages",
       "amoeba/llm/cache.py::CachedLLM.chat_messages",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/cache.py::is_blocked",
       "amoeba/llm/client.py::LLMClient.chat_messages",
       "amoeba/llm/client.py::MockLLMClient.chat_messages",
       "amoeba/llm/client.py::OpenAICompatibleClient.chat_messages",
+      "amoeba/llm/client.py::opts_kw",
       "amoeba/llm/client.py::tools_kw",
       "amoeba/llm/limits.py::RunLimits.active",
       "amoeba/llm/limits.py::RunLimits.check",
@@ -17202,11 +18757,12 @@
       "amoeba/pool/mcp.py::SdkConnector.call",
       "amoeba/pool/stock.py::SharedPicks.get",
       "scripts/eval_draft.py::Recording.chat_messages",
-      "scripts/eval_draft.py::Recording.route"
+      "scripts/eval_draft.py::Recording.route",
+      "scripts/model_check.py::Gate.chat_messages"
      ],
      "doc": "role: the call's role group (D54; Box 2 callers are known by name). A profile's RoleRouter picks the",
      "key": "amoeba/interp/trace.py::TracedLLM.chat_messages",
-     "signature": "chat_messages(self, messages: Messages, seed: int=0, *, agent_id: str | None=None, agent_name: str | None=None, max_tokens: int | None=None, role: str | None=None, step: int | None=None, checks=None, needs=(), _retry: bool=False, _blocked_retry: bool=False, tools: list | None=None) -> ChatResponse"
+     "signature": "chat_messages(self, messages: Messages, seed: int=0, *, agent_id: str | None=None, agent_name: str | None=None, max_tokens: int | None=None, role: str | None=None, step: int | None=None, checks=None, needs=(), _retry: bool=False, _blocked_retry: bool=False, tools: list | None=None, **opts) -> ChatResponse"
     },
     {
      "callees": [],
@@ -17218,6 +18774,26 @@
       "on_tool_call(self, agent_id: str | None, result: str) -> None"
      ],
      "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "D134: each prompt file's first long literal line (no {placeholder}), which a rendered prompt contains.",
+     "key": "amoeba/interp/trace.py::_signatures",
+     "signature": "_signatures() -> dict[str, str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/trace.py::_signatures",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D134: the prompt files (amoeba/config/prompts) a call's messages were rendered from, found by each file's",
+     "key": "amoeba/interp/trace.py::prompt_sources",
+     "signature": "prompt_sources(messages: Messages) -> list[str]"
     }
    ],
    "checks": [],
@@ -17227,6 +18803,8 @@
     "AgentResult.input_tokens",
     "AgentResult.output_tokens",
     "AgentSpec.max_tokens",
+    "ChatResponse.cache_read_tokens",
+    "ChatResponse.cache_write_tokens",
     "ChatResponse.input_tokens",
     "ChatResponse.output_tokens",
     "ChatResponse.reasoning_tokens",
@@ -17237,13 +18815,13 @@
    "prompts": {},
    "title": "Every AI call → one trace line"
   },
-  "facts_hash": "229bb26ae6ce8e94",
+  "facts_hash": "7fbda979dece9bb6",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "0f5f3df261f75ad2",
   "sentence": "Writes one log line per AI call and tool call: who, which model, tokens, reasoning tokens, time, step, and automated safety checks, including blocked retries.",
   "source": "model: rewritten",
   "what": [
-   "Every AI call becomes one log line with the helper, model, tokens in and out, reasoning tokens, time taken, step number, available tools, and whether it was a blocked retry.",
+   "Every AI call becomes one log line with the helper, model, tokens in and out, cache usage, reasoning tokens, time taken, step number, available tools, and whether it was a blocked retry.",
    "Tool calls, each helper's turn, and the whole run get their own lines too.",
    "Point events are logged too: capability_request, blocked and unknown_tool.",
    "From the command line each AI line also holds the exact prompt sent and the reply received (turn off with --no-log-content).",

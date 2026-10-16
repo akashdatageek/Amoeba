@@ -35,7 +35,7 @@ from typing import Callable
 
 import yaml
 
-from amoeba.llm.client import ChatResponse, LLMClient, Messages, tools_kw
+from amoeba.llm.client import ChatResponse, LLMClient, Messages, opts_kw, tools_kw
 from amoeba.llm.cache import is_blocked
 
 MODELS = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
@@ -74,10 +74,17 @@ class ModelEntry:
     merge_system: bool = False
     reasoning_effort: str | None = None
     temperature: float | None = 0.2      # None: not sent (`temperature: omit` in models.yaml)
+    checked_at: object = None            # D135: the date scripts/model_check.py last checked this entry (--write)
 
-    def usd(self, input_tokens: int, output_tokens: int) -> float:
-        p_in, p_out = (self.price or {}).get("input") or 0.0, (self.price or {}).get("output") or 0.0
-        return (input_tokens * p_in + output_tokens * p_out) / 1e6
+    def usd(self, input_tokens: int, output_tokens: int, cache_read: int = 0, cache_write: int = 0) -> float:
+        """D134: cache_read / cache_write are the parts of input_tokens read from / written to the provider's prompt
+        cache, priced by `cache_read` / `cache_write` when the entry has them (else as input)."""
+        price = self.price or {}
+        p_in, p_out = price.get("input") or 0.0, price.get("output") or 0.0
+        p_r = price.get("cache_read", p_in) or 0.0
+        p_w = price.get("cache_write", p_in) or 0.0
+        fresh = max(0, input_tokens - cache_read - cache_write)
+        return (fresh * p_in + cache_read * p_r + cache_write * p_w + output_tokens * p_out) / 1e6
 
 
 # box: router
@@ -325,7 +332,8 @@ class ModelRouter(LLMClient):
 
     # -- a call
     def call(self, spec: CallSpec, messages: Messages, seed: int, max_tokens: int | None,
-             tools: list | None = None) -> tuple[ChatResponse, dict]:
+             tools: list | None = None, **opts) -> tuple[ChatResponse, dict]:
+        opts = opts_kw(opts)
         while True:
             name, dec = self.route(spec)
             cool = self.bucket(name).cooling()
@@ -341,7 +349,7 @@ class ModelRouter(LLMClient):
                     self.sleep(cool)
             dec["rate_wait_s"] = round(self.bucket(name).acquire(spec.prompt_tokens + (max_tokens or 0)), 2)
             try:
-                resp = self.client(name).chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools))
+                resp = self.client(name).chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools), **opts)
             except Exception as e:
                 status = getattr(e, "status_code", None)
                 if status == 429:
@@ -362,16 +370,18 @@ class ModelRouter(LLMClient):
                 self.bucket(name).cooldown(min(60.0, max(r.get("wait_s") or 0 for r in resp.retries)))
                 dec["rate_limited"] = sum(r.get("status") == 429 for r in resp.retries)
             others = [n for n in dec["candidates"] if n != name and n not in dec.get("blocked_by", [])]
-            if self.mode == "routed" and others and is_blocked(resp):
+            if self.mode == "routed" and others and is_blocked(resp) and \
+                    resp.refusal_category != "reasoning_extraction":
                 # D128: the provider blocked this reply; the call goes to the next candidate model (the blocked call
-                # is still counted), never back to the same one within this call
+                # is still counted), never back to the same one within this call. D134: a refusal because the prompt
+                # asks for the model's reasoning is the prompt's fault: no other model is asked
                 self._account(name, resp, dec)
                 dec.setdefault("blocked_by", []).append(name)
                 dec["fallbacks"].append({"from": name, "to": others[0], "reason": "provider_blocked"})
                 name = others[0]
                 dec["chosen"], dec["family"] = name, self.registry[name].family
                 dec["rate_wait_s"] = round(self.bucket(name).acquire(spec.prompt_tokens + (max_tokens or 0)), 2)
-                resp = self.client(name).chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools))
+                resp = self.client(name).chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools), **opts)
             self._account(name, resp, dec)
             if spec.step is not None and spec.role in ("worker", "summariser"):
                 self.step_family[spec.step] = self.registry[name].family
@@ -381,7 +391,8 @@ class ModelRouter(LLMClient):
         """The call's tokens and dollars on its model's account (D97)."""
         e = self.registry[name]
         billed_out = resp.output_tokens + (resp.reasoning_tokens or 0)
-        usd = 0.0 if resp.cached else e.usd(resp.input_tokens, billed_out)
+        usd = 0.0 if resp.cached else e.usd(resp.input_tokens, billed_out, resp.cache_read_tokens,
+                                            resp.cache_write_tokens)
         u = self.usage.setdefault(name, {"calls": 0, "input_tokens": 0, "output_tokens": 0, "usd": 0.0})
         u["calls"] += 1
         u["input_tokens"] += resp.input_tokens
@@ -390,10 +401,10 @@ class ModelRouter(LLMClient):
         dec["usd"] = round(dec.get("usd", 0.0) + usd, 8)
 
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
-                      tools: list | None = None) -> ChatResponse:
+                      tools: list | None = None, **opts) -> ChatResponse:
         resp, _ = self.call(CallSpec(role="worker", prompt_tokens=estimate_tokens(messages),
                                      max_output=max_tokens or 0, needs=frozenset({"tools"} if tools else ())),
-                            messages, seed, max_tokens, tools)
+                            messages, seed, max_tokens, tools, **opts)
         return resp
 
     def can_use(self, feature: str) -> bool:

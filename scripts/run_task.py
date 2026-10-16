@@ -23,6 +23,7 @@ from amoeba.config.schema import Limits
 from amoeba.interp.runtime import Interpreter
 from amoeba.interp.trace import TraceWriter
 from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, describe_api_error
+from amoeba.llm.anthropic_client import AnthropicClient, is_anthropic, make_client
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
@@ -53,7 +54,7 @@ from amoeba.adapt.config import adapt_config
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
-                 "plan_search", "provider_blocked"}   # left out of result.json when None (Phase 1 records unchanged)
+                 "plan_search", "provider_blocked", "reasoning_refusals", "protocol"}   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -73,7 +74,7 @@ def planned_model(llm) -> str | None:
     if isinstance(llm, ModelRouter):
         names = [n for n in (llm.profile_allowed or llm.allowed or []) if n in llm.registry]
         return llm.registry[names[0]].model if len(names) == 1 else None
-    if isinstance(llm, (OpenAICompatibleClient, CachedLLM)):
+    if isinstance(llm, (OpenAICompatibleClient, AnthropicClient, CachedLLM)):
         return getattr(llm, "model", None) or None
     return None
 
@@ -170,6 +171,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     search_rec = None             # D120: the search before planning (None: --plan-search off)
     cfg = None
     stated: dict = {}
+    protocol = None                                   # D136: set once the plan options are resolved
     try:
         if saved_draft is not None:   # D45: reuse a saved Box 2 draft; no drafting call is made
             draft = saved_draft.draft
@@ -256,6 +258,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             if workspace_sources and box is not None and web is not None and topology == "plan":   # D107
                 web.on_data = lambda rec, _b=box, _w=web: _b.save_source(rec, _w)
             plan_options = resolve_native(plan_options, llm, trace)                   # D132
+            protocol = protocol_used(plan_options)                                     # D136
             ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
                              stock=restock, max_agents=envelope.max_agents, timezone=timezone).run(cfg, task, seed)
             answer, error = ep.answer, ep.error
@@ -332,6 +335,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         faults=(ep.faults or None) if ep and topology == "plan" else None,              # D119
         run_guard=(ep.run_guard or None) if ep and topology == "plan" else None,        # D122
         provider_blocked=getattr(trace, "provider_blocked", 0) or None,                # D128
+        reasoning_refusals=getattr(trace, "reasoning_refusals", None) or None,         # D134
+        protocol=protocol,                                                             # D136
         plan_search=(draft.plan_search if draft else search_rec),                       # D120
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
@@ -349,6 +354,33 @@ def models_of(llm, trace) -> dict:
             requested = {"all": asked[0]} if len(asked) == 1 else {"calls": asked}
     returned = sorted({s["gen_ai.response.model"] for s in trace.spans("chat") if s.get("gen_ai.response.model")})
     return {"requested": requested, "returned": returned}
+
+
+# box: runresult
+def protocol_used(plan_options) -> dict | None:
+    """D136: the step protocol asked for and the one used (v2 needs native tool calling); None for legacy."""
+    asked = getattr(plan_options, "protocol", "legacy") if plan_options is not None else "legacy"
+    if asked != "v2":
+        return None
+    native = getattr(plan_options, "native_tools", "off") == "on"
+    return {"asked": "v2", "used": "v2" if native else "legacy",
+            "why": "native tool calling" if native else "no native tool calling on this run's models"}
+
+
+# box: runresult
+def reasoning_refusal_lines(refusals: list[dict] | None) -> list[str]:
+    """D134: the run summary's loud lines for calls the model refused because a prompt asks for its reasoning."""
+    if not refusals:
+        return []
+    out = [f"    !! {len(refusals)} call(s) REFUSED because the prompt asks for the model's reasoning "
+           f"(reasoning_extraction) — those turns were unreadable; fix the prompt or use --protocol v2"]
+    seen = set()
+    for x in refusals:
+        k = (x.get("agent"), tuple(x.get("prompt_files") or ()))
+        if k not in seen:
+            seen.add(k)
+            out.append(f"       {x.get('agent') or '?'}: {', '.join(x.get('prompt_files') or []) or 'prompt file not found'}")
+    return out
 
 
 CONTINUE = "continue"
@@ -518,7 +550,8 @@ def cli_plan_options(args: argparse.Namespace):
                        faults=tuple(getattr(args, "inject_fault", ()) or ()),
                        native_tools=getattr(args, "native_tools", "off"),
                        tool_access=getattr(args, "tool_access", "asked"),
-                       failed_step=getattr(args, "failed_step", "run"), **extra)
+                       failed_step=getattr(args, "failed_step", "run"),
+                       protocol=getattr(args, "protocol", "legacy"), **extra)                     # D136
 
 
 # box: runresult
@@ -595,11 +628,11 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
 
     def make(e):
         key = args.api_key or os.environ.get(e.api_key_env or "", "")
-        client = OpenAICompatibleClient(base_url=e.base_url, api_key=key, model=e.model, max_tokens=2048,
-                                        max_rate_retries=args.max_rate_retries, min_seconds_between_calls=0.0,
-                                        merge_system=e.merge_system if args.merge_system is None else args.merge_system,
-                                        reasoning_effort=effort or e.reasoning_effort, temperature=e.temperature,
-                                        request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
+        client = make_client(e.provider, base_url=e.base_url, api_key=key, model=e.model, max_tokens=2048,  # D134
+                             max_rate_retries=args.max_rate_retries, min_seconds_between_calls=0.0,
+                             merge_system=e.merge_system if args.merge_system is None else args.merge_system,
+                             reasoning_effort=effort or e.reasoning_effort, temperature=e.temperature,
+                             request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
         return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
             else client
     allowed_arg = getattr(args, "allowed_models", None)
@@ -615,7 +648,9 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
         # so a second entry (claude-sonnet-5-5) never takes a Gemma run's verify steps, and --profile claude-sonnet
         # runs on Claude
         prof = get_profile(getattr(args, "profile", None))
-        entry = next((n for n, e in registry.items() if e.model == prof.model), None)
+        # D134: the entry with the profile's model AND its route (the Messages API or the OpenAI-compatible one)
+        entry = next((n for n, e in registry.items() if e.model == prof.model
+                      and is_anthropic(e.provider) == is_anthropic(prof.provider)), None)
         if entry is None and getattr(args, "profile", None):
             raise SystemExit(f"--profile {args.profile}: no registry entry in amoeba/config/models.yaml has model "
                              f"{prof.model!r}; the plan runner's router (D97) calls registry models only")
@@ -649,11 +684,11 @@ def build_llm(args: argparse.Namespace) -> LLMClient:
     effort = None if args.reasoning_effort == "unset" else args.reasoning_effort or profile.reasoning_effort
 
     def make(m: str) -> LLMClient:
-        client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=m,
-                                        max_tokens=profile.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
-                                        min_seconds_between_calls=args.min_seconds_between_calls,
-                                        merge_system=merge, reasoning_effort=effort, temperature=profile.temperature,
-                                        request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
+        client = make_client(profile.provider, base_url=base_url, api_key=api_key, model=m,   # D134
+                             max_tokens=profile.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
+                             min_seconds_between_calls=args.min_seconds_between_calls,
+                             merge_system=merge, reasoning_effort=effort, temperature=profile.temperature,
+                             request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
         return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
             else client
     # a reply limit given on the command line wins over the profile's for that group (D27 flags)
@@ -755,6 +790,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: helpers call their tools through the model's native tool calling, not the text "
                         "sections ## Action / ## ActionInput; auto = on when every model the run may use has "
                         "supports.tools in models.yaml (D132)")
+    p.add_argument("--protocol", choices=["legacy", "v2"], default="legacy",
+                   help="plan: v2 = in native tool-calling mode the step prompts have no text sections, tools take typed "
+                        "arguments and the step ends with a typed Final_Output (D136); without native tool calling the "
+                        "steps fall back to legacy and the summary says so")
     p.add_argument("--tool-access", choices=["core", "asked"], default="core",
                    help="plan: core = every helper holds the core tools (web, calc, local Bash/Write/Read) and "
                         "find_tool, with no 'unavailable' lines and no use-or-declare demand; asked = only what Box 2 "
@@ -992,6 +1031,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
               f"rounds={r.draft_rounds} consensus={r.consensus} status={r.status} error={r.error} answer={shown!r}")
         print(f"    {describe(r.usage)}")                                                    # D47
+        for line in reasoning_refusal_lines(r.reasoning_refusals):                         # D134: loud
+            print(line)
+        if r.protocol and r.protocol["used"] != r.protocol["asked"]:                      # D136
+            print(f"    protocol {r.protocol['asked']} asked; steps used {r.protocol['used']} ({r.protocol['why']})")
         if r.status == "needs_clarification":                                              # D116
             q = (r.interpretation or {}).get("pending") or []
             for x in q:
