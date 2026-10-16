@@ -232,7 +232,7 @@ def test_draft_team_v2_runs_on_typed_replies(envelope):
     approve = {"verdict": "APPROVE", "issues": []}
     llm = MockLLMClient(script={"planner": [_plan()], "agent_observer": [approve], "plan_observer": [approve]})
     task = Task(id="t", prompt="Compute 17 * 23 + 5.", family="arith")
-    d = draft_team(task, llm, envelope, trace)
+    d = draft_team(task, llm, envelope, trace, planning_tier="full")
     assert [r.name for r in d.created_roles] == ["Analyst", "Writer"] and len(d.plan) == 2
     assert d.plan[0].covers == ["R1"]
     assert {c["schema"] for c in llm.calls} == {None, S.ReviewOut}       # PlanOut goes as json_prompt (D142 params)
@@ -246,7 +246,7 @@ def test_draft_team_v2_unreadable_review_is_revise(envelope):
     llm = MockLLMClient(script={"planner": [_plan()], "agent_observer": ["?"],
                                 "plan_observer": [{"verdict": "APPROVE", "issues": []}]})
     d = draft_team(Task(id="t", prompt="Compute 17 * 23 + 5.", family="arith"), llm, envelope, v2_trace(),
-                   max_rounds=1)
+                   max_rounds=1, planning_tier="full")
     assert d.rounds[0].agent_verdict == "REVISE"
 
 

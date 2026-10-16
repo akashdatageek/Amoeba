@@ -140,6 +140,15 @@ class StepOut(BaseModel):
     checks: list[CheckOut] = Field(default_factory=list, description="D142: what plain code checks when the step ends")
 
 
+class ReadingRevisionOut(BaseModel):
+    """D143: the planner's proposal to change Box 1's reading of one entity (accepted only by code's rules)."""
+    entity: str
+    from_reading: str
+    to_reading: str
+    reason: str = Field(description="one sentence")
+    evidence: list[str] = Field(description='plan search source ids such as "P2", or "task text"')
+
+
 # box: planner
 class PlanOut(_Out):
     requirements: list[RequirementOut]
@@ -149,6 +158,8 @@ class PlanOut(_Out):
     capability_requests: list[RequestOut]
     plan: list[StepOut]
     risks: list[str]
+    reading_revision: ReadingRevisionOut | None = Field(default=None, description="D143: only when the evidence shows "
+                                                                                  "the working reading cannot hold")
 
 
 class IssueOut(BaseModel):

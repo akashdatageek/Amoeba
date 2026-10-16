@@ -1072,6 +1072,12 @@ failure is treated like any failed check. The final requirement check counts a r
 checks passed and the answer body (not the Limitations section) covers it. Design:
 docs/design/D142_plan_execution_contract.md.
 
+**D143, planning v2 (Oct 16, audit Phase E).** Under v2, code decides how much planning a task gets: one round
+with no observers, two rounds with the plan observer, or three rounds with both. Only blocking review issues go
+back to the planner. The best round's draft is published, not the last. The planner may propose a change to Box 1's
+reading, which code accepts only when it is one of Box 1's alternatives or rests on a cited planning-search source,
+and the plan observer agreed. Design: docs/design/D143_planning_v2.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

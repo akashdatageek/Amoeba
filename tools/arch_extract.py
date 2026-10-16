@@ -180,7 +180,10 @@ BOXES: list[dict] = [
                "search and fetch, the local tools and skills when on, and that a tool pool exists); a document format "
                "or a house style is a skill; what only the user can supply is an open question or a request.",
                "D141: under --protocol v2 the planner and both observers answer with typed PlanOut and ReviewOut, "
-               "rendered by plain code into the same sections the parsers read."],
+               "rendered by plain code into the same sections the parsers read.",
+               "D143 (v2): code sets the planning tier (light, standard, full), sends back only blocking issues and "
+               "failed HARD checks, publishes the best round's draft, and accepts a reading revision only on Box 1's "
+               "alternatives or a cited [P#] source with the plan observer's approval."],
          proposes="Helpers (name, description, tools, suggestions, instructions), the step plan, and replies to the "
                   "checkers' feedback.",
          disposes="Nothing is accepted yet: the draft goes to the two checkers, and only the last draft is cleaned "
@@ -214,7 +217,9 @@ BOXES: list[dict] = [
                "too long, URL, email, key-shape, repeated, task-restating and over-cap queries, runs the rest through "
                "the run's own search provider, drops result lines that address a model, and shows the results to the "
                "Planner and both checkers as a data block with [P#] ids. [P#] citations in the draft are recorded "
-               "(used_in) and removed before Box 3 builds the team: never in the team's [S#] sources."],
+               "(used_in) and removed before Box 3 builds the team: never in the team's [S#] sources.",
+               "D143: a reading the planner revised on evidence is stated in the opening line: I read X as Y because of "
+               "the reason; Z is not available."],
          proposes="The entities, their readings, a reason and a confidence for each; D120: whether planning needs web "
                   "facts, and at most 3 queries.",
          disposes="Plain code decides whether a reading is clear, whether to ask, and checks the answer's opening line; "

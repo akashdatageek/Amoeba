@@ -134,7 +134,7 @@ def probe_planner_and_observer(llm: TracedLLM, gate: Gate, seed: int):
     gate.allow.update({"planner": n, "agent_observer": n, "plan_observer": n})        # D140: both observers
     try:
         draft_team(Task(id="model-check", prompt=TOY), gate, Envelope.from_registry(default_registry()), llm.trace,
-                   seed=seed, max_rounds=1)
+                   seed=seed, max_rounds=1, planning_tier="full")      # D143: both observers are probed
     except Probed:
         pass
     except Exception:

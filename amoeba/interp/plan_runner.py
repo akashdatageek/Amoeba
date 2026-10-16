@@ -196,6 +196,7 @@ class PlanOptions:
     # typed arguments plain code checks, and the step ends with a typed Final_Output (amoeba/interp/step_protocol.py).
     # Without native tool calling the steps fall back to legacy (event protocol_fallback). Default legacy.
     protocol: str = "legacy"
+    planning_tier: str = "auto"      # D143: light | standard | full | auto (Box 2's rounds and observers; legacy auto = full)
 
 
 class PlanGraphError(ValueError):

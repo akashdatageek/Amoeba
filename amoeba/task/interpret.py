@@ -207,13 +207,25 @@ def assumed(interp: dict | None) -> list[dict]:
 
 
 # box: interpret
+def stated(interp: dict | None) -> list[dict]:
+    """D143: the readings the answer must state: assumed ones, and ones the planner revised on evidence."""
+    return [w for w in (interp or {}).get("working", []) if w["settled"] in ("assumed", "revised")]
+
+
+# box: interpret
 def opening_line(interp: dict | None) -> str | None:
-    """The sentence the answer must open with when the subject was assumed: "I read X as Y; if you meant Z, …"."""
-    rows = assumed(interp)
+    """The sentence the answer must open with when the subject was assumed: "I read X as Y; if you meant Z, …".
+    D143: a revised reading says "I read X as <to> because <reason>; <from> is not available."."""
+    rows = stated(interp)
     if not rows:
         return None
     parts = []
     for w in rows:
+        if w["settled"] == "revised":
+            r = w.get("revision") or {}
+            parts.append(f'I read "{w["entity"]}" as {w["reading"]} because {str(r.get("reason") or "").rstrip(".")}; '
+                         f'{r.get("from_reading")} is not available.')
+            continue
         alts = " or ".join(w["alternatives"][:3])
         parts.append(f'I read "{w["entity"]}" as {w["reading"]}; if you meant {alts}, the answer below may not apply.')
     return " ".join(parts)
@@ -226,7 +238,8 @@ def task_note(interp: dict | None) -> str:
     rows = (interp or {}).get("working", [])
     if not rows:
         return ""
-    how = {"only": "", "dominant": "", "user": " (the user chose this)", "assumed": " (an assumption)"}
+    how = {"only": "", "dominant": "", "user": " (the user chose this)", "assumed": " (an assumption)",
+           "revised": " (revised by the planner on evidence; D143)"}
     lines = ["Working interpretation (settled before planning; do not re-interpret it or guess otherwise):"]
     lines += [f'- "{w["entity"]}" means {w["reading"]}{how[w["settled"]]}' for w in rows]
     line = opening_line(interp)
@@ -263,7 +276,7 @@ def route_open_questions(open_questions: list[dict], interp: dict | None) -> tup
 def enforce_opening(answer: str | None, interp: dict | None) -> tuple[str | None, dict]:
     """Plain code: when the subject was assumed, the answer opens with the stated assumption and its Limitations
     list the other readings; whatever is missing is added (and recorded)."""
-    line, rows = opening_line(interp), assumed(interp)
+    line, rows = opening_line(interp), stated(interp)                     # D143: revised readings too
     if not answer or not line:
         return answer, {}
     added = {"opening_line_added": False, "alternatives_added": []}

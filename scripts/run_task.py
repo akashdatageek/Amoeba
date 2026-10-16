@@ -29,7 +29,8 @@ from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
 from amoeba.task.plan_search import add_findings, search_before_planning, with_used_in, without_plan_ids
 from amoeba.task.interpret import (NeedsClarification, apply_clarify, ask_all, ask_one, classify_family,
-                                   enforce_opening, open_questions, opening_line, read_task, with_note)
+                                   enforce_opening, open_questions, opening_line, read_task, task_note,
+                                   with_note)
 from amoeba.config.niche import add_done_clauses, environment_text, load_profile
 from amoeba.memory.context import load_context, standards_slots
 from amoeba.interp.trace import TracedLLM
@@ -54,7 +55,8 @@ from amoeba.adapt.config import adapt_config
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
-                 "plan_search", "provider_blocked", "reasoning_refusals", "protocol"}   # left out of result.json when None (Phase 1 records unchanged)
+                 "plan_search", "provider_blocked", "reasoning_refusals", "protocol",
+                 "planning_tier", "published_round", "reading_revised"}   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -212,9 +214,14 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                                                     web.provider if web is not None else None, trace, seed)
                 lessons = add_findings(lessons, search_rec)
             task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})
+            tier = getattr(plan_options, "planning_tier", "auto") if topology == "plan" else "auto"   # D143
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                quality_gate=quality_gate, toolbox=toolbox, interpretation=interp,   # D68, D77
-                               lessons=lessons)                                                       # D82
+                               lessons=lessons, planning_tier=tier)                                   # D82
+            if (draft.reading_revision or {}).get("accepted"):    # D143: the planner's reading, accepted by code
+                old = task_note(interp)
+                interp = draft.interpretation
+                task = task.model_copy(update={"prompt": task.prompt.replace(old, task_note(interp))})
             draft.plan_search = with_used_in(search_rec, draft)                                        # D120
             if ask is not None:       # D53: the user reads the draft's intake before Box 3 runs
                 print(intake_text(draft))
@@ -225,7 +232,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     task = task.model_copy(update={"prompt": f"{task.prompt}\n\nUser clarification: {clarification}"})
                     draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                        quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
-                                       toolbox=toolbox, interpretation=interp, lessons=lessons)
+                                       toolbox=toolbox, interpretation=interp, lessons=lessons, planning_tier=tier)
                     draft.plan_search = with_used_in(search_rec, draft)                                # D120
         task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})    # D77: Box 3 reads it too
         if prof is not None and prof.done_when:           # D102: what "done" means here, on the answer step(s)
@@ -339,6 +346,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         reasoning_refusals=getattr(trace, "reasoning_refusals", None) or None,         # D134
         protocol=protocol,                                                             # D136
         plan_search=(draft.plan_search if draft else search_rec),                       # D120
+        planning_tier=draft.planning_tier if draft and topology == "plan" else None,     # D143
+        published_round=draft.published_round if draft else None,
+        reading_revised=draft.reading_revision if draft else None,
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
@@ -552,7 +562,8 @@ def cli_plan_options(args: argparse.Namespace):
                        native_tools=getattr(args, "native_tools", "off"),
                        tool_access=getattr(args, "tool_access", "asked"),
                        failed_step=getattr(args, "failed_step", "run"),
-                       protocol=getattr(args, "protocol", "legacy"), **extra)                     # D136
+                       protocol=getattr(args, "protocol", "legacy"),                               # D136
+                       planning_tier=getattr(args, "planning_tier", "auto"), **extra)              # D143
 
 
 # box: runresult
@@ -795,6 +806,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: v2 = in native tool-calling mode the step prompts have no text sections, tools take typed "
                         "arguments and the step ends with a typed Final_Output (D136); without native tool calling the "
                         "steps fall back to legacy and the summary says so")
+    p.add_argument("--planning-tier", choices=["auto", "light", "standard", "full"], default="auto",
+                   help="plan: how much planning Box 2 does — light: 1 round, no observers; standard: up to 2 rounds, "
+                        "the plan observer; full: up to 3 rounds, both observers; auto: decided by code from the task "
+                        "under --protocol v2, full under legacy (D143)")
     p.add_argument("--tool-access", choices=["core", "asked"], default="core",
                    help="plan: core = every helper holds the core tools (web, calc, local Bash/Write/Read) and "
                         "find_tool, with no 'unavailable' lines and no use-or-declare demand; asked = only what Box 2 "
