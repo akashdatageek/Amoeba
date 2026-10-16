@@ -383,6 +383,7 @@ class RunResult(BaseModel):
     reasoning_refusals: list[dict] | None = None   # D134: calls refused because the prompt asks for reasoning
     protocol: dict | None = None      # D136 --protocol v2: {asked, used, why}; left out for legacy
     planning_tier: str | None = None  # D143: light | standard | full (plan topology)
+    verifier_independence: list | None = None   # D146: per verify step, independent / same_family / same_model
     published_round: int | None = None   # D143 (v2): the round whose draft was published (the best, not the last)
     reading_revised: dict | None = None  # D143 (v2): the planner's reading revision and whether code accepted it
     plan_search: dict | None = None   # D120 --plan-search on: the search before planning (Draft.plan_search)

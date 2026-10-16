@@ -25,7 +25,7 @@ def test_the_profile_and_its_registry_entry():
 
 def test_every_other_profile_and_entry_keeps_temperature_0_2():
     _, profiles = load_profiles()
-    claude = {"claude-sonnet", "claude-sonnet-compat"}
+    claude = {"claude-sonnet", "claude-sonnet-compat", "claude-sonnet+gemma-verify"}   # D146
     assert {n: p.temperature for n, p in profiles.items() if n not in claude} == \
         {n: 0.2 for n in profiles if n not in claude}
     assert load_registry()[0]["gemma-4-31b"].temperature == 0.2

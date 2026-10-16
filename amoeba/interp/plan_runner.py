@@ -8,6 +8,7 @@ step_<n>.md plus step_<n>.json metadata). Plain code owns the graph, the order, 
 from __future__ import annotations
 
 from contextlib import contextmanager
+import shutil
 
 import json
 import re
@@ -536,6 +537,36 @@ def write_summary(inp: str) -> str:
     path, content = args.get("file_path") or args.get("path") or "?", str(args.get("content") or "")
     more = f" … ({len(content) - WRITE_HEAD} more characters)" if len(content) > WRITE_HEAD else ""
     return f"write {path} ({len(content)} characters): {content[:WRITE_HEAD]}{more}"
+
+
+# box: step_check
+def model_family(model: str) -> str:
+    """D146: a model's family by its name (claude → anthropic, gemma/gemini → google, gpt → openai, ...)."""
+    m = (model or "").lower()
+    for key, fam in (("claude", "anthropic"), ("gemma", "google"), ("gemini", "google"), ("gpt", "openai"),
+                     ("llama", "meta"), ("qwen", "alibaba"), ("mistral", "mistral"), ("mock", "mock")):
+        if key in m:
+            return fam
+    return m.split("-")[0] or "?"
+
+
+# box: step_check
+def verifier_independence(steps: list[dict]) -> list[dict]:
+    """D146: per verify step, whether it ran on a different model family from the steps it checks (independent),
+    the same family on another model, or the same model."""
+    by = {m["step"]: m for m in steps}
+    out = []
+    for m in steps:
+        if not m.get("verification"):
+            continue
+        mine = set(m.get("models") or [])
+        theirs = {x for d in m.get("depends_on") or [] for x in (by.get(d) or {}).get("models") or []}
+        fam_m, fam_t = {model_family(x) for x in mine}, {model_family(x) for x in theirs}
+        how = "unknown" if not mine or not theirs else "independent" if not fam_m & fam_t else \
+            "same_model" if mine & theirs else "same_family"
+        out.append({"step": m["step"], "checks": list(m.get("depends_on") or []), "verifier_models": sorted(mine),
+                    "producer_models": sorted(theirs), "independence": how})
+    return out
 
 
 class _Work:
@@ -1367,6 +1398,29 @@ class PlanRunner:
         return "\n\n".join(parts), given
 
     # box: step_check
+    @contextmanager
+    def clean_sources(self, n: int):
+        """D146: while the verifier works out its own result, the workspace's sources/ folder holds only what it
+        fetches itself; the producers' fetched files come back for the comparison phase (its own files are kept)."""
+        ws = getattr(self.local, "workspace", None)
+        src = Path(ws) / "sources" if ws is not None else None
+        if src is None or not src.is_dir() or not any(src.iterdir()):
+            yield
+            return
+        hidden = Path(ws) / f".sources_before_verify_{n}"
+        src.rename(hidden)
+        src.mkdir()
+        self.i.trace.event("verifier_clean_sources", {"amoeba.step": n})
+        try:
+            yield
+        finally:
+            for f in src.iterdir():                          # what the verifier fetched joins the producers' files
+                target = hidden / f.name
+                if not target.exists():
+                    f.rename(target)
+            shutil.rmtree(src, ignore_errors=True)
+            hidden.rename(src)
+
     def own_result(self, step: PlanStep, n: int, deps: list[int], writers: list[AgentSpec], extra: str) -> dict:
         """D90: the verifier's own result, made in a fresh turn loop that never sees the checked steps' outputs (nor
         the team's history). Made once per verify step: a re-check after rework reuses it."""
@@ -1440,6 +1494,7 @@ class PlanRunner:
     def run_step(self, step: PlanStep, wave: int, deps: list[int], rework: dict | None = None,
                  reverify: dict | None = None, rerun: dict | None = None, fixing: dict | None = None) -> dict:
         n = number(step)
+        spans0 = len(self.i.trace.spans("chat"))                                 # D146: the models this attempt used
         previous = (self.artifacts.get(n) or {}).get("meta")                     # D117: the attempt before, if any
         agents = [self.agents[a] for a in step.agent_ids]
         self.faults.hide(n, agents)                                               # D119 capability
@@ -1481,7 +1536,12 @@ class PlanRunner:
         mine = None
         if verifier and self.opt.verify_first == "on":        # D90: the verifier's own result before the outputs
             own_writers = agents[:1] if self.opt.collab == "critique" and len(agents) > 1 else agents
-            mine = self.own_result(step, n, deps, own_writers, extra.replace(VERIFY_NOTE, "").replace(VERIFY_TOOLS_NOTE, ""))
+            own_extra = extra.replace(VERIFY_NOTE, "").replace(VERIFY_TOOLS_NOTE, "")
+            if inputs_saved:                                  # D146: the own-result loop sees no producer sources
+                own_extra = own_extra.replace(SOURCES_NOTE.format(files=", ".join(
+                    f"{x['file']} [{x['source']}]" for x in inputs_saved[-12:])), "")
+            with self.clean_sources(n):
+                mine = self.own_result(step, n, deps, own_writers, own_extra)
             inputs += ("\n\n## Your own result (you worked it out before you saw the outputs above)\n"
                        + (mine["text"].strip() or "(you wrote no result)"))
             extra += VERIFY_COMPARE_NOTE
@@ -1672,6 +1732,8 @@ class PlanRunner:
                 "checks": checks, "retried": retried, "refine": refine,
                 "contract_checks": planned,                                        # D142
                 "context": {"chars_sent": w.chars_sent, "chars_saved": w.chars_saved},   # D144
+                "models": sorted({s.get("gen_ai.response.model") or s.get("gen_ai.request.model") or "?"
+                                  for s in self.i.trace.spans("chat")[spans0:]}),         # D146
                 "unverified_tags_removed": removed,                                # D66
                 "mislabelled_citations": mislabelled,                              # D74
                 "citations_relabelled": relabelled,                                # D131
@@ -2343,15 +2405,17 @@ class PlanRunner:
                                held=held)
         if not is_stuck(meta, signals):
             return None
-        d = {"step": n, "attempt": len([s for s in self.stuck if s["step"] == n]) + 1, **diagnose(signals)}
+        d = {"step": n, "attempt": len([s for s in self.stuck if s["step"] == n]) + 1, **diagnose(signals),
+             "signals_detail": [{k: v for k, v in s.items() if k != "requests"} for s in signals]}   # D146
         meta["stuck"] = d
         self.stuck.append(d)
         self.ep.stuck = list(self.stuck)
         self.i.trace.event("stuck", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.signals": d["signals"],
                                      "amoeba.allowed_edits": d["allowed_edits"], "amoeba.evidence": d["evidence"]})
         if self.run_dir is not None:
-            EvidenceLog(self.run_dir).append("stuck", {k: d[k] for k in ("step", "attempt", "cause", "signals",
-                                                                        "evidence")})
+            EvidenceLog(self.run_dir).append("stuck", {**{k: d[k] for k in ("step", "attempt", "cause", "signals",
+                                                                           "signals_detail", "evidence")},
+                                                      "ground_truth": None})       # D146: for hand grading
         return d
 
     # ---- D117 Stage C: code fixes for a stuck step ------------------------------------------------------------

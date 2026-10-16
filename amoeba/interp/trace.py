@@ -35,7 +35,7 @@ EVENT_BOX = {
     "step_contract": "step_check", "contract_check": "step_check", "rework_skipped": "step_check",   # D61
     "contract_checks": "step_check", "ask_schema_rejected": "client",                                # D142, D141
     "tool_result_spilled": "plan_step",                                                               # D144
-    "verifier_tools": "step_check",                                                                   # D65
+    "verifier_tools": "step_check", "verifier_clean_sources": "step_check",                           # D65, D146
     "freshness": "plan_summary",                                                                      # D67
     "file_block_adapted": "read_action", "not_an_answer": "solver",                                   # D70
     "office_check": "localtools",                                                                     # D71
@@ -208,7 +208,8 @@ class TracedLLM:
         if routed:
             llm, cap = self.llm, None
         else:
-            llm, cap = self.llm.route(group) if hasattr(self.llm, "route") else (self.llm, None)
+            llm, cap = (self.llm.route(group, agent_name) if getattr(self.llm, "by_agent", None) is not None   # D146
+                        else self.llm.route(group)) if hasattr(self.llm, "route") else (self.llm, None)
         if cap and not _retry:
             max_tokens = cap
         attrs = {"gen_ai.agent.id": agent_id, "gen_ai.agent.name": agent_name, "amoeba.role_group": group,

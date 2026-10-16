@@ -802,7 +802,10 @@ BOXES: list[dict] = [
                "branch, at most one commit per 10 minutes plus a final one; each commit message carries the chain "
                "head. Shipping runs in the harness only; agents never get git credentials or cloud credentials.",
                "D117: the loop that wrote it is gone; the log is kept for in-task adaptation: every stuck step, "
-               "diagnosis, fix tried and stop is a row (settings read through amoeba/adapt/config.py)."],
+               "diagnosis, fix tried and stop is a row (settings read through amoeba/adapt/config.py).",
+               "D146: every stuck row carries all its signals and ground_truth null for hand grading (python -m "
+               "scripts.grade_episodes); the hash chain is self-consistent only, with no outside anchor, because "
+               "make_shipper is never called."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes, chains and verifies the log.",
          anchors=[]),

@@ -44,7 +44,8 @@ from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
-from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
+from amoeba.llm.profiles import ROLE_GROUPS, attach_verifier, build_router, get_profile
+from amoeba.interp.plan_runner import verifier_independence   # D146
 from amoeba.tools.web import TavilyProvider, web_registry
 from amoeba.pool.stock import PoolSetup, SharedPicks, stock_toolbox
 from amoeba.localtools.gate import SandboxRequired, require_sandbox
@@ -56,7 +57,7 @@ from amoeba.adapt.config import adapt_config
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
                  "plan_search", "provider_blocked", "reasoning_refusals", "protocol",
-                 "planning_tier", "published_round", "reading_revised"}   # left out of result.json when None (Phase 1 records unchanged)
+                 "planning_tier", "published_round", "reading_revised", "verifier_independence"}   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -347,6 +348,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         protocol=protocol,                                                             # D136
         plan_search=(draft.plan_search if draft else search_rec),                       # D120
         planning_tier=draft.planning_tier if draft and topology == "plan" else None,     # D143
+        verifier_independence=(verifier_independence(ep.steps) or None) if ep and topology == "plan" else None,  # D146
         published_round=draft.published_round if draft else None,
         reading_revised=draft.reading_revision if draft else None,
         **local_out)
@@ -723,7 +725,21 @@ def build_llm(args: argparse.Namespace) -> LLMClient:
         from dataclasses import replace
         profile = replace(profile, roles={g: {k: v for k, v in r.items() if k != "model"}
                                           for g, r in profile.roles.items()})
-    return build_router(profile, make, model, keep)
+    router = build_router(profile, make, model, keep)
+    if profile.verifier and mode != "fixed":                     # D146: verify steps on another model family
+
+        def make_for(vp):
+            key = os.environ.get(vp.api_key_env or "", "")
+            if not key:
+                return None
+            c = make_client(vp.provider, base_url=vp.base_url, api_key=key, model=vp.model,
+                            max_tokens=vp.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
+                            min_seconds_between_calls=args.min_seconds_between_calls, merge_system=vp.merge_system,
+                            reasoning_effort=vp.reasoning_effort, temperature=vp.temperature,
+                            request_timeout_s=getattr(args, "request_timeout_s", None))
+            return CachedLLM(c, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else c
+        print(f"verifier: {attach_verifier(router, profile, make_for)}")
+    return router
 
 
 def build_box3_tools(args: argparse.Namespace, tools: ToolRegistry) -> ToolRegistry:

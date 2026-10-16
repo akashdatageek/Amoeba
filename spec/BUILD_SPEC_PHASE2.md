@@ -1089,6 +1089,12 @@ already holds is never granted again; its failure is a tool error. A re-plan may
 dependents and must pass Box 2's HARD checks. A stuck upstream re-run gets one fix of its own. A step no fix
 recovered is reported as kept going under D133. Design: docs/design/D145_box4_ladder.md.
 
+**D146, measurement and verifier independence (Oct 16, audit Phase F).** Every stuck episode is recorded with all
+its signals and an empty ground-truth field, and a small command records hand grades next to the run. A profile can
+send verify steps and the plan observer to another model family; result.json says for each verify step whether it
+was independent. The verifier works out its own result without the producers' fetched pages. The evidence hash chain
+is self-consistent only: nothing anchors it outside the run folder. Design: docs/design/D146_measurement_verifier.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
