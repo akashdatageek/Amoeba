@@ -1026,6 +1026,11 @@ Plain code turns that into the same BLOCKED / MISSING / Verdict lines as before,
 and the dispute resolver work unchanged. Without native tool calling the steps fall back to legacy and the run says
 so. The default stays `legacy` for now. Design: docs/design/D136_protocol_v2.md.
 
+**D137, security (Oct 16, audit Phase A).** A pool server that runs code for the caller is now refused when it is
+vetted and again after connecting, unless `--allow-remote-exec` is set; code runs only through local:Bash in the
+sandbox. The harness's own fetches reach only public http(s) addresses, with every redirect checked. Local tools are no
+longer mistaken for outside actions under a niche profile. Design: docs/design/D137_security.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

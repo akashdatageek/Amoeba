@@ -362,7 +362,9 @@ def test_paid_endpoints_are_refused(cache):
     assert vet(tool("io.github.x/code-sandbox", "Runs Python code",
                     remote_url="https://code-sandbox.api.klymax402.com/mcp"), s)[0] == "paid_endpoint"
     assert vet(tool("io.github.x/y", "Runs Python code", remote_url="https://klymax402.com/mcp"), s)[0] == "paid_endpoint"
-    assert vet(tool("io.github.x/z", "Runs Python code", remote_url="https://notklymax402.com/mcp"), s)[0] is None
+    # not paid, but a code runner: D137 refuses it next (the paid check comes first)
+    assert vet(tool("io.github.x/z", "Runs Python code", remote_url="https://notklymax402.com/mcp"), s)[0] == \
+        "remote_exec"
     from amoeba.pool.index import load_pool_config
     assert load_pool_config()["paid_hosts"] == ["*.klymax402.com"]              # shipped in pool.yaml
 

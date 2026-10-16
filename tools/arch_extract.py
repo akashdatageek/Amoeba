@@ -640,7 +640,9 @@ BOXES: list[dict] = [
                "Pool tools (D56) are remote MCP servers registered as pool:<name> for the helper that asked; they "
                "run here too, with the same caps, [S#] source ids and error lines.",
                "This is the single place any tool is ever run.",
-               "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#]."],
+               "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#].",
+               "D137: the harness's own fetches reach only public http(s) addresses, with each redirect hop checked "
+               "again (at most 3)."],
          proposes="A tool name and its input (from a helper).",
          disposes="Plain code checks the name and the arithmetic before anything runs.",
          anchors=["amoeba/tools/registry.py::ToolRegistry", "amoeba/tools/registry.py::calc",
@@ -679,7 +681,9 @@ BOXES: list[dict] = [
                "architectures), when it passes vetting again; --picks-only makes the picks in a pre-pass.",
                "D117 Stage C: when a stuck step lacks a capability and the pool or local tools are on, the plan runner "
                "runs this step again for it with code_pick: plain code takes the first vetted candidate not given to "
-               "that step before (no AI call, no shared pick); with both off the rung is skipped."],
+               "that step before (no AI call, no shared pick); with both off the rung is skipped.",
+               "D137: a pool server that runs code for the caller (remote code execution) is refused at vetting and "
+               "after connecting unless --allow-remote-exec; code runs only through local:Bash in the sandbox."],
          proposes="The picker names one candidate (or NONE); never for an in-task fix (code_pick).",
          disposes="Plain code ranks the candidates, rejects anything unsafe or over the caps, and attaches.",
          anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
@@ -798,7 +802,8 @@ BOXES: list[dict] = [
                "Box 3 refuses any tool outside the profile even when a plan or a replan asks for it, and logs the "
                "refusal; the router refuses any model outside it; domain checks (amoeba/checks/) run after each step "
                "and a failed one earns a retry turn.",
-               "D113: after a step that made a workbook, typed totals and typed derived cells (row or column sums, products of row cells) fail the domain_xlsx_formulas check with the cell names and earn the retry turn."],
+               "D113: after a step that made a workbook, typed totals and typed derived cells (row or column sums, products of row cells) fail the domain_xlsx_formulas check with the cell names and earn the retry turn.",
+               "D137: local: and made: tools are never counted as outside actions; the allow list still applies."],
          proposes="Nothing: a person writes the profile.",
          disposes="Plain code applies the profile's allowlists, limits, done clauses and checks.",
          anchors=[]),

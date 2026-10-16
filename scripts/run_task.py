@@ -520,7 +520,7 @@ def disable_tools(names, tools: ToolRegistry, pool: PoolSetup | None = None, loc
         return tools, pool, local
     if pool is not None:
         pool = PoolSetup(config=pool.config, cache_dir=pool.cache_dir, connector=pool.connector, env=pool.env,
-                         disabled=frozenset(names))
+                         disabled=frozenset(names), allow_remote_exec=pool.allow_remote_exec)
     return tools.without(names), pool, (local.without(names) if local is not None else None)
 
 
@@ -844,6 +844,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="after Box 2, print the requirements, assumptions and open questions and wait for 'continue' "
                         "or an edited assumption (appended to the task as 'User clarification: ...', then one "
                         "re-draft round) (D53). Never in eval scripts")
+    p.add_argument("--allow-remote-exec", action="store_true",
+                   help="allow pool servers that run code for the caller (execute, interpreter, sandbox, shell …); "
+                        "off by default: code runs only through local:Bash in the run's sandbox (D137)")
     p.add_argument("--pool", action=argparse.BooleanOptionalAction, default=True,
                    help="Box 3 first fills capability requests from the cached tool/skill pool (MCP Registry servers, "
                         "anthropics/skills): keyword match, one AI pick per request, plain-code vetting (D56). Build "
@@ -984,7 +987,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
     saved = load_saved_drafts(args.drafts_from) if args.drafts_from else None
-    pool = PoolSetup(cache_dir=args.pool_dir) if args.pool else None   # D56
+    pool = PoolSetup(cache_dir=args.pool_dir, allow_remote_exec=getattr(args, "allow_remote_exec", False)) \
+        if args.pool else None                                                   # D56; D137
     local = LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir,
                        mode=args.local_tools_mode) if args.local_tools == "on" else None   # D59, D96a
     _, pool, local = disable_tools(disabled, tools, pool, local)        # D80
