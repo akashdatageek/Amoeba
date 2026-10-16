@@ -66,6 +66,7 @@ class TraceWriter:
         self.records: list[dict] = []
         self.provider_blocked = 0              # D128: calls the provider blocked (content_filter), retries included
         self.reasoning_refusals: list[dict] = []   # D134: refusals because a prompt asks for the model's reasoning
+        self.protocol = "legacy"               # D141: the run's protocol (legacy | v2); run_one and the plan runner set it
         self._boxes: list[str | None] = []     # the box of each open span, innermost last (D55)
         self._fh = None
         if self.path:

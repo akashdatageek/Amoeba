@@ -146,11 +146,22 @@ def pick(llm: TracedLLM, q, helper: str, steps: str, candidates: list[dict], see
     twice the room (TracedLLM, D27)."""
     lines = "\n".join(f"- id: {e['id']} | name: {e.get('title') or e['name']} | kind: {e['kind']} | description: "
                       f"{' '.join((e.get('description') or '').split())[:240]}" for e in candidates)
-    user = render(PROMPT.pool_pick, kind=q.kind, name=q.canonical or q.name, what=q.what_it_does or "(not given)",
+    from amoeba.llm.ask import Unreadable, ask, protocol_of
+    typed = protocol_of(llm.trace) == "v2"                                   # D141: a typed PoolPickOut
+    user = render(PROMPT.pool_pick_v2 if typed else PROMPT.pool_pick, kind=q.kind, name=q.canonical or q.name,
+                  what=q.what_it_does or "(not given)",
                   input=q.input or "(not given)", output=q.output or "(not given)", helper=helper,
                   steps=steps or "(not given)", candidates=data_block("pool candidates", lines))
-    reply = llm.chat_messages([{"role": "user", "content": user}], seed, agent_name=PICKER, role="pool",
-                              max_tokens=max_tokens).content
+    if typed:
+        from amoeba.task.schemas import PoolPickOut, to_legacy
+        try:
+            reply = to_legacy("pool_pick", ask(llm, "pool_pick", [{"role": "user", "content": user}], PoolPickOut,
+                                               max_tokens=max_tokens, seed=seed, agent_name=PICKER, role="pool"))
+        except Unreadable:
+            reply = ""
+    else:
+        reply = llm.chat_messages([{"role": "user", "content": user}], seed, agent_name=PICKER, role="pool",
+                                  max_tokens=max_tokens).content
     # D58: Gemma writes its reasoning into the reply as <thought>…</thought> before the answer; the answer is what
     # follows a closed thinking block (an unclosed block leaves nothing that can match an id)
     answer = THINKING.sub("", reply or "").strip().strip("`'\"").strip()

@@ -43,7 +43,9 @@ from amoeba.llm.router import NoModelAvailable
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
 from amoeba.llm.cache import is_blocked
 from amoeba.llm.client import tool_fn_name
-from amoeba.interp.step_protocol import (HOW_TO_ACT, HOW_TO_ACT_TEXT, PROVIDER_BLOCKED_NOTE_V2, UNREADABLE_NOTE_V2,  # D136
+from amoeba.llm.ask import Unreadable, ask                                     # D141
+from amoeba.task.schemas import CritiqueOut, FixOut, ReplanOut, ToolWriterOut, to_legacy   # D141
+from amoeba.interp.step_protocol import (HOW_TO_ACT, HOW_TO_ACT_TEXT, compact_step_prompt, PROVIDER_BLOCKED_NOTE_V2, UNREADABLE_NOTE_V2,  # D136
                                          bad_call_text, check_args, final_text, resolver_text, tool_schema,
                                          typed_input, typed_verdict, v2_text)
 from amoeba.localtools.claims import claimed_files
@@ -1035,6 +1037,7 @@ class PlanRunner:
             self.i.trace.event("web_tools", {"amoeba.web.provider": self.web.provider.name, **self.web.limits.as_trace()})
         if self.opt.tool_access == "core":                # D132
             self.grant_core_tools()
+        self.i.trace.protocol = self.opt.protocol         # D141: every call site of the run reads it
         if self.opt.protocol == "v2" and not self.v2:     # D136: v2 needs native tool calling
             self.i.trace.event("protocol_fallback", {"amoeba.box": "plan_step", "amoeba.asked": "v2",
                                                      "amoeba.used": "legacy",
@@ -1784,7 +1787,7 @@ class PlanRunner:
         """D51: one reviewer's verdict and numbered issues. D138 (B7): an unreadable reply (after one repair call)
         counts as REVISE with the issue "reviewer reply unreadable", never as AGREE."""
         criteria = "; ".join(rv.success_criteria) or "none written"
-        user = render(PROMPT.plan_critique, task=self.task.prompt, today=self.i.clock["line"], card=plan_card(rv), number=n,
+        user = render(PROMPT.plan_critique_v2 if self.typed else PROMPT.plan_critique, task=self.task.prompt, today=self.i.clock["line"], card=plan_card(rv), number=n,
                       step=step_detail(step), inputs=inputs, drafter=drafter.name, draft=draft,
                       done_when=step.done_when or "none written", criteria=criteria)
         system = render(PROMPT.plan_step_system, name=rv.name)
@@ -1792,17 +1795,24 @@ class PlanRunner:
                                                 "amoeba.box": "plan_step",
                                                 "amoeba.step": n, "amoeba.review": True}):
             before = self.i.trace.n_llm_calls
-            try:
-                raw, sec = self.i.llm.chat_sections(system, user, ["Verdict"], self.ep.seed, agent_id=rv.agent_id,
-                                                    agent_name=rv.name, max_tokens=PLAN_MAX_TOKENS,
-                                                    role=role_group(reviewing=True))   # D54
-            except MissingSections as e:
-                raw, sec = getattr(e, "raw", "") or "", {}
+            if self.typed:                                # D141: a typed CritiqueOut (ask makes the repair call)
+                raw = self.struct_call("critique", CritiqueOut, [{"role": "system", "content": system},
+                                                                {"role": "user", "content": user}],
+                                      PLAN_MAX_TOKENS, rv.name, role=role_group(reviewing=True), count=False)
+                sec = parse_sections(raw) if raw.startswith("## Verdict") else {}
+            else:
+                try:
+                    raw, sec = self.i.llm.chat_sections(system, user, ["Verdict"], self.ep.seed,
+                                                        agent_id=rv.agent_id, agent_name=rv.name,
+                                                        max_tokens=PLAN_MAX_TOKENS,
+                                                        role=role_group(reviewing=True))   # D54
+                except MissingSections as e:
+                    raw, sec = getattr(e, "raw", "") or "", {}
             for rec in self.i.trace.spans("chat")[before:]:
                 self.i._record(rv, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                rec.get("gen_ai.usage.output_tokens", 0))
         word = (sec.get("Verdict") or "").strip().upper()
-        if sec and "REVISE" not in word and "AGREE" not in word:
+        if sec and "REVISE" not in word and "AGREE" not in word and not self.typed:
             # D138 (B7): a Verdict section that says neither gets one repair call (a missing section already had one)
             try:
                 raw, sec = self.i.llm.chat_sections(system, f"{user}\n\n{REVIEW_REPAIR}", ["Verdict"], self.ep.seed,
@@ -2490,13 +2500,17 @@ class PlanRunner:
                                      f"output: {step.output}" if step.output else "",
                                      f"done_when: {step.done_when}" if step.done_when else "") if x)
         cfg = tw_config()
-        user = render(PROMPT.tool_writer, task=self.task.prompt[:1500], step=str(n), card=card, capability=cap,
+        user = render(PROMPT.tool_writer_v2 if self.typed else PROMPT.tool_writer, task=self.task.prompt[:1500],
+                      step=str(n), card=card, capability=cap,
                       kind=kind, libraries=", ".join(libs) or "no third-party library",
                       stdlib=", ".join(cfg["stdlib"]), max_chars=cfg["max_code_chars"])
         if refused:
             user += f"\n\n# Your previous tool was refused by plain code\n{refused}\nReply again with a corrected tool."
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "tool_writer", "amoeba.box": "toolmaker",
                                                 "amoeba.step": n}):
+            if self.typed:                                # D141: a typed ToolWriterOut
+                return self.struct_call("tool_writer", ToolWriterOut, [{"role": "user", "content": user}], 4096,
+                                       "tool_writer")
             resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
                                             agent_name="tool_writer", max_tokens=4096, role="planner")
         self.ep.total_tokens += resp.input_tokens + resp.output_tokens
@@ -2700,6 +2714,11 @@ class PlanRunner:
             except (ValueError, ValidationError) as e:
                 reply, problems = None, [f"unreadable reply: {e}"[:400]]
             replies.append({"attempt": attempt, "op": reply.edit.op if reply else None, "problems": problems})
+            if reply is None and self.typed and problems:   # D141: ask() already made the repair call
+                self.i.trace.event("proposer_reply", {"amoeba.step": n, "amoeba.attempt": attempt, "amoeba.op": None,
+                                                      "amoeba.problems": problems[:6]})
+                refused = problems
+                break
             self.i.trace.event("proposer_reply", {"amoeba.step": n, "amoeba.attempt": attempt,
                                                   "amoeba.op": reply.edit.op if reply else None,
                                                   "amoeba.problems": problems[:6]})
@@ -2867,6 +2886,10 @@ class PlanRunner:
             user += ("\n\n# Your previous reply was refused by plain code\n" + "\n".join(f"- {x}" for x in refused)
                      + "\nReply again with one valid edit.")
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "fix_proposer", "amoeba.box": "proposer"}):
+            if self.typed:                                # D141: a typed FixReply
+                return self.struct_call("fix", FixOut, [{"role": "user", "content": user}],
+                                       int((adapt_config().get("proposer") or {}).get("max_tokens", 8192)),
+                                       "fix_proposer")
             resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
                                             agent_name="fix_proposer", role="planner",
                                             max_tokens=int((adapt_config().get("proposer") or {}).get("max_tokens",
@@ -2929,6 +2952,29 @@ class PlanRunner:
 
     # box: plan_step
     @property
+    def typed(self) -> bool:
+        """D141: protocol v2 for the run's structured calls (critique, re-plan, fix proposer, tool writer). Unlike
+        the step protocol (v2), these need no native tool calling: ask() uses the model's output mode."""
+        return self.opt.protocol == "v2"
+
+    # box: plan_step
+    def struct_call(self, kind: str, schema, messages: list[dict], max_tokens: int, agent: str,
+                   role: str = "planner", count: bool = True) -> str:
+        """D141: one structured call through ask(); the typed reply rendered as the text the legacy reader of that
+        call site parses (schemas.to_legacy), or the last raw reply when it stays unreadable after the repair."""
+        t0, n0 = self.i.trace.total_tokens, self.i.trace.n_llm_calls
+        try:
+            text = to_legacy(kind, ask(self.i.llm, kind, messages, schema, max_tokens=max_tokens, seed=self.ep.seed,
+                                       agent_name=agent, role=role))
+        except Unreadable as e:
+            text = e.raw or ""
+        if count:
+            self.ep.total_tokens += self.i.trace.total_tokens - t0
+            self.ep.n_llm_calls += self.i.trace.n_llm_calls - n0
+        return text
+
+    # box: plan_step
+    @property
     def v2(self) -> bool:
         """D136: protocol v2 is in force (asked for, and the run calls tools natively)."""
         return self.opt.protocol == "v2" and self.opt.native_tools == "on"
@@ -2942,7 +2988,8 @@ class PlanRunner:
         kind = "resolve" if template == PROMPT.plan_resolve else None
         if self.v2:                                       # D136: the v2 variant of the step prompt
             template = {PROMPT.plan_step: PROMPT.plan_step_v2, PROMPT.plan_resolve: PROMPT.plan_resolve_v2,
-                        PROMPT.plan_verify_own: PROMPT.plan_verify_own_v2}.get(template, template)
+                        PROMPT.plan_verify_own: PROMPT.plan_verify_own_v2,
+                        PROMPT.plan_summarise: PROMPT.plan_summarise_v2}.get(template, template)   # D141
         anchor = HOW_TO_ACT if self.v2 and HOW_TO_ACT in template else "\n# Format\n"
         user = render(template, task=self.task.prompt, today=self.i.clock["line"], deliverables=self.deliverables_text(), card=plan_card(agent), number=n,
                       step=step_detail(step) + extra, inputs=inputs, completed=completed.strip() or "Nothing yet.",
@@ -3047,6 +3094,8 @@ class PlanRunner:
             resp = self.i.llm.chat_messages([{"role": "system", "content": system}, {"role": "user", "content": user}],
                                             self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,
                                             max_tokens=PLAN_MAX_TOKENS, role=group, tools=specs, cache_prefix=True,   # D139
+                                            compact=[{"role": "system", "content": system},                 # D141
+                                                     {"role": "user", "content": compact_step_prompt(user)}],
                                             **self.route_ids(n, step))
         except NoModelAvailable as e:
             return "no_model", f"BLOCKED: no_model — {str(e)[:200]}", "", "no_model"
@@ -3290,7 +3339,7 @@ class PlanRunner:
         self.replans.append(record)
 
     def _observer_call(self, triggers: list[dict]) -> str:
-        user = render(PROMPT.plan_replan, task=self.task.prompt, today=self.i.clock["line"], requirements=self.deliverables_text(),
+        user = render(PROMPT.plan_replan_v2 if self.typed else PROMPT.plan_replan, task=self.task.prompt, today=self.i.clock["line"], requirements=self.deliverables_text(),
                       triggers="\n".join(f"- {t['detail']}" for t in triggers), plan=self.plan_text(),
                       outputs=self.finished_text(), blocked=self.blocked_text(), tools=self.tools_text(),
                       roles=self.roles_text(),
@@ -3306,6 +3355,9 @@ class PlanRunner:
                      "another named site) or one search per entity, year or series. A step that repeats the method is "
                      "rejected.")
         with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "action_observer", "amoeba.box": "action_obs"}):
+            if self.typed:                                # D141: a typed ReplanOut
+                return self.struct_call("replan", ReplanOut, [{"role": "user", "content": user}], PLAN_MAX_TOKENS,
+                                       "action_observer")
             resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
                                             agent_name="action_observer", max_tokens=PLAN_MAX_TOKENS, role="planner")
         self.ep.total_tokens += resp.input_tokens + resp.output_tokens

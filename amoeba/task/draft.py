@@ -5,6 +5,8 @@ Source: AutoAgents roles/manager.py Manager._act (loop), environment.py publish_
 """
 from __future__ import annotations
 
+from amoeba.llm.ask import Unreadable, ask, protocol_of                # D141
+from amoeba.task.schemas import PlanOut, ReviewOut, review_text, to_legacy   # D141
 from amoeba.config.prompts import MANAGER_PREFIX, PROMPT, render
 from amoeba.interp.trace import TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient
@@ -172,6 +174,36 @@ def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
         raise DraftError(f"{name}: {e}", log) from e
 
 
+# box: planner
+def _ask_plan(llm: TracedLLM, user: str, seed: int, log: list[DraftRound], max_tokens: int | None
+              ) -> tuple[str, dict[str, str]]:
+    """D141 (protocol v2): the planner's typed PlanOut, rendered as the d24 sections the parsers read. An unreadable
+    reply (after ask's one repair call) fails the draft as a missing section does."""
+    try:
+        out = ask(llm, "plan", [{"role": "system", "content": PROMPT.d24_planner_system.strip()},
+                                {"role": "user", "content": user}], PlanOut, max_tokens=max_tokens, seed=seed,
+                  agent_name="planner")
+    except Unreadable as e:
+        raise DraftError(f"planner: {e.why}", log) from e
+    raw = to_legacy("plan", out)
+    return raw, parse_sections(raw, all_fences=True)
+
+
+# box: agent_obs, plan_obs
+def _ask_review(llm: TracedLLM, name: str, user: str, system: str, seed: int, max_tokens: int | None
+                ) -> tuple[str, dict[str, str], "ReviewOut | None"]:
+    """D141 (protocol v2): an observer's typed ReviewOut, rendered as the d24 Suggestions/Verdict sections. An
+    unreadable reply counts as REVISE (never as approval)."""
+    try:
+        out = ask(llm, "review", [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                  ReviewOut, max_tokens=max_tokens, seed=seed, agent_name=name)
+    except Unreadable as e:
+        raw = f"## Suggestions\n1. [blocking] reviewer reply unreadable ({e.why[:160]})\n\n## Verdict\nREVISE"
+        return raw, parse_sections(raw), None
+    raw = review_text(out)
+    return raw, parse_sections(raw), out
+
+
 # box: ov_plan, handoff, planner, agent_obs, plan_obs, checks
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
                prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False,
@@ -187,6 +219,9 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     prompts unchanged."""
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
+    v2 = protocol_of(trace) == "v2"                   # D141: typed replies; the d24 prompts' content and parsers
+    if v2:
+        prompts = D24
     d24 = prompts == D24
     limits = token_limits(max_tokens)                 # D27: per role, CLI > env > 8192
     tl = TracedLLM(llm, trace)
@@ -202,7 +237,12 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
         while not consensus and rounds < max_rounds:  # manager.py:27,30
             log.append(rec := DraftRound(index=rounds + 1))
             # state 0 — Planner (CreateRoles)
-            if d24:   # D24: plan the ideal first, full role records, detailed steps, requirements and givens
+            if v2:    # D141: the same plan, as a typed PlanOut
+                raw, sec = _ask_plan(tl, render(
+                    PROMPT.plan_create_v2, context=task.prompt, existing_roles="[]", tools=tools, history=history,
+                    suggestions=suggestions, max_agents=str(envelope.max_agents), lessons=lessons.get("planner", "")),
+                    seed, log, limits["planner"])
+            elif d24:   # D24: plan the ideal first, full role records, detailed steps, requirements and givens
                 raw, sec = _sections(tl, "planner", render(
                     PROMPT.d24_create_team, context=task.prompt, existing_roles="[]", tools=tools, history=history,
                     suggestions=suggestions, max_agents=str(envelope.max_agents), lessons=lessons.get("planner", ""),
@@ -229,7 +269,15 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
 
             # state 1 — Agent Observer (CheckRoles). Always runs: the guard at manager.py:34 is dead code.
             hist_roles = f"## Role Suggestions\n{sugg_roles}\n\n## Feedback\n{sec['RoleFeedback']}"   # manager.py:36
-            if d24:
+            if v2:    # D141: a typed ReviewOut
+                rec.agent_observer_raw, s, _ = _ask_review(tl, "agent_observer", render(
+                    PROMPT.plan_review_team_v2, question=task.prompt, requirements=requirements_text(sec),
+                    created_roles=sec["Created Roles List"], selected_roles=sec["Selected Roles List"],
+                    capability_requests=requests_text, tools=tools, history=hist_roles,
+                    max_agents=str(envelope.max_agents), lessons=lessons.get("agent_observer", "")),
+                    PROMPT.d24_agent_observer_system.strip(), seed, limits["agent_observer"])
+                rec.agent_verdict = parse_verdict(s) or "REVISE"
+            elif d24:
                 rec.agent_observer_raw, s = _observer_sections(tl, "agent_observer", render(
                     PROMPT.d24_review_team, question=task.prompt, requirements=requirements_text(sec),
                     created_roles=sec["Created Roles List"], selected_roles=sec["Selected Roles List"],
@@ -252,7 +300,15 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             # state 2 — Plan Observer (CheckPlans)
             hist_plan = f"## Plan Suggestions\n{sugg_plan}\n\n## Feedback\n{sec['PlanFeedback']}"
             # original passes sugg_roles here (manager.py:41) — a bug; fixed (DEVIATION D3)
-            if d24:
+            if v2:    # D141: a typed ReviewOut
+                rec.plan_observer_raw, s, _ = _ask_review(tl, "plan_observer", render(
+                    PROMPT.plan_review_plan_v2, context=task.prompt, requirements=requirements_text(sec),
+                    roles=sec["Selected Roles List"] + sec["Created Roles List"], plan=sec["Execution Plan"],
+                    risks=sec["Risks and Decisions"], capability_requests=requests_text, history=hist_plan,
+                    tools=tools, lessons=lessons.get("plan_observer", "")),
+                    PROMPT.d24_plan_observer_system.strip(), seed, limits["plan_observer"])
+                rec.plan_verdict = parse_verdict(s) or "REVISE"
+            elif d24:
                 rec.plan_observer_raw, s = _observer_sections(tl, "plan_observer", render(
                     PROMPT.d24_review_plan, context=task.prompt, requirements=requirements_text(sec),
                     roles=sec["Selected Roles List"] + sec["Created Roles List"], plan=sec["Execution Plan"],

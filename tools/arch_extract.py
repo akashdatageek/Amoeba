@@ -178,7 +178,9 @@ BOXES: list[dict] = [
                "types continue, or a correction that is added to the job before one more round.",
                "D68: with our prompts it and both checkers are shown every tool the team will really have (calc, web "
                "search and fetch, the local tools and skills when on, and that a tool pool exists); a document format "
-               "or a house style is a skill; what only the user can supply is an open question or a request."],
+               "or a house style is a skill; what only the user can supply is an open question or a request.",
+               "D141: under --protocol v2 the planner and both observers answer with typed PlanOut and ReviewOut, "
+               "rendered by plain code into the same sections the parsers read."],
          proposes="Helpers (name, description, tools, suggestions, instructions), the step plan, and replies to the "
                   "checkers' feedback.",
          disposes="Nothing is accepted yet: the draft goes to the two checkers, and only the last draft is cleaned "
@@ -757,7 +759,9 @@ BOXES: list[dict] = [
                "structured call per output mode, and can set the registry entry's supports flags.",
                "D139: every structured reply is validated by plain code (enum case ignored, provider nulls fall back to "
                "defaults); the schema sent to Claude makes every field required and optional ones nullable; with "
-               "cache_prefix the step prompt's stable head is cached; a non-reasoning block gets one compact retry."],
+               "cache_prefix the step prompt's stable head is cached; a non-reasoning block gets one compact retry.",
+               "D141: under --protocol v2 every call asks for a typed reply through ask() in the model's output mode "
+               "(schema, submit tool or JSON in the prompt), checked by code with one repair call that quotes the error."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/anthropic_client.py::AnthropicClient",

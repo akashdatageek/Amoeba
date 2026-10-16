@@ -29,7 +29,7 @@ def mock(**over):
 
 def test_every_probe_runs_once_and_is_recorded():
     client = mock()
-    r = mc.run_checks(client, "mock", budget=0.25)
+    r = mc.run_checks(client, "mock", budget=0.25, protocol="legacy")
     by = {x["probe"]: x for x in r["probes"]}
     assert list(by) == ["reading", "planner", "observer", "plan observer", "step (native tools)", "Final_Output",
                         "fix proposer", "pool pick", "output mode: schema", "output mode: submit_tool",
@@ -49,7 +49,7 @@ def test_every_probe_runs_once_and_is_recorded():
 
 def test_a_reasoning_refusal_fails_and_names_the_prompt_file():
     refused = ChatResponse("", finish_reason="refusal", refusal_category="reasoning_extraction")
-    r = mc.run_checks(mock(interpreter=[refused]), "mock", budget=0.25)
+    r = mc.run_checks(mock(interpreter=[refused]), "mock", budget=0.25, protocol="legacy")
     reading = r["probes"][0]
     assert reading["status"] == "blocked" and reading["category"] == "reasoning_extraction"
     assert reading["prompt_files_found"][0] == "interpret.txt"
@@ -59,7 +59,7 @@ def test_a_reasoning_refusal_fails_and_names_the_prompt_file():
 
 def test_output_modes_fall_through_in_order():
     client = mock(other=["not json", SUBMIT, '{"weekly_cost_eur": "lots"}', "nope"])
-    r = mc.run_checks(client, "mock", budget=0.25)
+    r = mc.run_checks(client, "mock", budget=0.25, protocol="legacy")
     repair = client.calls_of("other")[-1]["messages"][-1]["content"]
     assert "did not validate: not JSON" in repair or "weekly_cost_eur" in repair    # D140: the exact error quoted
     modes = {x["probe"]: x["status"] for x in r["probes"] if x["probe"].startswith("output mode")}
@@ -70,7 +70,7 @@ def test_output_modes_fall_through_in_order():
 
 def test_the_budget_skips_the_remaining_probes(monkeypatch):
     monkeypatch.setattr(mc, "spent", lambda trace, model: 1.0 if trace.spans("chat") else 0.0)
-    r = mc.run_checks(mock(), "mock", budget=0.25)
+    r = mc.run_checks(mock(), "mock", budget=0.25, protocol="legacy")
     assert r["probes"][0]["status"] == "ok" and all(x["status"] == "skipped" for x in r["probes"][1:])
 
 
@@ -92,3 +92,29 @@ def test_write_sets_only_the_entry_supports(tmp_path):
     assert data["gemma-4-31b"] == yaml.safe_load(before)["registry"]["gemma-4-31b"]
     from amoeba.llm.router import load_registry
     load_registry(path)                                         # the registry still loads
+
+
+def test_v2_probes_use_the_typed_builders():
+    """D141: under --protocol v2 every probe asks for its typed reply (the mock answers with dicts)."""
+    role = {"name": "Fuel Cost Analyst", "seniority": "senior", "description": "d", "goal": "g", "responsibilities": [],
+            "skills": [], "tools": ["calc"], "inputs": [], "outputs": [], "success_criteria": [], "constraints": [],
+            "covers": ["R1"], "is_summariser": False, "prompt": "p"}
+    plan = {"requirements": [{"id": "R1", "text": "weekly cost"}], "givens": [], "open_questions": [],
+            "roles": [role, {**role, "name": "Writer", "tools": [], "is_summariser": True}], "capability_requests": [],
+            "plan": [{"number": 1, "roles": ["Fuel Cost Analyst"], "title": "compute", "kind": "work", "covers": ["R1"],
+                      "depends_on": [], "do": "d", "output": "memo: cost", "done_when": "cost given"},
+                     {"number": 2, "roles": ["Writer"], "title": "write", "kind": "work", "covers": ["R1"],
+                      "depends_on": [1], "do": "d", "output": "memo: answer", "done_when": "answer given"}],
+            "risks": []}
+    review = {"verdict": "APPROVE", "issues": []}
+    fix = {"edit": {"op": "add_role_rule", "params": {"role": "Fuel Cost Analyst", "text": "Use calc."}},
+           "reason": "sums by hand"}
+    client = mock(interpreter=[{"entities": []}], planner=[plan], agent_observer=[review], plan_observer=[review],
+                  fix_proposer=[fix], pool_picker=[{"choice": "skill-xlsx"}])
+    r = mc.run_checks(client, "mock", budget=0.25, protocol="v2")
+    by = {x["probe"]: x["status"] for x in r["probes"]}
+    assert by == {k: "ok" for k in by}, by
+    assert all(c.get("schema") is not None for c in client.calls if c["kind"] in
+               ("interpreter", "planner", "agent_observer", "plan_observer", "pool_picker"))
+    fixc = client.calls_of("fix_proposer")[0]                 # free-form params: json_prompt, the schema in the prompt
+    assert fixc.get("schema") is None and "matches this JSON schema" in fixc["messages"][-1]["content"]

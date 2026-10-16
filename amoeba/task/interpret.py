@@ -23,6 +23,8 @@ from typing import Callable, Mapping
 
 import yaml
 
+from amoeba.llm.ask import Unreadable, ask, protocol_of                # D141
+from amoeba.task.schemas import FamilyOut, PlanSearchOut, ReadingOut, to_legacy   # D141
 from amoeba.config.prompts import PROMPT, render
 from amoeba.interp.trace import TracedLLM
 from amoeba.memory.context import context_text
@@ -83,9 +85,18 @@ def read_task(task_text: str, llm: TracedLLM, context: Mapping[str, str] | None 
               gap: float = DOMINANCE_GAP, environment: str = "") -> dict:
     """The interpretation step: one call, then plain code decides. environment: D102's Environment section of the
     niche profile ("" for general: the prompt is unchanged)."""
-    user = render(PROMPT.interpret, task=task_text, context=context_text(context or {})) + environment
-    raw = llm.chat_messages([{"role": "user", "content": user}], seed=seed, max_tokens=MAX_TOKENS,
-                            agent_name="interpreter", role="planner").content
+    if protocol_of(llm.trace) == "v2":               # D141: a typed reply, rendered for the same reader
+        user = render(PROMPT.interpret_v2, task=task_text, context=context_text(context or {})) + environment
+        try:
+            raw = to_legacy("reading", ask(llm, "reading", [{"role": "user", "content": user}], ReadingOut,
+                                           max_tokens=MAX_TOKENS, seed=seed, agent_name="interpreter",
+                                           role="planner"))
+        except Unreadable:
+            raw = ""                                  # no readable reading: nothing is settled before planning
+    else:
+        user = render(PROMPT.interpret, task=task_text, context=context_text(context or {})) + environment
+        raw = llm.chat_messages([{"role": "user", "content": user}], seed=seed, max_tokens=MAX_TOKENS,
+                                agent_name="interpreter", role="planner").content
     out = decide(parse_entities(raw), gap)
     out["context"] = dict(context or {})
     llm.trace.event("task_interpretation", {
@@ -305,9 +316,16 @@ def classify_family(task_text: str, llm: TracedLLM | None, families: dict[str, d
         return {"family": "new", "how": "no_rule_no_call", "keywords": kws}
     listing = "\n".join(f"- {n}: {f.get('description', '')}" for n, f in families.items()) + \
         "\n- new: none of the above fits"
-    raw = llm.chat_messages([{"role": "user", "content": render(PROMPT.family_classify, task=task_text,
-                                                                families=listing)}],
-                            seed=seed, max_tokens=200, agent_name="family_classifier", role="planner").content
+    msgs = [{"role": "user", "content": render(PROMPT.family_classify, task=task_text, families=listing)}]
+    if protocol_of(llm.trace) == "v2":               # D141
+        try:
+            raw = to_legacy("family", ask(llm, "family", msgs, FamilyOut, max_tokens=400, seed=seed,
+                                          agent_name="family_classifier", role="planner"))
+        except Unreadable:
+            raw = ""
+    else:
+        raw = llm.chat_messages(msgs, seed=seed, max_tokens=200, agent_name="family_classifier",
+                                role="planner").content
     m = re.search(r"\{[\s\S]*\}", raw or "")
     try:
         answer = str(json.loads(m.group(0)).get("family", "")).strip() if m else ""

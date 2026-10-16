@@ -186,6 +186,16 @@ def probe_proposer(llm: TracedLLM, gate: Gate, seed: int):
                   attempt="status: incomplete (max_turns)\nturns used: 5", team="- Fuel Cost Analyst: computes costs",
                   tools="tools: calc, echo\nskills: none", allowed=allowed_text(["add_role_rule", "split_step"], 2),
                   tried="None yet.")
+    if llm.trace.protocol == "v2":                 # D141: the typed FixReply, as the plan runner asks for it
+        from amoeba.llm.ask import Unreadable, ask
+        from amoeba.task.schemas import FixOut
+        try:
+            ask(llm, "fix", [{"role": "user", "content": user}], FixOut, max_tokens=4096, seed=seed,
+                agent_name="fix_proposer", role="planner")
+            ok = True
+        except (Unreadable, Probed):
+            ok = False
+        return last(gate, "fix_proposer"), ok, "fix_proposer.txt"
     try:
         resp = llm.chat_messages([{"role": "user", "content": user}], seed, agent_name="fix_proposer", role="planner",
                                  max_tokens=4096)
@@ -289,6 +299,7 @@ def run_checks(client: LLMClient, model: str, budget: float, protocol: str = "v2
     """Every probe on `client` (the real client, or a mock in the test). Stops before a probe once the budget is
     spent; the rest are recorded as skipped."""
     trace = TraceWriter(None, log_content=True)
+    trace.protocol = protocol                      # D141: every probe uses the prompt builders of this protocol
     gate = Gate(client)
     llm = TracedLLM(gate, trace)
     rows: list[dict] = []

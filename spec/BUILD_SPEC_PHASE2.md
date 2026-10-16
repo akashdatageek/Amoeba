@@ -1058,6 +1058,13 @@ Design: docs/design/D139_model_layer.md.
 the model ends a step with a proper typed Final_Output. Its JSON repair call quotes the exact validation error.
 Design: docs/design/D140_model_check_gaps.md.
 
+**D141, protocol v2 for every call (Oct 16, audit Phase C).** Under `--protocol v2`, every model call asks for a
+typed reply through `ask()`, not only the step turns. The reply models have no thought field, and each typed reply
+is rendered into the text the legacy reader of that call site parses, so the code downstream is unchanged. Protocol
+v2 is a user-approved deviation from the CLAUDE.md rule to copy AutoAgents/AgentVerse prompts word for word (user
+decision, Oct 15 2026). Legacy prompts are kept unchanged under --protocol legacy. Design:
+docs/design/D141_protocol_v2_all_calls.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

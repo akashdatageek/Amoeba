@@ -458,6 +458,8 @@ def mock_args(fn: str, text: str, tools: list) -> dict:
         if set(obj) <= set(props):
             return obj
     required = ((spec or {}).get("parameters") or {}).get("required") or list(props)
+    if fn == "Final_Output" and "output" in props:        # D141: a scripted step end as a typed StepFinal
+        return {"status": "done", "output": text}
     if fn != "Final_Output" and len(required) == 1:
         return {required[0]: text}
     return {"input": text}

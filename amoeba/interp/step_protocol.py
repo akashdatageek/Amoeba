@@ -208,7 +208,7 @@ def resolver_text(args: dict) -> str:
 # ---- the prompt words v2 must not use -------------------------------------------------------------------------------
 # A heading the model must write shows up as a protocol heading, a quoted heading or a # Format section; the ## headings
 # of the data a prompt shows (an input step's output, a disputed figure) are not instructions and are not banned.
-BANNED = [(r"\bActionInput\b", "ActionInput"), (r"\bAction\b", "Action"), (r"Final Output", "a 'Final Output' section"),
+BANNED = [(r"\bActionInput\b", "ActionInput"), (r"\bAction\b(?! Observer)", "Action"), (r"Final Output", "a 'Final Output' section"),
           (r"#+\s*Thought\b", "## Thought"), (r"\bCurrentStep\b", "CurrentStep"),
           (r"[\"'“]\s*##", "a quoted ## heading to write"), (r"(?m)^#+\s*Format\s*$", "a # Format section"),
           (r"(?i)must use exactly these sections", "a list of sections to write")]
@@ -274,3 +274,29 @@ UNREADABLE_NOTE_V2 = ("error: your last reply could not be read ({why}). Call on
                       "the step's output.")
 PROVIDER_BLOCKED_NOTE_V2 = ("error: the model service returned no reply for your last turn. Continue the step from where "
                             "it stands: call one of your tools, or Final_Output with the step's output.")
+
+
+# box: plan_step
+def compact_step_prompt(user: str) -> str:
+    """D141: the compact variant of a step prompt, sent once when the provider blocked the full one for a reason other
+    than a request for reasoning (D139's compact retry). The role card keeps only Name, Goal and Outputs; the rule
+    blocks (facts and sources, research, freshness) keep only the contract line plain code checks; the rest (task,
+    step, inputs, work so far, tools, how to act) is unchanged."""
+    out, section = [], None
+    for line in (user or "").split("\n"):
+        if line.startswith("# "):
+            section = line[2:].strip().lower()
+            out.append(line)
+            continue
+        if section == "your role card" and line.strip() and not line.startswith(("Name:", "Goal:", "Outputs:")):
+            continue
+        if section == "facts and sources" and not line.startswith("Plain code checks"):
+            continue
+        out.append(line)
+    text = "\n".join(out)
+    for note in ("\nResearch (plain code helps here):", "\nThis task asks for today's"):
+        i = text.find(note)
+        if i >= 0:
+            j = text.find("\n\n", i + 1)
+            text = text[:i] + (text[j:] if j > 0 else "")
+    return re.sub(r"\n{3,}", "\n\n", text)
