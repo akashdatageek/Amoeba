@@ -530,7 +530,8 @@ BOXES: list[dict] = [
                "full text of an input it saw cut (inputs/step_<d>.md).",
                "D142: after Final Output, plain code runs the step's typed checks (files, Word, Excel, CSV, images, "
                "tables, lists, terms, citations, dates, verdict, NOT SENT) and a failed one is a failed check like any "
-               "other."],
+               "other.",
+               "D152: Amoeba's own cut note (\"… [N characters cut; …]\") is never checked as text cited from a source."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",
@@ -633,7 +634,9 @@ BOXES: list[dict] = [
                "(turn off with --no-log-content).",
                "Token counts are only recorded; no code reads them to stop a run.",
                "Every line names the model profile; each AI line holds the model asked for and the exact model name "
-               "the service returned."],
+               "the service returned.",
+               "D152: each role group's reply room follows the largest reply it has needed in the run (1.5 times, at "
+               "most twice what was asked)."],
          proposes="Nothing.", disposes="Plain code writes the log.",
          anchors=["amoeba/interp/trace.py::TraceWriter", "amoeba/interp/trace.py::TraceWriter.event",
                   "amoeba/interp/trace.py::TracedLLM.chat_messages",

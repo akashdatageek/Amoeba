@@ -5,6 +5,7 @@ Token counts are recorded from the API response and summed; nothing in Phase 1 e
 from __future__ import annotations
 
 import json
+import math
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -184,6 +185,17 @@ def prompt_sources(messages: Messages) -> list[str]:
     return thought + [f for f in found if f not in thought]
 
 
+# box: trace
+def room_for(asked: int, peak: int | None, headroom: float = 1.5) -> int:
+    """D152: the reply room for a call: what the caller asked, raised to `headroom` times the largest reply (visible +
+    thinking tokens, which share the limit) its role group has needed in this run, and at most twice what was asked
+    (the room D27's retry gives a cut reply). A cut reply is thrown away and paid for twice; the room is a cap, not a
+    price, so a larger one costs nothing unless it is used."""
+    if not peak:
+        return asked
+    return min(2 * asked, max(asked, math.ceil(headroom * peak)))
+
+
 class TracedLLM:
     """Wraps an LLMClient so every call emits one ``chat`` span carrying the token counts the API returned."""
 
@@ -191,6 +203,7 @@ class TracedLLM:
                  data_class: str = "normal"):
         self.llm, self.trace, self.listener = llm, trace, listener or NoopListener()
         self.data_class = data_class                  # D97: "sensitive" keeps the router to local models
+        self.peak: dict[str, int] = {}                # D152: role group -> the largest reply (visible + thinking) so far
 
     # box: trace
     def chat_messages(self, messages: Messages, seed: int = 0, *, agent_id: str | None = None,
@@ -212,10 +225,14 @@ class TracedLLM:
                         else self.llm.route(group)) if hasattr(self.llm, "route") else (self.llm, None)
         if cap and not _retry:
             max_tokens = cap
+        key, asked = group or agent_name or "", max_tokens
+        if max_tokens and not _retry:
+            max_tokens = room_for(max_tokens, self.peak.get(key))          # D152: what the group has needed
         attrs = {"gen_ai.agent.id": agent_id, "gen_ai.agent.name": agent_name, "amoeba.role_group": group,
                  "amoeba.box": BOX2_BOX.get(agent_name or ""),
                  "gen_ai.request.model": llm.model, "gen_ai.request.max_tokens": max_tokens,
-                 "amoeba.retry_of_truncated": True if _retry else None}
+                 "amoeba.retry_of_truncated": True if _retry else None,
+                 "amoeba.room_raised_from": asked if max_tokens != asked and not _retry else None}
         limits = getattr(self.trace, "limits", None)   # D47: opt-in per-run limits, checked before the call
         if limits is not None and limits.active():
             limits.check(self.trace)
@@ -255,6 +272,8 @@ class TracedLLM:
             rec["gen_ai.response.model"] = resp.model or llm.model   # D54: the exact name the API returned
             rec["gen_ai.usage.input_tokens"] = resp.input_tokens
             rec["gen_ai.usage.output_tokens"] = resp.output_tokens
+            if not resp.cached:
+                self.peak[key] = max(self.peak.get(key, 0), resp.output_tokens + (resp.reasoning_tokens or 0))
             if resp.finish_reason:
                 rec["gen_ai.response.finish_reasons"] = [resp.finish_reason]
             if resp.cached:

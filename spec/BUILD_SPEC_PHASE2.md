@@ -1118,6 +1118,11 @@ step may spend 1.5 times its fair part of what is left when it starts; a step th
 reported as kept_going with the reason, and the rest of the cap stays for the steps not yet run. Design:
 docs/design/D151_fair_budgets.md.
 
+**D152, two bugs from run 71d2f910 (Oct 16).** Amoeba's own cut note is no longer checked as text cited from a
+source. The reply room of a call follows what its role group has needed in the run: 1.5 times the largest reply so far
+(visible and thinking tokens together), at most twice what the caller asked, so a group that came close to its room is
+not cut and paid for twice. Design: docs/design/D152_two_bugs.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
