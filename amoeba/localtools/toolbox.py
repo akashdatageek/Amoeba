@@ -61,6 +61,13 @@ TOOL_TEXT = {
     "Grep": ("search the contents of files in the workspace", "ActionInput: {\"pattern\": \"...\", \"path\": \".\"}."),
 }
 PATH_ARG = {"Read": "file_path", "Write": "file_path", "Edit": "file_path", "Glob": "path", "Grep": "path"}
+# D148: every refusal ends with one line on how to rewrite the call
+REWRITE = {"unsafe_command": "Rewrite it to stay in the workspace: write paths from the workspace root (e.g. "
+                             "sources/S1_page.txt, out/table.csv), no cd out of it, no ~ or system paths.",
+           "outside_workspace": "Write paths from the workspace root (e.g. sources/S1_page.txt); nothing outside it.",
+           "network_command": "Use the web tools (web_search, fetch_url) for anything on the network.",
+           "protected_config": "Write your own files elsewhere in the workspace; sources/, skills and configs are "
+                               "read-only."}
 READ_TOOLS = {"Read", "Glob", "Grep"}
 PLAIN_ARG = {"Bash": "command", "Read": "file_path", "Glob": "pattern", "Grep": "pattern"}
 
@@ -378,6 +385,7 @@ class LocalToolbox:
         key = "command" if tool == "Bash" else PATH_ARG.get(tool, "")
         return str(args.get(key) or args.get("pattern") or "")[:300]
 
+    # box: localtools
     def refuse(self, tool: str, reason: str, detail: str = "", what: str = "") -> str:
         self.refusals[reason] = self.refusals.get(reason, 0) + 1
         self.trace.event("local_refused", {"amoeba.box": "localtools", "amoeba.step": self.step,
@@ -385,7 +393,7 @@ class LocalToolbox:
                                            "amoeba.decision": "refused", "amoeba.reason": reason,
                                            "amoeba.detail": detail[:200]})
         return f"refused: local:{tool} — {reason}" + (f" ({detail[:200]})" if detail else "") + \
-               ". Nothing was run; stay inside the workspace, with no network."
+               f". Nothing was run. {REWRITE.get(reason, 'Stay inside the workspace, with no network.')}"
 
     def arguments(self, tool: str, text: str) -> dict:
         if tool == "Bash" and self.setup.config.get("bash_python", True):
