@@ -1083,6 +1083,12 @@ tool result. Long results go to a file the helper can read, file writes are summ
 last two are shown as one line each, by plain code. Each step records the characters it sent and saved. Design:
 docs/design/D144_step_context.md.
 
+**D145, the Box 4 ladder (Oct 16, audit Phase F).** A step the model service blocks is retried with the compact
+prompt, then on another candidate model, then the task stops and names the refusal categories. A tool the helper
+already holds is never granted again; its failure is a tool error. A re-plan may drop only the stuck step's
+dependents and must pass Box 2's HARD checks. A stuck upstream re-run gets one fix of its own. A step no fix
+recovered is reported as kept going under D133. Design: docs/design/D145_box4_ladder.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

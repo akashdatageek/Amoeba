@@ -567,6 +567,19 @@ def cli_plan_options(args: argparse.Namespace):
 
 
 # box: runresult
+def adapt_summary_lines(adaptation: dict | None) -> list[str]:
+    """D145: what the run summary says of Box 4 beyond the report: a tool it could not make because local tools are
+    off, steps it kept going without, and a USD limit it could not compute."""
+    a = adaptation or {}
+    out = [f"    make_tool not run: {w}" for w in a.get("make_tool_unavailable") or []]
+    out += [f"    kept going without step {k['step']} ({k.get('cause')}); only its dependents were skipped"
+            for k in a.get("kept_going") or []]
+    if a and a.get("usd_limit_enforced") is False:
+        out.append("    adaptation USD limit not enforced: a model has no price (token limit only)")
+    return out
+
+
+# box: runresult
 def resolve_native(plan_options, llm, trace):
     """D132: --native-tools auto becomes on when every model this run may route a helper call to supports native tool
     calling (models.yaml `supports.tools`), off otherwise; the choice is a trace event."""
@@ -1052,6 +1065,8 @@ def main(argv: list[str] | None = None) -> int:
               f"rounds={r.draft_rounds} consensus={r.consensus} status={r.status} error={r.error} answer={shown!r}")
         print(f"    {describe(r.usage)}")                                                    # D47
         for line in reasoning_refusal_lines(r.reasoning_refusals):                         # D134: loud
+            print(line)
+        for line in adapt_summary_lines(r.adaptation):                                     # D145
             print(line)
         if r.protocol and r.protocol["used"] != r.protocol["asked"]:                      # D136
             print(f"    protocol {r.protocol['asked']} asked; steps used {r.protocol['used']} ({r.protocol['why']})")

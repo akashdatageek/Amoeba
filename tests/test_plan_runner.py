@@ -100,7 +100,7 @@ def test_diamond_runs_in_order_and_steps_see_only_their_inputs(task, envelope, t
     assert meta["output_spec"] == "reconciled figures" and meta["sources"] == []
     assert (tmp_path / "artifacts" / "step_4.md").read_text().startswith("OUT-4\n")
     ev = trace.events("plan_graph")[0]
-    assert ev["amoeba.waves"] == [[1], [2, 3], [4]] and ev["amoeba.max_turns"] == 5
+    assert ev["amoeba.waves"] == [[1], [2, 3], [4]] and ev["amoeba.max_turns"] == 6   # D145
 
 
 def test_a_cycle_is_rejected_before_any_box3_call(task, envelope, trace):
@@ -115,7 +115,7 @@ def test_step_that_never_finishes_is_max_turns(task, envelope, trace, tools):
     stall = lambda m, s: "## Thought\nhm\n\n## CurrentStep\nthink\n\n## Action\nPrint\n\n## ActionInput\nthinking\n"
     llm, cfg = plan_team(task, envelope, trace, plan_worker=stall)
     ep = Interpreter(llm, tools, trace, plan_options=PlanOptions(failed_step="run")).run(cfg, task, seed=0)   # D138
-    assert (ep.steps[0]["status"], ep.steps[0]["status_reason"], ep.steps[0]["turns"]) == ("incomplete", "max_turns", 5)
+    assert (ep.steps[0]["status"], ep.steps[0]["status_reason"], ep.steps[0]["turns"]) == ("incomplete", "max_turns", 6)   # D145
     assert ep.error == "incomplete"
 
 
@@ -433,7 +433,7 @@ def test_a_failed_check_on_the_last_turn_still_gets_its_own_retry_turns(task, en
     llm, cfg = plan_team(task, envelope, trace, plan_worker=slow)
     ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
     one = ep.steps[0]
-    assert (one["status"], one["retried"], one["turns"]) == ("done", True, 6)          # 5 turns + 1 of the retry's 2
+    assert (one["status"], one["retried"], one["turns"]) == ("done", True, 7)          # 6 turns (D145) + 1 of the retry's 2
     assert trace.events("check_retry")[0]["amoeba.retry_turns"] == 2
 
 
@@ -490,6 +490,6 @@ def test_a_step_without_final_output_passes_on_nothing(task, envelope, trace, to
     inputs = re.search(r"# Inputs: .*?\n(.*?)\n\n# Work done", two_prompt["messages"][-1]["content"], re.S).group(1)
     assert inputs.rstrip().endswith("status: incomplete") and "note" not in inputs
     s1 = next(m for m in ep.steps if m["step"] == 1)
-    assert s1["no_final_output"] is True and s1["last_message"] == "note 6"
+    assert s1["no_final_output"] is True and s1["last_message"] == "note 7"   # D145: one more turn
     # D76: the last turn offers only Final Output and asks once more when a helper still does not conclude
     assert trace.events("last_turn_forced")[0]["amoeba.asked_for"] == "Print"

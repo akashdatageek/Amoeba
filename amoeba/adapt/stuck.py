@@ -32,7 +32,7 @@ from amoeba.adapt.config import adapt_config
 SIGNAL_CAUSE = {"missing_input": "missing_input", "capability_unfilled": "capability", "repeated_error": "tool_error",
                 "max_turns": "max_turns", "checks_after_retry": "checks", "no_file_change": "claimed_file_missing",
                 "unreadable_reply": "format", "missing_data": "missing_data",
-                "provider_blocked": "provider_blocked"}
+                "provider_blocked": "provider_blocked", "held_tool_failed": "tool_error"}
 # D117 Stage C: a lacked item is a missing input (data an earlier step should have given) unless it names a tool
 TOOL_WORDS = re.compile(r"tool|\bapi\b|_api|reader|interpreter|executor|calculator|\bcalc|access|generator|analy[sz]er|"
                         r"\bengine\b|_engine|service|search|network|browser|capability|skill|\blocal\b|local:|script|"
@@ -150,7 +150,8 @@ def classify_lacked(item: str, n: int | None, plan: dict | None, deps: list[int]
 
 # box: stuck
 def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] | None = None,
-                 files_unchanged: bool | None = None, plan: dict | None = None) -> list[dict]:
+                 files_unchanged: bool | None = None, plan: dict | None = None,
+                 held: dict[str, str] | None = None) -> list[dict]:
     """The stuck signals of one step attempt. `previous`: the meta of the attempt before (a reworked or re-run step);
     `unfilled`: capability requests with status unfilled ({name, for_role}); `files_unchanged`: the live watch's own
     comparison of the step's files across its refine turn (None: not known); `plan`: step number → {"output",
@@ -203,6 +204,15 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
         sig.append({"signal": "missing_data", "items": data,
                     "evidence": [f"missing data: {x[:140]}" for x in data]})
     lacked = [k["item"] for k in kinds if k["kind"] == "capability"]
+    held = held or {}                    # D145: a lacked item the helper holds is never a capability: the tool failed
+    held_items = [x for x in lacked if x in held]
+    lacked = [x for x in lacked if x not in held]
+    if held_items:
+        tools = {held[x] for x in held_items}
+        errs = [c for c in meta.get("tool_calls") or [] if not c.get("ok") and c.get("tool") in tools]
+        last = (errs[-1].get("result") or "") if errs else "no failed call recorded"
+        sig.append({"signal": "held_tool_failed", "items": held_items,
+                    "evidence": [f"tool held but failed: {held[x]} — {last[:140]}" for x in held_items]})
     roles = set(meta.get("roles") or [])
     asked = [q for q in unfilled or [] if q.get("for_role") in roles]
     if lacked or asked:
@@ -225,7 +235,7 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
 
 
 # box: stuck
-def open_requests(requests: list | None, holds: dict[str, set] | None = None) -> list[dict]:
+def open_requests(requests: list | None, holds: dict[str, set] | None = None, held_fn=None) -> list[dict]:
     """The capability requests that are really open: status unfilled, and not covered by a tool the run already has.
     "registered_tool" means the toolbox step found the tool in the run's registry (web_search and fetch_url, granted by
     D32), so the pool had nothing to add; it is not a missing capability. `holds` (the live watch): role name → the
@@ -236,6 +246,8 @@ def open_requests(requests: list | None, holds: dict[str, set] | None = None) ->
             continue
         have = (holds or {}).get(q.get("for_role")) or set()
         if (q.get("kind") or "tool") == "tool" and {q.get("name"), q.get("canonical")} & set(have):
+            continue
+        if held_fn is not None and held_fn(q.get("for_role"), q.get("name")):   # D145: D132's held_tool rule too
             continue
         out.append(q)
     return out

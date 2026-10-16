@@ -859,7 +859,9 @@ BOXES: list[dict] = [
                "most eight evidence lines.",
                "The event goes to the trace, step_N.json, result.json (stuck) and the run's hash-chained "
                "events.jsonl. --adapt on is the command-line default.",
-               "scripts/stuck_report.py runs the same functions over stored run folders, offline."],
+               "scripts/stuck_report.py runs the same functions over stored run folders, offline.",
+               "D145: a lacked line about a tool the helper holds is a tool error (held_tool_failed), never a "
+               "capability; runtime requests count only for the step they came from."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code marks the step and logs the diagnosis; no fix is made yet.",
          anchors=["amoeba/adapt/stuck.py::step_signals", "amoeba/adapt/stuck.py::diagnose",
@@ -880,7 +882,10 @@ BOXES: list[dict] = [
                "proposer (Stage D) is the next and last rung.",
                "Limits from adapt.yaml (adapt): three fixes per step and eight per task, the proposer's included, a "
                "token and dollar cap; a fix is never repeated. When nothing recovers the step the task stops: "
-               "adapt_report.md says what was stuck, the cause, each fix and why it failed."],
+               "adapt_report.md says what was stuck, the cause, each fix and why it failed.",
+               "D145: a provider-blocked step gets the compact prompt, then another candidate model, then the task stops "
+               "naming the refusal categories; a held tool is never granted again; a re-plan drops only the stuck step's "
+               "dependents and must pass Box 2's HARD checks."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code picks, applies and judges each fix (success: the step ends done).",
          anchors=["amoeba/adapt/fixes.py::candidates", "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",

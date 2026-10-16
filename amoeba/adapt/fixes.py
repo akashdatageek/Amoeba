@@ -123,6 +123,10 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
                             "items": lacking})
         if not d.get("upstream"):
             notes.append("missing input with no upstream step named or matched")
+        if ctx.get("capped"):                         # D145: an input was shortened for this step: show more of it
+            g = _option("set_run_option:max_input_chars", "max_input_chars", int(opts.get("max_input_chars", 0)),
+                        int(opts.get("max_input_chars", 0)) * int(lim["input_factor"]), ranges, n)
+            out += [g] if g else []
     elif cause == "missing_data":
         if ctx.get("web_missing"):                    # the run has web tools that the step's helpers do not hold
             out.append({"kind": "grant_tool", "rung": 2, "target": n,
@@ -132,7 +136,15 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
         out += [f] if f else []
         if not f and not ctx.get("web_missing"):
             notes.append("missing data: the helpers hold the web tools and more turns are at the maximum")
-    elif cause in ("tool_error", "max_turns", "format", "provider_blocked"):
+    elif cause == "provider_blocked":              # D145: (a) the compact prompt, (b) another model, (c) stop
+        if not opts.get("compact"):
+            out.append({"kind": "compact_prompt", "rung": 1, "target": n, "params": {"compact": True}})
+        alts = [m for m in ctx.get("alt_models") or [] if m not in (ctx.get("models_tried") or [])]
+        if alts:
+            out.append({"kind": "switch_model", "rung": 1, "target": n, "params": {"model": alts[0]}})
+        if not out:
+            notes.append("provider blocked: the compact prompt was tried and no other candidate model is offered")
+    elif cause in ("tool_error", "max_turns", "format"):
         f = _option("set_run_option:max_turns", "max_turns", int(opts.get("max_turns", 0)),
                     int(opts.get("max_turns", 0)) + int(lim["more_turns"]), ranges, n)
         out += [f] if f else []
@@ -148,11 +160,15 @@ def candidates(d: dict, n: int, ctx: dict, config: dict | None = None) -> tuple[
             out += [g] if g else []
     elif cause == "capability":
         items = sorted({x.partition(" — ")[0].strip() for x in d.get("lacked") or []})
+        held = [x for x in items if x in (ctx.get("held") or set())]      # D145: never granted again
+        items = [x for x in items if x not in held]
+        if held:
+            notes.append(f"tool held but failed, not granted again: {', '.join(held)}")
         if not ctx.get("stock"):
             notes.append(POOL_OFF)
         elif ctx.get("unfillable"):                   # D129: the pool had nothing and nothing can be written
             notes.append("capability unfillable in this run: " + ", ".join(ctx["unfillable"]))
-        else:
+        elif items:
             out.append({"kind": "grant_tool", "rung": 2, "target": n,
                         "params": {"items": items, "exclude": sorted(ctx.get("attached") or [])}})
         if ctx.get("make_tool"):                       # D125: plain code found a library and a code runner

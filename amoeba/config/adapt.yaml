@@ -14,7 +14,7 @@ limits:                       # checks the fix proposer's edit must pass (amoeba
              "unverified is fine"]
   # The values a code fix may set a step's run option to (amoeba/adapt/fixes.py, rung 1)
   run_options:
-    max_turns: {min: 3, max: 8}
+    max_turns: {min: 3, max: 12}                       # D145 (was max 8): two "more turns" fixes fit per step
     check_retry_turns: {min: 1, max: 3}
     max_input_chars: {min: 3000, max: 20000}           # characters of one input a step is shown (default 6000)
 
@@ -31,10 +31,11 @@ diagnoser:                    # the stuck causes and the edits each allows (amoe
   # option, grant_tool from the pool, make_tool: D125, a written tool or an approved one from the library) and the fix proposer's edits (add_role_rule, add_helper_role, grant_tool,
   # split_step, replan_remaining, work_around). Code fixes come first, the proposer only after them.
   allowed_edits:
-    # D128: the refusals come and go, so the step gets more turns once; then the task stops and says the service
-    # refused the calls (an edit of the team cannot help, and a proposer call could be refused too). In routed mode a
-    # blocked reply already went to another candidate model (amoeba/llm/router.py)
-    provider_blocked: ["set_run_option:max_turns"]
+    # D145 (was D128's "more turns"): (a) the compact prompt variant for the step, (b) another candidate model when
+    # the profile or the allowed models offer one, (c) the task stops with a report naming the refusal categories (an
+    # edit of the team cannot help, and a proposer call could be refused too). In routed mode a blocked reply already
+    # went to another candidate model (amoeba/llm/router.py)
+    provider_blocked: [compact_prompt, switch_model]
     missing_input: [add_dependency, rerun_upstream, "set_run_option:max_input_chars", add_role_rule, split_step,
                     replan_remaining]
     capability: [grant_tool, make_tool, add_helper_role, work_around, split_step, replan_remaining]
@@ -84,7 +85,10 @@ adapt:                        # D117 Stage C: in-task code fixes (--adapt on); a
   max_added_helpers: 2        # D117 D (user): helpers the fix proposer may add (add_helper_role) in one task
   max_fixes_per_substep: 2    # D129: a step made by a split or a re-plan starts its own count (it used to inherit)
   tokens_share_of_run_cap: 0.25   # D129: with --max-tokens-per-run, the fixes may use this share of it if larger
-  stop_when_exhausted: true   # D117 D: the code fixes, then the fix proposer; none recovers the step → the task stops with a report
+  # D117 D: the code fixes, then the fix proposer; none recovers the step → the task stops with a report. D145: this
+  # applies only with --failed-step run; under D133 (dependents, the default) the step is reported as kept_going and
+  # only its dependents are skipped. false means "never stop" in both modes. A provider_blocked step always stops.
+  stop_when_exhausted: true
 
 # D95, kept by D117: where the hash-chained event log is copied off the container. The log itself is each run's
 # events.jsonl, written by the stuck watch, the fixes and the stops (amoeba/interp/plan_runner.py; checked by

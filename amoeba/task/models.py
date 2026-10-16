@@ -128,6 +128,7 @@ class CapabilityRequest(BaseModel):
     # planner = listed under "## Capability Requests"; unregistered_tool = a role's tools named it and the resolver
     # found no such tool; runtime_unknown_tool = a helper chose it as an action during the run
     source: Literal["planner", "unregistered_tool", "runtime_unknown_tool"] = "planner"
+    step: int | None = None   # D145: the step a runtime request was raised in (requests are per step, not per role)
     # D29: the canonical name from amoeba/capabilities/aliases.yaml; `name` keeps what the model wrote
     canonical: str = ""
     mapped: bool = False

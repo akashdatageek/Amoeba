@@ -7,6 +7,8 @@ step_<n>.md plus step_<n>.json metadata). Plain code owns the graph, the order, 
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import json
 import re
 from uuid import uuid4
@@ -109,6 +111,7 @@ def answer_like(text: str) -> bool:
 EMPTY_PROVENANCE = {"cited": 0, "unverified": 0, "given": 0, "derived": 0, "inherited": 0, "untagged": 0, "numbers": 0,
                     "hallucinated_citations": [], "untagged_examples": [], "figures": [], "given_with_web_tag": []}
 PLAN_MAX_TOKENS = 8192                                     # per helper call (D27 room; flat keeps the client default)
+PLAN_MAX_TURNS = 6                # D145: helper turns per plan step (was the schema's 5)
 
 
 @dataclass
@@ -795,6 +798,10 @@ class PlanRunner:
         self.reworked: set[int] = set()          # D34: at most one rework per step
         self.ledger: dict[str, dict] = {}        # D43: figure -> its first status and the step that first wrote it
         self.contract_results: dict[int, list[dict]] = {}   # D142: each step's typed check results
+        self.models_tried: dict[int, set[str]] = {}          # D145: models a switch_model fix used per step
+        self.usd_unknown = False                             # D145: a model has no price; the USD limit is not enforced
+        self.fix_depth = 0                                   # D145: rerun_upstream fixes its upstream step once (depth 1)
+        self.kept_going: list[dict] = []                     # D145: stuck steps no fix recovered, under D133
         self.own_results: dict[int, dict] = {}   # D90: each verify step's own result, made once
         self.inferred_logged: set[int] = set()   # D37: steps whose verifier status came from the keyword fallback
         self.agents = {k: a.model_copy(deep=True) for k, a in cfg.agents.items()}   # tools may be granted (D32)
@@ -1132,8 +1139,9 @@ class PlanRunner:
                     if fixed == "stop" and self.opt.failed_step == "dependents":    # D133: the rest still runs
                         self.i.trace.event("stuck_step_kept_going", {"amoeba.step": n,
                                                                      "amoeba.cause": (self.exhausted or {}).get("cause")})
+                        self.kept_going.append({**(self.exhausted or {}), "outcome": "kept_going"})   # D145
                         fixed = None
-                    if fixed == "stop":                                             # no fix recovered it
+                    if fixed in ("stop", "stop_blocked"):                           # no fix recovered it
                         self.ep.faults = self.faults.summary()
                         return self.stop_report(n)
                     if fixed == "replanned":              # D117 Stage D: the plan changed; recompute the waves
@@ -2314,15 +2322,25 @@ class PlanRunner:
         allowed edits, evidence lines), a `stuck` trace event and a row in the run's hash-chained events.jsonl."""
         roles = set(meta.get("roles") or [])
         holds = {a.name: set(a.tools) for a in self.agents.values()}
+        by_name = {a.name: a for a in self.agents.values()}
+        held_fn = lambda role, name: bool(by_name.get(role) and held_tool(by_name[role], name or ""))   # D145
         unfilled = open_requests(list(self.cfg.meta.get("capability_requests", [])) + [
             {**q.model_dump(), "status": "unfilled", "reason": "raised_during_run"}
-            for q in self.ep.requested_capabilities if q.for_role in roles and self.pool is not None], holds)
+            for q in self.ep.requested_capabilities if q.for_role in roles and self.pool is not None
+            and q.step in (None, n)], holds, held_fn)                     # D145: requests are per step
+        mine = [self.agents[a] for a in self.steps[n].agent_ids] if n in self.steps else []
+        held, hidden = {}, self.fault_hidden(n)
+        for x in list(meta.get("blocked") or []) + list(meta.get("contract_missing") or []):
+            t = next(filter(None, (held_tool(a, x.partition(" — ")[0].strip()) for a in mine)), None)
+            if t and t not in hidden:                        # D119: a tool a fault took away is not held
+                held[x] = t
         plan = {number(s): {"output": s.output, "roles": [self.agents[a].name for a in s.agent_ids],
                             "status": (self.artifacts.get(number(s)) or {}).get("meta", {}).get("status")}
                 for s in self.cfg.plan}
         view, unfilled = waived_view(meta, unfilled, self.waived.get(n))   # D124: an accepted work-around
         view, unfilled = waived_view(view, unfilled, self.provided.get(n), files=False)   # D125: a made tool
-        signals = step_signals(view, previous=previous, unfilled=unfilled, files_unchanged=files_unchanged, plan=plan)
+        signals = step_signals(view, previous=previous, unfilled=unfilled, files_unchanged=files_unchanged, plan=plan,
+                               held=held)
         if not is_stuck(meta, signals):
             return None
         d = {"step": n, "attempt": len([s for s in self.stuck if s["step"] == n]) + 1, **diagnose(signals)}
@@ -2353,6 +2371,10 @@ class PlanRunner:
         per_step = int(lim["max_fixes_per_substep"] if n in self.fix_epoch else lim["max_fixes_per_step"])
         while d:
             usd = self.adapt_usd()
+            if usd is None and not self.usd_unknown:          # D145: no price → the token limit only, said once
+                self.usd_unknown = True
+                self.i.trace.event("adapt_usd_unknown", {"amoeba.step": n, "amoeba.model": getattr(self.i.llm, "model", "")})
+                self.log_event("adapt_usd_unknown", {"step": n})
             if len(self.step_fixes(n)) >= per_step:
                 why = f"limit: {per_step} fixes per " + ("sub-step" if n in self.fix_epoch else "step")
             elif len(self.fixes) >= int(lim["max_fixes_per_task"]):
@@ -2391,9 +2413,15 @@ class PlanRunner:
         self.ep.adaptation = self.adapt_summary()
         if meta["status"] == "done" or not meta.get("stuck"):
             return None
+        cats = sorted({c for s in meta["stuck"].get("signals_detail") or [] for c in s.get("categories") or []}
+                      | {u.get("category") for u in meta.get("unreadable_turns") or [] if u.get("category")})
         self.exhausted = {"step": n, "cause": meta["stuck"]["cause"], "why": why,
-                          "evidence": meta["stuck"]["evidence"]}
+                          "evidence": meta["stuck"]["evidence"], "categories": cats}
         self.ep.adaptation = self.adapt_summary()
+        if meta["stuck"]["cause"] == "provider_blocked":      # D145 rung (c): stop, naming the refusal categories
+            self.exhausted["why"] = "; ".join(x for x in (why, "the model service refused the replies (categories: "
+                                                          + (", ".join(cats) or "none given") + ")") if x)
+            return "stop_blocked"
         return "stop" if lim["stop_when_exhausted"] else None
 
     # box: fixes
@@ -2401,7 +2429,10 @@ class PlanRunner:
         agents = [self.agents[a] for a in self.steps[n].agent_ids]
         return {"deps": dependencies(self.cfg.plan).get(n, []),
                 "steps": {k: {"status": a["meta"]["status"], "text": a["text"]} for k, a in self.artifacts.items()},
+                "held": {t for a in agents for t in a.tools} - self.fault_hidden(n),   # D145: never granted again
+                "alt_models": self.alt_models(), "models_tried": sorted(self.models_tried.get(n, set())),
                 "opts": {"max_turns": self.step_opts.get(n, {}).get("max_turns") or agents[0].limits.max_turns,
+                         "compact": bool(self.step_opts.get(n, {}).get("compact")),
                          "check_retry_turns": self.so(n, "check_retry_turns"),
                          "max_input_chars": self.so(n, "max_input_chars")},
                 "capped": bool(self.capped.get(n)), "stock": getattr(self.i, "stock", None) is not None,
@@ -2410,6 +2441,48 @@ class PlanRunner:
                 # D127: web tools this run has that the step's helpers do not hold (a missing-data fix)
                 "web_missing": sorted({t for t in WEB_TOOLS if t in self.i.tools for a in agents if t not in a.tools}),
                 **self.make_tool_ctx(n)}
+
+    # box: fixes
+    def fault_hidden(self, n: int) -> set[str]:
+        """D119/D145: the tool a capability fault takes from step n's helpers while it runs (not held for Box 4)."""
+        f = self.faults.get("capability", n) if hasattr(self.faults, "get") else None
+        return {f.target["tool"]} if f is not None and f.target else set()
+
+    # box: fixes
+    def router(self):
+        """D145: the run's model router (fixed mode), if any."""
+        inner = self.i.llm
+        for _ in range(6):
+            if hasattr(inner, "registry") and hasattr(inner, "route"):
+                return inner
+            inner = getattr(inner, "llm", None) or getattr(inner, "inner", None) or getattr(inner, "default", None)
+            if inner is None:
+                return None
+        return None
+
+    # box: fixes
+    def alt_models(self) -> list[str]:
+        """D145: other candidate models a provider-blocked step may re-run on: the router's allowed models other
+        than the fixed one (routed mode already falls back per call, so it offers none here)."""
+        r = self.router()
+        if r is None or getattr(r, "mode", None) != "fixed":
+            return []
+        names = r.profile_allowed or r.allowed or list(r.registry)
+        return [m for m in names if m in r.registry and m != r.fixed]
+
+    # box: fixes
+    @contextmanager
+    def model_for(self, n: int):
+        """D145: while step n re-runs, the router uses the model a switch_model fix chose."""
+        r, m = self.router(), self.step_opts.get(n, {}).get("model")
+        if r is None or not m:
+            yield
+            return
+        was, r.fixed = r.fixed, m
+        try:
+            yield
+        finally:
+            r.fixed = was
 
     # box: fixes
     def step_fixes(self, n: int) -> list[dict]:
@@ -2454,8 +2527,11 @@ class PlanRunner:
                                        "amoeba.rung": fix["rung"], "amoeba.target": fix["target"],
                                        "amoeba.params": json.dumps(fix.get("params", {}), default=str)})
         note, kind, p = "", fix["kind"], fix.get("params", {})
-        if kind.startswith("set_run_option:"):
+        if kind.startswith("set_run_option:") or kind == "compact_prompt":
             self.step_opts.setdefault(n, {}).update(p)
+        elif kind == "switch_model":                         # D145: the step re-runs on another candidate model
+            self.models_tried.setdefault(n, set()).add(p["model"])
+            self.step_opts.setdefault(n, {})["model"] = p["model"]
         elif kind == "add_dependency":
             u = p["from"]
             if p["mode"] == "added":
@@ -2472,6 +2548,12 @@ class PlanRunner:
             self.keep_try(u)
             self.run_step(up, self.artifacts[u]["meta"]["wave"], dependencies(self.cfg.plan)[u],
                           fixing={**fix, "note": FIX_UPSTREAM_NOTE.format(items=p["add_done_when"], step=n)})
+            if self.artifacts[u]["meta"].get("stuck") and not self.fix_depth:   # D145: fix the upstream once
+                self.fix_depth = 1
+                try:
+                    rec["upstream_fix"] = self.fix_stuck(u, self.artifacts[u]["meta"]["wave"]) or "tried"
+                finally:
+                    self.fix_depth = 0
             rec["upstream_status"] = self.artifacts[u]["meta"]["status"]
             rec["left_on_old_output"] = sorted(k for k, a in self.artifacts.items() if k not in (n, u)
                                                and u in dependencies(self.cfg.plan).get(k, []))
@@ -2494,7 +2576,8 @@ class PlanRunner:
             note = MADE_TOOL_NOTE.format(tool=made["tool"], cap=p["capability"], what=made["description"],
                                          input=made["input"] or "a JSON object")
         self.keep_try(n)
-        self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n], fixing={**fix, "note": note})
+        with self.model_for(n):                                                       # D145
+            self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n], fixing={**fix, "note": note})
         m = self.artifacts[n]["meta"]
         rec["status_after"] = m["status"]
         rec["result"] = "recovered" if m["status"] == "done" else \
@@ -2707,7 +2790,11 @@ class PlanRunner:
         return {"fixes": self.fixes, "recovered_steps": recovered, "finished_with_limitation_steps": limited,
                 "stuck_steps": sorted({s["step"] for s in self.stuck}), "tokens": self.adapt_tokens,
                 "cost_usd": self.adapt_usd(), "skipped": [{"step": s, "why": w} for s, w in sorted(self.fix_notes)],
-                "stopped": self.exhausted, "workarounds": self.workarounds, "tools_made": self.tools_made,
+                "stopped": None if any(k.get("step") == (self.exhausted or {}).get("step") for k in self.kept_going)
+                else self.exhausted,                                   # D145: under D133 it is kept_going
+                "kept_going": self.kept_going, "usd_limit_enforced": not self.usd_unknown,
+                "make_tool_unavailable": sorted({w for _, w in self.fix_notes if "local tools are off" in w}),   # D145
+                "workarounds": self.workarounds, "tools_made": self.tools_made,
                 "left_on_old_output": self.left_on_old_output()}
 
     # box: fixes
@@ -2728,6 +2815,8 @@ class PlanRunner:
             lines += ["# The task stopped: a step stayed stuck", "", f"**Stuck step:** {stopped} — {title}",
                       f"**Cause:** {x.get('cause')}", "", "**Evidence:**", *[f"- {e}" for e in x.get("evidence", [])],
                       "", f"**Why it stopped:** {x.get('why') or 'no fix recovered the step'}", ""]
+            if x.get("categories"):                          # D145: provider_blocked names the refusal categories
+                lines += [f"**Refusal categories:** {', '.join(x['categories'])}", ""]
         else:
             lines += ["# Adaptation report", ""]
         for k in sorted({s["step"] for s in self.stuck} | {f["step"] for f in self.fixes}):
@@ -2751,6 +2840,13 @@ class PlanRunner:
                       *[f"- step {t['step']}: {t['tool']} for {t['capability']} ({t['how']}"
                         + (f"; library: {t['library']}" if t.get("library") else "") + ")" for t in self.tools_made],
                       ""]
+        if self.kept_going:                                   # D145: under D133 the run went on without them
+            lines += ["**Kept going (no fix recovered the step; only its dependents were skipped):**",
+                      *[f"- step {k['step']}: {k.get('cause')} — {k.get('why') or 'no fix recovered it'}"
+                        for k in self.kept_going], ""]
+        if self.usd_unknown:
+            lines += ["**Limits:** a model of this run has no price in prices.yaml, so the adaptation's USD limit "
+                      "could not be computed; only its token limit was enforced.", ""]
         old = self.left_on_old_output()
         lines += ["**Steps built on an upstream output from before its re-run:**",
                   *([f"- step {o['step']} used step {o['upstream']}'s earlier output (not redone)" for o in old]
@@ -2815,7 +2911,7 @@ class PlanRunner:
             raw = self._proposer_call(n, d, allowed, refused)
             try:
                 reply = parse_fix(raw)
-                problems = fix_problems(reply, d["cause"], allowed, tools, self.fix_keys, roles, tried_here)
+                problems = fix_problems(reply, d["cause"], allowed, tools, self.fix_keys, roles, tried_here, step=n)
                 if not problems:
                     problems, change = self._d_live(reply, n)
             except (ValueError, ValidationError) as e:
@@ -2842,7 +2938,7 @@ class PlanRunner:
             rec.update(status_after=self.artifacts[n]["meta"]["status"], result=f"failed: {why}")
             self._fix_done(rec, t0, s0)
             return "none"
-        self.fix_keys.add(reply.edit.key())
+        self.fix_keys.add(reply.edit.key(n))                                    # D145: per step
         self.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.fix": reply.edit.op,
                                        "amoeba.rung": "D", "amoeba.target": n,
                                        "amoeba.params": json.dumps(reply.edit.params, default=str)[:2000]})
@@ -2917,13 +3013,42 @@ class PlanRunner:
         stash = self.artifacts.pop(n)                          # the stuck step counts as not done while checking
         try:
             if op == "replan_remaining":
+                stuck_method = {n: failed_method(stash["meta"], {t for aid in self.steps[n].agent_ids
+                                                                 for t in self.agents[aid].tools}, [])}
                 errors, change = self.validate_decision({"decision": "REVISE_REMAINING", "steps": p["plan"],
                                                          "role": "", "requests": "", "reason": reply.reason,
-                                                         "unmet": ""})
+                                                         "unmet": ""}, stuck=n, stuck_method=stuck_method)
+                if not errors:                                 # D145: Box 2's HARD checks on the plan after the edit
+                    errors += self.replan_hard_problems(change)
                 return errors, change
             return self._split_change(n, p["steps"])
         finally:
             self.artifacts[n] = stash
+
+    # box: proposer
+    def replan_hard_problems(self, change: dict) -> list[str]:
+        """D145: Box 2's HARD checks on the plan as it would be after a re-plan: every requirement covered by a step,
+        and (D142) every requirement checked, every check valid and reachable. The reasons go back to the proposer."""
+        from types import SimpleNamespace
+
+        from amoeba.task.contract import plan_contract_quality
+        ids = {a.name: a.agent_id for a in self.agents.values()}
+        try:
+            plan = self.proposed_plan(change, ids)
+        except Exception as e:                       # noqa: BLE001 - an unusable plan is a refusal, not a crash
+            return [f"the new plan is unusable: {e}"]
+        reqs = list(self.cfg.requirements or {})
+        out = []
+        uncovered = [r for r in reqs if not any(r in s.covers for s in plan)]
+        if uncovered:
+            out.append(f"HARD check requirements_covered: no step covers {', '.join(uncovered)}")
+        names = {aid: a.name for aid, a in self.agents.items()}
+        view = [SimpleNamespace(index=number(s) - 1, agent_names=[names.get(a, a) for a in s.agent_ids],
+                                checks=s.checks, covers=s.covers, output=s.output) for s in plan]
+        q = plan_contract_quality(reqs, view, {a.name: list(a.tools) for a in self.agents.values()})
+        out += [f"HARD check {k}: {json.dumps({x: y for x, y in v.items() if x != 'ok'}, default=str)[:200]}"
+                for k, v in q.items() if v.get("ok") is False]
+        return out
 
     # box: proposer
     def _split_change(self, n: int, subs: list[dict]) -> tuple[list[str], dict]:
@@ -3112,6 +3237,8 @@ class PlanRunner:
             user = user.replace(anchor, f"\n{CONTRACT_LINE.format(items='; '.join(items))}\n{anchor}", 1)
         if last:
             user = user.replace(anchor, f"\n{LAST_TURN_NOTE}\n{anchor}", 1)
+        if self.step_opts.get(n, {}).get("compact"):        # D145: a provider-blocked step's compact prompt variant
+            user = compact_step_prompt(user)
         if self.v2:                                       # D136: plain code's notes worded for v2
             user = v2_text(user)
         system = render(PROMPT.plan_step_system, name=agent.name)
@@ -3522,7 +3649,8 @@ class PlanRunner:
 
     # ---- validation and application -------------------------------------------------------------------------------
     # box: action_obs
-    def validate_decision(self, dec: dict) -> tuple[list[str], dict]:
+    def validate_decision(self, dec: dict, stuck: int | None = None,
+                          stuck_method: dict | None = None) -> tuple[list[str], dict]:
         """D63: the Box 2 rules for a proposed change, and the change itself when they all hold. Finished steps are
         never touched; new steps may depend only on finished or new steps; roles must exist (or be the one role this
         decision adds, with a complete card); the team stays within its size; the graph has no cycle; at most 3 added
@@ -3597,9 +3725,12 @@ class PlanRunner:
                 errors.append(f"{added} new step(s) would pass the cap of {self.opt.max_added_steps} added steps per run "
                               f"({self.added_steps} added so far)")
             if kind == "REVISE_REMAINING":
-                change["drop"] = sorted(unrun - batch)
+                drop = unrun - batch
+                if stuck is not None:          # D145 (Box 4): only the stuck step and the unrun steps built on it
+                    drop &= {stuck} | self.dependants(self.steps, stuck)
+                change["drop"] = sorted(drop)
             change["added"] = added
-            errors += self.same_method(change["steps"], new_role)                 # D108
+            errors += self.same_method(change["steps"], new_role, stuck_method)   # D108; D145: the stuck step too
         elif kind == "REASSIGN_STEP":
             num, role = step_field(dec["steps"], "step"), (step_field(dec["steps"], "role", as_text=True) or "").strip()
             if num not in unrun:
@@ -3649,11 +3780,12 @@ class PlanRunner:
         return out
 
     # box: action_obs
-    def same_method(self, steps: list[dict], new_role=None) -> list[str]:
-        """D108: an error for each proposed step that replaces a failed step without changing its method."""
+    def same_method(self, steps: list[dict], new_role=None, extra: dict | None = None) -> list[str]:
+        """D108: an error for each proposed step that replaces a failed step without changing its method. extra: D145
+        — the stuck step's method (it is not among the finished steps while Box 4 checks a re-plan)."""
         if self.opt.replan_method != "on":
             return []
-        failed = self.failed_steps()
+        failed = {**self.failed_steps(), **(extra or {})}
         errors = []
         for st in steps:
             n = replaces(st, failed)
@@ -3684,7 +3816,8 @@ class PlanRunner:
             by[s["number"]] = PlanStep(index=s["number"] - 1, agent_ids=[ids[r] for r in s["roles"]], text=text,
                                        kind=f.get("kind", ""), covers=f.get("covers", []),
                                        depends_on=f.get("depends_on", []), do=f.get("do", ""),
-                                       output=f.get("output", ""), done_when=f.get("done_when", ""))
+                                       output=f.get("output", ""), done_when=f.get("done_when", ""),
+                                       checks=f.get("checks", []))   # D142
         if change.get("reassign"):
             num, role = change["reassign"]
             s = by[num]

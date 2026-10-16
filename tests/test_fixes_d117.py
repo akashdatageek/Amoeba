@@ -111,7 +111,7 @@ def test_more_turns_recovers_a_step_that_ran_out_of_turns(task, envelope, trace,
     llm, cfg, ep = run(task, envelope, trace, tools, script, tmp_path)
     [f] = ep.adaptation["fixes"]
     assert (f["cause"], f["kind"], f["params"], f["result"]) == ("max_turns", "set_run_option:max_turns",
-                                                                 {"max_turns": 8}, "recovered")
+                                                                 {"max_turns": 9}, "recovered")   # D145: 6 + 3
     assert ep.adaptation["recovered_steps"] == [1] and ep.error is None and f["tokens"] > 0
     assert (tmp_path / "artifacts" / "step_1.try1.json").exists()                 # the attempt it replaced
     assert json.loads((tmp_path / "artifacts" / "step_1.json").read_text())["fix_of"]["kind"] == \

@@ -125,8 +125,9 @@ class FixEdit(BaseModel):
             DraftedRole.model_validate(self.params["role"])
         return self
 
-    def key(self) -> str:
-        """The op and its parameters with texts normalised: the same edit proposed twice has the same key."""
+    def key(self, step: int | None = None) -> str:
+        """The op and its parameters with texts normalised: the same edit proposed twice has the same key. D145: and
+        the step it is for, so the same rule on a different step is not "already tried"."""
         def norm(v: Any):
             if isinstance(v, str):
                 return " ".join(v.lower().split())
@@ -135,7 +136,7 @@ class FixEdit(BaseModel):
             if isinstance(v, list):
                 return [norm(x) for x in v]
             return v
-        return "proposer:" + hashlib.sha256(json.dumps({"op": self.op, "params": norm(self.params)},
+        return "proposer:" + hashlib.sha256(json.dumps({"op": self.op, "params": norm(self.params), "step": step},
                                                        sort_keys=True).encode()).hexdigest()[:16]
 
     def texts(self) -> list[tuple[str, str, int]]:
@@ -198,7 +199,7 @@ def allowed_text(allowed: list[str], next_step: int) -> str:
 
 # box: proposer
 def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[str, str], tried: set[str],
-                 roles_of_step: list[str], tried_kinds: set[str] = frozenset()) -> list[str]:
+                 roles_of_step: list[str], tried_kinds: set[str] = frozenset(), step: int | None = None) -> list[str]:
     """The checks that need no live plan. tools: name → description of the tools available in this run; tried: the
     keys of the fixes already tried in this task; roles_of_step: the stuck step's role names; tried_kinds: the kinds of
     the fixes already tried for this step (work_around needs a grant_tool or add_helper_role among them)."""
@@ -233,6 +234,6 @@ def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[st
             out.append(f"tool: {t!r} acts outside the run")
         elif "x402" in t.lower() or "paid" in t.lower():
             out.append(f"tool: {t!r} is a paid endpoint")
-    if e.key() in tried:
+    if e.key(step) in tried:
         out.append("this edit was already tried in this task")
     return out
