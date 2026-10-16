@@ -4872,7 +4872,7 @@
   ]
  },
  "free_text": {
-  "checked_at": "c5f9e93",
+  "checked_at": "a1e7fbc",
   "facts": {
    "anchors": [
     {
@@ -4991,7 +4991,7 @@
     ],
     [
      "fallback",
-     "PoolSetup(cache_dir=args.pool_dir) if args.pool else None",
+     "PoolSetup(cache_dir=args.pool_dir, allow_remote_exec=getattr(args, 'allow_remote_exec', False)) if args.pool else None",
      "choose value"
     ],
     [
@@ -5087,7 +5087,7 @@
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "e77de74d102aac09",
+  "facts_hash": "37681ee410206e51",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
@@ -7788,7 +7788,7 @@
   ]
  },
  "niche": {
-  "checked_at": "c5f9e93",
+  "checked_at": "a1e7fbc",
   "facts": {
    "anchors": [
     {
@@ -8074,7 +8074,7 @@
     ],
     [
      "decide",
-     "if prof.safety.outside_actions is False",
+     "if prof.safety.outside_actions is False and (not name.startswith(('local:', 'made:')))",
      "set hit = side_effect(name, description)"
     ],
     [
@@ -8245,16 +8245,16 @@
    "prompts": {},
    "title": "Niche profiles (D102)"
   },
-  "facts_hash": "68af2c500dab39b9",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "d219f1b6cf765c75",
+  "facts_hash": "c43bb6829392a111",
+  "seed_hash": "388e8bd149a40c7a",
   "sentence": "One file per environment says which tools and models are allowed, the limits, what counts as done, the domain's rules and words, and which domain checks run; plain code enforces it.",
-  "source": "model: kept",
+  "source": "hand",
   "what": [
    "--niche <name> loads profiles/<name>.yaml; the default, general, changes nothing.",
    "The prompts stay generic: one Environment section in Box 1's and Box 2's prompts is filled from the profile, asking the team to assess the environment first and plan only with what is allowed.",
    "Box 3 refuses any tool outside the profile even when a plan or a replan asks for it, and logs the refusal; the router refuses any model outside it; domain checks (amoeba/checks/) run after each step and a failed one earns a retry turn.",
-   "D113: after a step that made a workbook, typed totals and typed derived cells (row or column sums, products of row cells) fail the domain_xlsx_formulas check with the cell names and earn the retry turn."
+   "D113: after a step that made a workbook, typed totals and typed derived cells (row or column sums, products of row cells) fail the domain_xlsx_formulas check with the cell names and earn the retry turn.",
+   "D137: local: and made: tools are never counted as outside actions; the allow list still applies."
   ]
  },
  "ov_adapt": {
@@ -16433,7 +16433,7 @@
   ]
  },
  "toolbox": {
-  "checked_at": "a937618",
+  "checked_at": "a1e7fbc",
   "facts": {
    "anchors": [
     {
@@ -16473,6 +16473,7 @@
       "amoeba/pool/stock.py::attach",
       "amoeba/pool/stock.py::helpers_for",
       "amoeba/pool/stock.py::pick",
+      "amoeba/pool/stock.py::remote_exec",
       "amoeba/pool/stock.py::side_effect",
       "amoeba/pool/stock.py::steps_of",
       "amoeba/pool/stock.py::vet",
@@ -16491,6 +16492,7 @@
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/trace.py::TracedLLM.chat_messages",
+      "amoeba/llm/anthropic_client.py::AnthropicClient.chat_messages",
       "amoeba/llm/cache.py::CachedLLM.chat_messages",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/client.py::LLMClient.chat_messages",
@@ -16501,7 +16503,8 @@
       "amoeba/pool/mcp.py::data_block",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
-      "scripts/eval_draft.py::Recording.chat_messages"
+      "scripts/eval_draft.py::Recording.chat_messages",
+      "scripts/model_check.py::Gate.chat_messages"
      ],
      "doc": "The one AI call: the request and its candidates in, one listed id (or None) out. Parsed strictly.",
      "key": "amoeba/pool/stock.py::pick",
@@ -16517,6 +16520,7 @@
       "amoeba/pool/index.py::text_sha256",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/pool/stock.py::paid_host",
+      "amoeba/pool/stock.py::remote_exec",
       "amoeba/pool/stock.py::side_effect",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
@@ -16735,6 +16739,10 @@
       [
        "disabled",
        "frozenset[str]"
+      ],
+      [
+       "allow_remote_exec",
+       "bool"
       ]
      ],
      "key": "amoeba/pool/stock.py::PoolSetup",
@@ -16765,8 +16773,13 @@
      "signature": "attach(a: AgentSpec, entry: dict, name: str, body: str | None, pool: PoolTools | None, q) -> None"
     },
     {
-     "callees": [],
-     "doc": "The helper(s) a request is for: its for_role, else every helper whose missing tools name it.",
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "The helper(s) a request is for: its for_role, else every helper whose missing tools name it. D127: a for_role",
      "key": "amoeba/pool/stock.py::helpers_for",
      "signature": "helpers_for(q, cfg: TeamConfig) -> list[AgentSpec]"
     },
@@ -16805,6 +16818,17 @@
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
      ],
+     "doc": "D137: the first remote-code-execution word in a server's or tool's name or description (names are split at",
+     "key": "amoeba/pool/stock.py::remote_exec",
+     "signature": "remote_exec(*texts: str) -> str | None"
+    },
+    {
+     "callees": [
+      "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
      "doc": "The first outside-action word in a tool's name or description (names are split at - _ . /), or None.",
      "key": "amoeba/pool/stock.py::side_effect",
      "signature": "side_effect(*texts: str) -> str | None"
@@ -16827,6 +16851,11 @@
      "correct",
      "if name not in a.tools",
      "add name"
+    ],
+    [
+     "correct",
+     "if reason in FALL_THROUGH and chosen != order[-1]",
+     "add {'id': chosen, 'reason': reason}"
     ],
     [
      "correct",
@@ -16872,6 +16901,11 @@
      "decide",
      "if entry['id'] not in pins",
      "set pins[entry['id']] = {'version': entry.get('version'), 'tools': digest}"
+    ],
+    [
+     "decide",
+     "if fell",
+     "set out['fell_through'] = fell"
     ],
     [
      "decide",
@@ -16927,6 +16961,16 @@
      "decide",
      "if not listing",
      "set reason = 'no_tools'"
+    ],
+    [
+     "decide",
+     "if not named and q.for_role",
+     "set named = [a for a in cfg.agents.values() if a.name.strip() and re.search(f'(?<![\\\\w]){re.es"
+    ],
+    [
+     "decide",
+     "if not setup.allow_remote_exec and any((remote_exec(t['name'], t.get('description', '')) for t in listing))",
+     "set reason = 'remote_exec'"
     ],
     [
      "decide",
@@ -17031,6 +17075,11 @@
     [
      "fallback",
      "[] if fmt else rank(q, entries, int(lim.get('vet_depth', 10 * top)))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[e['id'] for _, e in shown if e['id'] != chosen and e['id'] not in (exclude or set())] if chosen else []",
      "choose value"
     ],
     [
@@ -17185,7 +17234,17 @@
     ],
     [
      "filter",
+     "keep only if a.name.strip() and re.search(f'(?<![\\\\w]){re.escape(a.name.strip())}(?![\\\\w])', q.for_role, re.I)",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if e.get('id') not in setup.disabled and e.get('name') not in setup.disabled",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if e['id'] != chosen and e['id'] not in (exclude or set())",
      "drop the rest"
     ],
     [
@@ -17206,6 +17265,11 @@
     [
      "filter",
      "keep only if ids & set(s.agent_ids)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if isinstance(t, dict)",
      "drop the rest"
     ],
     [
@@ -17256,6 +17320,11 @@
     [
      "filter",
      "keep only if t not in (q.name, q.canonical)",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if w",
      "drop the rest"
     ],
     [
@@ -17395,6 +17464,11 @@
     ],
     [
      "stop",
+     "if not setup.allow_remote_exec and remote_exec(e.get('name', ''), e.get('title', ''), e.get('description', ''), *(f\"{t.get('name', '')} {t.get('description', '')}\" for t in e.get('tools') or [] if isinstance(t, dict)))",
+     "return ('remote_exec', {}, None)"
+    ],
+    [
+     "stop",
      "if paid_host(e['remote_url'], setup)",
      "return ('paid_endpoint', {}, None)"
     ],
@@ -17435,13 +17509,10 @@
    "prompts": {},
    "title": "Stock the toolbox"
   },
-  "facts_hash": "83d577f004b42524",
-  "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "fc8a5200c52ed8e2",
-  "seed_hash": "ec288792550b2470",
+  "facts_hash": "2641ea9348e130ff",
+  "seed_hash": "577a90bb5eb9d69f",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code. D117: the in-task capability fix calls it again with no AI pick.",
-  "source": "model: kept",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand",
   "what": [
    "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
    "Vet first (D60): the candidates are checked before the pick and the AI is shown only the best {rank.top} that pass (up to 50 matches are checked); if none pass, the request is unfilled (all_refused) with no AI call.",
@@ -17453,7 +17524,8 @@
    "What became of each request (filled or not) is handed to the plan runner for the step contract (D61).",
    "D69: a request that names a document format (xlsx, docx, pptx, pdf) gets the vetted local skill for it, chosen by plain code with no AI pick; an outside service that creates things stays refused.",
    "D70: with --picks-file every run of a task reuses the task's first pick for a request (all three architectures), when it passes vetting again; --picks-only makes the picks in a pre-pass.",
-   "D117 Stage C: when a stuck step lacks a capability and the pool or local tools are on, the plan runner runs this step again for it with code_pick: plain code takes the first vetted candidate not given to that step before (no AI call, no shared pick); with both off the rung is skipped."
+   "D117 Stage C: when a stuck step lacks a capability and the pool or local tools are on, the plan runner runs this step again for it with code_pick: plain code takes the first vetted candidate not given to that step before (no AI call, no shared pick); with both off the rung is skipped.",
+   "D137: a pool server that runs code for the caller (remote code execution) is refused at vetting and after connecting unless --allow-remote-exec; code runs only through local:Bash in the sandbox."
   ]
  },
  "toolmaker": {
@@ -17729,7 +17801,7 @@
   ]
  },
  "tools": {
-  "checked_at": "a937618",
+  "checked_at": "a1e7fbc",
   "facts": {
    "anchors": [
     {
@@ -17942,11 +18014,26 @@
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
-      "amoeba/tools/web.py::WebToolError"
+      "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/tools/web.py::WebToolError",
+      "amoeba/tools/web.py::public_address"
      ],
-     "doc": "D106: one direct GET (a data file or a page's links), at most max_bytes; (content, content type).",
+     "doc": "D137: raise WebToolError unless the URL is http(s) and its host resolves only to public addresses. A host",
+     "key": "amoeba/tools/web.py::check_url",
+     "signature": "check_url(url: str, resolve=None) -> None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/tools/web.py::WebToolError",
+      "amoeba/tools/web.py::check_url"
+     ],
+     "doc": "D106: one direct GET (a data file or a page's links), at most max_bytes; (content, content type). D137: only",
      "key": "amoeba/tools/web.py::http_get",
-     "signature": "http_get(url: str, max_bytes: int, timeout_s: float=20.0) -> tuple[bytes, str]"
+     "signature": "http_get(url: str, max_bytes: int, timeout_s: float=20.0, resolve=None, opener=None) -> tuple[bytes, str]"
     },
     {
      "callees": [
@@ -17964,6 +18051,12 @@
      "doc": "",
      "key": "amoeba/tools/web.py::now_iso",
      "signature": "now_iso() -> str"
+    },
+    {
+     "callees": [],
+     "doc": "D137: an address the harness may fetch from: not loopback, private, link-local, multicast, reserved or",
+     "key": "amoeba/tools/web.py::public_address",
+     "signature": "public_address(ip: str) -> bool"
     },
     {
      "callees": [
@@ -18016,6 +18109,11 @@
     ],
     [
      "decide",
+     "if e.code in (301, 302, 303, 307, 308) and e.headers.get('Location')",
+     "set url = urllib.parse.urljoin(url, e.headers['Location'])"
+    ],
+    [
+     "decide",
      "if ext in ('csv', 'tsv')",
      "set text = content.decode('utf-8-sig', errors='replace')"
     ],
@@ -18026,8 +18124,18 @@
     ],
     [
      "decide",
+     "if getattr(r, 'status', 200) in (301, 302, 303, 307, 308) and r.headers.get('Location')",
+     "set url = urllib.parse.urljoin(url, r.headers['Location'])"
+    ],
+    [
+     "decide",
      "if hasattr(self, 'web')",
      "set new.web = self.web"
+    ],
+    [
+     "decide",
+     "if isinstance(a, ipaddress.IPv6Address) and a.ipv4_mapped",
+     "set a = a.ipv4_mapped"
     ],
     [
      "decide",
@@ -18166,6 +18274,11 @@
     ],
     [
      "fallback",
+     "except (socket.gaierror, OSError)",
+     "raise WebToolError"
+    ],
+    [
+     "fallback",
      "except Exception",
      "return f'  data file {url}: could not read it ({type(e).__name__}: {str(e)[:120]})'"
     ],
@@ -18173,6 +18286,16 @@
      "fallback",
      "except SyntaxError",
      "return f'error: {e.msg}'"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "try:\n    addrs = [x[4][0] for x in (resolve or socket.getaddrinfo)(host, parts.p"
+    ],
+    [
+     "fallback",
+     "except urllib.error.HTTPError",
+     "raise "
     ],
     [
      "fallback",
@@ -18251,12 +18374,22 @@
     ],
     [
      "loop cap",
+     "for _ in range(MAX_REDIRECTS + 1)",
+     "loop ends"
+    ],
+    [
+     "loop cap",
      "while cells and (not cells[-1])",
      "loop ends"
     ],
     [
      "reject",
      "if ext is None",
+     "raise WebToolError"
+    ],
+    [
+     "reject",
+     "if host == 'localhost' or host.endswith('.localhost')",
      "raise WebToolError"
     ],
     [
@@ -18276,7 +18409,17 @@
     ],
     [
      "reject",
+     "if not addrs or not all((public_address(a) for a in addrs))",
+     "raise WebToolError"
+    ],
+    [
+     "reject",
      "if not self.api_key",
+     "raise WebToolError"
+    ],
+    [
+     "reject",
+     "if parts.scheme not in ('http', 'https') or not parts.hostname",
      "raise WebToolError"
     ],
     [
@@ -18368,10 +18511,16 @@
      "stop",
      "if self.research and data_ext(url)",
      "return self._read_data(url, '', None).lstrip()"
+    ],
+    [
+     "stop",
+     "if urllib.request.getproxies().get(parts.scheme)",
+     "return None"
     ]
    ],
    "kind": "code",
    "numbers": [
+    "MAX_REDIRECTS",
     "PoolLimits.timeout_s",
     "WebLimits.auto_fetch",
     "WebLimits.data_links_per_page",
@@ -18396,18 +18545,18 @@
    "prompts": {},
    "title": "Tool box"
   },
-  "facts_hash": "05d3f7cdb91fad95",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "d05b27c35fe8d109",
+  "facts_hash": "fb433ae33ec6b4df",
+  "seed_hash": "187dc89e15607db4",
   "sentence": "Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search and page reading.",
-  "source": "model: kept",
+  "source": "hand",
   "what": [
    "Tools are looked up by name; a name that is not registered is an error, not a web search.",
    "The arithmetic tool accepts numbers and + − × ÷ and powers only, never arbitrary code.",
    "web_search and fetch_url (Tavily) give every result a source id [S#]; searches and fetches per step, page length and time are capped, and a failure comes back as an error line, never a crash.",
    "Pool tools (D56) are remote MCP servers registered as pool:<name> for the helper that asked; they run here too, with the same caps, [S#] source ids and error lines.",
    "This is the single place any tool is ever run.",
-   "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#]."
+   "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#].",
+   "D137: the harness's own fetches reach only public http(s) addresses, with each redirect hop checked again (at most 3)."
   ]
  },
  "toy_source": {
