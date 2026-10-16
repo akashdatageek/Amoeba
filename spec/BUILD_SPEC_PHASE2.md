@@ -1054,6 +1054,10 @@ Design: docs/design/D138_box3_bugs.md.
 
 Design: docs/design/D139_model_layer.md.
 
+**D140, the model check completed (Oct 16, audit Phase C).** The check now also probes the plan observer and whether
+the model ends a step with a proper typed Final_Output. Its JSON repair call quotes the exact validation error.
+Design: docs/design/D140_model_check_gaps.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

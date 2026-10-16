@@ -126,7 +126,7 @@ def probe_planner_and_observer(llm: TracedLLM, gate: Gate, seed: int):
     from amoeba.task.draft import draft_team
     from amoeba.task.models import Task
     from amoeba.tools.registry import default_registry
-    gate.allow.update({"planner": 1, "agent_observer": 1})
+    gate.allow.update({"planner": 1, "agent_observer": 1, "plan_observer": 1})        # D140: both observers
     try:
         draft_team(Task(id="model-check", prompt=TOY), gate, Envelope.from_registry(default_registry()), llm.trace,
                    seed=seed, max_rounds=1)
@@ -134,11 +134,13 @@ def probe_planner_and_observer(llm: TracedLLM, gate: Gate, seed: int):
         pass
     except Exception:
         pass                       # a draft that fails to parse: the replies below say which call
-    planner, observer = last(gate, "planner"), last(gate, "agent_observer")
+    planner, observer, plan_obs = last(gate, "planner"), last(gate, "agent_observer"), last(gate, "plan_observer")
     # a reply is readable when the pipeline went on past it (a repair call of the same kind means it was not)
     planner_ok = planner is not None and (observer is not None or gate.stopped_at not in (None, "planner"))
     observer_ok = observer is not None and gate.stopped_at != "agent_observer"
-    return (planner, planner_ok, "autoagents_create_roles.txt"), (observer, observer_ok, "autoagents_check_roles.txt")
+    plan_obs_ok = plan_obs is not None and gate.stopped_at != "plan_observer"
+    return ((planner, planner_ok, "autoagents_create_roles.txt"), (observer, observer_ok, "autoagents_check_roles.txt"),
+            (plan_obs, plan_obs_ok, "autoagents_check_plans.txt"))
 
 
 # box: client
@@ -147,17 +149,32 @@ def probe_step(llm: TracedLLM, gate: Gate, seed: int, protocol: str):
     from amoeba.interp.runtime import Interpreter
     from amoeba.task.models import Task
     from amoeba.tools.registry import default_registry
-    gate.allow["plan_worker"] = 1
+    gate.allow["plan_worker"] = 2                  # D140: the tool turn, then the turn that should end the step
     opts = PlanOptions(native_tools="on", protocol=protocol, tool_access="asked")
     try:
         Interpreter(gate, default_registry(), llm.trace, plan_options=opts).run(toy_team(), Task(id="mc", prompt=TOY),
                                                                                  seed=seed)
     except Probed:
         pass
-    resp = last(gate, "plan_worker")
-    ok = bool(resp and resp.tool_calls)
-    note = f"tool call: {resp.tool_calls[0]['name']}" if ok else ("text, no tool call" if resp and resp.content else "")
-    return resp, ok, ("plan_step_v2.txt" if protocol == "v2" else "plan_step.txt"), note
+    turns = [r for k, _, r in gate.replies if k == "plan_worker"]
+    prompt = "plan_step_v2.txt" if protocol == "v2" else "plan_step.txt"
+    first = turns[0] if turns else None
+    ok = bool(first and first.tool_calls)
+    note = f"tool call: {first.tool_calls[0]['name']}" if ok else ("text, no tool call" if first and first.content
+                                                                    else "")
+    end = turns[1] if len(turns) > 1 else None     # D140: did the model end the step with a proper Final_Output?
+    call = next((c for c in (end.tool_calls if end else []) if c["name"] == "Final_Output"), None)
+    final_ok = False
+    if call is not None:
+        from amoeba.interp.step_protocol import FINAL, check_args
+        try:
+            args = json.loads(call.get("input") or "{}")
+        except ValueError:
+            args = None
+        final_ok = check_args(FINAL, args, {}) is None if protocol == "v2" else True
+    fnote = "Final_Output with typed fields" if final_ok else ("text answer" if end and end.content and not call
+                                                               else "no Final_Output")
+    return (first, ok, prompt, note), (end, final_ok, prompt, fnote)
 
 
 # box: client
@@ -225,10 +242,25 @@ def probe_mode(llm: TracedLLM, gate: Gate, mode: str, seed: int):
     if parse_schema_reply(ToyAnswer, resp.content) is not None or is_blocked(resp):
         return resp, parse_schema_reply(ToyAnswer, resp.content) is not None, ""
     again = llm.chat_messages(schema_messages(ask) + [{"role": "assistant", "content": resp.content},
-                                                      {"role": "user", "content": "That was not valid JSON for the "
-                                                       "schema. Reply with only the JSON object."}],
-                              seed, agent_name="model_check", max_tokens=1024)
+                                                      {"role": "user", "content": "That reply did not validate: "
+                                                       + validation_error(ToyAnswer, resp.content)
+                                                       + "\nReply with only the corrected JSON object."}],
+                              seed, agent_name="model_check", max_tokens=1024)   # D140: the exact error quoted
     return again, parse_schema_reply(ToyAnswer, again.content) is not None, "after one repair call"
+
+
+# box: client
+def validation_error(schema, content: str) -> str:
+    """D140: the exact reason a JSON reply does not validate (pydantic's first errors, or the JSON error)."""
+    from pydantic import ValidationError
+    text = re.sub(r"(?s)^.*?```(?:json)?\s*(.*?)```.*$", r"\1", (content or "").strip())
+    try:
+        schema.model_validate_json(text)
+    except ValidationError as e:
+        return "; ".join(f"{'.'.join(map(str, x['loc'])) or 'reply'}: {x['msg']}" for x in e.errors()[:4])
+    except ValueError as e:
+        return f"not JSON ({e})"
+    return "no error"
 
 
 # box: client
@@ -263,7 +295,7 @@ def run_checks(client: LLMClient, model: str, budget: float, protocol: str = "v2
     calls: list[tuple[str, object]] = [
         ("reading", lambda: probe_reading(llm, gate, seed)),
         ("planner+observer", lambda: probe_planner_and_observer(llm, gate, seed)),
-        ("step (native tools)", lambda: probe_step(llm, gate, seed, protocol)),
+        ("step", lambda: probe_step(llm, gate, seed, protocol)),
         ("fix proposer", lambda: probe_proposer(llm, gate, seed)),
         ("pool pick", lambda: probe_pick(llm, gate, seed)),
         *((f"output mode: {m}", (lambda m=m: probe_mode(llm, gate, m, seed))) for m in MODES)]
@@ -278,13 +310,18 @@ def run_checks(client: LLMClient, model: str, budget: float, protocol: str = "v2
             rows.append({"probe": name, "status": "error", "note": f"{type(e).__name__}: {' '.join(str(e).split())[:160]}"})
             continue
         spans = trace.spans("chat")[before:]
-        results = got if name == "planner+observer" else (got,)
-        for label, res in zip(("planner", "observer") if name == "planner+observer" else (name,), results):
+        labels = {"planner+observer": ("planner", "observer", "plan observer"),
+                  "step": ("step (native tools)", "Final_Output")}.get(name, (name,))
+        results = got if len(labels) > 1 else (got,)
+        for label, res in zip(labels, results):
             resp, ok, prompt_file, *note = res
             status, category = outcome(resp, ok)
             span = next((s for s in spans if s.get("gen_ai.agent.name") == {"planner": "planner",
-                                                                              "observer": "agent_observer"}.get(label)),
-                        None) if name == "planner+observer" else None
+                                                                              "observer": "agent_observer",
+                                                                              "plan observer": "plan_observer"}.get(label)),
+                        None) if name == "planner+observer" else \
+                (spans[["step (native tools)", "Final_Output"].index(label)] if name == "step" and
+                 len(spans) > ["step (native tools)", "Final_Output"].index(label) else None)
             mine = [span] if span else spans
             rows.append({"probe": label, "status": status, "category": category,
                          "prompt_file": prompt_file or None,
