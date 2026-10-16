@@ -471,7 +471,10 @@ BOXES: list[dict] = [
                "D136 (--protocol v2, with native tool calling): the step prompt asks for no text sections; each tool "
                "takes typed arguments that plain code checks before running it (a bad call gets the schema and an "
                "example), and the step ends with Final_Output's typed fields, which plain code turns into the usual "
-               "BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy."],
+               "BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy.",
+               "D138: a step with no Final Output hands on nothing (its last message stays in meta), a rework that gives "
+               "no new output keeps the earlier one, and in native mode short text without a tool call is not the step's "
+               "output unless it is the last turn or clearly an answer."],
          proposes="One action and its input per turn; the step's output.",
          disposes="Plain code decides what the helper sees, runs the tools, and caps the turns.",
          prompts=["plan_step", "plan_step_system", "plan_critique", "plan_step_v2"],
@@ -506,7 +509,10 @@ BOXES: list[dict] = [
                "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
                "D109 (resolver): plain code pairs the verifier's blind figures with the worker's by label (5% tolerance); one fresh resolver call settles each disagreement by source text or a re-run, plain code checks its evidence, a settled value replaces the wrong one, and an unresolved one keeps the step from PASS and goes into Limitations.",
                "D110 (part of D105's final-answer check): every web-sourced figure of the final answer must carry its source's date (line or source entry); undated ones share the refine turn, and those still undated are listed in Limitations.",
-               "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked."],
+               "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked.",
+               "D138: an unreadable review counts as REVISE after one repair call, never AGREE; find_tool and failed "
+               "calls are not re-checks; a corrected dispute figure marks its consumers stale; a verifier can read the "
+               "full text of an input it saw cut (inputs/step_<d>.md)."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",

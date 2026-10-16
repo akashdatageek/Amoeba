@@ -1031,6 +1031,20 @@ vetted and again after connecting, unless `--allow-remote-exec` is set; code run
 sandbox. The harness's own fetches reach only public http(s) addresses, with every redirect checked. Local tools are no
 longer mistaken for outside actions under a niche profile. Design: docs/design/D137_security.md.
 
+**D138, Box 3 correctness (Oct 16, audit Phase B).** Ten fixes in the plan runner, in both protocols:
+- a skipped step no longer crashes the summariser;
+- a rework that gives no new output keeps the earlier one;
+- a step with no Final Output hands on nothing instead of its last message;
+- in native mode, short text without a tool call no longer ends a step;
+- the tool-less summariser is told to list missing files, not make them;
+- a corrected dispute figure marks the steps that used it as stale;
+- an unreadable review counts as REVISE;
+- find_tool does not count as a re-check;
+- a verifier can read the full text of an input it saw cut;
+- `--failed-step dependents` is the default in the library too.
+
+Design: docs/design/D138_box3_bugs.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

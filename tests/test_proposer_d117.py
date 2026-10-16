@@ -14,7 +14,7 @@ from amoeba.interp.plan_runner import PlanOptions
 from amoeba.interp.runtime import Interpreter
 from tests.test_plan_runner import BODY, plan_team, step_no
 
-ON = PlanOptions(adapt="on")
+ON = PlanOptions(adapt="on", failed_step="run")  # D138 (B10): the stop-the-task behaviour of failed_step "run"
 BLOCK = f"OUT-1\n{BODY}\nBLOCKED: currency_api — no exchange rate"
 
 

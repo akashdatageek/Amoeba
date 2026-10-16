@@ -5,7 +5,7 @@ import re
 import pytest
 
 from amoeba.config.schema import PlanStep
-from amoeba.interp.plan_runner import PLAN_MAX_TOKENS, PlanGraphError, relink, waves
+from amoeba.interp.plan_runner import PLAN_MAX_TOKENS, PlanGraphError, PlanOptions, relink, waves
 from amoeba.interp.runtime import Interpreter
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.task.draft import DraftError, draft_team
@@ -114,7 +114,7 @@ def test_a_cycle_is_rejected_before_any_box3_call(task, envelope, trace):
 def test_step_that_never_finishes_is_max_turns(task, envelope, trace, tools):
     stall = lambda m, s: "## Thought\nhm\n\n## CurrentStep\nthink\n\n## Action\nPrint\n\n## ActionInput\nthinking\n"
     llm, cfg = plan_team(task, envelope, trace, plan_worker=stall)
-    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    ep = Interpreter(llm, tools, trace, plan_options=PlanOptions(failed_step="run")).run(cfg, task, seed=0)   # D138
     assert (ep.steps[0]["status"], ep.steps[0]["status_reason"], ep.steps[0]["turns"]) == ("incomplete", "max_turns", 5)
     assert ep.error == "incomplete"
 
@@ -476,16 +476,20 @@ def test_long_inputs_are_cut_and_marked(task, envelope, trace, tools):
     assert {(e["amoeba.what"], e["amoeba.limit"]) for e in evs} == {("input", 4000), ("summary input", 2000)}
 
 
-def test_a_step_without_final_output_passes_only_its_last_message(task, envelope, trace, tools):
+def test_a_step_without_final_output_passes_on_nothing(task, envelope, trace, tools):
+    """D138 (B3, replaces D44's fallback): a step with no Final Output hands on no output, not its last message;
+    the last message stays in its meta for the report and Box 4."""
     n_ = {"k": 0}
 
     def talk(messages, seed):
         n_["k"] += 1
         return f"## Thought\nt\n\n## CurrentStep\nt\n\n## Action\nPrint\n\n## ActionInput\nnote {n_['k']}\n"
     llm, cfg = plan_team(task, envelope, trace, plan_worker=talk)
-    ep = Interpreter(llm, tools, trace).run(cfg, task, seed=0)
+    ep = Interpreter(llm, tools, trace, plan_options=PlanOptions(failed_step="run")).run(cfg, task, seed=0)
     two_prompt = [c for c in llm.calls_of("plan_worker") if "(step 2)" in c["messages"][-1]["content"]][0]
     inputs = re.search(r"# Inputs: .*?\n(.*?)\n\n# Work done", two_prompt["messages"][-1]["content"], re.S).group(1)
+    assert inputs.rstrip().endswith("status: incomplete") and "note" not in inputs
+    s1 = next(m for m in ep.steps if m["step"] == 1)
+    assert s1["no_final_output"] is True and s1["last_message"] == "note 6"
     # D76: the last turn offers only Final Output and asks once more when a helper still does not conclude
-    assert inputs.endswith("status: incomplete\nnote 6") and "note 5" not in inputs
     assert trace.events("last_turn_forced")[0]["amoeba.asked_for"] == "Print"

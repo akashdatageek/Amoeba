@@ -152,8 +152,9 @@ def final_check(answer: str | None, requirements: dict[str, str], plan_texts: di
 
 
 # box: runresult
-def final_findings(fc: dict) -> list[str]:
-    """What the answer step's refine turn is told: each unmet requirement, missing file and undated figure."""
+def final_findings(fc: dict, can_make_files: bool = True) -> list[str]:
+    """What the answer step's refine turn is told: each unmet requirement, missing file and undated figure. D138
+    (B5): a step that holds no file-writing tool is not told to make the missing files, only to list them."""
     out = []
     for r in fc["unmet"]:
         x = fc["requirements"][r]
@@ -164,7 +165,8 @@ def final_findings(fc: dict) -> list[str]:
                    f"answer from the steps' work, or say plainly under Limitations why it could not be done.")
     if fc["files_missing"]:
         out.append(f"the plan promised these files and the workspace does not have them: {', '.join(fc['files_missing'])}. "
-                   f"Make them if the work allows, or say under Limitations that they were not made.")
+                   + ("Make them if the work allows, or say under Limitations that they were not made."
+                      if can_make_files else "List each missing file under Limitations as not made."))
     if fc["undated"]:
         from amoeba.interp.dates import dated_finding
         out.append(dated_finding(fc["undated"]))

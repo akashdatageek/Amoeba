@@ -20,7 +20,7 @@ from tests.conftest import fx, mock
 from tests.test_plan_runner import BODY, step_no, plan_team
 from tests.test_pool import CAP, SEARCH, cache, req, setup  # noqa: F401  (cache is a fixture)
 
-ON = PlanOptions(adapt="on")
+ON = PlanOptions(adapt="on", failed_step="run")  # D138 (B10): the stop-the-task behaviour of failed_step "run"
 NO_RUNNER = "tool writer: no code runner (local tools are off)"   # D125: the next rung, skipped without --local-tools
 
 

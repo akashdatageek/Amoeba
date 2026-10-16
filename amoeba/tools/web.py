@@ -71,6 +71,7 @@ def check_url(url: str, resolve=None) -> None:
         raise WebToolError(NOT_PUBLIC)
 
 
+# box: tools
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *a, **k):
         return None                     # D137: redirects are followed by hand, each hop checked

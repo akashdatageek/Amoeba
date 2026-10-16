@@ -63,9 +63,12 @@ def test_concat_keeps_the_earlier_behaviour(task, envelope, trace, tools):
     assert three["collab"] is None and llm.calls_of("plan_critic") == [] and w.seen["3"] == 2
 
 
-def test_an_unreadable_review_counts_as_agreement(task, envelope, trace, tools):
+def test_an_unreadable_review_counts_as_revise_never_agreement(task, envelope, trace, tools):
+    """D138 (B7, was: counted as agreement)."""
     llm, w, ep, three = run(task, envelope, trace, tools, ["looks fine to me"])
-    assert three["collab"]["agreed"] is True and len(trace.events("review_unreadable")) == 1
+    ev = trace.events("review_unreadable")
+    assert three["collab"]["agreed"] is False and ev and ev[0]["amoeba.counted_as"] == "REVISE"
+    assert any("reviewer reply unreadable" in c["messages"][-1]["content"] for c in llm.calls_of("plan_worker"))
 
 
 def test_result_json_and_cli_default(tmp_path, envelope):

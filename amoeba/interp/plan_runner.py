@@ -70,6 +70,42 @@ NATIVE_SPECIAL = {FINAL_OUTPUT: "end the step: `input` is the whole step output,
                                 "asks for", PRINT: "leave a note for your teammates in this step (uses a turn)",
                   FIND_TOOL: FIND_TOOL_TEXT}
 FIND_LIMITS = {"per_step": 3, "per_run": 10}                 # D132: find_tool searches
+REVIEW_REPAIR = "Your Verdict section must say AGREE or REVISE."   # D138 (B7)
+NATIVE_NO_CALL_NOTE = "Call one of your tools, or call Final_Output with the step's output."   # D138 (B4)
+ANSWER_CHARS = 400                     # D138 (B4): text this long with no tool call is taken as the step's output
+
+
+FILE_TOOLS = ("local:Write", "local:Bash", "local:Edit")   # D138 (B5): tools that can make a file in the workspace
+
+
+NOT_A_RECHECK = (FIND_TOOL, PRINT)     # D138 (B8): calls that read or compute no data
+
+
+# box: step_check
+def rechecks(calls: list[dict]) -> list[dict]:
+    """D138 (B8): the calls that count as re-checking: successful tool calls that read or compute data (not
+    find_tool, not Print, not a failed call)."""
+    return [c for c in calls if c.get("ok") and c.get("tool") not in NOT_A_RECHECK]
+
+
+# box: plan_step
+def writes_files(agents) -> bool:
+    """D138 (B5): some helper of the step holds a tool that can write a file (local Write/Bash/Edit, a made tool)."""
+    return any(t in FILE_TOOLS or t.startswith("made:") for a in agents for t in a.tools)
+
+
+# box: plan_step
+def answer_like(text: str) -> bool:
+    """D138 (B4): a native-mode reply with no tool call that is clearly an answer: longer than ANSWER_CHARS, or it
+    holds a markdown table or heading."""
+    t = (text or "").strip()
+    return len(t) > ANSWER_CHARS or bool(re.search(r"(?m)^\s*#{1,6}\s+\S", t)) or \
+        bool(re.search(r"(?m)^\s*\|.+\|\s*\n\s*\|?\s*:?-{3,}", t))
+
+
+# D138 (B1): the provenance of a step with no output (check_provenance's keys, all empty)
+EMPTY_PROVENANCE = {"cited": 0, "unverified": 0, "given": 0, "derived": 0, "inherited": 0, "untagged": 0, "numbers": 0,
+                    "hallucinated_citations": [], "untagged_examples": [], "figures": [], "given_with_web_tag": []}
 PLAN_MAX_TOKENS = 8192                                     # per helper call (D27 room; flat keeps the client default)
 
 
@@ -153,7 +189,7 @@ class PlanOptions:
     # which are skipped (status blocked_upstream); the independent steps still run and a stuck step no fix recovered no
     # longer stops the task. run = the earlier behaviour (dependents run on empty input; with --adapt on the task
     # stops at a stuck step). Library default run.
-    failed_step: str = "run"
+    failed_step: str = "dependents"   # D138 (B10): the CLI default too (was "run" here)
     # D136: v2 = in native tool-calling mode the step prompts are the v2 files (no text sections), every tool takes
     # typed arguments plain code checks, and the step ends with a typed Final_Output (amoeba/interp/step_protocol.py).
     # Without native tool calling the steps fall back to legacy (event protocol_fallback). Default legacy.
@@ -475,6 +511,7 @@ class _Work:
         self.last_message = ""                  # D44: the last helper message, passed on when no Final Output came
         self.requests: list[str] = []           # D76: every tool request / non-final message of the step
         self.unreadable: list[dict] = []        # D123: turns whose reply could not be read (who, turn, why)
+        self.rework_no_output: list[str] = []   # D138 (B2): reworks (refine / revision) that gave no new Final Output
 
 
 # box: step_check
@@ -890,7 +927,7 @@ class PlanRunner:
     def evidence_text(self, d: int) -> str:
         """D61 (G4): what plain code recorded about a checked step, for its verifier."""
         m = self.artifacts[d]["meta"]
-        p = m["provenance"]
+        p = m.get("provenance") or EMPTY_PROVENANCE                 # D138 (B1): a skipped step has none
         src = "; ".join(f"[{s['id']}] {s['title'][:80]} ({s['url'][:100]})" for s in m.get("sources", [])) or "none"
         calls = m.get("tool_calls", [])
         lines = [f"Evidence plain code recorded for step {d}:",
@@ -1093,7 +1130,8 @@ class PlanRunner:
         it is saved as incomplete with `blocked_upstream`, and its own dependents wait in turn."""
         meta = {"step": n, "wave": wave, "status": "incomplete", "turns": 0, "rework_of": None, "checks": [],
                 "status_reason": f"blocked upstream: step(s) {', '.join(map(str, by))} ended with no output",
-                "blocked_upstream": by, "roles": [self.agents[a].name for a in self.steps[n].agent_ids]}
+                "blocked_upstream": by, "roles": [self.agents[a].name for a in self.steps[n].agent_ids],
+                "provenance": dict(EMPTY_PROVENANCE)}                  # D138 (B1): the same keys as a run step
         self.i.trace.event("step_skipped", {"amoeba.step": n, "amoeba.blocked_by": by})
         self._save(n, wave, "", meta, {})
 
@@ -1292,9 +1330,25 @@ class PlanRunner:
             stale = f", STALE (built on step(s) {', '.join(map(str, m['stale_because']))} before their rework)" \
                 if m.get("stale") else ""
             parts.append(f"## Step {d} ({', '.join(m['roles'])}), status: {m['status']}{stale}\n{body}")
+            if evidence and body != a["text"]:                 # D138 (B9): the verifier can read the whole output
+                path = self.full_input_file(d, a["text"])
+                if path:
+                    parts[-1] += f"\n(The full output of step {d} is in the workspace at {path}; read it with local:Read.)"
             if evidence and self.opt.contract == "on":          # D61 (G4): the verifier sees what the step used
                 parts[-1] += "\n\n" + self.evidence_text(d)
         return "\n\n".join(parts)
+
+    # box: step_check
+    def full_input_file(self, d: int, text: str) -> str | None:
+        """D138 (B9): a checked step's whole output, written to the workspace as inputs/step_<d>.md for a verifier
+        that saw only its head and tail; None without a local workspace."""
+        ws = getattr(self.local, "workspace", None)
+        if ws is None:
+            return None
+        rel = f"inputs/step_{d}.md"
+        (Path(ws) / "inputs").mkdir(parents=True, exist_ok=True)
+        (Path(ws) / rel).write_text(text or "", encoding="utf-8")
+        return rel
 
     # box: faults
     def fault_steps(self, deps: dict[int, list[int]]) -> list[dict]:
@@ -1403,7 +1457,8 @@ class PlanRunner:
         produced = self.answer_gaps(n, text) if on and answer_step else None               # D61 (G5)
         items = (self.contract_findings(found) if found else []) + (self.answer_findings(produced) if produced else [])
         final = answer_step and (self.opt.final_check == "on" or self.opt.dated == "on")
-        if final and (missing := final_findings(self.final_answer_check(text))):  # D105 + D110: earns the refine turn
+        if final and (missing := final_findings(self.final_answer_check(text),           # D105 + D110: the refine turn
+                                                writes_files(agents))):                # D138 (B5)
             items = items + missing
         files_before = file_sig(self.files_of(n))                                  # D117: across the refine turn
         refine = self.refine(step, n, agents, inputs, extra, w, template, checks, prov, items)   # D42 / D50 / D61
@@ -1476,7 +1531,7 @@ class PlanRunner:
         if unused:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "attached unused: " + ", ".join(unused)) if x)
-        unchecked = verifier and on and parse_verdict_block(text)[0] == "PASS" and not w.calls \
+        unchecked = verifier and on and parse_verdict_block(text)[0] == "PASS" and not rechecks(w.calls) \
             and self.checkable(n)                      # D65: a PASS that re-checked nothing is an unverified check
         if unchecked:
             status = "partial" if status == "done" else status
@@ -1553,6 +1608,9 @@ class PlanRunner:
                 "missing_data": data_gaps,                                          # D127 marks, read by D117
                 "fix_of": {k: v for k, v in fixing.items() if k != "note"} if fixing else None,
                 "unreadable_turns": w.unreadable,                                  # D123, read by the stuck watch
+                **({"no_final_output": True, "last_message": w.last_message[:2000]}       # D138 (B3)
+                   if not any(w.done.get(x.agent_id) or w.partial.get(x.agent_id) for x in agents) else {}),
+                **({"rework_no_output": list(w.rework_no_output)} if w.rework_no_output else {}),   # D138 (B2)
                 "finished": finished,
                 "contributions": w.contributions}
         if claimed is not None:
@@ -1715,9 +1773,7 @@ class PlanRunner:
                 break
             lines = "\n".join(f"- {who}: {i}. {x}" for who, items in asks for i, x in enumerate(items, 1))
             w.completed += REVISION_NOTE.format(issues=lines)
-            w.done.clear()
-            w.max_turns = w.turn + self.so(n, "check_retry_turns")
-            self._loop(step, n, [drafter], inputs, extra, w, template)
+            self.rework(step, n, [drafter], inputs, extra, w, template, "revision")    # D138 (B2)
             revisions += 1
         return {"mode": "critique", "drafter": drafter.name, "reviewers": [r.name for r in reviewers],
                 "rounds": rounds, "revisions": revisions, "objections": objections, "agreed": agreed}
@@ -1725,7 +1781,8 @@ class PlanRunner:
     # box: plan_step
     def _review(self, rv: AgentSpec, step: PlanStep, n: int, drafter: AgentSpec, draft: str, inputs: str
                 ) -> tuple[str, list[str]]:
-        """D51: one reviewer's verdict and numbered issues. An unreadable reply counts as AGREE (recorded)."""
+        """D51: one reviewer's verdict and numbered issues. D138 (B7): an unreadable reply (after one repair call)
+        counts as REVISE with the issue "reviewer reply unreadable", never as AGREE."""
         criteria = "; ".join(rv.success_criteria) or "none written"
         user = render(PROMPT.plan_critique, task=self.task.prompt, today=self.i.clock["line"], card=plan_card(rv), number=n,
                       step=step_detail(step), inputs=inputs, drafter=drafter.name, draft=draft,
@@ -1745,14 +1802,44 @@ class PlanRunner:
                 self.i._record(rv, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                                rec.get("gen_ai.usage.output_tokens", 0))
         word = (sec.get("Verdict") or "").strip().upper()
+        if sec and "REVISE" not in word and "AGREE" not in word:
+            # D138 (B7): a Verdict section that says neither gets one repair call (a missing section already had one)
+            try:
+                raw, sec = self.i.llm.chat_sections(system, f"{user}\n\n{REVIEW_REPAIR}", ["Verdict"], self.ep.seed,
+                                                    agent_id=rv.agent_id, agent_name=rv.name,
+                                                    max_tokens=PLAN_MAX_TOKENS, role=role_group(reviewing=True))
+            except MissingSections as e:
+                raw, sec = getattr(e, "raw", "") or "", {}
+            word = (sec.get("Verdict") or "").strip().upper()
         verdict = "REVISE" if "REVISE" in word else "AGREE" if "AGREE" in word else "UNREADABLE"
         head = raw.rfind("## Issues")
         body = raw[head + len("## Issues"):] if head >= 0 else ""
         issues = [m.group(1).strip() for m in re.finditer(r"^\s*\d+[.)]\s+(.+)$", body, re.M)]
         if verdict == "UNREADABLE":
-            self.i.trace.event("review_unreadable", {"amoeba.step": n, "gen_ai.agent.name": rv.name})
-            verdict = "AGREE"
+            # D138 (B7, was: counted as AGREE): an unreadable review is never an approval
+            self.i.trace.event("review_unreadable", {"amoeba.step": n, "gen_ai.agent.name": rv.name,
+                                                     "amoeba.counted_as": "REVISE"})
+            return "REVISE", ["reviewer reply unreadable"]
         return verdict, issues if verdict == "REVISE" else []
+
+    # box: plan_step
+    def rework(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work",
+               template: str, kind: str) -> bool:
+        """D138 (B2): the helper(s) redo a finished output with turns of their own (check_retry_turns). The earlier
+        Final Output is kept: when the rework ends without a new one, it is restored (a rework never leaves the step
+        with less than it had), and `rework_no_output` is recorded. True when a new Final Output came."""
+        before, partial = dict(w.done), dict(w.partial)
+        w.done.clear()
+        w.max_turns = w.turn + self.so(n, "check_retry_turns")
+        self._loop(step, n, agents, inputs, extra, w, template)
+        if w.done or not before:
+            return bool(w.done)
+        w.done.update(before)
+        w.partial.update({k: v for k, v in partial.items() if k not in w.partial})
+        w.rework_no_output.append(kind)
+        self.i.trace.event("rework_no_output", {"amoeba.step": n, "amoeba.kind": kind,
+                                                "amoeba.helpers": [a.name for a in agents]})
+        return False
 
     # box: plan_step
     def refine(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: "_Work",
@@ -1787,10 +1874,8 @@ class PlanRunner:
         else:
             note = REFINE_NOTE.format(findings="\n".join(f"{i}. {x}" for i, x in
                                                           enumerate(check_items + prov_items + contract_items, 1)))
-        w.max_turns = w.turn + self.so(n, "check_retry_turns")
         w.completed += note
-        w.done.clear()
-        self._loop(step, n, agents, inputs, extra, w, template)
+        self.rework(step, n, agents, inputs, extra, w, template, "refine")            # D138 (B2)
         return {"reason": reason, "findings": check_items + prov_items + contract_items,
                 "before": refine_counts(checks, prov, len(contract_items) if self.opt.contract == "on" else None)}
 
@@ -1847,7 +1932,7 @@ class PlanRunner:
         share = self.opt.max_input_chars if total <= self.opt.max_summary_input_chars else \
             max(500, self.opt.max_summary_input_chars // max(1, len(items)))
         for d, a in items:
-            m, p = a["meta"], a["meta"]["provenance"]
+            m, p = a["meta"], a["meta"].get("provenance") or EMPTY_PROVENANCE   # D138 (B1)
             why = f" ({m['status_reason']})" if m.get("status_reason") else ""
             gaps = f"; lacked: {', '.join(m['blocked'])}" if m.get("blocked") else ""
             verdict = f"; verdict: {m['verdict']}" if m.get("verdict") else ""
@@ -2032,6 +2117,9 @@ class PlanRunner:
                                                       "amoeba.verdict": r["verdict"], "amoeba.evidence": r["evidence"],
                                                       "amoeba.evidence_kind": r["evidence_kind"],
                                                       "amoeba.replaced": r["replaced"]})
+        corrected = sorted({r["step"] for r in records if r["replaced"]})
+        if corrected:                     # D138 (B6): the steps that used the old figure are stale (D39 re-runs them)
+            self.mark_stale(corrected, n)
         return records
 
     # box: step_check
@@ -2097,11 +2185,11 @@ class PlanRunner:
     def _text(agents: list[AgentSpec], w: "_Work") -> str:
         written = {a.agent_id: w.done.get(a.agent_id) or w.partial.get(a.agent_id) for a in agents}
         written = {k: v for k, v in written.items() if v}
-        # D44: no Final Output from anyone → only the last helper message goes on, not the whole work log
+        # D138 (B3; was D44's fallback to the last message): no Final Output and no partial from anyone → no output.
+        # The last message is kept in the step's meta (last_message) for the report and Box 4, never passed on
         if len(agents) == 1:
-            return next(iter(written.values()), "") or w.last_message
-        return "\n\n".join(f"### {a.name}\n{written[a.agent_id]}" for a in agents
-                           if a.agent_id in written) or w.last_message
+            return next(iter(written.values()), "")
+        return "\n\n".join(f"### {a.name}\n{written[a.agent_id]}" for a in agents if a.agent_id in written)
 
     # box: stuck
     def watch(self, n: int, meta: dict, previous: dict | None, files_unchanged: bool | None) -> dict | None:
@@ -2982,9 +3070,14 @@ class PlanRunner:
             if len(resp.tool_calls) > 1:
                 self.i.trace.event("native_calls_dropped", {"amoeba.step": n, "gen_ai.agent.name": agent.name,
                                                             "amoeba.dropped": [c["name"] for c in resp.tool_calls[1:]]})
-        elif resp.content.strip() and not is_blocked(resp):
+        elif resp.content.strip() and not is_blocked(resp) and (last or answer_like(resp.content)):
             act, inp = FINAL_OUTPUT, resp.content.strip()
             self.i.trace.event("native_text_as_output", {"amoeba.step": n, "gen_ai.agent.name": agent.name})
+        elif resp.content.strip() and not is_blocked(resp):
+            # D138 (B4): short text with no call on a turn that is not the last is not the step's output
+            self.i.trace.event("native_text_no_action", {"amoeba.step": n, "gen_ai.agent.name": agent.name,
+                                                         "amoeba.chars": len(resp.content.strip())})
+            return "no action", resp.content.strip(), NATIVE_NO_CALL_NOTE, None
         else:
             e = MissingSections(["tool call"], [])
             e.raw, e.blocked, e.category = raw, is_blocked(resp), resp.refusal_category
