@@ -26,7 +26,8 @@ from amoeba.adapt.toolmaker import (PREFIX as MADE, ToolLibrary, call_tool, chec
 from amoeba.adapt.fixes import POOL_OFF, all_candidates, fix_key, limits as fix_limits, token_cap
 from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
-from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, norm_error, open_requests, step_signals, waived_view
+from amoeba.adapt.stuck import (diagnose, file_sig, is_stuck, norm_error, open_requests, refusal_counts, step_signals,
+                                waived_view)
 from amoeba.capabilities import normalise, snake
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
@@ -793,6 +794,7 @@ def unmark(text: str) -> str:
     mark a helper put in bold is read like a plain one."""
     t = re.sub(r"([A-Z]{3,}[A-Z ]*)(\*\*|__|\*|_|`)\s*([:：])", r"\1\3", text or "")
     t = re.sub(r"(\*\*|__|\*|_|`)(?=\s*[A-Z]{3,}[A-Z ]*\s*[:：])", "", t)
+    t = re.sub(r"([A-Z]{3,}[A-Z ]*[:：])\s*(\*\*|__|\*|_|`)\s*", r"\1 ", t)    # D149: "*BLOCKED:*", "`BLOCKED:`"
     return re.sub(r"(?m)^([ \t>*+-]*)", "", t).replace("**", "")
 
 
@@ -830,6 +832,7 @@ class PlanRunner:
         self.ledger: dict[str, dict] = {}        # D43: figure -> its first status and the step that first wrote it
         self.contract_results: dict[int, list[dict]] = {}   # D142: each step's typed check results
         self.models_tried: dict[int, set[str]] = {}          # D145: models a switch_model fix used per step
+        self.step_refusals: dict[int, dict] = {}             # D149: (tool, reason) → refusals per step, all attempts
         self.usd_unknown = False                             # D145: a model has no price; the USD limit is not enforced
         self.fix_depth = 0                                   # D145: rerun_upstream fixes its upstream step once (depth 1)
         self.kept_going: list[dict] = []                     # D145: stuck steps no fix recovered, under D133
@@ -1732,6 +1735,7 @@ class PlanRunner:
                 "checks": checks, "retried": retried, "refine": refine,
                 "contract_checks": planned,                                        # D142
                 "context": {"chars_sent": w.chars_sent, "chars_saved": w.chars_saved},   # D144
+                "refusals": self.count_refusals(n, w.calls),                       # D149: across the step's attempts
                 "models": sorted({s.get("gen_ai.response.model") or s.get("gen_ai.request.model") or "?"
                                   for s in self.i.trace.spans("chat")[spans0:]}),         # D146
                 "unverified_tags_removed": removed,                                # D66
@@ -2505,6 +2509,14 @@ class PlanRunner:
                 # D127: web tools this run has that the step's helpers do not hold (a missing-data fix)
                 "web_missing": sorted({t for t in WEB_TOOLS if t in self.i.tools for a in agents if t not in a.tools}),
                 **self.make_tool_ctx(n)}
+
+    # box: stuck
+    def count_refusals(self, n: int, calls: list[dict]) -> list[dict]:
+        """D149: local-tool refusals of step n so far (every attempt), by tool and reason, as [{tool, reason, n}]."""
+        seen = self.step_refusals.setdefault(n, {})
+        for k, v in refusal_counts([{"tool_calls": calls}]).items():
+            seen[k] = seen.get(k, 0) + v
+        return [{"tool": t, "reason": r, "n": c} for (t, r), c in sorted(seen.items())]
 
     # box: fixes
     def fault_hidden(self, n: int) -> set[str]:

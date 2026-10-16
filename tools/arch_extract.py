@@ -868,7 +868,9 @@ BOXES: list[dict] = [
                "events.jsonl. --adapt on is the command-line default.",
                "scripts/stuck_report.py runs the same functions over stored run folders, offline.",
                "D145: a lacked line about a tool the helper holds is a tool error (held_tool_failed), never a "
-               "capability; runtime requests count only for the step they came from."],
+               "capability; runtime requests count only for the step they came from.",
+               "D149: a held tool refused twice in one step for the same reason makes the cause a tool error, whatever "
+               "else is missing."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code marks the step and logs the diagnosis; no fix is made yet.",
          anchors=["amoeba/adapt/stuck.py::step_signals", "amoeba/adapt/stuck.py::diagnose",

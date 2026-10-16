@@ -1103,6 +1103,10 @@ table excerpt also shows its last rows. Design: docs/design/D147_cut_notes.md.
 containing "..": the gate follows its `cd`s and resolves each path, and refuses only what would land outside the
 workspace. A refusal names the exact part and says how to rewrite the call. Design: docs/design/D148_gate_effect.md.
 
+**D149, diagnosis fixes (Oct 16, after run 71d2f910).** When the gate refuses a tool the helper holds twice for the
+same reason within one step, Box 4 now diagnoses a tool error first, whatever else is missing. BLOCKED lines written
+in any markdown name their capability. Design: docs/design/D149_diagnosis_fixes.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
