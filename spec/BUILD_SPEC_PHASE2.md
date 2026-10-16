@@ -1078,6 +1078,11 @@ back to the planner. The best round's draft is published, not the last. The plan
 reading, which code accepts only when it is one of Box 1's alternatives or rests on a cited planning-search source,
 and the plan observer agreed. Design: docs/design/D143_planning_v2.md.
 
+**D144, context handling in steps (Oct 16, audit Phase F).** A step's transcript no longer grows with every full
+tool result. Long results go to a file the helper can read, file writes are summarised, and turns older than the
+last two are shown as one line each, by plain code. Each step records the characters it sent and saved. Design:
+docs/design/D144_step_context.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

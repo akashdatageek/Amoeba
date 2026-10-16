@@ -484,7 +484,10 @@ BOXES: list[dict] = [
                "BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy.",
                "D138: a step with no Final Output hands on nothing (its last message stays in meta), a rework that gives "
                "no new output keeps the earlier one, and in native mode short text without a tool call is not the step's "
-               "output unless it is the last turn or clearly an answer."],
+               "output unless it is the last turn or clearly an answer.",
+               "D144: a step's transcript keeps the last two turns in full and older turns as one line each; tool "
+               "results over 2,000 characters go to a file (first 800 and last 400 characters kept), and file writes are "
+               "summarised."],
          proposes="One action and its input per turn; the step's output.",
          disposes="Plain code decides what the helper sees, runs the tools, and caps the turns.",
          prompts=["plan_step", "plan_step_system", "plan_critique", "plan_step_v2"],

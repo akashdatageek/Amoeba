@@ -34,6 +34,7 @@ EVENT_BOX = {
     "stale": "step_check", "refine": "step_check", "verification_inferred": "step_check",
     "step_contract": "step_check", "contract_check": "step_check", "rework_skipped": "step_check",   # D61
     "contract_checks": "step_check", "ask_schema_rejected": "client",                                # D142, D141
+    "tool_result_spilled": "plan_step",                                                               # D144
     "verifier_tools": "step_check",                                                                   # D65
     "freshness": "plan_summary",                                                                      # D67
     "file_block_adapted": "read_action", "not_an_answer": "solver",                                   # D70

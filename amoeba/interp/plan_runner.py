@@ -503,11 +503,45 @@ def compare_figures(own: str, outputs: dict[int, str]) -> dict:
             "agreement": round(len(matched) / total, 3) if total else None}
 
 
+# D144: the step transcript — long tool results go to a file, local:Write inputs are summarised, and turns older than
+# the last KEEP_TURNS are shown as one line each (plain code, no LLM summary)
+RESULT_SPILL = 2000          # a tool result longer than this goes to workspace/tool_results/step<n>_<k>.txt
+RESULT_HEAD, RESULT_TAIL = 800, 400
+WRITE_HEAD = 300             # the first characters of a local:Write content kept in the transcript
+KEEP_TURNS = 2               # turns before the current one shown in full
+LINE_INPUT, LINE_RESULT = 120, 160
+
+
+# box: plan_step
+def one_line(agent: str, act: str, inp: str, result: str | None, ok: bool | None) -> str:
+    """D144: an older turn as one line: who, the action, its input (first 120 characters), ok/error and the first
+    160 characters of the result."""
+    flat = lambda x, k: re.sub(r"\s+", " ", x or "").strip()[:k]
+    tail = "" if result is None else f" -> {'ok' if ok else 'error'}: {flat(result, LINE_RESULT)}"
+    return f">{agent} ({act or 'no action'}): {flat(inp, LINE_INPUT)}{tail}\n"
+
+
+# box: plan_step
+def write_summary(inp: str) -> str:
+    """D144: a local:Write input as its path, size and first 300 characters, not the whole content."""
+    try:
+        args = json.loads(inp)
+    except (ValueError, TypeError):
+        return inp
+    if not isinstance(args, dict) or "content" not in args:
+        return inp
+    path, content = args.get("file_path") or args.get("path") or "?", str(args.get("content") or "")
+    more = f" … ({len(content) - WRITE_HEAD} more characters)" if len(content) > WRITE_HEAD else ""
+    return f"write {path} ({len(content)} characters): {content[:WRITE_HEAD]}{more}"
+
+
 class _Work:
     """The state of one step's turn loop, kept across a retry."""
 
     def __init__(self, max_turns: int):
-        self.max_turns, self.turn, self.completed = max_turns, 0, ""
+        self.max_turns, self.turn = max_turns, 0
+        self.blocks: list[dict] = []            # D144: the transcript, one block per turn entry or note
+        self.chars_sent = self.chars_saved = 0  # D144: transcript characters sent to the model, and saved by compaction
         self.done: dict[str, str] = {}          # agent_id -> its Final Output text
         self.blocked: dict[str, str] = {}       # agent_id -> the capability it answered BLOCKED on
         self.partial: dict[str, str] = {}       # agent_id -> what it wrote alongside BLOCKED
@@ -518,6 +552,24 @@ class _Work:
         self.requests: list[str] = []           # D76: every tool request / non-final message of the step
         self.unreadable: list[dict] = []        # D123: turns whose reply could not be read (who, turn, why)
         self.rework_no_output: list[str] = []   # D138 (B2): reworks (refine / revision) that gave no new Final Output
+
+    @property
+    def completed(self) -> str:
+        """The full transcript (every block in full)."""
+        return "".join(b["full"] for b in self.blocks)
+
+    def add(self, full: str, line: str | None = None) -> None:
+        """A transcript block of this turn; `line` is its one-line form once it is older than KEEP_TURNS (a note
+        plain code adds has none and is always shown in full)."""
+        self.blocks.append({"turn": self.turn, "full": full, "line": line if line is not None else full})
+
+    def view(self) -> str:
+        """D144: what the next turn sees: the current and the last KEEP_TURNS turns in full, older ones one line
+        each. Counts the characters sent and saved."""
+        text = "".join(b["full"] if b["turn"] >= self.turn - KEEP_TURNS else b["line"] for b in self.blocks)
+        self.chars_sent += len(text)
+        self.chars_saved += len(self.completed) - len(text)
+        return text
 
 
 # box: step_check
@@ -1611,6 +1663,7 @@ class PlanRunner:
                 "visible_source_ids": sorted(visible), "provenance": prov, "figure_origins": origins,
                 "checks": checks, "retried": retried, "refine": refine,
                 "contract_checks": planned,                                        # D142
+                "context": {"chars_sent": w.chars_sent, "chars_saved": w.chars_saved},   # D144
                 "unverified_tags_removed": removed,                                # D66
                 "mislabelled_citations": mislabelled,                              # D74
                 "citations_relabelled": relabelled,                                # D131
@@ -1803,7 +1856,7 @@ class PlanRunner:
                 agreed = True
                 break
             lines = "\n".join(f"- {who}: {i}. {x}" for who, items in asks for i, x in enumerate(items, 1))
-            w.completed += REVISION_NOTE.format(issues=lines)
+            w.add(REVISION_NOTE.format(issues=lines))
             self.rework(step, n, [drafter], inputs, extra, w, template, "revision")    # D138 (B2)
             revisions += 1
         return {"mode": "critique", "drafter": drafter.name, "reviewers": [r.name for r in reviewers],
@@ -1912,7 +1965,7 @@ class PlanRunner:
         else:
             note = REFINE_NOTE.format(findings="\n".join(f"{i}. {x}" for i, x in
                                                           enumerate(check_items + prov_items + contract_items, 1)))
-        w.completed += note
+        w.add(note)
         self.rework(step, n, agents, inputs, extra, w, template, "refine")            # D138 (B2)
         return {"reason": reason, "findings": check_items + prov_items + contract_items,
                 "before": refine_counts(checks, prov, len(contract_items) if self.opt.contract == "on" else None)}
@@ -2188,8 +2241,8 @@ class PlanRunner:
             for agent in agents:           # the roles take turns; one that has finished is not asked again
                 if agent.agent_id in w.done or agent.agent_id in w.blocked:
                     continue
-                act, inp, resp, gap = self._turn(agent, step, n, inputs, w.completed, w.max_turns - w.turn, extra,
-                                                 template)
+                act, inp, resp, gap = self._turn(agent, step, n, inputs, w.view(), w.max_turns - w.turn, extra,
+                                                 template)                                       # D144
                 w.contributions.append({"turn": w.turn + 1, "agent": agent.name, "action": act,
                                         "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
                 if act in (UNREADABLE, PROVIDER_BLOCKED):   # D123: nothing readable to pass on; the helper is told
@@ -2197,7 +2250,8 @@ class PlanRunner:
                     w.unreadable.append({"agent": agent.name, "turn": w.turn + 1, "why": resp,
                                          "blocked": act == PROVIDER_BLOCKED,         # D128
                                          **({"category": cat} if cat else {})})
-                    w.completed += f">{agent.name} (reply not readable):\n>Result:\n{resp}\n"
+                    w.add(f">{agent.name} (reply not readable):\n>Result:\n{resp}\n",
+                          one_line(agent.name, "reply not readable", "", resp, False))
                     continue
                 w.last_message = inp.strip()
                 if FINAL_OUTPUT not in act:
@@ -2205,19 +2259,44 @@ class PlanRunner:
                 if gap is not None:
                     w.blocked[agent.agent_id] = gap
                     w.partial[agent.agent_id] = inp.strip()
-                    w.completed += f">{agent.name} {BLOCKED}: {gap}\n{inp.strip()}\n"
+                    w.add(f">{agent.name} {BLOCKED}: {gap}\n{inp.strip()}\n",
+                          one_line(agent.name, f"{BLOCKED}: {gap}", inp, None, None))
                 elif act in agent.tools:
                     w.tool_results.append(resp)
                     w.calls.append({"agent_id": agent.agent_id, "agent": agent.name, "tool": act, "ok": tool_ok(resp),
                                     "input": inp.strip()[:200], "result": re.sub(r"\s+", " ", resp or "").strip()[:300]})
                     resp = self.same_error_hint(agent, act, w, resp)                  # D131
-                    w.completed += f">{agent.name} ({act}):\n{inp.strip()}\n>Result:\n{resp.strip()}\n"
+                    shown_in = write_summary(inp.strip()) if act.endswith("Write") else inp.strip()   # D144
+                    shown = self.spill(n, len(w.tool_results), resp.strip())                         # D144
+                    w.add(f">{agent.name} ({act}):\n{shown_in}\n>Result:\n{shown}\n",
+                          one_line(agent.name, act, shown_in, resp, tool_ok(resp)))
                 elif FINAL_OUTPUT in act:
                     w.done[agent.agent_id] = inp.strip()
-                    w.completed += f">{agent.name} Final Output:\n{inp.strip()}\n"
+                    w.add(f">{agent.name} Final Output:\n{inp.strip()}\n")
                 else:
-                    w.completed += f">{agent.name} ({act or 'no action'}):\n{inp.strip()}\n>Result:\n{resp.strip()}\n"
+                    echo = resp.strip() == inp.strip()     # D144: Print and unknown actions echo the input once
+                    w.add(f">{agent.name} ({act or 'no action'}):\n{inp.strip()}\n"
+                          + ("" if echo else f">Result:\n{resp.strip()}\n"),
+                          one_line(agent.name, act, inp, None if echo else resp, None if echo else tool_ok(resp)))
             w.turn += 1
+
+    # box: plan_step
+    def spill(self, n: int, k: int, result: str) -> str:
+        """D144: a tool result over RESULT_SPILL characters as its first 800 and last 400 characters plus the path of
+        the file holding all of it (workspace/tool_results/step<n>_<k>.txt; local:Read opens it). Without a workspace
+        or run folder the middle is only cut."""
+        if len(result) <= RESULT_SPILL:
+            return result
+        base = self.local.workspace if self.local is not None else (Path(self.i.run_dir) if self.i.run_dir else None)
+        where = "not saved (no workspace)"
+        if base is not None:
+            path = Path(base) / "tool_results" / f"step{n}_{k}.txt"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(result, encoding="utf-8")
+            where = f"tool_results/{path.name}" + ("" if self.local is not None else " (run folder)")   # stable text
+        self.i.trace.event("tool_result_spilled", {"amoeba.step": n, "amoeba.chars": len(result), "amoeba.file": where})
+        return (f"{result[:RESULT_HEAD]}\n… [{len(result) - RESULT_HEAD - RESULT_TAIL} characters cut; the whole result "
+                f"is in {where}] …\n{result[-RESULT_TAIL:]}")
 
     @staticmethod
     def _text(agents: list[AgentSpec], w: "_Work") -> str:
