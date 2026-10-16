@@ -9327,7 +9327,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "c5f9e93",
+  "checked_at": "ef5fb29",
   "facts": {
    "anchors": [
     {
@@ -9388,9 +9388,11 @@
       "amoeba/interp/plan_runner.py::missing_input_marks",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/plan_runner.py::parse_verdict_block",
+      "amoeba/interp/plan_runner.py::rechecks",
       "amoeba/interp/plan_runner.py::refine_counts",
       "amoeba/interp/plan_runner.py::step_checks",
       "amoeba/interp/plan_runner.py::strip_not_needed",
+      "amoeba/interp/plan_runner.py::writes_files",
       "amoeba/interp/provenance.py::check_provenance",
       "amoeba/interp/provenance.py::computed_values",
       "amoeba/interp/provenance.py::strip_unverified",
@@ -9497,7 +9499,7 @@
     },
     {
      "callees": [
-      "amoeba/interp/plan_runner.py::PlanRunner._loop",
+      "amoeba/interp/plan_runner.py::PlanRunner.rework",
       "amoeba/interp/plan_runner.py::PlanRunner.so",
       "amoeba/interp/plan_runner.py::refine_counts",
       "amoeba/interp/plan_runner.py::refine_findings",
@@ -9512,9 +9514,8 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
-      "amoeba/interp/plan_runner.py::PlanRunner._loop",
       "amoeba/interp/plan_runner.py::PlanRunner._review",
-      "amoeba/interp/plan_runner.py::PlanRunner.so",
+      "amoeba/interp/plan_runner.py::PlanRunner.rework",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -9540,7 +9541,7 @@
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
-     "doc": "D51: one reviewer's verdict and numbered issues. An unreadable reply counts as AGREE (recorded).",
+     "doc": "D51: one reviewer's verdict and numbered issues. D138 (B7): an unreadable reply (after one repair call)",
      "key": "amoeba/interp/plan_runner.py::PlanRunner._review",
      "signature": "_review(self, rv: AgentSpec, step: PlanStep, n: int, drafter: AgentSpec, draft: str, inputs: str) -> tuple[str, list[str]]"
     },
@@ -9624,6 +9625,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.route_ids",
       "amoeba/interp/plan_runner.py::PlanRunner.typed_call",
       "amoeba/interp/plan_runner.py::PlanRunner.unreadable_turn",
+      "amoeba/interp/plan_runner.py::answer_like",
       "amoeba/interp/runtime.py::Interpreter._record",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.spans",
@@ -9646,6 +9648,17 @@
      "doc": "D132: one helper turn with native tool calling. The prompt's # Format section (the text protocol) is",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.native_turn",
      "signature": "native_turn(self, agent: AgentSpec, step: PlanStep, n: int, system: str, user: str, tools: list[str], last: bool, group: str, before: int, kind: str | None=None) -> tuple[str, str, str, str | None]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/interp/plan_runner.py::PlanRunner._loop",
+      "amoeba/interp/plan_runner.py::PlanRunner.so",
+      "amoeba/interp/trace.py::TraceWriter.event"
+     ],
+     "doc": "D138 (B2): the helper(s) redo a finished output with turns of their own (check_retry_turns). The earlier",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.rework",
+     "signature": "rework(self, step: PlanStep, n: int, agents: list[AgentSpec], inputs: str, extra: str, w: '_Work', template: str, kind: str) -> bool"
     },
     {
      "callees": [
@@ -9714,6 +9727,17 @@
     },
     {
      "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "D138 (B4): a native-mode reply with no tool call that is clearly an answer: longer than ANSWER_CHARS, or it",
+     "key": "amoeba/interp/plan_runner.py::answer_like",
+     "signature": "answer_like(text: str) -> bool"
+    },
+    {
+     "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/capabilities/__init__.py::normalise",
@@ -9726,6 +9750,12 @@
      "doc": "D132: the tool or skill helper `a` holds that does what `name` asks for — a wish Box 2 wrote (\"Bash\"), a",
      "key": "amoeba/interp/plan_runner.py::held_tool",
      "signature": "held_tool(a: AgentSpec, name: str) -> str | None"
+    },
+    {
+     "callees": [],
+     "doc": "D138 (B5): some helper of the step holds a tool that can write a file (local Write/Bash/Edit, a made tool).",
+     "key": "amoeba/interp/plan_runner.py::writes_files",
+     "signature": "writes_files(agents) -> bool"
     },
     {
      "callees": [
@@ -10017,7 +10047,7 @@
     ],
     [
      "decide",
-     "if final and (missing := final_findings(self.final_answer_check(text)))",
+     "if final and (missing := final_findings(self.final_answer_check(text), writes_files(agents)))",
      "set items = items + missing"
     ],
     [
@@ -10167,7 +10197,7 @@
     ],
     [
      "decide",
-     "if resp.content.strip() and (not is_blocked(resp))",
+     "if resp.content.strip() and (not is_blocked(resp)) and (last or answer_like(resp.content))",
      "set act, inp = (FINAL_OUTPUT, resp.content.strip())"
     ],
     [
@@ -10189,6 +10219,11 @@
      "decide",
      "if schema.get('additionalProperties') is False",
      "set extra = [k for k in args if k not in props]"
+    ],
+    [
+     "decide",
+     "if sec and 'REVISE' not in word and ('AGREE' not in word)",
+     "set word = (sec.get('Verdict') or '').strip().upper()"
     ],
     [
      "decide",
@@ -10264,11 +10299,6 @@
      "decide",
      "if unused",
      "set status = 'partial' if status == 'done' else status"
-    ],
-    [
-     "decide",
-     "if verdict == 'UNREADABLE'",
-     "set verdict = 'AGREE'"
     ],
     [
      "decide",
@@ -10742,6 +10772,16 @@
     ],
     [
      "fallback",
+     "{'no_final_output': True, 'last_message': w.last_message[:2000]} if not any((w.done.get(x.agent_id) or w.partial.get(x.agent_id) for x in agents)) else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "{'rework_no_output': list(w.rework_no_output)} if w.rework_no_output else {}",
+     "choose value"
+    ],
+    [
+     "fallback",
      "{k: v for k, v in fixing.items() if k != 'note'} if fixing else None",
      "choose value"
     ],
@@ -10813,6 +10853,11 @@
     [
      "filter",
      "keep only if k not in props",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if k not in w.partial",
      "drop the rest"
     ],
     [
@@ -11077,6 +11122,11 @@
     ],
     [
      "stop",
+     "if resp.content.strip() and (not is_blocked(resp))",
+     "return ('no action', resp.content.strip(), NATIVE_NO_CALL_NOTE, None)"
+    ],
+    [
+     "stop",
      "if room - len(line) - 1 < 0",
      "stop (break)"
     ],
@@ -11142,12 +11192,23 @@
     ],
     [
      "stop",
+     "if verdict == 'UNREADABLE'",
+     "return ('REVISE', ['reviewer reply unreadable'])"
+    ],
+    [
+     "stop",
+     "if w.done or not before",
+     "return bool(w.done)"
+    ],
+    [
+     "stop",
      "if wrong",
      "return 'the wrong type for ' + ', '.join((f\"{k} (wants {props[k]['type']})\" for k in wrong))"
     ]
    ],
    "kind": "llm",
    "numbers": [
+    "ANSWER_CHARS",
     "AgentSpec.max_tokens",
     "Episode.n_llm_calls",
     "Episode.seed",
@@ -11163,8 +11224,8 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "5d510097bc4dae0e",
-  "seed_hash": "6dac01b44db172f0",
+  "facts_hash": "59089e70cbdeffd1",
+  "seed_hash": "71bb2449d3119154",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
   "source": "hand",
   "what": [
@@ -11174,7 +11235,8 @@
    "With --web-tools, a role that asked for web search also gets web_search and fetch_url.",
    "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); the step keeps one output.",
    "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason.",
-   "D136 (--protocol v2, with native tool calling): the step prompt asks for no text sections; each tool takes typed arguments that plain code checks before running it (a bad call gets the schema and an example), and the step ends with Final_Output's typed fields, which plain code turns into the usual BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy."
+   "D136 (--protocol v2, with native tool calling): the step prompt asks for no text sections; each tool takes typed arguments that plain code checks before running it (a bad call gets the schema and an example), and the step ends with Final_Output's typed fields, which plain code turns into the usual BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy.",
+   "D138: a step with no Final Output hands on nothing (its last message stays in meta), a rework that gives no new output keeps the earlier one, and in native mode short text without a tool call is not the step's output unless it is the last turn or clearly an answer."
   ]
  },
  "plan_summary": {
@@ -14112,7 +14174,7 @@
   },
   "facts_hash": "d2df326cb08fa04b",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "bd97b1938d71e6e2",
+  "rejected_hash": "c5453c408645b3aa",
   "seed_hash": "09aed73abc98a57d",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
   "source": "model: kept",
@@ -14819,7 +14881,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "a5b8c72",
+  "checked_at": "ef5fb29",
   "facts": {
    "anchors": [
     {
@@ -15170,6 +15232,12 @@
      "signature": "files_of(self, n: int | None=None) -> list[dict]"
     },
     {
+     "callees": [],
+     "doc": "D138 (B9): a checked step's whole output, written to the workspace as inputs/step_<d>.md for a verifier",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.full_input_file",
+     "signature": "full_input_file(self, d: int, text: str) -> str | None"
+    },
+    {
      "callees": [
       "amoeba/interp/plan_runner.py::held_tool"
      ],
@@ -15198,6 +15266,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner._loop",
       "amoeba/interp/plan_runner.py::PlanRunner._text",
       "amoeba/interp/plan_runner.py::PlanRunner._write",
+      "amoeba/interp/plan_runner.py::PlanRunner.mark_stale",
       "amoeba/interp/plan_runner.py::PlanRunner.source_texts",
       "amoeba/interp/plan_runner.py::_Work",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -15320,6 +15389,17 @@
      "doc": "D76: the step's output is only a search query or a tool request, not a written conclusion: empty, the same as",
      "key": "amoeba/interp/plan_runner.py::no_conclusion",
      "signature": "no_conclusion(text: str, requests: list[str]) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D138 (B8): the calls that count as re-checking: successful tool calls that read or compute data (not",
+     "key": "amoeba/interp/plan_runner.py::rechecks",
+     "signature": "rechecks(calls: list[dict]) -> list[dict]"
     },
     {
      "callees": [
@@ -15623,6 +15703,11 @@
     ],
     [
      "filter",
+     "keep only if c.get('ok') and c.get('tool') not in NOT_A_RECHECK",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if d in self.artifacts",
      "drop the rest"
     ],
@@ -15694,6 +15779,11 @@
     [
      "filter",
      "keep only if r",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if r['replaced']",
      "drop the rest"
     ],
     [
@@ -15855,6 +15945,11 @@
      "stop",
      "if t in {flat(r) for r in requests if r}",
      "return True"
+    ],
+    [
+     "stop",
+     "if ws is None",
+     "return None"
     ]
    ],
    "kind": "code",
@@ -15870,24 +15965,24 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "cbc425e8d78bbef4",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "6f0a328d9f2e4908",
+  "facts_hash": "441a0de633e94bed",
+  "seed_hash": "381c8f373c7be33b",
   "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
-  "source": "model: rewritten",
+  "source": "hand",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
    "A step the planner marked kind: verify must answer PASS or FAIL; a FAIL sends each step it checked back once, then it checks again. Steps that already used the old output are marked stale (--rerun-stale redoes them once).",
-   "BLOCKED and MISSING DATA lines make a producer step partial, with the missing capability or data listed; the answer step is never scanned for them.",
-   "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, earns one refine turn and then makes the step partial (not declared / attached unused). Items held by a helper but not called are excluded from these checks.",
+   "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them.",
+   "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, earns one refine turn and then makes the step partial (not declared / attached unused).",
    "A verify step also sees each checked step's sources, tool calls, figure counts and files (D61). A producer whose only problem is a missing capability is not sent back (rework_skipped).",
    "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial.",
    "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
    "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
-   "D102: the niche profile's domain checks (e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn, and the resolver uses quantity-aware matching to settle disagreements.",
+   "D109 (resolver): plain code pairs the verifier's blind figures with the worker's by label (5% tolerance); one fresh resolver call settles each disagreement by source text or a re-run, plain code checks its evidence, a settled value replaces the wrong one, and an unresolved one keeps the step from PASS and goes into Limitations.",
    "D110 (part of D105's final-answer check): every web-sourced figure of the final answer must carry its source's date (line or source entry); undated ones share the refine turn, and those still undated are listed in Limitations.",
-   "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked."
+   "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked.",
+   "D138: an unreadable review counts as REVISE after one repair call, never AGREE; find_tool and failed calls are not re-checks; a corrected dispute figure marks its consumers stale; a verifier can read the full text of an input it saw cut (inputs/step_<d>.md)."
   ]
  },
  "stuck": {
@@ -18546,9 +18641,11 @@
    "title": "Tool box"
   },
   "facts_hash": "fb433ae33ec6b4df",
+  "rejected_hash": "18252524c79429c0",
   "seed_hash": "187dc89e15607db4",
   "sentence": "Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search and page reading.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Tools are looked up by name; a name that is not registered is an error, not a web search.",
    "The arithmetic tool accepts numbers and + − × ÷ and powers only, never arbitrary code.",
