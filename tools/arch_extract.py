@@ -666,7 +666,9 @@ BOXES: list[dict] = [
                "This is the single place any tool is ever run.",
                "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#].",
                "D137: the harness's own fetches reach only public http(s) addresses, with each redirect hop checked "
-               "again (at most 3)."],
+               "again (at most 3).",
+               "D147: a cut page or table names its saved file in the workspace (open it with local:Read), and a table "
+               "excerpt shows its last rows too."],
          proposes="A tool name and its input (from a helper).",
          disposes="Plain code checks the name and the arithmetic before anything runs.",
          anchors=["amoeba/tools/registry.py::ToolRegistry", "amoeba/tools/registry.py::calc",

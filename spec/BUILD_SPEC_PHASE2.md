@@ -1095,6 +1095,10 @@ send verify steps and the plan observer to another model family; result.json say
 was independent. The verifier works out its own result without the producers' fetched pages. The evidence hash chain
 is self-consistent only: nothing anchors it outside the run folder. Design: docs/design/D146_measurement_verifier.md.
 
+**D147, every cut says where the full copy is (Oct 16, after run 71d2f910).** When a fetched page or a data file is
+shown only in part, the result now names the saved file in the workspace and says to open it with local:Read. A
+table excerpt also shows its last rows. Design: docs/design/D147_cut_notes.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
