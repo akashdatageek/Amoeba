@@ -276,3 +276,30 @@ def test_a_blocked_step_turn_is_retried_once_as_the_compact_variant():
     assert r.content == "fine" and len(m.calls) == 2
     assert "Background" not in m.calls[1]["messages"][0]["content"]
     assert any(x.get("name") == "compact_retry" for x in tl.trace.records)
+
+
+def test_a_schema_the_provider_will_not_compile_goes_as_json_prompt(monkeypatch):
+    import amoeba.llm.ask as A
+    monkeypatch.setattr(A, "REJECTED", set())
+
+    class Strict(MockLLMClient):
+        def chat_messages(self, messages, seed=0, max_tokens=None, tools=None, schema=None, **kw):
+            if schema is not None:
+                raise RuntimeError("Error code: 400 - The compiled grammar is too large, which would cause "
+                                   "performance issues.")
+            return super().chat_messages(messages, seed, max_tokens=max_tokens, tools=tools, **kw)
+    m = Strict(script={"family_classifier": [json.dumps(FAM)]})
+    llm = TracedLLM(m, v2_trace())
+    msgs = [{"role": "user", "content": "You sort a task into one of a fixed list of task families"}]
+    assert ask(llm, "family", msgs, S.FamilyOut).family == "calc"
+    assert any(r.get("name") == "ask_schema_rejected" for r in llm.trace.records)
+    assert ask(llm, "family", msgs, S.FamilyOut).family == "calc"          # remembered: no second rejected call
+    assert sum(r.get("name") == "ask_schema_rejected" for r in llm.trace.records) == 1
+
+
+def test_other_provider_errors_are_not_swallowed(monkeypatch):
+    class Down(MockLLMClient):
+        def chat_messages(self, *a, **k):
+            raise RuntimeError("503 overloaded")
+    with pytest.raises(RuntimeError):
+        ask(TracedLLM(Down(), v2_trace()), "family", [{"role": "user", "content": "x"}], S.FamilyOut)

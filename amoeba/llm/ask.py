@@ -24,6 +24,10 @@ SUBMIT_NOTE = ("When your answer is ready, call the tool {name} once with it as 
                "as text.")
 JSON_NOTE = ("Reply with only one JSON object that matches this JSON schema, nothing else:\n{schema}")
 REPAIR_NOTE = "That reply did not validate: {error}\nReply again with the corrected answer only."
+# D141: a schema the provider refused to compile (Claude: "The compiled grammar is too large"); it goes as json_prompt
+SCHEMA_REJECTED = re.compile(r"(?i)grammar is too large|schema is too complex|too many (?:optional|properties)|"
+                             r"invalid (?:json[_ ])?schema|response_format")
+REJECTED: set[str] = set()           # schema names refused this process (no second 400 per call)
 
 
 # box: client
@@ -108,6 +112,20 @@ def ask(llm, kind: str, messages: list[dict], schema: type[BaseModel], max_token
             to_claude_schema(schema)
         except SchemaTooComplex:
             mode = "json_prompt"
+        if schema.__name__ in REJECTED:
+            mode = "json_prompt"
+    try:
+        return _ask(llm, kind, messages, schema, mode, max_tokens, seed, ids)
+    except Exception as e:
+        if mode == "json_prompt" or isinstance(e, Unreadable) or not SCHEMA_REJECTED.search(str(e)):
+            raise
+        REJECTED.add(schema.__name__)       # the provider would not compile it: the same call once more as json_prompt
+        llm.trace.event("ask_schema_rejected", {"amoeba.box": "client", "amoeba.kind": kind, "amoeba.mode": mode,
+                                                "amoeba.schema": schema.__name__, "amoeba.error": str(e)[:300]})
+        return _ask(llm, kind, messages, schema, "json_prompt", max_tokens, seed, ids)
+
+
+def _ask(llm, kind: str, messages: list[dict], schema, mode: str, max_tokens, seed: int, ids: dict) -> BaseModel:
     llm.trace.event("ask", {"amoeba.box": "client", "amoeba.kind": kind, "amoeba.mode": mode,
                             "amoeba.schema": schema.__name__, "gen_ai.agent.name": ids.get("agent_name")})
     msgs, kw = list(messages), {}

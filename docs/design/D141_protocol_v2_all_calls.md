@@ -61,6 +61,32 @@ regex-parsed section also fails silently when the model drifts from the format.
   ToolWriterOut.
 - The `Action` word ban skips "Action Observer", which is a role name.
 
+## Live results (Oct 16)
+**Model check under v2** (`eval/manual/audit_fixes/model_check/`):
+
+| profile | probes ok | problems |
+|---|---|---|
+| claude-sonnet | 11 of 11 | none; no blocked reply, no reasoning refusal |
+| claude-sonnet-compat | 11 of 11 | none; no blocked reply, no reasoning refusal |
+| gemma-api | 8 of 11 | Final_Output (the step ends in text, which the plan runner's text fallback reads); fix proposer (unreadable after the repair call); schema mode |
+
+The first live run found two bugs, both fixed in this decision:
+- **PlanOut was too big for Claude's constrained grammar.** The API answered 400, "The compiled grammar is too large".
+  `ask()` now catches a provider's refusal to compile a schema, sends the same call once more as json_prompt, and
+  remembers that schema for the rest of the process (event `ask_schema_rejected`).
+- **The model check's gate counted a call that raised** (the 400), so it blocked the json_prompt retry. It also
+  blocked ask()'s repair call. Under v2 each probe now lets that one repair through, and the row says "valid after
+  one repair call".
+
+**A/B on the d97f9e59 step-1 prompt** (`eval/manual/audit_fixes/ab/`), 5 runs of each arm:
+
+| arm | blocked | proper tool calls |
+|---|---|---|
+| (a) claude-sonnet-compat, legacy text protocol | 5 of 5 (content_filter) | 0 |
+| (b) claude-sonnet native, protocol v2 | 0 of 5 | 5 of 5 (fetch_url, arguments pass check_args) |
+
+The target was met: (b) had 0 blocked replies and 5 proper calls.
+
 ## Tests
 tests/test_protocol_v2_all_d141.py:
 - the word ban on every *_v2 prompt;

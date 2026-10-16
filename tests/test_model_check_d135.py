@@ -1,6 +1,7 @@
 """D135 — scripts/model_check.py on the mock: every probe runs through the real prompt builders, stops after its own
 call, and is recorded; a reasoning refusal fails the check and names the prompt file; --write edits only the entry's
 supports and checked_at. Offline: never a real model."""
+import pytest
 import json
 import shutil
 
@@ -118,3 +119,25 @@ def test_v2_probes_use_the_typed_builders():
                ("interpreter", "planner", "agent_observer", "plan_observer", "pool_picker"))
     fixc = client.calls_of("fix_proposer")[0]                 # free-form params: json_prompt, the schema in the prompt
     assert fixc.get("schema") is None and "matches this JSON schema" in fixc["messages"][-1]["content"]
+
+
+def test_a_call_that_raised_does_not_use_up_the_probe():
+    """D141: a schema the provider refuses raises; ask() retries as json_prompt, which the gate must let through."""
+    from scripts.model_check import Gate, Probed
+
+    class Once(MockLLMClient):
+        n = 0
+
+        def chat_messages(self, messages, seed=0, max_tokens=None, **kw):
+            Once.n += 1
+            if Once.n == 1:
+                raise RuntimeError("The compiled grammar is too large")
+            return super().chat_messages(messages, seed, max_tokens=max_tokens, **kw)
+    g = Gate(Once(responses=["ok"]))
+    g.allow["pool_picker"] = 1
+    msgs = [{"role": "user", "content": "Choose the one candidate below that can do this job"}]
+    with pytest.raises(RuntimeError):
+        g.chat_messages(msgs)
+    assert g.chat_messages(msgs).content == "ok"
+    with pytest.raises(Probed):
+        g.chat_messages(msgs)
