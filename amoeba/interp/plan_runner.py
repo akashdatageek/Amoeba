@@ -2459,14 +2459,29 @@ class PlanRunner:
                     self.fix_notes.add((n, note))
                     self.i.trace.event("fix_skipped", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.why": note})
                     self.log_event("fix_skipped", {"step": n, "cause": d["cause"], "why": note})
-            fix = next((f for f in cands if fix_key(f) not in self.fix_keys), None)
-            if fix is None:                               # Stage D: the fix proposer is the last rung
+            # D150: a kind that failed on this step is not tried again; after a failed code fix the proposer is next
+            mine = self.step_fixes(n)
+            failed = {f["kind"] for f in mine if str(f.get("result", "")).startswith("failed")}
+            fresh = [f for f in cands if fix_key(f) not in self.fix_keys and f["kind"] not in failed]
+            for f in cands:
+                if fix_key(f) not in self.fix_keys and f["kind"] in failed and (n, f["kind"]) not in self.fix_notes:
+                    self.fix_notes.add((n, f["kind"]))
+                    note = f"{f['kind']} already failed on step {n}; not tried again"
+                    self.i.trace.event("fix_skipped", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.why": note})
+                    self.log_event("fix_skipped", {"step": n, "cause": d["cause"], "why": note})
+            early = (any(f["rung"] != "D" and str(f.get("result", "")).startswith("failed") for f in mine)
+                     and not any(f["rung"] == "D" for f in mine) and n not in self.proposer_gave_up)
+            fix = None if early else (fresh[0] if fresh else None)
+            if fix is None:                               # Stage D: the fix proposer (last rung, or next after a failed fix)
                 done = self.propose_fix(n, wave, d) if n not in self.proposer_gave_up else "none"
                 if done == "replanned":
                     for k in self.fixes[-1].get("replaced_by") or []:      # D129: the new steps count their own fixes
                         self.fix_epoch[k] = len(self.fixes)
                     self.ep.adaptation = self.adapt_summary()
                     return "replanned"
+                if done == "none" and early and fresh:         # D150: the proposer had nothing; untried kinds remain
+                    d = self.artifacts[n]["meta"].get("stuck")
+                    continue
                 if done == "none":
                     parts = list(notes) or [f"no code fix left for {d['cause']}"]
                     why = "; ".join(parts + ([self.proposer_gave_up[n]] if n in self.proposer_gave_up else []))

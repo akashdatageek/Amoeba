@@ -894,7 +894,9 @@ BOXES: list[dict] = [
                "adapt_report.md says what was stuck, the cause, each fix and why it failed.",
                "D145: a provider-blocked step gets the compact prompt, then another candidate model, then the task stops "
                "naming the refusal categories; a held tool is never granted again; a re-plan drops only the stuck step's "
-               "dependents and must pass Box 2's HARD checks."],
+               "dependents and must pass Box 2's HARD checks.",
+               "D150: a fix kind that failed on a step is never tried again on it, and after one failed code fix the fix "
+               "proposer goes next."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code picks, applies and judges each fix (success: the step ends done).",
          anchors=["amoeba/adapt/fixes.py::candidates", "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",

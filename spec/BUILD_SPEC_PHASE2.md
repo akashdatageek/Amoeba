@@ -1107,6 +1107,11 @@ workspace. A refusal names the exact part and says how to rewrite the call. Desi
 same reason within one step, Box 4 now diagnoses a tool error first, whatever else is missing. BLOCKED lines written
 in any markdown name their capability. Design: docs/design/D149_diagnosis_fixes.md.
 
+**D150, fixes don't waste their tries (Oct 16, after run 71d2f910).** A fix kind that failed on a step (for example
+more turns) is never tried again on that step, whatever its value. After one failed code fix the next try is the fix
+proposer, which reads the evidence and can change the step; code fixes of untried kinds follow only if the proposer has
+nothing. Design: docs/design/D150_fix_tries.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
