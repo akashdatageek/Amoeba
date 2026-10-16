@@ -809,7 +809,7 @@
   ]
  },
  "agent_obs": {
-  "checked_at": "63a0668",
+  "checked_at": "837833b",
   "facts": {
    "anchors": [
     {
@@ -846,12 +846,18 @@
       "amoeba/task/parsers.py::parse_sections",
       "amoeba/task/parsers.py::parse_verdict",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/task/planning.py::apply_revision",
+      "amoeba/task/planning.py::check_revision",
+      "amoeba/task/planning.py::draft_score",
+      "amoeba/task/planning.py::plan_diff",
+      "amoeba/task/planning.py::resolve_tier",
       "amoeba/task/quality.py::draft_quality",
-      "amoeba/task/quality.py::gate_suggestions"
+      "amoeba/task/quality.py::gate_suggestions",
+      "amoeba/task/schemas.py::review_text"
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None) -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None, planning_tier: str='auto') -> Draft"
     },
     {
      "callees": [
@@ -873,8 +879,23 @@
     ],
     [
      "decide",
+     "if not tp['agent_observer']",
+     "set s, rec.agent_verdict = ({'Suggestions': 'No Suggestions'}, 'APPROVE' if d24 else None)"
+    ],
+    [
+     "decide",
      "if v2",
-     "set rec.agent_observer_raw, s, _ = _ask_review(tl, 'agent_observer', render(PROMPT.plan_review"
+     "set rec.agent_observer_raw, s, ag_out = _ask_review(tl, 'agent_observer', render(PROMPT.plan_r"
+    ],
+    [
+     "decide",
+     "if v2 and ag_out is not None",
+     "set sr = parse_sections(review_text(ag_out, only_blocking=True))['Suggestions']"
+    ],
+    [
+     "fallback",
+     "'APPROVE' if d24 else None",
+     "choose value"
     ],
     [
      "fallback",
@@ -897,7 +918,7 @@
    },
    "title": "Agent Observer"
   },
-  "facts_hash": "0f3989c6e9813c7d",
+  "facts_hash": "377d438ed112a3b2",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "212a1f1f8d5da60e",
   "sentence": "A second AI checks the list of helpers and replies with suggestions, or 'No Suggestions'.",
@@ -968,7 +989,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "c5f9e93",
+  "checked_at": "837833b",
   "facts": {
    "anchors": [
     {
@@ -1101,6 +1122,7 @@
       "amoeba/task/interpret.py::open_questions",
       "amoeba/task/interpret.py::opening_line",
       "amoeba/task/interpret.py::read_task",
+      "amoeba/task/interpret.py::task_note",
       "amoeba/task/interpret.py::with_note",
       "amoeba/task/models.py::RunResult",
       "amoeba/task/models.py::run_status",
@@ -1147,7 +1169,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "b777c021c04ac0e1",
+  "facts_hash": "f7a2324315be3da4",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -1162,7 +1184,7 @@
   ]
  },
  "checks": {
-  "checked_at": "d7c4cc9",
+  "checked_at": "837833b",
   "facts": {
    "anchors": [
     {
@@ -1199,12 +1221,18 @@
       "amoeba/task/parsers.py::parse_sections",
       "amoeba/task/parsers.py::parse_verdict",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/task/planning.py::apply_revision",
+      "amoeba/task/planning.py::check_revision",
+      "amoeba/task/planning.py::draft_score",
+      "amoeba/task/planning.py::plan_diff",
+      "amoeba/task/planning.py::resolve_tier",
       "amoeba/task/quality.py::draft_quality",
-      "amoeba/task/quality.py::gate_suggestions"
+      "amoeba/task/quality.py::gate_suggestions",
+      "amoeba/task/schemas.py::review_text"
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None) -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None, planning_tier: str='auto') -> Draft"
     },
     {
      "callees": [],
@@ -1667,6 +1695,26 @@
      "set checks['task_coverage'] = task_coverage(task_text, d.requirements, d.givens)"
     ],
     [
+     "decide",
+     "if rev is not None",
+     "set d.reading_revision = rev"
+    ],
+    [
+     "decide",
+     "if rev['accepted'] and interpretation is not None",
+     "set interpretation = apply_revision(interpretation, rev)"
+    ],
+    [
+     "decide",
+     "if v2",
+     "set d.published_round = published"
+    ],
+    [
+     "decide",
+     "if v2 and best is not None",
+     "set (raw, sec), published = (best[1], best[2])"
+    ],
+    [
      "fallback",
      "'' if v is None else str(v)",
      "choose value"
@@ -1724,6 +1772,16 @@
     [
      "fallback",
      "log if log is not None else []",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "log[published - 1].reading_revision if 0 < published <= len(log) else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "log[published - 1].score if 0 < published <= len(log) else None",
      "choose value"
     ],
     [
@@ -2057,17 +2115,18 @@
    "prompts": {},
    "title": "Plain-code checks on the final draft"
   },
-  "facts_hash": "5711f8efafc124bf",
+  "facts_hash": "63e6e0a2173cae8b",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "8fea758181394c0c",
   "sentence": "Throws out broken or nameless helper entries, records tools we lack instead of dropping them, flags the summariser, and drops steps that name nobody.",
-  "source": "hand",
+  "source": "model: rewritten",
   "what": [
    "Reads the helper records and the numbered steps out of the last draft.",
    "Skips records that are not valid, have no name, or repeat a name; tools we lack go to the tool resolver below.",
-   "Flags the summariser: the helper the planner marked, else the last helper of the last step (having no tools no longer decides it; nothing is appended). Then requires a team size in the allowed range.",
+   "Flags the summariser: the helper the planner marked, else the last helper of the last step. Then requires a team size in the allowed range.",
    "Matches each step's names to helpers (exact first, then by part of the name) and drops steps that match nobody; no steps left means drafting failed.",
    "Measures the draft: every requirement covered, dependencies valid, helpers fully described, one summariser, a checking step done by a helper that did not produce what it checks, and task coverage: every number in the task and every deliverable verb (deliver, estimate, assess, prototype, test, gather, build, plan, and since D68 run, convert, email, make, save, write, list, read, compute, compare and more) must reach a requirement or a given; a phrase ends at sentence punctuation, not inside an email address or a decimal.",
-   "With the quality gate on, a draft failing a must-have check goes back to the planner for one more round with the failed checks listed, within the round cap.",
+   "With the quality gate on, a draft failing a must-have check goes back to the planner for one more round with the failed checks listed, within the round cap; the system may also apply revisions to the plan based on previous rounds.",
    "D142: three HARD checks on the plan's typed step checks: every requirement has a check (requirements_checked), every check is in the vocabulary with good parameters (checks_valid), and each step can meet its checks (checks_reachable)."
   ]
  },
@@ -5735,7 +5794,7 @@
   ]
  },
  "handoff": {
-  "checked_at": "63a0668",
+  "checked_at": "837833b",
   "facts": {
    "anchors": [
     {
@@ -5772,18 +5831,24 @@
       "amoeba/task/parsers.py::parse_sections",
       "amoeba/task/parsers.py::parse_verdict",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/task/planning.py::apply_revision",
+      "amoeba/task/planning.py::check_revision",
+      "amoeba/task/planning.py::draft_score",
+      "amoeba/task/planning.py::plan_diff",
+      "amoeba/task/planning.py::resolve_tier",
       "amoeba/task/quality.py::draft_quality",
-      "amoeba/task/quality.py::gate_suggestions"
+      "amoeba/task/quality.py::gate_suggestions",
+      "amoeba/task/schemas.py::review_text"
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None) -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None, planning_tier: str='auto') -> Draft"
     }
    ],
    "checks": [
     [
      "differs",
-     "The plan's call is draft_team(task, llm, envelope, trace); the code is draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=#, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None) -> Draft: an extra seed argument (default #) that is passed on to every AI call."
+     "The plan's call is draft_team(task, llm, envelope, trace); the code is draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=#, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None, planning_tier: str='auto') -> Draft: an extra seed argument (default #) that is passed on to every AI call."
     ]
    ],
    "guards": [],
@@ -5805,7 +5870,7 @@
    "prompts": {},
    "title": "→ Box 2"
   },
-  "facts_hash": "61d90920f280fe9b",
+  "facts_hash": "da8193cd09c2a1cf",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8a1ad7c906bf1b0d",
   "sentence": "Passes the job to the team planner, which reads only the job text.",
@@ -6114,7 +6179,7 @@
   ]
  },
  "interpret": {
-  "checked_at": "4c40f03",
+  "checked_at": "837833b",
   "facts": {
    "anchors": [
     {
@@ -6165,8 +6230,8 @@
     {
      "callees": [
       "amoeba/llm/cache.py::CachedProvider.search",
-      "amoeba/task/interpret.py::assumed",
       "amoeba/task/interpret.py::opening_line",
+      "amoeba/task/interpret.py::stated",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
       "amoeba/tools/web.py::SearchProvider.search",
       "amoeba/tools/web.py::TavilyProvider.search"
@@ -6461,7 +6526,11 @@
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
-      "amoeba/task/interpret.py::assumed"
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/interpret.py::stated"
      ],
      "doc": "The sentence the answer must open with when the subject was assumed: \"I read X as Y; if you meant Z, …\".",
      "key": "amoeba/task/interpret.py::opening_line",
@@ -6497,6 +6566,17 @@
      "doc": "Reads one reply (an option number or the user's own words) and, when it names a reading, makes it the entity's",
      "key": "amoeba/task/interpret.py::settle",
      "signature": "settle(interp: dict, w: dict, options: list[str], reply: str) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D143: the readings the answer must state: assumed ones, and ones the planner revised on evidence.",
+     "key": "amoeba/task/interpret.py::stated",
+     "signature": "stated(interp: dict | None) -> list[dict]"
     },
     {
      "callees": [
@@ -6627,6 +6707,30 @@
      "doc": "One provider search per query; each kept result gets its planning id [P#]. A failed search is recorded with",
      "key": "amoeba/task/plan_search.py::run_searches",
      "signature": "run_searches(queries: list[dict], provider, cfg: dict, trace=None) -> tuple[list[dict], int]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The working interpretation with an accepted revision: the entity's reading becomes to_reading (settled",
+     "key": "amoeba/task/planning.py::apply_revision",
+     "signature": "apply_revision(interpretation: dict, rev: dict) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "Whether the planner's proposed reading revision is accepted. (a) to_reading is one of Box 1's alternatives",
+     "key": "amoeba/task/planning.py::check_revision",
+     "signature": "check_revision(rev: dict | None, interpretation: dict | None, plan_search_text: str='', observer_approved: bool | None=None) -> dict | None"
     },
     {
      "callees": [],
@@ -6853,6 +6957,21 @@
      "set rec = {'status': 'token_cap', 'why': f\"planning search used {used} tokens, over its cap of"
     ],
     [
+     "decide",
+     "if w['entity'].lower() == str(rev['entity']).lower()",
+     "set alts = [w['reading']] + [a for a in w.get('alternatives') or [] if a.lower() != rev['to_re"
+    ],
+    [
+     "decide",
+     "if w['settled'] == 'revised'",
+     "set r = w.get('revision') or {}"
+    ],
+    [
+     "fallback",
+     "\"one of Box 1's alternatives\" if alts else f\"cites {', '.join(cited)}\"",
+     "choose value"
+    ],
+    [
      "fallback",
      "' (an assumption; the answer states it)' if hit['settled'] == 'assumed' else ''",
      "choose value"
@@ -6890,6 +7009,11 @@
     [
      "fallback",
      "(top[0], hits[top[0]]) if len(top) == 1 else (None, sorted((k for n in top for k in hits[n])))",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "alts[0] if alts else to",
      "choose value"
     ],
     [
@@ -6994,6 +7118,16 @@
     ],
     [
      "filter",
+     "keep only if a.lower() != rev['to_reading'].lower()",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if a.lower() == to.lower()",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if a.lower() not in section",
      "drop the rest"
     ],
@@ -7029,6 +7163,11 @@
     ],
     [
      "filter",
+     "keep only if re.fullmatch('\\\\[?P\\\\d+\\\\]?', str(e).strip()) and f\"[{str(e).strip().strip('[]')}]\" in (plan_search_text or '')",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if re.search(f'(?<![\\\\w-]){k}(?![\\\\w-])', text, re.I)",
      "drop the rest"
     ],
@@ -7050,6 +7189,11 @@
     [
      "filter",
      "keep only if w['settled'] == 'assumed'",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if w['settled'] in ('assumed', 'revised')",
      "drop the rest"
     ],
     [
@@ -7144,6 +7288,11 @@
     ],
     [
      "stop",
+     "if not alts and (not cited)",
+     "return {**rev, 'accepted': False, 'why': \"to_reading is not one of Box 1's alternatives and no fetched plan-search source [P#] is cited\"}"
+    ],
+    [
+     "stop",
      "if not answer or not line",
      "return (answer, {})"
     ],
@@ -7194,6 +7343,11 @@
     ],
     [
      "stop",
+     "if not rev",
+     "return None"
+    ],
+    [
+     "stop",
      "if not rows",
      "return ''"
     ],
@@ -7214,8 +7368,23 @@
     ],
     [
      "stop",
+     "if observer_approved is False",
+     "return {**rev, 'accepted': False, 'why': 'the plan observer did not approve the plan in that round'}"
+    ],
+    [
+     "stop",
+     "if str(rev.get('from_reading', '')).strip().lower() != w['reading'].lower()",
+     "return {**rev, 'accepted': False, 'why': f\"from_reading is not the working reading ({w['reading']})\"}"
+    ],
+    [
+     "stop",
      "if used >= cfg['max_tokens']",
      "stop (break)"
+    ],
+    [
+     "stop",
+     "if w is None",
+     "return {**rev, 'accepted': False, 'why': \"the entity is not in Box 1's working interpretation\"}"
     ],
     [
      "stop",
@@ -7244,18 +7413,18 @@
    },
    "title": "Task interpretation and family (D77, D101)"
   },
-  "facts_hash": "d6d182d53b8f192c",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "b431f2f67866c69f",
+  "facts_hash": "80bb9b05c3511e65",
+  "seed_hash": "fed85cc0170ff8b7",
   "sentence": "Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a clear winner, asks the user one question, or makes the answer state its assumption.",
-  "source": "model: kept",
+  "source": "hand",
   "what": [
    "One call reads the task (and the read-only user context from --context: location, organisation, role) and lists the key entities and terms that could be read more than one way — names, abbreviations, acronyms, likely voice-input errors such as \"P and W\" for \"PNW\" — each reading with a one-line reason and a confidence.",
    "Plain code: a reading whose confidence beats the next by {DOMINANCE_GAP} or more (DOMINANCE_GAP) (or the only one) is the working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question (the readings + other); without it the top reading is an assumption.",
    "The working interpretation is added to the task text, so the Planner, both checkers and every helper in all three runners read it; an open question the Planner writes about one of these names is answered from it, not by its guess.",
    "After the run, when the reading was assumed, plain code makes the answer open with \"I read X as Y; if you meant Z, …\" and lists the other readings under Limitations, adding whatever is missing.",
    "D116: with --ask-assumed on (the CLI default) every reading that would be assumed, a tie included, is asked about before planning, one question each, least certain first; with nobody to ask the run stops with needs_clarification and writes clarification.json, and --clarify ENTITY=READING answers ahead of time; off keeps the behaviour above, and experiment runs pass off.",
-   "D120: with --plan-search on (default off; needs --web-tools and the d24 prompts), one more call (plan_searcher) says whether planning needs facts from the web, with its queries. Plain code (config/plan_search.yaml) retries an unreadable reply once, caps the step's tokens, refuses empty, too long, URL, email, key-shape, repeated, task-restating and over-cap queries, runs the rest through the run's own search provider, drops result lines that address a model, and shows the results to the Planner and both checkers as a data block with [P#] ids. [P#] citations in the draft are recorded (used_in) and removed before Box 3 builds the team: never in the team's [S#] sources."
+   "D120: with --plan-search on (default off; needs --web-tools and the d24 prompts), one more call (plan_searcher) says whether planning needs facts from the web, with its queries. Plain code (config/plan_search.yaml) retries an unreadable reply once, caps the step's tokens, refuses empty, too long, URL, email, key-shape, repeated, task-restating and over-cap queries, runs the rest through the run's own search provider, drops result lines that address a model, and shows the results to the Planner and both checkers as a data block with [P#] ids. [P#] citations in the draft are recorded (used_in) and removed before Box 3 builds the team: never in the team's [S#] sources.",
+   "D143: a reading the planner revised on evidence is stated in the opening line: I read X as Y because of the reason; Z is not available."
   ]
  },
  "interpreter": {
@@ -9082,7 +9251,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "c5f9e93",
+  "checked_at": "837833b",
   "facts": {
    "anchors": [
     {
@@ -9132,6 +9301,7 @@
       "amoeba/task/interpret.py::open_questions",
       "amoeba/task/interpret.py::opening_line",
       "amoeba/task/interpret.py::read_task",
+      "amoeba/task/interpret.py::task_note",
       "amoeba/task/interpret.py::with_note",
       "amoeba/task/models.py::RunResult",
       "amoeba/task/models.py::run_status",
@@ -9183,19 +9353,19 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "20022d0fcc6ad38e",
+  "facts_hash": "7ae8b44dbff600b6",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
   "sentence": "Every run saves thirty-two files, including the team, draft, logs, tool data, results, reports, settings, native resolution records, and the communication protocol.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed ({run_one.seed}), the fault summary, the fault details, the plan search findings, the tool library, the planned model, the protocol used, and the native resolution record.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the task notes, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed ({run_one.seed}), the fault summary, the fault details, the plan search findings, the tool library, the planned model, the protocol used, and the native resolution record.",
    "These files are the raw material later phases will learn from."
   ]
  },
  "ov_plan": {
-  "checked_at": "63a0668",
+  "checked_at": "837833b",
   "facts": {
    "anchors": [
     {
@@ -9232,12 +9402,18 @@
       "amoeba/task/parsers.py::parse_sections",
       "amoeba/task/parsers.py::parse_verdict",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/task/planning.py::apply_revision",
+      "amoeba/task/planning.py::check_revision",
+      "amoeba/task/planning.py::draft_score",
+      "amoeba/task/planning.py::plan_diff",
+      "amoeba/task/planning.py::resolve_tier",
       "amoeba/task/quality.py::draft_quality",
-      "amoeba/task/quality.py::gate_suggestions"
+      "amoeba/task/quality.py::gate_suggestions",
+      "amoeba/task/schemas.py::review_text"
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None) -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None, planning_tier: str='auto') -> Draft"
     },
     {
      "callees": [
@@ -9292,7 +9468,7 @@
    "prompts": {},
    "title": "2 · Plan a new team"
   },
-  "facts_hash": "d918cbeac2a9260b",
+  "facts_hash": "bcc5552867b6668f",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "a940602a52cfd22e",
   "sentence": "An AI drafts a team and a step plan, two AIs critique it, then plain code checks it and builds the team.",
@@ -9950,7 +10126,7 @@
   ]
  },
  "plan_obs": {
-  "checked_at": "63a0668",
+  "checked_at": "837833b",
   "facts": {
    "anchors": [
     {
@@ -9987,12 +10163,18 @@
       "amoeba/task/parsers.py::parse_sections",
       "amoeba/task/parsers.py::parse_verdict",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/task/planning.py::apply_revision",
+      "amoeba/task/planning.py::check_revision",
+      "amoeba/task/planning.py::draft_score",
+      "amoeba/task/planning.py::plan_diff",
+      "amoeba/task/planning.py::resolve_tier",
       "amoeba/task/quality.py::draft_quality",
-      "amoeba/task/quality.py::gate_suggestions"
+      "amoeba/task/quality.py::gate_suggestions",
+      "amoeba/task/schemas.py::review_text"
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None) -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None, planning_tier: str='auto') -> Draft"
     },
     {
      "callees": [
@@ -10014,8 +10196,23 @@
     ],
     [
      "decide",
+     "if best is None or score < best[0]",
+     "set best = (score, (raw, sec), rec.index)"
+    ],
+    [
+     "decide",
      "if d24",
      "set rec.plan_observer_raw, s = _observer_sections(tl, 'plan_observer', render(PROMPT.d24_revie"
+    ],
+    [
+     "decide",
+     "if not tp['plan_observer']",
+     "set s, rec.plan_verdict = ({'Suggestions': 'No Suggestions'}, 'APPROVE' if d24 else None)"
+    ],
+    [
+     "decide",
+     "if plan_out.reading_revision is not None",
+     "set rec.reading_revision = check_revision(plan_out.reading_revision.model_dump(), interpretati"
     ],
     [
      "decide",
@@ -10030,7 +10227,27 @@
     [
      "decide",
      "if v2",
-     "set rec.plan_observer_raw, s, _ = _ask_review(tl, 'plan_observer', render(PROMPT.plan_review_p"
+     "set blocking = sum((1 for o, ran in ((ag_out, tp['agent_observer']), (pl_out, tp['plan_observe"
+    ],
+    [
+     "decide",
+     "if v2",
+     "set rec.plan_observer_raw, s, pl_out = _ask_review(tl, 'plan_observer', render(PROMPT.plan_rev"
+    ],
+    [
+     "decide",
+     "if v2 and pl_out is not None",
+     "set sp = parse_sections(review_text(pl_out, only_blocking=True))['Suggestions']"
+    ],
+    [
+     "fallback",
+     "'APPROVE' if d24 else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "[None] if ran and o is None else [i for i in (o.issues if o else []) if i.severity == 'blocking']",
+     "choose value"
     ],
     [
      "fallback",
@@ -10044,6 +10261,21 @@
     ],
     [
      "fallback",
+     "f'\\n\\nreading_revision: {plan_out.reading_revision.model_dump_json()}' if plan_out.reading_revision else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "len(q['hard_failed']) if q else 99",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "o.issues if o else []",
+     "choose value"
+    ],
+    [
+     "fallback",
      "q['hard_failed'] if q else []",
      "choose value"
     ],
@@ -10051,6 +10283,16 @@
      "fallback",
      "rec.agent_verdict == rec.plan_verdict == 'APPROVE' if d24 else approves(sr) and approves(sp)",
      "choose value"
+    ],
+    [
+     "fallback",
+     "rec.plan_verdict == 'APPROVE' if tp['plan_observer'] else None",
+     "choose value"
+    ],
+    [
+     "filter",
+     "keep only if i.severity == 'blocking'",
+     "drop the rest"
     ]
    ],
    "kind": "llm",
@@ -10069,7 +10311,7 @@
    },
    "title": "Plan Observer"
   },
-  "facts_hash": "98fc419748da11de",
+  "facts_hash": "6aff0e8b8ed031ba",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4a783811da20fbfc",
   "sentence": "A third AI checks the step plan; the loop stops when both checkers say 'No Suggestions' in one round.",
@@ -12624,7 +12866,7 @@
   ]
  },
  "planner": {
-  "checked_at": "d7c4cc9",
+  "checked_at": "837833b",
   "facts": {
    "anchors": [
     {
@@ -12661,12 +12903,18 @@
       "amoeba/task/parsers.py::parse_sections",
       "amoeba/task/parsers.py::parse_verdict",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "amoeba/task/planning.py::apply_revision",
+      "amoeba/task/planning.py::check_revision",
+      "amoeba/task/planning.py::draft_score",
+      "amoeba/task/planning.py::plan_diff",
+      "amoeba/task/planning.py::resolve_tier",
       "amoeba/task/quality.py::draft_quality",
-      "amoeba/task/quality.py::gate_suggestions"
+      "amoeba/task/quality.py::gate_suggestions",
+      "amoeba/task/schemas.py::review_text"
      ],
      "doc": "history: the previous draft the Planner revises (manager.py:26 roles_plan; \"\" at first). D53 --interactive",
      "key": "amoeba/task/draft.py::draft_team",
-     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None) -> Draft"
+     "signature": "draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int=0, prompts: str=D19, max_tokens: dict | None=None, quality_gate: bool=False, max_rounds: int=MAX_ROUNDS, history: str='', toolbox: str | None=None, interpretation: dict | None=None, lessons: dict[str, str] | None=None, planning_tier: str='auto') -> Draft"
     },
     {
      "callees": [
@@ -12715,7 +12963,39 @@
      ],
      "doc": "D141 (protocol v2): the planner's typed PlanOut, rendered as the d24 sections the parsers read. An unreadable",
      "key": "amoeba/task/draft.py::_ask_plan",
-     "signature": "_ask_plan(llm: TracedLLM, user: str, seed: int, log: list[DraftRound], max_tokens: int | None) -> tuple[str, dict[str, str]]"
+     "signature": "_ask_plan(llm: TracedLLM, user: str, seed: int, log: list[DraftRound], max_tokens: int | None) -> tuple[str, dict[str, str], PlanOut]"
+    },
+    {
+     "callees": [],
+     "doc": "Lower is better: fewer failed HARD checks, then fewer blocking review issues, then the later round.",
+     "key": "amoeba/task/planning.py::draft_score",
+     "signature": "draft_score(hard_failed: int, blocking: int, round_index: int) -> tuple"
+    },
+    {
+     "callees": [],
+     "doc": "What changed between two PlanOut replies: requirements and steps added, removed or changed.",
+     "key": "amoeba/task/planning.py::plan_diff",
+     "signature": "plan_diff(before, after) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/task/planning.py::tier_signals"
+     ],
+     "doc": "The planning tier and its signals. An explicit tier wins; `auto` under legacy is `full` (today's behaviour);",
+     "key": "amoeba/task/planning.py::resolve_tier",
+     "signature": "resolve_tier(requested: str, protocol: str, task_text: str, interpretation: dict | None=None, web_needed: bool | None=None) -> tuple[str, dict]"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/task/deliverables.py::promised_files",
+      "amoeba/task/quality.py::deliverable_phrases",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "What the tier is decided from: an estimate of the requirements (the task's deliverable phrases), whether web",
+     "key": "amoeba/task/planning.py::tier_signals",
+     "signature": "tier_signals(task_text: str, interpretation: dict | None=None, web_needed: bool | None=None) -> dict"
     },
     {
      "callees": [],
@@ -12748,6 +13028,10 @@
       [
        "risks",
        "list[str]"
+      ],
+      [
+       "reading_revision",
+       "ReadingRevisionOut | None"
       ]
      ],
      "key": "amoeba/task/schemas.py::PlanOut",
@@ -12871,13 +13155,28 @@
     ],
     [
      "decide",
+     "if sig['requirements'] <= 3 and (not sig['web']) and (not sig['files']) and (not sig['outside'])",
+     "set tier = 'light'"
+    ],
+    [
+     "decide",
+     "if sig['requirements'] >= 7 or (sig['web'] and sig['files'] >= 2) or sig['outside']",
+     "set tier = 'full'"
+    ],
+    [
+     "decide",
+     "if v2",
+     "set history = plan_out.model_dump_json(exclude_none=True)"
+    ],
+    [
+     "decide",
      "if v2",
      "set prompts = D24"
     ],
     [
      "decide",
      "if v2",
-     "set raw, sec = _ask_plan(tl, render(PROMPT.plan_create_v2, context=task.prompt, existing_roles"
+     "set raw, sec, plan_out = _ask_plan(tl, render(PROMPT.plan_create_v2, context=task.prompt, exis"
     ],
     [
      "decide",
@@ -12891,12 +13190,22 @@
     ],
     [
      "fallback",
+     "'v2' if v2 else 'legacy'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "(item[:m.start()], item[m.end():]) if m else (item, '')",
      "choose value"
     ],
     [
      "fallback",
      "[{'agents': names, 'text': text, **fields} for names, text, fields in parse_plan_d24(sec['Execution Plan'])] if d24 else [{'agents': names, 'text': text} for names, text in parse_plan(sec['Execution Plan'])]",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "bool(WEB.search(task_text or '')) if web_needed is None else bool(web_needed)",
      "choose value"
     ],
     [
@@ -12951,6 +13260,16 @@
     ],
     [
      "filter",
+     "keep only if ra[k] != rb[k]",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if sa[k] != sb[k]",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if x",
      "drop the rest"
     ],
@@ -12973,6 +13292,11 @@
      "reject",
      "if q and set(q) <= set('. ')",
      "skip (continue)"
+    ],
+    [
+     "stop",
+     "if before is None or after is None",
+     "return {}"
     ],
     [
      "stop",
@@ -13001,6 +13325,11 @@
     ],
     [
      "stop",
+     "if protocol != 'v2'",
+     "return ('full', {**sig, 'how': 'legacy auto'})"
+    ],
+    [
+     "stop",
      "if reply",
      "return reply"
     ],
@@ -13008,6 +13337,11 @@
      "stop",
      "if reply.lower() == CONTINUE",
      "return None"
+    ],
+    [
+     "stop",
+     "if requested in TIERS",
+     "return (requested, {**sig, 'how': 'requested'})"
     ]
    ],
    "kind": "llm",
@@ -13027,20 +13361,20 @@
    },
    "title": "Planner"
   },
-  "facts_hash": "a9909146b7119d37",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "6d354851d4f40311",
-  "sentence": "An AI writes the list of helpers and a numbered step plan; later rounds see the latest critique and any automated quality checks.",
-  "source": "model: rewritten",
+  "facts_hash": "129e03005ad2cc8c",
+  "seed_hash": "3b447958f415132a",
+  "sentence": "An AI writes the list of helpers and a numbered step plan; later rounds see only the latest critique.",
+  "source": "hand",
   "what": [
    "The planning AI reads the job and the tools that exist, then writes each helper as a small record and a numbered plan saying which helper does which step.",
-   "From the second round on it also sees its own last draft, the checkers' latest suggestions, and any automated quality checks.",
+   "From the second round on it also sees its own last draft and the checkers' latest suggestions.",
    "Its reply must contain five labelled parts; see Split sections for what happens if one is missing.",
    "It is told to prefer the tools that exist; a tool or skill it needs but we lack goes in an optional sixth part, Capability Requests, which costs no retry when absent.",
    "At most three rounds are run.",
    "With our prompts (d24) it may also list Open Questions: each ambiguity in the job and the assumption it took. With --interactive the person sees the requirements, assumptions and open questions and types continue, or a correction that is added to the job before one more round.",
    "D68: with our prompts it and both checkers are shown every tool the team will really have (calc, web search and fetch, the local tools and skills when on, and that a tool pool exists); a document format or a house style is a skill; what only the user can supply is an open question or a request.",
-   "D141: under --protocol v2 the planner and both observers answer with typed PlanOut and ReviewOut, rendered by plain code into the same sections the parsers read."
+   "D141: under --protocol v2 the planner and both observers answer with typed PlanOut and ReviewOut, rendered by plain code into the same sections the parsers read.",
+   "D143 (v2): code sets the planning tier (light, standard, full), sends back only blocking issues and failed HARD checks, publishes the best round's draft, and accepts a reading revision only on Box 1's alternatives or a cited [P#] source with the plan observer's approval."
   ]
  },
  "pool_index": {
@@ -15297,9 +15631,11 @@
    "title": "RunResult"
   },
   "facts_hash": "37225123a4f123d2",
+  "rejected_hash": "213a3417345eb120",
   "seed_hash": "60d4810762e3bcb9",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Summarises the run in one record saved as result.json.",
    "Calls and tokens are totalled from the log; draft rounds and agreement come from the draft.",
