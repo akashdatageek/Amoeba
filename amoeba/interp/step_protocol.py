@@ -104,6 +104,7 @@ def tool_schema(tool: str, mcp_schema: dict | None = None, final_kind: str | Non
             "additionalProperties": False}
 
 
+# box: plan_step
 def example(tool: str, schema: dict) -> dict:
     if tool in TYPED:
         return TYPED[tool][1]
