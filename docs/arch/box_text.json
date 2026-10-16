@@ -1,6 +1,6 @@
 {
  "action_obs": {
-  "checked_at": "63a0668",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -29,6 +29,7 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.held_items",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::missing_input_marks",
       "amoeba/interp/plan_runner.py::names_match",
       "amoeba/interp/plan_runner.py::number",
@@ -45,6 +46,7 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/interp/plan_runner.py::PlanRunner.dependants",
       "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
       "amoeba/interp/plan_runner.py::PlanRunner.same_method",
       "amoeba/interp/plan_runner.py::number",
@@ -62,7 +64,7 @@
      ],
      "doc": "D63: the Box 2 rules for a proposed change, and the change itself when they all hold. Finished steps are",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.validate_decision",
-     "signature": "validate_decision(self, dec: dict) -> tuple[list[str], dict]"
+     "signature": "validate_decision(self, dec: dict, stuck: int | None=None, stuck_method: dict | None=None) -> tuple[list[str], dict]"
     },
     {
      "callees": [
@@ -121,7 +123,8 @@
     },
     {
      "callees": [
-      "amoeba/adapt/evidence.py::EvidenceLog.append"
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/interp/plan_runner.py::_Work.add"
      ],
      "doc": "Every step that builds on step n, directly or through other steps.",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.dependants",
@@ -174,9 +177,9 @@
       "amoeba/interp/replan_method.py::replaces",
       "amoeba/interp/trace.py::TraceWriter.event"
      ],
-     "doc": "D108: an error for each proposed step that replaces a failed step without changing its method.",
+     "doc": "D108: an error for each proposed step that replaces a failed step without changing its method. extra: D145",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.same_method",
-     "signature": "same_method(self, steps: list[dict], new_role=None) -> list[str]"
+     "signature": "same_method(self, steps: list[dict], new_role=None, extra: dict | None=None) -> list[str]"
     },
     {
      "callees": [
@@ -442,7 +445,7 @@
     [
      "decide",
      "if kind == 'REVISE_REMAINING'",
-     "set change['drop'] = sorted(unrun - batch)"
+     "set drop = unrun - batch"
     ],
     [
      "decide",
@@ -493,6 +496,11 @@
      "decide",
      "if self.answer_n not in self.artifacts",
      "set self.answer_n = self._answer_step(waves(self.cfg.plan))"
+    ],
+    [
+     "decide",
+     "if stuck is not None",
+     "set drop &= {stuck} | self.dependants(self.steps, stuck)"
     ],
     [
      "fallback",
@@ -795,17 +803,17 @@
    },
    "title": "Action Observer (re-plan)"
   },
-  "facts_hash": "c691097b239ff73f",
+  "facts_hash": "5f6636f7aecbd26b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "5a16ab76cff4278f",
   "sentence": "With --replan on, after a wave where something went wrong or changed, an AI may re-plan the steps that have not run; plain code validates the change.",
   "source": "model: rewritten",
   "what": [
    "Plain code looks for a trigger after each wave: a step that lacked a capability, a verify step still failing, a step reporting a missing input, or a tool the plan did not know about, including those from the tool library. No trigger, no call.",
-   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available and the budget left, and returns a decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE, plus a reason, new steps, role details, unmet requirements, and capability requests. Each requirement is marked as met if its covering step is done and no check fails; ADD_ROLE triggers the creation of a new helper with its assigned tools.",
+   "One planner call sees the task, the plan with each step's status, what the finished steps produced, what is blocked, the tools really available and the budget left, and returns a decision: CONTINUE, REVISE_REMAINING, ADD_STEP, REASSIGN_STEP, DROP_STEP or ADD_ROLE, plus a reason, new steps, role details, unmet requirements, and capability requests. If a step is stuck, the planner also receives details on the blockage and its dependencies. Each requirement is marked as met if its covering step is done and no check fails; ADD_ROLE triggers the creation of a new helper with its assigned tools.",
    "Code rejects any change to a finished step, unknown roles or tools, an incomplete new role card, a team too large, a loop, or a new step that depends on a step that has not run. New capability requests go through the normal toolbox step; a dropped requirement is listed as not met, and finished steps are tracked by their claim status.",
    "At most {PlanOptions.max_replans} re-plans and {PlanOptions.max_added_steps} added steps per run; an unreadable or invalid reply counts as CONTINUE. Each accepted plan is saved as plan.v2.json, plan.v3.json … with the change.",
-   "D108: a step a re-plan adds or rewrites for a failed step must state a different tool, source type, site or a split query, else the decision is rejected and logged; the observer is shown each failed step's tools, sources and queries."
+   "D108/D145: a step a re-plan adds or rewrites for a failed step must state a different tool, source type, site or a split query, else the decision is rejected and logged; the observer is shown each failed step's tools, sources and queries."
   ]
  },
  "agent_obs": {
@@ -989,7 +997,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "837833b",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -1031,6 +1039,10 @@
       [
        "source",
        "Literal['planner', 'unregistered_tool', 'runtime_unknown_tool']"
+      ],
+      [
+       "step",
+       "int | None"
       ],
       [
        "canonical",
@@ -1087,6 +1099,7 @@
       "amoeba/config/schema.py::Limits",
       "amoeba/interp/plan_runner.py::PlanOptions",
       "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/plan_runner.py::verifier_independence",
       "amoeba/interp/runtime.py::Interpreter",
       "amoeba/interp/runtime.py::Interpreter.run",
       "amoeba/interp/trace.py::TraceWriter",
@@ -1169,7 +1182,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "f7a2324315be3da4",
+  "facts_hash": "d443e0b18d7df7b2",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -4099,7 +4112,7 @@
    "title": "AI connection"
   },
   "facts_hash": "de332af6d7d9617c",
-  "rejected_hash": "fd351ccac8f47177",
+  "rejected_hash": "a22f26c62dbbea01",
   "seed_hash": "51254b5d779ca20d",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand",
@@ -4475,7 +4488,7 @@
   ]
  },
  "evidence": {
-  "checked_at": "a937618",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -4699,6 +4712,32 @@
     },
     {
      "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "The stuck rows of a run's events.jsonl, in order.",
+     "key": "scripts/grade_episodes.py::episodes",
+     "signature": "episodes(run: Path) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/ask.py::ask",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "scripts/grade_episodes.py::episodes"
+     ],
+     "doc": "Ask for a grade per episode; returns and writes grades.json ({run, episodes: [{seq, step, attempt, cause,",
+     "key": "scripts/grade_episodes.py::grade",
+     "signature": "grade(run: str | Path, ask=input, out=print) -> dict"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::verify",
       "amoeba/adapt/evidence.py::verify_branch",
       "scripts/eval_draft.py::parse_args",
@@ -4818,6 +4857,11 @@
     ],
     [
      "fallback",
+     "[json.loads(l) for l in path.read_text(encoding='utf-8').splitlines() if l.strip()] if path.exists() else []",
+     "choose value"
+    ],
+    [
+     "fallback",
      "[stream] if stream else sorted((p.parent.name for p in (Path(tmp) / 'tree' / 'eval' / 'loop').glob('*/events.jsonl')))",
      "choose value"
     ],
@@ -4884,6 +4928,11 @@
     [
      "fallback",
      "f'origin/{branch}' if g('rev-parse', '--verify', f'origin/{branch}').returncode == 0 else branch",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "json.loads(path.read_text(encoding='utf-8')).get('episodes', []) if path.exists() else []",
      "choose value"
     ],
     [
@@ -4988,13 +5037,33 @@
     ],
     [
      "filter",
+     "keep only if r.get('event') == 'stuck'",
+     "drop the rest"
+    ],
+    [
+     "filter",
      "keep only if s",
+     "drop the rest"
+    ],
+    [
+     "filter",
+     "keep only if x['grade'] == g",
      "drop the rest"
     ],
     [
      "loop cap",
      "for _ in range(self.retries)",
      "loop ends"
+    ],
+    [
+     "loop cap",
+     "while True",
+     "loop ends"
+    ],
+    [
+     "reject",
+     "if a == 's'",
+     "skip (continue)"
     ],
     [
      "reject",
@@ -5025,6 +5094,11 @@
      "stop",
      "if (sha256_text(lines[-1]) if lines else GENESIS) != head",
      "return brk('head', \"the message's chain head is not the SHA-256 of the commit's last event row\")"
+    ],
+    [
+     "stop",
+     "if a in GRADES or a == 's'",
+     "stop (break)"
     ],
     [
      "stop",
@@ -5137,15 +5211,15 @@
    "prompts": {},
    "title": "Event log and evidence branch (kept from D95)"
   },
-  "facts_hash": "ecd01c5cfc1ce456",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "83e9f314f9c29706",
+  "facts_hash": "074e3517e3eb5b88",
+  "seed_hash": "e6ea739109093295",
   "sentence": "An append-only, hash-chained log written only by the harness, with a fingerprint of every run folder it names, and an off-container copy on the repository's evidence branch.",
-  "source": "model: kept",
+  "source": "hand",
   "what": [
    "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
    "Finished runs that pass the key scan are shipped as fast-forward commits to the orphan `evidence` branch, at most one commit per 10 minutes plus a final one; each commit message carries the chain head. Shipping runs in the harness only; agents never get git credentials or cloud credentials.",
-   "D117: the loop that wrote it is gone; the log is kept for in-task adaptation: every stuck step, diagnosis, fix tried and stop is a row (settings read through amoeba/adapt/config.py)."
+   "D117: the loop that wrote it is gone; the log is kept for in-task adaptation: every stuck step, diagnosis, fix tried and stop is a row (settings read through amoeba/adapt/config.py).",
+   "D146: every stuck row carries all its signals and ground_truth null for hand grading (python -m scripts.grade_episodes); the hash chain is self-consistent only, with no outside anchor, because make_shipper is never called."
   ]
  },
  "faults": {
@@ -5289,7 +5363,7 @@
   ]
  },
  "fixes": {
-  "checked_at": "a937618",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -5314,8 +5388,9 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
-      "amoeba/adapt/fixes.py::candidates",
+      "amoeba/adapt/fixes.py::all_candidates",
       "amoeba/adapt/fixes.py::fix_key",
+      "amoeba/adapt/fixes.py::token_cap",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_usd",
@@ -5323,9 +5398,10 @@
       "amoeba/interp/plan_runner.py::PlanRunner.fix_ctx",
       "amoeba/interp/plan_runner.py::PlanRunner.log_event",
       "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
+      "amoeba/interp/plan_runner.py::PlanRunner.step_fixes",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
-      "amoeba/localtools/toolbox.py::LocalToolbox.candidates",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
      "doc": "D117 Stage C: while step n is stuck, try the next code fix for its cause (cheapest first, allowed by the",
@@ -5340,10 +5416,14 @@
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._fix_done",
       "amoeba/interp/plan_runner.py::PlanRunner.attach_missing",
+      "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
       "amoeba/interp/plan_runner.py::PlanRunner.keep_made_tool",
       "amoeba/interp/plan_runner.py::PlanRunner.keep_try",
       "amoeba/interp/plan_runner.py::PlanRunner.make_tool",
+      "amoeba/interp/plan_runner.py::PlanRunner.model_for",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::PlanRunner.step_fixes",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -5374,12 +5454,32 @@
     },
     {
      "callees": [
+      "amoeba/adapt/config.py::adapt_config",
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/fixes.py::candidates",
+      "amoeba/adapt/fixes.py::fix_key",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::_Work.add",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/localtools/toolbox.py::LocalToolbox.candidates",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D129: the code fixes of the diagnosis's first cause, then those of every other cause its signals name (each",
+     "key": "amoeba/adapt/fixes.py::all_candidates",
+     "signature": "all_candidates(d: dict, n: int, ctx: dict, config: dict | None=None) -> tuple[list[dict], list[str]]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/proposer.py::FixEdit.key.norm",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/capabilities/__init__.py::snake",
       "amoeba/interp/citecheck.py::norm",
       "amoeba/llm/cache.py::_Store.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/evaluate.py::normalise"
      ],
      "doc": "What makes two fixes the same (a failed fix is never repeated): its kind, the step it changes and its values",
      "key": "amoeba/adapt/fixes.py::fix_key",
@@ -5405,6 +5505,17 @@
      "doc": "The adaptation limits (adapt.yaml `adapt`), with defaults for what is not set.",
      "key": "amoeba/adapt/fixes.py::limits",
      "signature": "limits(config: dict | None=None) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D129: the tokens all fixes of one task may use: max_tokens_per_task, or a share of the run's own token cap",
+     "key": "amoeba/adapt/fixes.py::token_cap",
+     "signature": "token_cap(lim: dict, run_cap: int | None) -> int"
     },
     {
      "callees": [
@@ -5461,6 +5572,14 @@
     },
     {
      "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.router"
+     ],
+     "doc": "D145: other candidate models a provider-blocked step may re-run on: the router's allowed models other",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.alt_models",
+     "signature": "alt_models(self) -> list[str]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
@@ -5479,8 +5598,22 @@
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D119/D145: the tool a capability fault takes from step n's helpers while it runs (not held for Box 4).",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.fault_hidden",
+     "signature": "fault_hidden(self, n: int) -> set[str]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner.alt_models",
+      "amoeba/interp/plan_runner.py::PlanRunner.fault_hidden",
       "amoeba/interp/plan_runner.py::PlanRunner.make_tool_ctx",
       "amoeba/interp/plan_runner.py::PlanRunner.so",
+      "amoeba/interp/plan_runner.py::PlanRunner.unfillable",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -5508,12 +5641,41 @@
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner.router",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D145: while step n re-runs, the router uses the model a switch_model fix chose.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.model_for",
+     "signature": "model_for(self, n: int)"
+    },
+    {
+     "callees": [],
+     "doc": "D145: the run's model router (fixed mode), if any.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.router",
+     "signature": "router(self)"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
      "doc": "D117 Stage C: a run option for step n — the value a fix set for it, else the run's.",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.so",
      "signature": "so(self, n: int | None, name: str)"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D129: the fixes tried for step n since its current version (a step made by a split or a re-plan does not",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.step_fixes",
+     "signature": "step_fixes(self, n: int) -> list[dict]"
     },
     {
      "callees": [
@@ -5534,6 +5696,23 @@
     },
     {
      "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/capabilities/__init__.py::normalise",
+      "amoeba/capabilities/__init__.py::snake",
+      "amoeba/interp/plan_runner.py::PlanRunner.make_tool_ctx",
+      "amoeba/interp/plan_runner.py::PlanRunner.step_fixes",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/evaluate.py::normalise",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "D129: capabilities step n lacks that this run cannot supply: a grant for them found nothing in the pool or",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.unfillable",
+     "signature": "unfillable(self, n: int) -> list[str]"
+    },
+    {
+     "callees": [
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_report"
      ],
      "doc": "",
@@ -5551,23 +5730,22 @@
    "prompts": {},
    "title": "Code fixes for a stuck step (D117 Stage C)"
   },
-  "facts_hash": "0eb03ebddceb6b18",
-  "rejected_hash": "f9540280cb811761",
-  "seed_hash": "a1bb93268e26fa14",
+  "facts_hash": "5f340d59508a6615",
+  "seed_hash": "ee6ed0aa6850f906",
   "sentence": "Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
   "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "missing_input: an upstream step that is done and holds the data is added to depends_on or passed in full; an upstream output without it is re-run once with the item in its done_when (the only redo of a completed step), then the stuck step.",
    "Rung 1: more turns (tool_error, max_turns), more retry turns then a larger input (checks).",
    "Rung 2: the missing tool or skill from the pool shortlist, first vetted candidate not given before (no AI pick); with the pool and local tools off it is skipped: \"capability fix unavailable: pool off\".",
    "Rung W (D125, capability): a tool for the missing capability from the approved library or the tool writer, when plain code finds an offline library for it and the run has a code runner (--local-tools); otherwise skipped: \"tool writer: no code runner (local tools are off)\".",
    "When no code fix is left for the step (used up, not allowed for the cause, or skipped), the fix proposer (Stage D) is the next and last rung.",
-   "Limits from adapt.yaml (adapt): three fixes per step and eight per task, the proposer's included, a token and dollar cap; a fix is never repeated. When nothing recovers the step the task stops: adapt_report.md says what was stuck, the cause, each fix and why it failed."
+   "Limits from adapt.yaml (adapt): three fixes per step and eight per task, the proposer's included, a token and dollar cap; a fix is never repeated. When nothing recovers the step the task stops: adapt_report.md says what was stuck, the cause, each fix and why it failed.",
+   "D145: a provider-blocked step gets the compact prompt, then another candidate model, then the task stops naming the refusal categories; a held tool is never granted again; a re-plan drops only the stuck step's dependents and must pass Box 2's HARD checks."
   ]
  },
  "free_text": {
-  "checked_at": "a1e7fbc",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -5596,6 +5774,7 @@
       "amoeba/tools/registry.py::ToolRegistry.without",
       "amoeba/tools/registry.py::default_registry",
       "scripts/eval_draft.py::parse_args",
+      "scripts/run_task.py::adapt_summary_lines",
       "scripts/run_task.py::build_box3_tools",
       "scripts/run_task.py::build_llm",
       "scripts/run_task.py::cli_plan_options",
@@ -5782,7 +5961,7 @@
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "37681ee410206e51",
+  "facts_hash": "79a24f9d566abea2",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
@@ -5955,7 +6134,7 @@
   ]
  },
  "instantiate": {
-  "checked_at": "a937618",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -5984,6 +6163,7 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/validate.py::_is_uuid",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -6160,13 +6340,15 @@
     "AgentSpec.max_history",
     "AgentSpec.max_tokens",
     "Envelope.max_agents",
+    "Limits.max_turns",
     "PLAN_MAX_TOKENS",
+    "PLAN_MAX_TURNS",
     "TeamConfig.max_inner_turns"
    ],
    "prompts": {},
    "title": "Build the team (instantiate)"
   },
-  "facts_hash": "2c0033bacb814503",
+  "facts_hash": "9f7cd848777b396a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "eee28a8b08285ada",
   "sentence": "Gives each helper a permanent id, wires the helpers for the chosen shape, and rejects the team if any rule is broken.",
@@ -6179,7 +6361,7 @@
   ]
  },
  "interpret": {
-  "checked_at": "837833b",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -6305,6 +6487,7 @@
       "amoeba/adapt/stuck.py::_words",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::_words",
       "amoeba/interp/replan_method.py::_words",
       "amoeba/llm/cache.py::_Store.get",
@@ -7413,10 +7596,11 @@
    },
    "title": "Task interpretation and family (D77, D101)"
   },
-  "facts_hash": "80bb9b05c3511e65",
+  "facts_hash": "e54381fe0424168d",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "fed85cc0170ff8b7",
   "sentence": "Before the Planner drafts, an AI lists what the task's names and terms could mean; plain code takes a clear winner, asks the user one question, or makes the answer state its assumption.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "One call reads the task (and the read-only user context from --context: location, organisation, role) and lists the key entities and terms that could be read more than one way — names, abbreviations, acronyms, likely voice-input errors such as \"P and W\" for \"PNW\" — each reading with a one-line reason and a confidence.",
    "Plain code: a reading whose confidence beats the next by {DOMINANCE_GAP} or more (DOMINANCE_GAP) (or the only one) is the working interpretation. Otherwise, with --interactive, the user gets one multiple-choice question (the readings + other); without it the top reading is an assumption.",
@@ -9251,7 +9435,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "837833b",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -9266,6 +9450,7 @@
       "amoeba/config/schema.py::Limits",
       "amoeba/interp/plan_runner.py::PlanOptions",
       "amoeba/interp/plan_runner.py::PlanRunner.run",
+      "amoeba/interp/plan_runner.py::verifier_independence",
       "amoeba/interp/runtime.py::Interpreter",
       "amoeba/interp/runtime.py::Interpreter.run",
       "amoeba/interp/trace.py::TraceWriter",
@@ -9353,11 +9538,11 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "7ae8b44dbff600b6",
+  "facts_hash": "6238f7ef8453d0c5",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
   "sentence": "Every run saves thirty-two files, including the team, draft, logs, tool data, results, reports, settings, native resolution records, and the communication protocol.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Each run gets its own folder named by a random run id.",
    "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the task notes, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed ({run_one.seed}), the fault summary, the fault details, the plan search findings, the tool library, the planned model, the protocol used, and the native resolution record.",
@@ -9365,7 +9550,7 @@
   ]
  },
  "ov_plan": {
-  "checked_at": "837833b",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -9458,8 +9643,10 @@
     "DraftRound.plan_suggestions_n",
     "Envelope.max_agents",
     "Episode.seed",
+    "Limits.max_turns",
     "MAX_ROUNDS",
     "PLAN_MAX_TOKENS",
+    "PLAN_MAX_TURNS",
     "RunResult.requests_dropped_by_observers",
     "RunResult.requests_proposed",
     "TeamConfig.max_inner_turns",
@@ -9468,20 +9655,20 @@
    "prompts": {},
    "title": "2 · Plan a new team"
   },
-  "facts_hash": "bcc5552867b6668f",
+  "facts_hash": "4b5ca899a447b88a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "a940602a52cfd22e",
   "sentence": "An AI drafts a team and a step plan, two AIs critique it, then plain code checks it and builds the team.",
-  "source": "model: kept",
+  "source": "model: rewritten",
   "what": [
    "A planning AI proposes a set of helpers and a numbered step plan for the job.",
    "Two checking AIs critique the helpers and the plan; the planner revises from their latest comments.",
    "The last draft is used whether or not the checkers agreed.",
-   "Plain code then cleans the draft, applies the rules and builds the team."
+   "Plain code then cleans the draft, applies the rules, sets a limit of {Limits.max_turns} turns, and builds the team."
   ]
  },
  "ov_run": {
-  "checked_at": "a5b8c72",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -9556,6 +9743,7 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.arm",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::Faults.summary",
@@ -9624,7 +9812,7 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "a489f092befb566a",
+  "facts_hash": "3082e3227c06d0b3",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call, adaptation, and fault recovery is logged.",
@@ -9716,7 +9904,7 @@
   ]
  },
  "plan_graph": {
-  "checked_at": "a5b8c72",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -9740,6 +9928,7 @@
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::number"
      ],
      "doc": "Box 2 drops a step that names no known role but keeps the others' numbers, so depends_on can point at a",
@@ -9748,6 +9937,7 @@
     },
     {
      "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.arm",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::Faults.summary",
@@ -9897,18 +10087,18 @@
     ],
     [
      "correct",
+     "if fixed == 'stop' and self.opt.failed_step == 'dependents'",
+     "add {**(self.exhausted or {}), 'outcome': 'kept_going'}"
+    ],
+    [
+     "correct",
      "if x in kept",
      "add x"
     ],
     [
      "decide",
-     "if fixed == 'stop'",
+     "if fixed in ('stop', 'stop_blocked')",
      "set self.ep.faults = self.faults.summary()"
-    ],
-    [
-     "decide",
-     "if fixed == 'stop' and self.opt.failed_step == 'dependents'",
-     "set fixed = None"
     ],
     [
      "decide",
@@ -10113,11 +10303,11 @@
    "prompts": {},
    "title": "Step graph (depends_on)"
   },
-  "facts_hash": "5521d9736aff55c3",
+  "facts_hash": "fdf624c4d5228f0a",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "15b138f4913a332f",
   "sentence": "Builds the order of work from each step's 'depends on' line and rejects a plan that loops.",
-  "source": "model: rewritten",
+  "source": "model: kept",
   "what": [
    "Reads which earlier steps each step depends on; a plan with no such lines runs as a simple chain.",
    "A dependency on a step that was dropped or failed to produce output is redirected to that step's own dependencies, and the change is logged.",
@@ -10323,7 +10513,7 @@
   ]
  },
  "plan_step": {
-  "checked_at": "d7c4cc9",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -10348,6 +10538,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.answer_findings",
       "amoeba/interp/plan_runner.py::PlanRunner.answer_gaps",
       "amoeba/interp/plan_runner.py::PlanRunner.checkable",
+      "amoeba/interp/plan_runner.py::PlanRunner.clean_sources",
       "amoeba/interp/plan_runner.py::PlanRunner.computed_results",
       "amoeba/interp/plan_runner.py::PlanRunner.contract",
       "amoeba/interp/plan_runner.py::PlanRunner.contract_check",
@@ -10395,6 +10586,7 @@
       "amoeba/interp/provenance.py::strip_unverified",
       "amoeba/interp/shorten.py::shorten",
       "amoeba/interp/trace.py::TraceWriter.event",
+      "amoeba/interp/trace.py::TraceWriter.spans",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/claims.py::claimed_files",
       "amoeba/localtools/toolbox.py::LocalToolbox.begin_step",
@@ -10417,7 +10609,12 @@
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/plan_runner.py::PlanRunner._turn",
       "amoeba/interp/plan_runner.py::PlanRunner.same_error_hint",
+      "amoeba/interp/plan_runner.py::PlanRunner.spill",
+      "amoeba/interp/plan_runner.py::_Work.add",
+      "amoeba/interp/plan_runner.py::_Work.view",
+      "amoeba/interp/plan_runner.py::one_line",
       "amoeba/interp/plan_runner.py::tool_ok",
+      "amoeba/interp/plan_runner.py::write_summary",
       "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
      "doc": "",
@@ -10441,6 +10638,7 @@
       "amoeba/interp/plan_runner.py::step_detail",
       "amoeba/interp/runtime.py::Interpreter._record",
       "amoeba/interp/runtime.py::full_action_input",
+      "amoeba/interp/step_protocol.py::compact_step_prompt",
       "amoeba/interp/step_protocol.py::v2_text",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
@@ -10501,6 +10699,7 @@
      "callees": [
       "amoeba/interp/plan_runner.py::PlanRunner.rework",
       "amoeba/interp/plan_runner.py::PlanRunner.so",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::refine_counts",
       "amoeba/interp/plan_runner.py::refine_findings",
       "amoeba/interp/trace.py::TraceWriter.event"
@@ -10516,6 +10715,7 @@
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._review",
       "amoeba/interp/plan_runner.py::PlanRunner.rework",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -10679,6 +10879,14 @@
     },
     {
      "callees": [
+      "amoeba/interp/trace.py::TraceWriter.event"
+     ],
+     "doc": "D144: a tool result over RESULT_SPILL characters as its first 800 and last 400 characters plus the path of",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.spill",
+     "signature": "spill(self, n: int, k: int, result: str) -> str"
+    },
+    {
+     "callees": [
       "amoeba/llm/ask.py::ask",
       "amoeba/task/schemas.py::to_legacy"
      ],
@@ -10768,6 +10976,23 @@
      "doc": "D132: the tool or skill helper `a` holds that does what `name` asks for — a wish Box 2 wrote (\"Bash\"), a",
      "key": "amoeba/interp/plan_runner.py::held_tool",
      "signature": "held_tool(a: AgentSpec, name: str) -> str | None"
+    },
+    {
+     "callees": [],
+     "doc": "D144: an older turn as one line: who, the action, its input (first 120 characters), ok/error and the first",
+     "key": "amoeba/interp/plan_runner.py::one_line",
+     "signature": "one_line(agent: str, act: str, inp: str, result: str | None, ok: bool | None) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D144: a local:Write input as its path, size and first 300 characters, not the whole content.",
+     "key": "amoeba/interp/plan_runner.py::write_summary",
+     "signature": "write_summary(inp: str) -> str"
     },
     {
      "callees": [],
@@ -11075,6 +11300,11 @@
     ],
     [
      "decide",
+     "if base is not None",
+     "set path = Path(base) / 'tool_results' / f'step{n}_{k}.txt'"
+    ],
+    [
+     "decide",
      "if c and (c['needs'] or c['items'])",
      "set items = [*(f'{x} (asked for, not available)' for x in c['needs']), *(f\"{x['name']} (given "
     ],
@@ -11152,6 +11382,11 @@
      "decide",
      "if i >= 0",
      "set j = text.find('\\n\\n', i + 1)"
+    ],
+    [
+     "decide",
+     "if inputs_saved",
+     "set own_extra = own_extra.replace(SOURCES_NOTE.format(files=', '.join((f\"{x['file']} [{x['sour"
     ],
     [
      "decide",
@@ -11330,6 +11565,11 @@
     ],
     [
      "decide",
+     "if self.step_opts.get(n, {}).get('compact')",
+     "set user = compact_step_prompt(user)"
+    ],
+    [
+     "decide",
      "if self.typed",
      "set raw = self.struct_call('critique', CritiqueOut, [{'role': 'system', 'content': system}, {'"
     ],
@@ -11430,7 +11670,22 @@
     ],
     [
      "fallback",
+     "'' if echo else f'>Result:\\n{resp.strip()}\\n'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'' if fo.issues else ' none'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'' if result is None else f\" -> {('ok' if ok else 'error')}: {flat(result, LINE_RESULT)}\"",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'' if self.local is not None else ' (run folder)'",
      "choose value"
     ],
     [
@@ -11471,6 +11726,11 @@
     [
      "fallback",
      "'none' if fo.verdict else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'ok' if ok else 'error'",
      "choose value"
     ],
     [
@@ -11525,6 +11785,16 @@
     ],
     [
      "fallback",
+     "None if echo else resp",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "None if echo else tool_ok(resp)",
+     "choose value"
+    ],
+    [
+     "fallback",
      "PROMPT.plan_critique_v2 if self.typed else PROMPT.plan_critique",
      "choose value"
     ],
@@ -11536,6 +11806,11 @@
     [
      "fallback",
      "PROVIDER_BLOCKED_NOTE_V2 if self.v2 else PROVIDER_BLOCKED_NOTE",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "Path(self.i.run_dir) if self.i.run_dir else None",
      "choose value"
     ],
     [
@@ -11602,6 +11877,11 @@
      "fallback",
      "checks[0]['source'] if checks else ''",
      "choose value"
+    ],
+    [
+     "fallback",
+     "except (ValueError, TypeError)",
+     "return inp"
     ],
     [
      "fallback",
@@ -11676,6 +11956,11 @@
     [
      "fallback",
      "f' ({p})' if p else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f' … ({len(content) - WRITE_HEAD} more characters)' if len(content) > WRITE_HEAD else ''",
      "choose value"
     ],
     [
@@ -11855,6 +12140,11 @@
     ],
     [
      "fallback",
+     "self.local.workspace if self.local is not None else Path(self.i.run_dir) if self.i.run_dir else None",
+     "choose value"
+    ],
+    [
+     "fallback",
      "self.no_last_turn.discard if forced else self.no_last_turn.add",
      "choose value"
     ],
@@ -11881,6 +12171,11 @@
     [
      "fallback",
      "v2_text(desc) if self.v2 else desc",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "write_summary(inp.strip()) if act.endswith('Write') else inp.strip()",
      "choose value"
     ],
     [
@@ -12190,6 +12485,11 @@
     ],
     [
      "stop",
+     "if len(result) <= RESULT_SPILL",
+     "return result"
+    ],
+    [
+     "stop",
      "if len(text) <= limit",
      "return text"
     ],
@@ -12227,6 +12527,11 @@
      "stop",
      "if not isinstance(args, dict)",
      "return 'arguments that are not a JSON object'"
+    ],
+    [
+     "stop",
+     "if not isinstance(args, dict) or 'content' not in args",
+     "return inp"
     ],
     [
      "stop",
@@ -12343,7 +12648,9 @@
     "Episode.total_tokens",
     "Limits.max_turns",
     "PLAN_MAX_TOKENS",
-    "PlanOptions.collab_rounds"
+    "PlanOptions.collab_rounds",
+    "RESULT_SPILL",
+    "WRITE_HEAD"
    ],
    "prompts": {
     "plan_critique": "b17054bc5a21",
@@ -12353,20 +12660,20 @@
    },
    "title": "Plan step helper(s)"
   },
-  "facts_hash": "5a71f8e016bfb469",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "71bb2449d3119154",
+  "facts_hash": "64b0604941b185d0",
+  "seed_hash": "6dd01e214898f73a",
   "sentence": "An AI helper carries out one step, seeing only the job, its role card, its step and its inputs.",
-  "source": "model: rewritten",
+  "source": "hand",
   "what": [
    "The helper sees its role card (goal, skills, constraints, outputs, success criteria), the step with its do / output / done-when lines, and only the outputs of the steps it depends on.",
    "It must tag every figure with a source id [S#] or [unverified], and mark what it could not do as BLOCKED: <capability>.",
    "It picks one action per turn: a tool, Print, or Final Output; up to {Limits.max_turns} turns per step.",
    "With --web-tools, a role that asked for web search also gets web_search and fetch_url.",
    "After the step, what plain code found goes back to the helper for one refine turn (--self-refine). In a step with several roles the first drafts and the others AGREE or REVISE with numbered issues, at most {PlanOptions.collab_rounds} rounds (--collab critique); the step keeps one output.",
-   "With --step-contract on, its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason, and the prompt explicitly lists these requirements.",
-   "D136/D141 (--protocol v2, with native tool calling): the step prompt asks for no text sections; each tool takes typed arguments that plain code checks before running it (a bad call gets the schema and an example), and the step ends with Final_Output's typed fields, which plain code turns into the usual BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy.",
-   "D138: a step with no Final Output hands on nothing (its last message stays in meta), a rework that gives no new output keeps the earlier one, and in native mode short text without a tool call is not the step's output unless it is the last turn or clearly an answer."
+   "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT NEEDED with a reason.",
+   "D136 (--protocol v2, with native tool calling): the step prompt asks for no text sections; each tool takes typed arguments that plain code checks before running it (a bad call gets the schema and an example), and the step ends with Final_Output's typed fields, which plain code turns into the usual BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy.",
+   "D138: a step with no Final Output hands on nothing (its last message stays in meta), a rework that gives no new output keeps the earlier one, and in native mode short text without a tool call is not the step's output unless it is the last turn or clearly an answer.",
+   "D144: a step's transcript keeps the last two turns in full and older turns as one line each; tool results over {RESULT_SPILL} characters go to a file (first 800 and last {ANSWER_CHARS} characters kept), and file writes are summarised."
   ]
  },
  "plan_summary": {
@@ -13584,7 +13891,7 @@
   ]
  },
  "proposer": {
-  "checked_at": "63a0668",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -13607,7 +13914,7 @@
      ],
      "doc": "The checks that need no live plan. tools: name → description of the tools available in this run; tried: the",
      "key": "amoeba/adapt/proposer.py::fix_problems",
-     "signature": "fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[str, str], tried: set[str], roles_of_step: list[str], tried_kinds: set[str]=frozenset()) -> list[str]"
+     "signature": "fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[str, str], tried: set[str], roles_of_step: list[str], tried_kinds: set[str]=frozenset(), step: int | None=None) -> list[str]"
     },
     {
      "callees": [
@@ -13626,6 +13933,7 @@
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
       "amoeba/interp/plan_runner.py::PlanRunner.step_fixes",
       "amoeba/interp/plan_runner.py::PlanRunner.unfillable",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.spans",
@@ -13644,9 +13952,11 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/interp/plan_runner.py::PlanRunner._split_change",
+      "amoeba/interp/plan_runner.py::PlanRunner.replan_hard_problems",
       "amoeba/interp/plan_runner.py::PlanRunner.validate_decision",
       "amoeba/interp/plan_runner.py::dependencies",
-      "amoeba/interp/plan_runner.py::number"
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/interp/replan_method.py::failed_method"
      ],
      "doc": "The checks on the live plan: a new helper's card is complete, its name new and the team within its size;",
      "key": "amoeba/interp/plan_runner.py::PlanRunner._d_live",
@@ -13667,7 +13977,7 @@
      ],
      "key": "amoeba/adapt/proposer.py::FixEdit",
      "methods": [
-      "key(self) -> str",
+      "key(self, step: int | None=None) -> str",
       "texts(self) -> list[tuple[str, str, int]]"
      ],
      "signature": null
@@ -13914,6 +14224,21 @@
      "doc": "Steps that used an upstream output from before its case-b re-run (Stage C rerun_upstream): they were not",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.left_on_old_output",
      "signature": "left_on_old_output(self) -> list[dict]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner.proposed_plan",
+      "amoeba/interp/plan_runner.py::number",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/contract.py::plan_contract_quality"
+     ],
+     "doc": "D145: Box 2's HARD checks on the plan as it would be after a re-plan: every requirement covered by a step,",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.replan_hard_problems",
+     "signature": "replan_hard_problems(self, change: dict) -> list[str]"
     }
    ],
    "checks": [],
@@ -13937,7 +14262,7 @@
    },
    "title": "Fix proposer (D117 Stage D)"
   },
-  "facts_hash": "4ba6d7ebb97f27d9",
+  "facts_hash": "d0a21534cc9c1e03",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "26d95855171d5479",
   "sentence": "The last rung: one AI call proposes one edit for the stuck step; plain code checks it, applies it to the live plan and re-runs the step.",
@@ -13945,7 +14270,7 @@
   "what": [
    "Called only when the code fixes for the step are used up or not allowed (including \"capability fix unavailable: pool off\").",
    "It sees the task, the step's card and done_when, the cause and evidence, the last attempt's errors and checks (trimmed), the team (one line per role), the tools and skills of this run, the edits the cause allows and the fixes already tried.",
-   "It returns one JSON edit (the last top-level object containing an \"edit\") with a short reason: add_role_rule, add_helper_role (the Planner's role card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the Planner's plan format, for the part not done) or work_around (capability only, after a grant_tool or add_helper_role was tried for the step; stated under Limitations; counted as finished with limitation, never recovered). At most two added helpers per task.",
+   "It returns one JSON edit (the last top-level object containing an \"edit\") with a short reason: add_role_rule, add_helper_role (the Planner's role card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the Planner's plan format, for the part not done) or work_around (capability only, after a grant_tool or add_helper_role was tried for the step; stated under Limitations; counted as finished with limitation, never recovered). At most {PlanOptions.max_added_steps} added helpers per task.",
    "Plain code checks, all in proposer.py and the plan runner (including structural validation): allowed for the cause, the schema, tools this run has (no outside action, not paid), text sizes and denied wording (adapt.yaml limits), team size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second failure is no fix. The adaptation limits apply; success is the step ending done."
   ]
  },
@@ -14134,7 +14459,7 @@
   ]
  },
  "read_action": {
-  "checked_at": "a937618",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -14257,7 +14582,7 @@
     [
      "correct",
      "if not registered and (not any((q.name == act and q.for_role == agent.name for q in ep.requested_capabilities)))",
-     "add CapabilityRequest(name=act, kind='tool', for_role=agent.name, source='runtime_unknown_tool', input=inp, what_it_does='chosen as an action during the run; no such tool is registered')"
+     "add CapabilityRequest(name=act, kind='tool', for_role=agent.name, source='runtime_unknown_tool', input=inp, step=step, what_it_does='chosen as an action during the run; no such tool is registered')"
     ],
     [
      "decide",
@@ -14357,7 +14682,7 @@
    "prompts": {},
    "title": "Read \"## Action\""
   },
-  "facts_hash": "7e320ed9c85eff64",
+  "facts_hash": "02feb47ed5602e81",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8c7248ccf38edd67",
   "sentence": "Reads the helper's chosen action: runs a tool and loops, or accepts a final answer; gives up after five turns.",
@@ -14373,12 +14698,13 @@
   ]
  },
  "resolver": {
-  "checked_at": "a937618",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/task/models.py::CapabilityRequest"
      ],
      "doc": "Keep each role's registered tools; a name the registry lacks becomes a recorded request and the role's",
@@ -14446,7 +14772,7 @@
     [
      "correct",
      "if not registered and (not any((q.name == act and q.for_role == agent.name for q in ep.requested_capabilities)))",
-     "add CapabilityRequest(name=act, kind='tool', for_role=agent.name, source='runtime_unknown_tool', input=inp, what_it_does='chosen as an action during the run; no such tool is registered')"
+     "add CapabilityRequest(name=act, kind='tool', for_role=agent.name, source='runtime_unknown_tool', input=inp, step=step, what_it_does='chosen as an action during the run; no such tool is registered')"
     ],
     [
      "decide",
@@ -14529,7 +14855,7 @@
    "prompts": {},
    "title": "Tool resolver"
   },
-  "facts_hash": "dbd0730cbe27f2f7",
+  "facts_hash": "d87846c66f8c5298",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "4f1dc3213f08fd80",
   "sentence": "Keeps the tools that exist; a tool we lack is recorded as a request, never used and never silently dropped.",
@@ -15631,7 +15957,7 @@
    "title": "RunResult"
   },
   "facts_hash": "37225123a4f123d2",
-  "rejected_hash": "213a3417345eb120",
+  "rejected_hash": "903de0627bc7d7c5",
   "seed_hash": "60d4810762e3bcb9",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
   "source": "hand",
@@ -16339,7 +16665,7 @@
   ]
  },
  "step_check": {
-  "checked_at": "d7c4cc9",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -16385,6 +16711,7 @@
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner._write",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/plan_runner.py::waves",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -16418,6 +16745,7 @@
     },
     {
      "callees": [
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::CachedProvider.search",
@@ -16434,6 +16762,7 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
@@ -16533,7 +16862,9 @@
      "signature": "checkable(self, n: int) -> str"
     },
     {
-     "callees": [],
+     "callees": [
+      "amoeba/interp/plan_runner.py::_Work.add"
+     ],
      "doc": "D104: the numbers of a stretch that are not claims of their own — calculation results, powers, year ranges.",
      "key": "amoeba/interp/citecheck.py::derived_tokens",
      "signature": "derived_tokens(body: str) -> set[str]"
@@ -16543,6 +16874,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/interp/citecheck.py::_has",
       "amoeba/interp/citecheck.py::claims",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/localtools/server.py::StdioServer.start",
       "amoeba/localtools/toolbox.py::LocalToolbox.start",
       "amoeba/task/plan_search.py::without_plan_ids.strip"
@@ -16562,6 +16894,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/interp/citecheck.py::identifiers.take.sub",
       "amoeba/interp/dates.py::_figures",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
       "amoeba/tools/web.py::SearchProvider.search",
@@ -16577,7 +16910,8 @@
       "amoeba/interp/disputes.py::_same_label",
       "amoeba/interp/disputes.py::agree",
       "amoeba/interp/disputes.py::labelled_figures",
-      "amoeba/interp/disputes.py::same_quantity"
+      "amoeba/interp/disputes.py::same_quantity",
+      "amoeba/interp/plan_runner.py::_Work.add"
      ],
      "doc": "The labelled figures of the verifier's blind result that the checked outputs state under the same label only",
      "key": "amoeba/interp/disputes.py::disputed_figures",
@@ -16672,6 +17006,14 @@
      "signature": "citation_exempt(self) -> set[str]"
     },
     {
+     "callees": [
+      "amoeba/interp/trace.py::TraceWriter.event"
+     ],
+     "doc": "D146: while the verifier works out its own result, the workspace's sources/ folder holds only what it",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner.clean_sources",
+     "signature": "clean_sources(self, n: int)"
+    },
+    {
      "callees": [],
      "doc": "",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.contract_findings",
@@ -16702,18 +17044,6 @@
      "doc": "D132: the lacked items a helper of the step holds (item -> the tool it holds) and did not call and fail",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.held_gaps",
      "signature": "held_gaps(self, agents: list[AgentSpec], gaps: list[str], w: '_Work') -> dict[str, str]"
-    },
-    {
-     "callees": [
-      "amoeba/interp/plan_runner.py::PlanRunner._loop",
-      "amoeba/interp/plan_runner.py::PlanRunner._text",
-      "amoeba/interp/plan_runner.py::PlanRunner.blind_inputs_text",
-      "amoeba/interp/plan_runner.py::_Work",
-      "amoeba/interp/trace.py::TraceWriter.event"
-     ],
-     "doc": "D90: the verifier's own result, made in a fresh turn loop that never sees the checked steps' outputs (nor",
-     "key": "amoeba/interp/plan_runner.py::PlanRunner.own_result",
-     "signature": "own_result(self, step: PlanStep, n: int, deps: list[int], writers: list[AgentSpec], extra: str) -> dict"
     },
     {
      "callees": [
@@ -16767,6 +17097,7 @@
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::dependencies",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -16849,6 +17180,12 @@
      "signature": "missing_input_marks(text: str) -> list[str]"
     },
     {
+     "callees": [],
+     "doc": "D146: a model's family by its name (claude → anthropic, gemma/gemini → google, gpt → openai, ...).",
+     "key": "amoeba/interp/plan_runner.py::model_family",
+     "signature": "model_family(model: str) -> str"
+    },
+    {
      "callees": [
       "amoeba/interp/plan_runner.py::cap_key"
      ],
@@ -16894,6 +17231,19 @@
      "doc": "D127: a line's markdown emphasis and list/quote markers removed (\"**BLOCKED:** x\", \"- _MISSING DATA_: y\"), so a",
      "key": "amoeba/interp/plan_runner.py::unmark",
      "signature": "unmark(text: str) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::model_family",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D146: per verify step, whether it ran on a different model family from the steps it checks (independent),",
+     "key": "amoeba/interp/plan_runner.py::verifier_independence",
+     "signature": "verifier_independence(steps: list[dict]) -> list[dict]"
     },
     {
      "callees": [
@@ -17106,12 +17456,27 @@
     ],
     [
      "fallback",
+     "'independent' if not fam_m & fam_t else 'same_model' if mine & theirs else 'same_family'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'markers' if markers else 'keywords'",
      "choose value"
     ],
     [
      "fallback",
      "'ok' if c['ok'] else 'failed'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'same_model' if mine & theirs else 'same_family'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'unknown' if not mine or not theirs else 'independent' if not fam_m & fam_t else 'same_model' if mine & theirs else 'same_family'",
      "choose value"
     ],
     [
@@ -17132,6 +17497,11 @@
     [
      "fallback",
      "None if answer_step else n",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "Path(ws) / 'sources' if ws is not None else None",
      "choose value"
     ],
     [
@@ -17386,6 +17756,11 @@
     ],
     [
      "reject",
+     "if not m.get('verification')",
+     "skip (continue)"
+    ],
+    [
+     "reject",
      "if not web or not figs or DATE.search(TAG.sub(' ', line))",
      "skip (continue)"
     ],
@@ -17426,8 +17801,8 @@
     ],
     [
      "stop",
-     "if n in self.own_results",
-     "return {**self.own_results[n], 'reused': True}"
+     "if key in m",
+     "return fam"
     ],
     [
      "stop",
@@ -17471,6 +17846,11 @@
     ],
     [
      "stop",
+     "if src is None or not src.is_dir() or (not any(src.iterdir()))",
+     "return None"
+    ],
+    [
+     "stop",
      "if t in {flat(r) for r in requests if r}",
      "return True"
     ],
@@ -17493,10 +17873,11 @@
    "prompts": {},
    "title": "Check the step"
   },
-  "facts_hash": "b2308908e8443878",
+  "facts_hash": "36412e52b6a5b65a",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "908ddd3fac2ae2b9",
-  "sentence": "Checks each step's output against its output and done-when lines and, with the step contract, what its helpers lacked and used; reads verdicts and gaps.",
-  "source": "hand",
+  "sentence": "Checks each step's output against its requirements, contract, and helper usage; reads verdicts, gaps, and model independence.",
+  "source": "model: rewritten",
   "what": [
    "Checks what the planner said the step produces: the table:, list:, code: or memo: markers in its output line (keywords only when there are none), and a real use of its inputs.",
    "A failed check gets one retry with the reasons and two turns of its own; otherwise the step is incomplete.",
@@ -17504,7 +17885,7 @@
    "BLOCKED lines make a producer step partial, with the missing capability listed; the answer step is never scanned for them.",
    "Step contract (D61, --step-contract on): before the step, plain code lists each helper's unfilled requests and the items attached to it; after it, every tool call is on record (who, which tool, ok). A lacked capability with no BLOCKED or NOT NEEDED line, or an attached item never used successfully, earns one refine turn and then makes the step partial (not declared / attached unused).",
    "A verify step also sees each checked step's sources, tool calls, figure counts and files (D61). A producer whose only problem is a missing capability is not sent back (rework_skipped).",
-   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial.",
+   "D65: a verify step also gets the tools to re-check (calc, web search and fetch, local run and read, through the same sandbox gate) and the raw tool results of every step it builds on; a PASS with no re-checking tool call on code, files or cited figures is an unverified check and makes it partial. D146: the verifier also checks if it ran on a different model family than the steps it checks.",
    "D90 blind-first verifier: with --verify-first on (the CLI default), a verify step first works out its own answer from the checked steps' inputs and its tools, in a fresh context without their outputs (plan_verify_own.txt); only then does it see the outputs, and plain code lists every figure where its own answer and the checked output differ (compare_figures). Both are kept in step_<n>.json.",
    "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
    "D109 (resolver): plain code pairs the verifier's blind figures with the worker's by label (5% tolerance); one fresh resolver call settles each disagreement by source text or a re-run, plain code checks its evidence, a settled value replaces the wrong one, and an unresolved one keeps the step from PASS and goes into Limitations.",
@@ -17515,7 +17896,7 @@
   ]
  },
  "stuck": {
-  "checked_at": "1e41d32",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -17533,7 +17914,7 @@
      ],
      "doc": "The stuck signals of one step attempt. `previous`: the meta of the attempt before (a reworked or re-run step);",
      "key": "amoeba/adapt/stuck.py::step_signals",
-     "signature": "step_signals(meta: dict, previous: dict | None=None, unfilled: list[dict] | None=None, files_unchanged: bool | None=None, plan: dict | None=None) -> list[dict]"
+     "signature": "step_signals(meta: dict, previous: dict | None=None, unfilled: list[dict] | None=None, files_unchanged: bool | None=None, plan: dict | None=None, held: dict[str, str] | None=None) -> list[dict]"
     },
     {
      "callees": [
@@ -17558,10 +17939,13 @@
       "amoeba/adapt/stuck.py::step_signals",
       "amoeba/adapt/stuck.py::waived_view",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner.fault_hidden",
+      "amoeba/interp/plan_runner.py::held_tool",
       "amoeba/interp/plan_runner.py::number",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
-      "amoeba/pool/stock.py::SharedPicks.get"
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
      "doc": "D117 Stage B: the stuck watch after one step attempt. A stuck step gets `meta[\"stuck\"]` (cause, signals,",
      "key": "amoeba/interp/plan_runner.py::PlanRunner.watch",
@@ -17646,7 +18030,7 @@
      ],
      "doc": "The capability requests that are really open: status unfilled, and not covered by a tool the run already has.",
      "key": "amoeba/adapt/stuck.py::open_requests",
-     "signature": "open_requests(requests: list | None, holds: dict[str, set] | None=None) -> list[dict]"
+     "signature": "open_requests(requests: list | None, holds: dict[str, set] | None=None, held_fn=None) -> list[dict]"
     },
     {
      "callees": [
@@ -17777,16 +18161,16 @@
    "prompts": {},
    "title": "Stuck watch and diagnosis (D117 Stage B)"
   },
-  "facts_hash": "71d0762149614225",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "a81f7db46b95d199",
-  "sentence": "After each step attempt, plain code marks a step that did not end done STUCK on any of seven signals and names one cause.",
-  "source": "model: rewritten",
+  "facts_hash": "8c82b5e374c5280f",
+  "seed_hash": "0c9917c59da8ad17",
+  "sentence": "After each step attempt plain code marks a step that did not end done STUCK on any of six signals and names one cause.",
+  "source": "hand",
   "what": [
-   "Signals: a missing input, capability, or data; the same tool error twice in a row; checks still failing after the retry turn; max turns; a capability or skill lacked or requested and unfilled; a file owed and no file change; or a capability work-around that was accepted.",
+   "Signals: a missing input (data an earlier step should have given, told from a missing tool by classify_lacked); the same tool error twice in a row (digits masked); checks still failing after the retry turn (unless the helpers ran out of turns); max turns; a capability or skill lacked or requested and unfilled; a file owed and no file change between attempts.",
    "Each signal names a cause; the first cause in the table order wins, with its allowed edits and at most eight evidence lines.",
    "The event goes to the trace, step_N.json, result.json (stuck) and the run's hash-chained events.jsonl. --adapt on is the command-line default.",
-   "scripts/stuck_report.py runs the same functions over stored run folders, offline."
+   "scripts/stuck_report.py runs the same functions over stored run folders, offline.",
+   "D145: a lacked line about a tool the helper holds is a tool error (held_tool_failed), never a capability; runtime requests count only for the step they came from."
   ]
  },
  "task_record": {
@@ -18057,7 +18441,7 @@
   ]
  },
  "toolbox": {
-  "checked_at": "63a0668",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -18066,6 +18450,7 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/fixes.py::candidates",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/trace.py::NoopListener",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/interp/trace.py::TraceWriter.span",
@@ -18266,7 +18651,9 @@
      "signature": "request_words(q) -> set[str]"
     },
     {
-     "callees": [],
+     "callees": [
+      "amoeba/interp/plan_runner.py::_Work.add"
+     ],
      "doc": "Lower-case content words of 3+ characters; a plural 's' is dropped so 'prices' meets 'price'.",
      "key": "amoeba/pool/match.py::words",
      "signature": "words(text: str) -> set[str]"
@@ -19159,11 +19546,11 @@
    "prompts": {},
    "title": "Stock the toolbox"
   },
-  "facts_hash": "26156e679ea388e0",
+  "facts_hash": "f0f043083452166c",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "577a90bb5eb9d69f",
   "sentence": "Before the team starts, tries to fill each tool or skill the team asked for from the pool; one AI pick per request, everything else plain code. D117: the in-task capability fix calls it again with no AI pick.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Match: the cached pool entries, tools and skills alike (the requested kind is only the planner's guess; the kind asked and the kind picked are logged), are ranked by the words they share with the request (its standard name and aliases, name, what it does, input and output); the best {rank.top} (pool.yaml) are kept. None above zero: unfilled, no AI call.",
    "Vet first (D60): the candidates are checked before the pick and the AI is shown only the best {rank.top} that pass (up to 50 matches are checked); if none pass, the request is unfilled (all_refused) with no AI call.",
@@ -19180,7 +19567,7 @@
   ]
  },
  "toolmaker": {
-  "checked_at": "63a0668",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -19358,6 +19745,7 @@
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/adapt/toolmaker.py::call_tool",
       "amoeba/interp/plan_runner.py::PlanRunner.log_event",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/plan_runner.py::tool_ok",
       "amoeba/interp/trace.py::TraceWriter.event",
       "amoeba/llm/cache.py::_Store.get",
@@ -19465,7 +19853,7 @@
    },
    "title": "Tool writer and tool library (D125)"
   },
-  "facts_hash": "986ca227412217fb",
+  "facts_hash": "ff98361b8c1d6050",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "58455422af4b27cd",
   "sentence": "When a stuck step lacks a tool the pool cannot give, one AI call writes a small Python tool; plain code checks it, runs its self-test in the sandbox and only then gives it to the step.",
@@ -19478,7 +19866,7 @@
   ]
  },
  "tools": {
-  "checked_at": "a1e7fbc",
+  "checked_at": "e79a892",
   "facts": {
    "anchors": [
     {
@@ -19607,6 +19995,7 @@
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
       "amoeba/tools/research.py::terms"
      ],
@@ -19684,6 +20073,16 @@
      "doc": "The words of a query that a relevant line, link or table row should contain.",
      "key": "amoeba/tools/research.py::terms",
      "signature": "terms(query: str) -> list[str]"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "fields": [],
+     "key": "amoeba/tools/web.py::_NoRedirect",
+     "methods": [
+      "redirect_request(self, *a, **k)"
+     ],
+     "signature": null
     },
     {
      "callees": [
@@ -20222,12 +20621,11 @@
    "prompts": {},
    "title": "Tool box"
   },
-  "facts_hash": "fb433ae33ec6b4df",
-  "rejected_hash": "18252524c79429c0",
+  "facts_hash": "993a77f5f3df5e6a",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "187dc89e15607db4",
   "sentence": "Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search and page reading.",
-  "source": "hand",
-  "stale": "the model's reply was unusable or wrote a number the code does not hold",
+  "source": "hand (model: still true)",
   "what": [
    "Tools are looked up by name; a name that is not registered is an error, not a web search.",
    "The arithmetic tool accepts numbers and + − × ÷ and powers only, never arbitrary code.",
