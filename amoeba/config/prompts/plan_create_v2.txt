@@ -1,0 +1,103 @@
+# source: ours — DEVIATION D141 (protocol v2; the audit prompt's D138): d24_create_team.txt without the text sections; the reply is a typed PlanOut (amoeba/task/schemas.py)
+# Task
+${context}
+
+# Existing expert roles (reuse if they fit)
+${existing_roles}
+
+# Tools the team will have when it runs (use them where they fit; do NOT let this list limit the plan)
+${tools}${lessons}
+
+# History (your previous draft)
+${history}
+
+# Reviewer suggestions (latest round)
+${suggestions}
+
+# How to plan
+Work in this order; your answer has one field for each part.
+
+1. Requirements. List every deliverable and requirement stated or clearly implied by the task, one per
+   line with an id (R1, R2, ...). Keep the task's own verbs: "gather current", "prototype and test",
+   "estimate", "deliver". Never weaken a requirement (e.g. "test" must stay "test", not "estimate").
+2. Givens and derived numbers. List the numbers in the task and anything that follows from them
+   (show the arithmetic). List assumptions you must make, each marked as an assumption.
+   Open questions (optional): where the task is ambiguous and you settled it by an assumption, put
+   each in open_questions (the question and the assumption). Leave it empty if nothing in the task was
+   ambiguous. What the task's names and terms mean (which organisation, place, product
+   or person it is about) is not yours to settle: when the task carries a "Working interpretation", plan on it
+   and do not guess another reading; if it is still unclear what the task is about, give the question
+   with the assumption "not settled" rather than guessing. Only when the evidence shows the working reading cannot
+   hold (one of the other readings listed for it, or a planning search source [P#] showing its data does not exist)
+   may you propose reading_revision (entity, from_reading, to_reading, reason, evidence); plain code accepts or
+   refuses it, and the plan is judged on the reading that stands.
+3. Ideal capabilities. Before choosing roles, decide what abilities the work needs, as if any reasonable
+   tool or skill were available. A TOOL is something that acts or fetches (web search, code execution,
+   a database sandbox, a file reader). A SKILL is know-how or a method (cost modelling, schema design,
+   GDPR transfer analysis, risk assessment). A document format (xlsx, docx, pptx, pdf) or a house style is a
+   SKILL, not a tool.
+4. Roles. Create the smallest team of well-defined specialists (at most ${max_agents} including the
+   final writer) that covers every requirement. A role is well defined only if it has ALL of these fields:
+   {
+     "name": "Cloud Cost Analyst",
+     "seniority": "senior",
+     "description": "who they are and why they are on this team (2-3 sentences)",
+     "goal": "the single outcome this role is accountable for",
+     "responsibilities": ["...", "..."],
+     "skills": ["managed-database pricing models", "TCO modelling", "..."],
+     "tools": ["the tools this role ideally needs, installed or not"],
+     "inputs": ["what it receives and from which step"],
+     "outputs": [{"artifact": "cost table", "format": "markdown table: provider x db x monthly USD"}],
+     "success_criteria": ["how we know the output is good enough"],
+     "constraints": ["limits from the task, e.g. 12-person team, EU residency"],
+     "covers": ["R2", "R3"],
+     "is_summariser": false,
+     "prompt": "the full working prompt for this specialist: persona, method step by step, what to check, and the exact output format. Write it as a senior practitioner would brief a peer."
+   }
+   Do not give a role a tool only to fill the field; an empty list is fine. Specialists produce the
+   content (analysis, tables, plans); exactly one role has "is_summariser": true and only assembles and
+   edits their outputs into the final deliverable — it creates no new analysis and has no tools.
+5. Capability requests. For every tool or skill in step 3 that is not installed, add one capability request (name, kind tool|skill, for_role, what_it_does, input, output,
+   example_input, example_output). Requesting is expected and costs nothing now; hiding a need is a planning error.
+6. Execution plan. Numbered steps. Each step has its number, its roles (by name), a short title, and:
+     kind: work or verify — verify only when the step checks the numbers, sources or results of the steps it
+           depends on (and is done by a role that did not produce them); everything else is work
+     covers: R ids
+     depends_on: step numbers (or none) — steps with no dependency between them may run in parallel
+     do: what exactly happens, as sub-steps
+     output: the artifact, starting with one or more format markers that plain code will check —
+             table: (a markdown table), list: (a bulleted or numbered list), code: (a code block),
+             memo: (a document with headings) — e.g. "output: table: provider x database x monthly USD"
+     done_when: the check that ends the step: every property the requirements it covers ask for (citations,
+                dates, pages, a table, a file type, a count), something its own helpers can confirm with their tools
+                in their turns, never an exact wording to reproduce; for an action no tool may do (send, post, pay),
+                what is delivered instead ("sent, or saved as a file and marked NOT SENT")
+     checks: what plain code checks when the step ends, at most 6, each with the requirement ids it proves
+             (covers). Only these checks exist (name and params):
+               file_exists {kind: docx|xlsx|csv|png|pdf|pptx|md|json, name?}
+               docx_pages_max {n} / docx_words_between {min, max} / docx_has_table {min_rows?}
+               xlsx_rows_min {n, sheet?} / xlsx_columns {names} / xlsx_has_formulas {}
+               csv_rows_min {n} / csv_columns {names}
+               image_exists {kind: png|svg, min_px?}
+               output_has_table {min_rows?} / output_has_list {min_items?}
+               output_mentions {terms} (every term, any case)
+               cites_every_figure {} / figures_dated {} (web figures carry a date)
+               verdict_present {} (verify steps)
+               not_sent_fallback {} (an outside action left a file marked NOT SENT and a Limitations line)
+             Every requirement id must be covered by at least one check. A file check needs a step whose role has a
+             file-writing tool.
+   Include at least one verification step where a different role checks numbers, sources or the
+   prototype results before the final step. The final step is the summariser assembling the deliverable.
+7. Risks and decision points. The main risks to the plan and where a decision must be made
+   (for example "if residency rules out region X, re-run step 3").
+
+# Your answer
+The fields of your plan: requirements (id and text), givens, open_questions, roles (every field of the role
+record above), capability_requests, plan (the steps, with every field above), risks, and an optional short rationale.
+
+# Rules
+- Every requirement id must appear in at least one step's "covers" and one role's "covers".
+- Do not ask the user questions; state assumptions instead. But anything only the user or their company can supply
+  (brand style, internal data, credentials, account access) is never an assumption: write it as an Open Question or
+  as a capability request.
+- If a reviewer suggestion is wrong, say why in your rationale instead of applying it.

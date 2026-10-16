@@ -5,6 +5,10 @@ Source: AutoAgents roles/manager.py Manager._act (loop), environment.py publish_
 """
 from __future__ import annotations
 
+from amoeba.llm.ask import Unreadable, ask, protocol_of                # D141
+from amoeba.task.planning import (TIER_PLAN, apply_revision, check_revision, draft_score, plan_diff,   # D143
+                                  resolve_tier)
+from amoeba.task.schemas import PlanOut, ReviewOut, review_text, to_legacy   # D141
 from amoeba.config.prompts import MANAGER_PREFIX, PROMPT, render
 from amoeba.interp.trace import TracedLLM, TraceWriter
 from amoeba.llm.client import LLMClient
@@ -172,11 +176,42 @@ def _sections(llm: TracedLLM, name: str, user: str, keys: list[str], seed: int,
         raise DraftError(f"{name}: {e}", log) from e
 
 
+# box: planner
+def _ask_plan(llm: TracedLLM, user: str, seed: int, log: list[DraftRound], max_tokens: int | None
+              ) -> tuple[str, dict[str, str], PlanOut]:
+    """D141 (protocol v2): the planner's typed PlanOut, rendered as the d24 sections the parsers read. An unreadable
+    reply (after ask's one repair call) fails the draft as a missing section does."""
+    try:
+        out = ask(llm, "plan", [{"role": "system", "content": PROMPT.d24_planner_system.strip()},
+                                {"role": "user", "content": user}], PlanOut, max_tokens=max_tokens, seed=seed,
+                  agent_name="planner")
+    except Unreadable as e:
+        raise DraftError(f"planner: {e.why}", log) from e
+    raw = to_legacy("plan", out)
+    return raw, parse_sections(raw, all_fences=True), out
+
+
+# box: agent_obs, plan_obs
+def _ask_review(llm: TracedLLM, name: str, user: str, system: str, seed: int, max_tokens: int | None
+                ) -> tuple[str, dict[str, str], "ReviewOut | None"]:
+    """D141 (protocol v2): an observer's typed ReviewOut, rendered as the d24 Suggestions/Verdict sections. An
+    unreadable reply counts as REVISE (never as approval)."""
+    try:
+        out = ask(llm, "review", [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                  ReviewOut, max_tokens=max_tokens, seed=seed, agent_name=name)
+    except Unreadable as e:
+        raw = f"## Suggestions\n1. [blocking] reviewer reply unreadable ({e.why[:160]})\n\n## Verdict\nREVISE"
+        return raw, parse_sections(raw), None
+    raw = review_text(out)
+    return raw, parse_sections(raw), out
+
+
 # box: ov_plan, handoff, planner, agent_obs, plan_obs, checks
 def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWriter, seed: int = 0,
                prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False,
                max_rounds: int = MAX_ROUNDS, history: str = "", toolbox: str | None = None,
-               interpretation: dict | None = None, lessons: dict[str, str] | None = None) -> Draft:
+               interpretation: dict | None = None, lessons: dict[str, str] | None = None,
+               planning_tier: str = "auto") -> Draft:
     """history: the previous draft the Planner revises (manager.py:26 roles_plan; "" at first). D53 --interactive
     re-drafts once: max_rounds=1, history = the draft the user clarified. toolbox: D68 — what Box 3 will really
     have (toolbox_text), shown to the d24 Planner and both observers instead of the installed-tool list.
@@ -187,6 +222,16 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     prompts unchanged."""
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
+    v2 = protocol_of(trace) == "v2"                   # D141: typed replies; the d24 prompts' content and parsers
+    if v2:
+        prompts = D24
+    # D143: how much planning the task gets (legacy auto = full = today's behaviour)
+    tier, tier_sig = resolve_tier(planning_tier, "v2" if v2 else "legacy", task.prompt, interpretation)
+    tp = TIER_PLAN[tier]
+    max_rounds = min(max_rounds, tp["rounds"])
+    trace.event("planning_tier", {"amoeba.box": "planner", "amoeba.tier": tier, "amoeba.rounds": max_rounds,
+                                  **{f"amoeba.signal.{k}": v for k, v in tier_sig.items()}})
+    best, prev_out = None, None                       # D143 (v2): the best round's draft, the previous PlanOut
     d24 = prompts == D24
     limits = token_limits(max_tokens)                 # D27: per role, CLI > env > 8192
     tl = TracedLLM(llm, trace)
@@ -202,7 +247,14 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
         while not consensus and rounds < max_rounds:  # manager.py:27,30
             log.append(rec := DraftRound(index=rounds + 1))
             # state 0 — Planner (CreateRoles)
-            if d24:   # D24: plan the ideal first, full role records, detailed steps, requirements and givens
+            if v2:    # D141: the same plan, as a typed PlanOut
+                raw, sec, plan_out = _ask_plan(tl, render(
+                    PROMPT.plan_create_v2, context=task.prompt, existing_roles="[]", tools=tools, history=history,
+                    suggestions=suggestions, max_agents=str(envelope.max_agents), lessons=lessons.get("planner", "")),
+                    seed, log, limits["planner"])
+                rec.plan_diff = plan_diff(prev_out, plan_out) or None              # D143: what changed
+                prev_out = plan_out
+            elif d24:   # D24: plan the ideal first, full role records, detailed steps, requirements and givens
                 raw, sec = _sections(tl, "planner", render(
                     PROMPT.d24_create_team, context=task.prompt, existing_roles="[]", tools=tools, history=history,
                     suggestions=suggestions, max_agents=str(envelope.max_agents), lessons=lessons.get("planner", ""),
@@ -226,10 +278,23 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                 first_requests = section_requests(sec, envelope)   # what the observers are shown first
             last = (raw, sec)
             history = raw   # original: str(instruct_content) pydantic repr (manager.py:33). DEVIATION D1: raw text
+            if v2:          # D143: the planner revises its previous PlanOut (JSON), not its rendering
+                history = plan_out.model_dump_json(exclude_none=True)
+            ag_out = pl_out = None
 
             # state 1 — Agent Observer (CheckRoles). Always runs: the guard at manager.py:34 is dead code.
             hist_roles = f"## Role Suggestions\n{sugg_roles}\n\n## Feedback\n{sec['RoleFeedback']}"   # manager.py:36
-            if d24:
+            if not tp["agent_observer"]:     # D143: this tier runs no agent observer
+                s, rec.agent_verdict = {"Suggestions": "No Suggestions"}, "APPROVE" if d24 else None
+            elif v2:    # D141: a typed ReviewOut
+                rec.agent_observer_raw, s, ag_out = _ask_review(tl, "agent_observer", render(
+                    PROMPT.plan_review_team_v2, question=task.prompt, requirements=requirements_text(sec),
+                    created_roles=sec["Created Roles List"], selected_roles=sec["Selected Roles List"],
+                    capability_requests=requests_text, tools=tools, history=hist_roles,
+                    max_agents=str(envelope.max_agents), lessons=lessons.get("agent_observer", "")),
+                    PROMPT.d24_agent_observer_system.strip(), seed, limits["agent_observer"])
+                rec.agent_verdict = parse_verdict(s) or "REVISE"
+            elif d24:
                 rec.agent_observer_raw, s = _observer_sections(tl, "agent_observer", render(
                     PROMPT.d24_review_team, question=task.prompt, requirements=requirements_text(sec),
                     created_roles=sec["Created Roles List"], selected_roles=sec["Selected Roles List"],
@@ -248,11 +313,25 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                     max_tokens=limits["agent_observer"])
             sr = rec.agent_observer = s["Suggestions"]
             sugg_roles += sr                          # manager.py:38
+            if v2 and ag_out is not None:             # D143: only blocking issues go back to the planner
+                sr = parse_sections(review_text(ag_out, only_blocking=True))["Suggestions"]
 
             # state 2 — Plan Observer (CheckPlans)
             hist_plan = f"## Plan Suggestions\n{sugg_plan}\n\n## Feedback\n{sec['PlanFeedback']}"
             # original passes sugg_roles here (manager.py:41) — a bug; fixed (DEVIATION D3)
-            if d24:
+            if not tp["plan_observer"]:      # D143: this tier runs no plan observer
+                s, rec.plan_verdict = {"Suggestions": "No Suggestions"}, "APPROVE" if d24 else None
+            elif v2:    # D141: a typed ReviewOut
+                rec.plan_observer_raw, s, pl_out = _ask_review(tl, "plan_observer", render(
+                    PROMPT.plan_review_plan_v2, context=task.prompt, requirements=requirements_text(sec),
+                    roles=sec["Selected Roles List"] + sec["Created Roles List"],
+                    plan=sec["Execution Plan"] + (f"\n\nreading_revision: {plan_out.reading_revision.model_dump_json()}"
+                                                  if plan_out.reading_revision else ""),             # D143
+                    risks=sec["Risks and Decisions"], capability_requests=requests_text, history=hist_plan,
+                    tools=tools, lessons=lessons.get("plan_observer", "")),
+                    PROMPT.d24_plan_observer_system.strip(), seed, limits["plan_observer"])
+                rec.plan_verdict = parse_verdict(s) or "REVISE"
+            elif d24:
                 rec.plan_observer_raw, s = _observer_sections(tl, "plan_observer", render(
                     PROMPT.d24_review_plan, context=task.prompt, requirements=requirements_text(sec),
                     roles=sec["Selected Roles List"] + sec["Created Roles List"], plan=sec["Execution Plan"],
@@ -270,14 +349,33 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                     max_tokens=limits["plan_observer"])
             sp = rec.plan_observer = s["Suggestions"]
             sugg_plan += sp                           # manager.py:43
+            if v2 and pl_out is not None:             # D143: only blocking issues go back to the planner
+                sp = parse_sections(review_text(pl_out, only_blocking=True))["Suggestions"]
             suggestions = f"## Role Suggestions\n{sr}\n\n## Plan Suggestions\n{sp}"   # manager.py:45
             rec.agent_suggestions_n, rec.plan_suggestions_n = n_suggestions(sr), n_suggestions(sp)
             approved = (rec.agent_verdict == rec.plan_verdict == "APPROVE") if d24 else (approves(sr) and approves(sp))
-            if quality_gate:   # D28: plain code checks this round's draft; a failed hard check sends it back
+            q = None
+            if quality_gate or v2:   # D28: plain code checks this round's draft; D143: v2 scores every round
                 try:
                     q = draft_quality(assemble(sec, raw, prompts, envelope), task.prompt)
                 except DraftError:
                     q = None   # no usable team in this reply; publish (or the next round) reports it
+            if v2:            # D143: the round's score, and the planner's reading revision judged by code
+                blocking = sum(1 for o, ran in ((ag_out, tp["agent_observer"]), (pl_out, tp["plan_observer"]))
+                               for _ in ([None] if ran and o is None else
+                                         [i for i in (o.issues if o else []) if i.severity == "blocking"]))
+                rec.score = {"hard_failed": len(q["hard_failed"]) if q else 99, "blocking": blocking}
+                score = draft_score(rec.score["hard_failed"], blocking, rec.index)
+                if plan_out.reading_revision is not None:
+                    rec.reading_revision = check_revision(
+                        plan_out.reading_revision.model_dump(), interpretation, lessons.get("planner", ""),
+                        (rec.plan_verdict == "APPROVE") if tp["plan_observer"] else None)
+                    trace.event("reading_revision", {"amoeba.box": "planner", "amoeba.round": rec.index,
+                                                     "amoeba.accepted": rec.reading_revision["accepted"],
+                                                     "amoeba.why": rec.reading_revision["why"]})
+                if best is None or score < best[0]:
+                    best = (score, (raw, sec), rec.index)
+            if quality_gate:
                 rec.gate_failed = q["hard_failed"] if q else []
                 if rec.gate_failed:
                     trace.event("quality_gate", {"amoeba.gate.round": rec.index,
@@ -291,6 +389,9 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
 
     # publish: the LAST draft is used whether or not consensus was reached (manager.py:52-59)
     raw, sec = last
+    published = rounds
+    if v2 and best is not None:       # D143: the BEST round's draft (fewest failed HARD checks, then blocking issues)
+        (raw, sec), published = best[1], best[2]
     d = assemble(sec, raw, prompts, envelope, log)
     proposed, dropped = request_survival(first_requests, d.capability_requests)
     for q in d.capability_requests:
@@ -300,6 +401,19 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                                  plan_feedback=sugg_plan, rounds=log, requests_proposed=proposed,
                                  requests_dropped_by_observers=dropped,
                                  gate_hits=sum(bool(r.gate_failed) for r in log)))
+    d.planning_tier, d.planning_signals = tier, tier_sig                                  # D143
+    if v2:
+        d.published_round = published
+        d.published_score = log[published - 1].score if 0 < published <= len(log) else None
+        rev = log[published - 1].reading_revision if 0 < published <= len(log) else None
+        if rev is not None:
+            d.reading_revision = rev
+            if rev["accepted"] and interpretation is not None:     # the working interpretation changes
+                interpretation = apply_revision(interpretation, rev)
+            elif not rev["accepted"]:
+                trace.event("reading_revision_refused", {"amoeba.box": "planner", "amoeba.why": rev["why"]})
+        trace.event("draft_published", {"amoeba.box": "planner", "amoeba.round": published,
+                                        "amoeba.score": d.published_score})
     if interpretation is not None:                    # D77: the subject is settled before planning, not guessed
         d.interpretation = interpretation
         d.open_questions, routed = route_open_questions(d.open_questions, interpretation)

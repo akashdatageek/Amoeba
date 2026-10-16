@@ -31,9 +31,9 @@ def test_the_other_causes_code_fixes_come_before_the_proposer():
     assert [f["kind"] for f in fixes] == ["grant_tool", "set_run_option:max_turns"]
     assert fixes[1]["for_cause"] == "max_turns"
     blocked = {**d, "cause": "provider_blocked", "causes": ["provider_blocked", "capability"],
-               "allowed_edits": ["set_run_option:max_turns"]}
+               "allowed_edits": ["compact_prompt", "switch_model"]}
     assert [f["kind"] for f in all_candidates(blocked, 1, {"opts": OPTS, "stock": True})[0]] == \
-        ["set_run_option:max_turns"]                                   # a blocked step gets only its own fix
+        ["compact_prompt"]                                   # a blocked step gets only its own fixes (D145: no more turns)
 
 
 def test_an_unfillable_capability_skips_the_grant():

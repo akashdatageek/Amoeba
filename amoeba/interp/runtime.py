@@ -343,7 +343,7 @@ class Interpreter:
                                           "amoeba.step": step})
         if not registered and not any(q.name == act and q.for_role == agent.name for q in ep.requested_capabilities):
             ep.requested_capabilities.append(CapabilityRequest(
-                name=act, kind="tool", for_role=agent.name, source="runtime_unknown_tool", input=inp,
+                name=act, kind="tool", for_role=agent.name, source="runtime_unknown_tool", input=inp, step=step,
                 what_it_does="chosen as an action during the run; no such tool is registered"))
         return f"\n[{act!r} is not a tool {agent.name} can use; nothing was run]\n{inp}\n", None
 

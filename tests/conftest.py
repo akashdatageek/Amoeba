@@ -76,3 +76,28 @@ if os.environ.get("AMOEBA_TEST_PROTOCOL") == "v2":
             self.protocol = "v2"
 
     PlanOptions.__init__ = _v2_init
+
+    # D141: these Box 4 tests script their drafts (Boxes 1 and 2) in the legacy text format; the v2 pass covers
+    # Boxes 3 and 4, so drafting keeps the legacy readers here (tests/test_protocol_v2_all_d141.py covers v2 drafting)
+    import amoeba.task.draft as _draft
+    import amoeba.task.interpret as _interpret
+    import amoeba.task.plan_search as _plan_search
+    for _m in (_draft, _interpret, _plan_search):
+        _m.protocol_of = lambda trace: "legacy"
+
+    # a scripted tool-writer reply in the legacy format (JSON head + ```python block) answers a typed call too
+    from amoeba.adapt.toolmaker import parse_tool
+    from amoeba.task.schemas import ToolWriterOut
+
+    _plain_chat = MockLLMClient.chat_messages
+
+    def _typed_chat(self, messages, seed=0, max_tokens=None, tools=None, schema=None, **opts):
+        resp = _plain_chat(self, messages, seed, max_tokens=max_tokens, tools=tools, schema=schema, **opts)
+        if schema is ToolWriterOut and resp.parsed is None and resp.content:
+            try:
+                resp.parsed = ToolWriterOut(**parse_tool(resp.content)).model_dump(mode="json")
+            except (ValueError, TypeError):
+                pass
+        return resp
+
+    MockLLMClient.chat_messages = _typed_chat

@@ -69,7 +69,7 @@ def stuck_then_fine(messages, seed):
 def test_finish_mode_skips_the_optional_fixes_and_records_it(task, envelope, trace, tools):
     llm, cfg = plan_team(task, envelope, trace, plan_worker=stuck_then_fine, fix_proposer=["no fix"] * 4)
     trace.limits = RunLimits(max_tokens=10**9, finish_share=0.0)   # finish mode from the start
-    ep = Interpreter(llm, tools, trace, plan_options=PlanOptions(adapt="on")).run(cfg, task, seed=0)
+    ep = Interpreter(llm, tools, trace, plan_options=PlanOptions(adapt="on", failed_step="run")).run(cfg, task, seed=0)
     assert ep.stuck and not trace.events("fix_try")               # stuck, but no fix in finish mode
     assert ep.run_guard["finish_mode"] is True and ep.run_guard["skipped"]["fixes"] >= 1
     assert trace.events("finish_mode") and len(trace.events("finish_mode")) == 1
@@ -82,7 +82,7 @@ def test_a_stall_stop_assembles_the_answer_from_the_finished_steps(task, envelop
         return reply("calc", "1 + 1") if n == "3" else good(n)      # step 3 loops on calc
     llm, cfg = plan_team(task, envelope, trace, plan_worker=script, fix_proposer=["no fix"] * 6)
     trace.limits = RunLimits(stall_calls=4)
-    ep = Interpreter(llm, tools, trace, plan_options=PlanOptions(adapt="on")).run(cfg, task, seed=0)
+    ep = Interpreter(llm, tools, trace, plan_options=PlanOptions(adapt="on", failed_step="run")).run(cfg, task, seed=0)
     assert ep.error.startswith("stalled: stopped with step(s)") and "4" in ep.error.split("not run")[0]
     assert ep.answer.startswith("# Partial answer") and "## Step 1:" in ep.answer and "## Step 2:" in ep.answer
     assert ep.run_guard["stopped"]["code"] == "stalled" and 4 in ep.run_guard["stopped"]["steps_not_run"]

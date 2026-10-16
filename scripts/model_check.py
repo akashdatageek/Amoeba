@@ -73,8 +73,8 @@ class Gate(LLMClient):
         if self.allow[kind] <= 0:
             self.stopped_at = kind
             raise Probed(kind)
-        self.allow[kind] -= 1
-        resp = self.inner.chat_messages(messages, seed, max_tokens=max_tokens, **kw)
+        resp = self.inner.chat_messages(messages, seed, max_tokens=max_tokens, **kw)   # a call that raised (a schema
+        self.allow[kind] -= 1                          # the provider refused, D141) does not use up the probe
         self.replies.append((kind, messages, resp))
         return resp
 
@@ -105,12 +105,16 @@ def outcome(resp: ChatResponse | None, readable: bool) -> tuple[str, str | None]
 # box: client
 def probe_reading(llm: TracedLLM, gate: Gate, seed: int):
     from amoeba.task.interpret import parse_entities, read_task
-    gate.allow["interpreter"] = 1
+    gate.allow["interpreter"] = tries(llm)
     try:
         read_task(TOY, llm, seed=seed)
     except Probed:
         pass
     resp = last(gate, "interpreter")
+    if tries(llm) == 2:                            # D141: readable = ask() got a valid ReadingOut
+        ok = resp is not None and not any(e.get("amoeba.kind") == "reading" for e in llm.trace.events("ask_unreadable")) \
+            and gate.stopped_at != "interpreter"
+        return resp, ok, "interpret_v2.txt", repaired(gate, "interpreter")
     try:
         parse_entities(resp.content if resp else "")
         ok = True
@@ -126,19 +130,25 @@ def probe_planner_and_observer(llm: TracedLLM, gate: Gate, seed: int):
     from amoeba.task.draft import draft_team
     from amoeba.task.models import Task
     from amoeba.tools.registry import default_registry
-    gate.allow.update({"planner": 1, "agent_observer": 1})
+    n = tries(llm)
+    gate.allow.update({"planner": n, "agent_observer": n, "plan_observer": n})        # D140: both observers
     try:
         draft_team(Task(id="model-check", prompt=TOY), gate, Envelope.from_registry(default_registry()), llm.trace,
-                   seed=seed, max_rounds=1)
+                   seed=seed, max_rounds=1, planning_tier="full")      # D143: both observers are probed
     except Probed:
         pass
     except Exception:
         pass                       # a draft that fails to parse: the replies below say which call
-    planner, observer = last(gate, "planner"), last(gate, "agent_observer")
+    planner, observer, plan_obs = last(gate, "planner"), last(gate, "agent_observer"), last(gate, "plan_observer")
     # a reply is readable when the pipeline went on past it (a repair call of the same kind means it was not)
     planner_ok = planner is not None and (observer is not None or gate.stopped_at not in (None, "planner"))
     observer_ok = observer is not None and gate.stopped_at != "agent_observer"
-    return (planner, planner_ok, "autoagents_create_roles.txt"), (observer, observer_ok, "autoagents_check_roles.txt")
+    plan_obs_ok = plan_obs is not None and gate.stopped_at != "plan_observer"
+    files = (("plan_create_v2.txt", "plan_review_team_v2.txt", "plan_review_plan_v2.txt") if n == 2 else
+             ("autoagents_create_roles.txt", "autoagents_check_roles.txt", "autoagents_check_plans.txt"))
+    return ((planner, planner_ok, files[0], repaired(gate, "planner")),
+            (observer, observer_ok, files[1], repaired(gate, "agent_observer")),
+            (plan_obs, plan_obs_ok, files[2], repaired(gate, "plan_observer")))
 
 
 # box: client
@@ -147,28 +157,53 @@ def probe_step(llm: TracedLLM, gate: Gate, seed: int, protocol: str):
     from amoeba.interp.runtime import Interpreter
     from amoeba.task.models import Task
     from amoeba.tools.registry import default_registry
-    gate.allow["plan_worker"] = 1
+    gate.allow["plan_worker"] = 2                  # D140: the tool turn, then the turn that should end the step
     opts = PlanOptions(native_tools="on", protocol=protocol, tool_access="asked")
     try:
         Interpreter(gate, default_registry(), llm.trace, plan_options=opts).run(toy_team(), Task(id="mc", prompt=TOY),
                                                                                  seed=seed)
     except Probed:
         pass
-    resp = last(gate, "plan_worker")
-    ok = bool(resp and resp.tool_calls)
-    note = f"tool call: {resp.tool_calls[0]['name']}" if ok else ("text, no tool call" if resp and resp.content else "")
-    return resp, ok, ("plan_step_v2.txt" if protocol == "v2" else "plan_step.txt"), note
+    turns = [r for k, _, r in gate.replies if k == "plan_worker"]
+    prompt = "plan_step_v2.txt" if protocol == "v2" else "plan_step.txt"
+    first = turns[0] if turns else None
+    ok = bool(first and first.tool_calls)
+    note = f"tool call: {first.tool_calls[0]['name']}" if ok else ("text, no tool call" if first and first.content
+                                                                    else "")
+    end = turns[1] if len(turns) > 1 else None     # D140: did the model end the step with a proper Final_Output?
+    call = next((c for c in (end.tool_calls if end else []) if c["name"] == "Final_Output"), None)
+    final_ok = False
+    if call is not None:
+        from amoeba.interp.step_protocol import FINAL, check_args
+        try:
+            args = json.loads(call.get("input") or "{}")
+        except ValueError:
+            args = None
+        final_ok = check_args(FINAL, args, {}) is None if protocol == "v2" else True
+    fnote = "Final_Output with typed fields" if final_ok else ("text answer" if end and end.content and not call
+                                                               else "no Final_Output")
+    return (first, ok, prompt, note), (end, final_ok, prompt, fnote)
 
 
 # box: client
 def probe_proposer(llm: TracedLLM, gate: Gate, seed: int):
     from amoeba.adapt.proposer import allowed_text, parse_fix
-    gate.allow["fix_proposer"] = 1
+    gate.allow["fix_proposer"] = tries(llm)
     user = render(PROMPT.fix_proposer, task=TOY, step="1", card="Name: Fuel Cost Analyst\nGoal: the weekly fuel cost",
                   cause="max_turns", evidence="- turns used: 5; no Final Output from every helper",
                   attempt="status: incomplete (max_turns)\nturns used: 5", team="- Fuel Cost Analyst: computes costs",
                   tools="tools: calc, echo\nskills: none", allowed=allowed_text(["add_role_rule", "split_step"], 2),
                   tried="None yet.")
+    if llm.trace.protocol == "v2":                 # D141: the typed FixReply, as the plan runner asks for it
+        from amoeba.llm.ask import Unreadable, ask
+        from amoeba.task.schemas import FixOut
+        try:
+            ask(llm, "fix", [{"role": "user", "content": user}], FixOut, max_tokens=4096, seed=seed,
+                agent_name="fix_proposer", role="planner")
+            ok = True
+        except (Unreadable, Probed):
+            ok = False
+        return last(gate, "fix_proposer"), ok, "fix_proposer.txt", repaired(gate, "fix_proposer")
     try:
         resp = llm.chat_messages([{"role": "user", "content": user}], seed, agent_name="fix_proposer", role="planner",
                                  max_tokens=4096)
@@ -186,7 +221,7 @@ def probe_proposer(llm: TracedLLM, gate: Gate, seed: int):
 def probe_pick(llm: TracedLLM, gate: Gate, seed: int):
     from amoeba.pool.stock import pick
     from amoeba.task.models import CapabilityRequest
-    gate.allow["pool_picker"] = 1
+    gate.allow["pool_picker"] = tries(llm)
     q = CapabilityRequest(name="spreadsheet writer", what_it_does="writes an .xlsx workbook with formulas",
                           input="rows of data", output="an .xlsx file")
     cands = [{"id": "skill-xlsx", "name": "xlsx", "kind": "skill", "description": "create and edit Excel workbooks"},
@@ -195,7 +230,8 @@ def probe_pick(llm: TracedLLM, gate: Gate, seed: int):
         got = pick(llm, q, "Fuel Cost Analyst", "1. build the workbook", cands, seed, max_tokens=1024)
     except Probed:
         got = None
-    return last(gate, "pool_picker"), got is not None, "pool_pick.txt"
+    return (last(gate, "pool_picker"), got is not None, "pool_pick_v2.txt" if tries(llm) == 2 else "pool_pick.txt",
+            repaired(gate, "pool_picker"))
 
 
 # box: client
@@ -225,10 +261,37 @@ def probe_mode(llm: TracedLLM, gate: Gate, mode: str, seed: int):
     if parse_schema_reply(ToyAnswer, resp.content) is not None or is_blocked(resp):
         return resp, parse_schema_reply(ToyAnswer, resp.content) is not None, ""
     again = llm.chat_messages(schema_messages(ask) + [{"role": "assistant", "content": resp.content},
-                                                      {"role": "user", "content": "That was not valid JSON for the "
-                                                       "schema. Reply with only the JSON object."}],
-                              seed, agent_name="model_check", max_tokens=1024)
+                                                      {"role": "user", "content": "That reply did not validate: "
+                                                       + validation_error(ToyAnswer, resp.content)
+                                                       + "\nReply with only the corrected JSON object."}],
+                              seed, agent_name="model_check", max_tokens=1024)   # D140: the exact error quoted
     return again, parse_schema_reply(ToyAnswer, again.content) is not None, "after one repair call"
+
+
+# box: client
+def validation_error(schema, content: str) -> str:
+    """D140: the exact reason a JSON reply does not validate (pydantic's first errors, or the JSON error)."""
+    from pydantic import ValidationError
+    text = re.sub(r"(?s)^.*?```(?:json)?\s*(.*?)```.*$", r"\1", (content or "").strip())
+    try:
+        schema.model_validate_json(text)
+    except ValidationError as e:
+        return "; ".join(f"{'.'.join(map(str, x['loc'])) or 'reply'}: {x['msg']}" for x in e.errors()[:4])
+    except ValueError as e:
+        return f"not JSON ({e})"
+    return "no error"
+
+
+# box: client
+def tries(llm: TracedLLM) -> int:
+    """D141: under v2 every probe call goes through ask(), which makes one repair call after an invalid reply, as a
+    real run does; the gate lets that repair through."""
+    return 2 if getattr(llm.trace, "protocol", "legacy") == "v2" else 1
+
+
+# box: client
+def repaired(gate: Gate, kind: str) -> str:
+    return "valid after one repair call" if sum(k == kind for k, _, _ in gate.replies) > 1 else ""
 
 
 # box: client
@@ -257,13 +320,14 @@ def run_checks(client: LLMClient, model: str, budget: float, protocol: str = "v2
     """Every probe on `client` (the real client, or a mock in the test). Stops before a probe once the budget is
     spent; the rest are recorded as skipped."""
     trace = TraceWriter(None, log_content=True)
+    trace.protocol = protocol                      # D141: every probe uses the prompt builders of this protocol
     gate = Gate(client)
     llm = TracedLLM(gate, trace)
     rows: list[dict] = []
     calls: list[tuple[str, object]] = [
         ("reading", lambda: probe_reading(llm, gate, seed)),
         ("planner+observer", lambda: probe_planner_and_observer(llm, gate, seed)),
-        ("step (native tools)", lambda: probe_step(llm, gate, seed, protocol)),
+        ("step", lambda: probe_step(llm, gate, seed, protocol)),
         ("fix proposer", lambda: probe_proposer(llm, gate, seed)),
         ("pool pick", lambda: probe_pick(llm, gate, seed)),
         *((f"output mode: {m}", (lambda m=m: probe_mode(llm, gate, m, seed))) for m in MODES)]
@@ -278,13 +342,18 @@ def run_checks(client: LLMClient, model: str, budget: float, protocol: str = "v2
             rows.append({"probe": name, "status": "error", "note": f"{type(e).__name__}: {' '.join(str(e).split())[:160]}"})
             continue
         spans = trace.spans("chat")[before:]
-        results = got if name == "planner+observer" else (got,)
-        for label, res in zip(("planner", "observer") if name == "planner+observer" else (name,), results):
+        labels = {"planner+observer": ("planner", "observer", "plan observer"),
+                  "step": ("step (native tools)", "Final_Output")}.get(name, (name,))
+        results = got if len(labels) > 1 else (got,)
+        for label, res in zip(labels, results):
             resp, ok, prompt_file, *note = res
             status, category = outcome(resp, ok)
-            span = next((s for s in spans if s.get("gen_ai.agent.name") == {"planner": "planner",
-                                                                              "observer": "agent_observer"}.get(label)),
-                        None) if name == "planner+observer" else None
+            span = next((s for s in reversed(spans) if s.get("gen_ai.agent.name") == {"planner": "planner",
+                                                                              "observer": "agent_observer",
+                                                                              "plan observer": "plan_observer"}.get(label)),
+                        None) if name == "planner+observer" else \
+                (spans[["step (native tools)", "Final_Output"].index(label)] if name == "step" and
+                 len(spans) > ["step (native tools)", "Final_Output"].index(label) else None)
             mine = [span] if span else spans
             rows.append({"probe": label, "status": status, "category": category,
                          "prompt_file": prompt_file or None,

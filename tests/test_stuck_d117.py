@@ -70,7 +70,7 @@ def test_the_live_watch_logs_a_stuck_step(task, envelope, trace, tools, tmp_path
     monkeypatch.setattr(pr, "fix_limits", lambda: {**limits(), "stop_when_exhausted": True})
     monkeypatch.setattr(pr.PlanRunner, "propose_fix", lambda self, n, w, d: "none")   # Stage D is tested apart
     llm, cfg, by, ep = run(task, envelope, trace, tools, worker(), tmp_path=tmp_path,
-                           options=PlanOptions(contract="on", adapt="on"))
+                           options=PlanOptions(contract="on", adapt="on", failed_step="run"))
     one = by[1]
     assert one["status"] == "partial" and one["stuck"]["cause"] == "capability"
     assert "lacked: web_search" in one["stuck"]["evidence"]

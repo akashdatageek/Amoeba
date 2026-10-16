@@ -36,7 +36,7 @@ THINKING = re.compile(r"<(thought|think|thinking)>.*?</\1>", re.S | re.I)
 NONE = "NONE"
 # D127: a picked tool that fails after the pick (its server does not answer or no longer matches) gives way to the
 # next vetted candidate, in rank order, before the request is left unfilled
-FALL_THROUGH = ("connect_failed", "no_tools", "description_changed", "side_effect")
+FALL_THROUGH = ("connect_failed", "no_tools", "description_changed", "side_effect", "remote_exec")
 VERSION =re.compile(r"^v?\d+(\.\d+)*([-+][0-9A-Za-z.-]+)?$")
 # D58: read-only tools only for now — a tool that says it acts outside (sends, posts, pays, deletes …) is refused.
 # D60: also a tool that creates or changes anything in an outside service or account (a deck, doc or sheet is made
@@ -47,6 +47,24 @@ SIDE_EFFECT = re.compile(r"\b(send|sends|sending|sent|e-?mails?|e-?mailing|mails
                          r"modifying|edit|edits|editing|insert|inserts|inserting|remove|removes|removing|rename|"
                          r"renames|renaming|submit|submits|submitting|write|writes|writing|overwrite\w*|"
                          r"append|appends|appending)\b", re.I)
+
+# D137: a server that runs code for the caller (remote code execution) is refused unless --allow-remote-exec; code
+# runs only through local:Bash in the run's sandbox
+REMOTE_EXEC = re.compile(r"\b(execute|executes|executing|execution|exec|run code|runs code|running code|run python|"
+                         r"runs python|eval|interpreter|interpreters|sandbox|sandboxes|sandboxed|shell|shells|terminal|"
+                         r"terminals|notebook|notebooks|jupyter|compile|compiles|compiler|container|containers|vm|vms)\b",
+                         re.I)
+
+
+# box: toolbox
+def remote_exec(*texts: str) -> str | None:
+    """D137: the first remote-code-execution word in a server's or tool's name or description (names are split at
+    - _ . /), or None."""
+    for t in texts:
+        m = REMOTE_EXEC.search(re.sub(r"[-_./]", " ", t or ""))
+        if m:
+            return m.group(0)
+    return None
 
 
 # box: toolbox
@@ -77,6 +95,7 @@ class PoolSetup:
     connector: Any = None                             # default: SdkConnector (the MCP Python SDK over HTTPS)
     env: Mapping[str, str] = field(default_factory=lambda: os.environ)
     disabled: frozenset[str] = frozenset()            # D80 --disable-tools: pool ids / names never offered
+    allow_remote_exec: bool = False                   # D137 --allow-remote-exec: servers that run code are allowed
 
     @property
     def dir(self) -> Path:
@@ -127,11 +146,22 @@ def pick(llm: TracedLLM, q, helper: str, steps: str, candidates: list[dict], see
     twice the room (TracedLLM, D27)."""
     lines = "\n".join(f"- id: {e['id']} | name: {e.get('title') or e['name']} | kind: {e['kind']} | description: "
                       f"{' '.join((e.get('description') or '').split())[:240]}" for e in candidates)
-    user = render(PROMPT.pool_pick, kind=q.kind, name=q.canonical or q.name, what=q.what_it_does or "(not given)",
+    from amoeba.llm.ask import Unreadable, ask, protocol_of
+    typed = protocol_of(llm.trace) == "v2"                                   # D141: a typed PoolPickOut
+    user = render(PROMPT.pool_pick_v2 if typed else PROMPT.pool_pick, kind=q.kind, name=q.canonical or q.name,
+                  what=q.what_it_does or "(not given)",
                   input=q.input or "(not given)", output=q.output or "(not given)", helper=helper,
                   steps=steps or "(not given)", candidates=data_block("pool candidates", lines))
-    reply = llm.chat_messages([{"role": "user", "content": user}], seed, agent_name=PICKER, role="pool",
-                              max_tokens=max_tokens).content
+    if typed:
+        from amoeba.task.schemas import PoolPickOut, to_legacy
+        try:
+            reply = to_legacy("pool_pick", ask(llm, "pool_pick", [{"role": "user", "content": user}], PoolPickOut,
+                                               max_tokens=max_tokens, seed=seed, agent_name=PICKER, role="pool"))
+        except Unreadable:
+            reply = ""
+    else:
+        reply = llm.chat_messages([{"role": "user", "content": user}], seed, agent_name=PICKER, role="pool",
+                                  max_tokens=max_tokens).content
     # D58: Gemma writes its reasoning into the reply as <thought>…</thought> before the answer; the answer is what
     # follows a closed thinking block (an unclosed block leaves nothing that can match an id)
     answer = THINKING.sub("", reply or "").strip().strip("`'\"").strip()
@@ -158,6 +188,10 @@ def vet(e: dict, setup: PoolSetup) -> tuple[str | None, dict, str | None]:
         return "paid_endpoint", {}, None
     if side_effect(e.get("name", ""), e.get("title", ""), e.get("description", "")):
         return "side_effect", {}, None
+    if not setup.allow_remote_exec and remote_exec(e.get("name", ""), e.get("title", ""), e.get("description", ""),
+                                                   *(f"{t.get('name', '')} {t.get('description', '')}"
+                                                     for t in e.get("tools") or [] if isinstance(t, dict))):
+        return "remote_exec", {}, None
     if not e.get("source_repo"):
         return "no_source", {}, None
     if not VERSION.match(e.get("version") or ""):
@@ -282,6 +316,13 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                             break
                     else:
                         refused.append({"id": e["id"], "reason": v[0]})
+                        if v[0] == "remote_exec":              # D137
+                            trace.event("pool_refused_remote_exec", {
+                                "amoeba.pool.id": e["id"], "amoeba.stage": "vet",
+                                "amoeba.word": remote_exec(e.get("name", ""), e.get("title", ""),
+                                                           e.get("description", ""),
+                                                           *(f"{t.get('name', '')} {t.get('description', '')}"
+                                                             for t in e.get("tools") or [] if isinstance(t, dict)))})
                 # D127: on an equal score a local item comes first: it is sandboxed and needs no network
                 shown.sort(key=lambda x: (-x[0], x[1].get("source") != "local"))
                 out["candidates"] = [e["id"] for _, e in shown]
@@ -353,6 +394,13 @@ def stock_toolbox(requests: list, cfg: TeamConfig, tools: ToolRegistry, llm, tra
                                     reason = "no_tools"
                                 elif any(side_effect(t["name"], t.get("description", "")) for t in listing):
                                     reason = "side_effect"      # D58: a server that also offers an acting tool
+                                elif not setup.allow_remote_exec and any(
+                                        remote_exec(t["name"], t.get("description", "")) for t in listing):
+                                    reason = "remote_exec"      # D137: a tool that runs code for the caller
+                                    trace.event("pool_refused_remote_exec", {
+                                        "amoeba.pool.id": entry["id"], "amoeba.stage": "connect",
+                                        "amoeba.word": next(w for w in (remote_exec(t["name"], t.get("description", ""))
+                                                                        for t in listing) if w)})
                                 else:
                                     if entry["id"] not in pins:  # first use: pin what the server says now
                                         pins[entry["id"]] = {"version": entry.get("version"), "tools": digest}

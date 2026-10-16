@@ -71,10 +71,13 @@ def test_blocked_turns_are_their_own_cause_and_get_more_turns_once():
     sig = step_signals(meta)
     assert [s["signal"] for s in sig][:2] == ["provider_blocked", "unreadable_reply"]
     d = diagnose(sig)
-    assert d["cause"] == "provider_blocked" and d["allowed_edits"] == ["set_run_option:max_turns"]
+    assert d["cause"] == "provider_blocked" and d["allowed_edits"] == ["compact_prompt", "switch_model"]   # D145
     assert d["evidence"][0].startswith("3 of 5 turns: the model service blocked the reply")
     fixes, _ = candidates(d, 3, {"opts": {"max_turns": 5}})
-    assert [f["kind"] for f in fixes] == ["set_run_option:max_turns"]
+    assert [f["kind"] for f in fixes] == ["compact_prompt"]                     # D145: no longer more turns
+    fixes, _ = candidates(d, 3, {"opts": {"max_turns": 5, "compact": True}, "alt_models": ["gemma-api"]})
+    assert [(f["kind"], f["params"]) for f in fixes] == [("switch_model", {"model": "gemma-api"})]
+    assert candidates(d, 3, {"opts": {"compact": True}})[0] == []                # (c): nothing left, the task stops
     assert PROVIDER_BLOCKED == "provider_blocked"
 
 

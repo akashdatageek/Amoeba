@@ -16,7 +16,8 @@ from amoeba.task.parsers import parse_json_objects, parse_sections
 ROLE_FIELDS = ("goal", "skills", "outputs", "success_criteria", "prompt")
 # D28: the checks --quality-gate enforces (a failure sends the draft back for another round)
 HARD_CHECKS = ("requirements_covered", "independent_verification", "summariser", "task_coverage",
-               "done_when_properties", "outside_action_fallback", "done_when_reachable")   # D130: the last three
+               "done_when_properties", "outside_action_fallback", "done_when_reachable",   # D130: these three
+               "requirements_checked", "checks_valid", "checks_reachable")                 # D142: the step checks
 # D130: properties a requirement can ask of a deliverable, each with the words that state it; a step that covers the
 # requirement must state the same property in its done_when, output or do (word forms count alike)
 PROPERTIES = {"citations": r"\bcit(?:e|es|ed|ing|ation|ations)\b|\bsources?\b|\burls?\b|\blinks?\b|\breferences?\b|"
@@ -211,6 +212,12 @@ def draft_quality(d: Draft, task_text: str = "") -> dict:
     checks["outside_action_fallback"] = outside_action_fallback(steps)
     checks["done_when_reachable"] = done_when_reachable(steps)
 
+    # 12-14. D142: the plan-execution contract — every requirement is checked by a step check, each check is in the
+    # vocabulary with well-formed parameters, and each step's checks can be met (n/a for a plan with no checks)
+    from amoeba.task.contract import plan_contract_quality
+    checks.update(plan_contract_quality(req, steps, {x.name: list(x.tools) + list(x.missing_tools)
+                                                     for x in d.created_roles}))
+
     oks = [c["ok"] for c in checks.values()]
     return {"checks": checks, "passed": oks.count(True), "failed": oks.count(False), "na": oks.count(None),
             "failed_checks": [k for k, c in checks.items() if c["ok"] is False],
@@ -312,4 +319,21 @@ def gate_suggestions(q: dict) -> str:
             lines.append("Too many conditions for one step (each helper has a few turns): " + ", ".join(
                 f"step {x['step']} ({x['conditions']})" for x in r["too_many_conditions"])
                 + f". Keep each done_when to at most {MAX_CONDITIONS} conditions, or split the step.")
+    if "requirements_checked" in q["hard_failed"]:
+        lines.append("Requirements no step check covers: " + ", ".join(c["requirements_checked"]["unchecked"])
+                     + ". Give a step that produces each one a check whose covers names it.")
+    if "checks_valid" in q["hard_failed"]:
+        lines.append("Invalid step checks: " + "; ".join(f"step {x['step']}: {x['problem']}"
+                                                         for x in c["checks_valid"]["invalid"][:6])
+                     + ". Use only the listed check names, each with its parameters.")
+    if "checks_reachable" in q["hard_failed"]:
+        r = c["checks_reachable"]
+        if r["too_many"]:
+            lines.append("Too many checks on one step: " + ", ".join(f"step {x['step']} ({x['checks']})"
+                                                                     for x in r["too_many"])
+                         + ". Keep at most 6 checks per step, or split the step.")
+        if r["no_file_tool"]:
+            lines.append("File checks on steps whose roles have no file-writing tool: " + "; ".join(
+                f"step {x['step']} ({', '.join(x['checks'])})" for x in r["no_file_tool"])
+                + ". Give that step a role with a file-writing tool (or request one), or check the output text instead.")
     return "\n".join(f"{i}. {x}" for i, x in enumerate(lines, 1))

@@ -1026,6 +1026,75 @@ Plain code turns that into the same BLOCKED / MISSING / Verdict lines as before,
 and the dispute resolver work unchanged. Without native tool calling the steps fall back to legacy and the run says
 so. The default stays `legacy` for now. Design: docs/design/D136_protocol_v2.md.
 
+**D137, security (Oct 16, audit Phase A).** A pool server that runs code for the caller is now refused when it is
+vetted and again after connecting, unless `--allow-remote-exec` is set; code runs only through local:Bash in the
+sandbox. The harness's own fetches reach only public http(s) addresses, with every redirect checked. Local tools are no
+longer mistaken for outside actions under a niche profile. Design: docs/design/D137_security.md.
+
+**D138, Box 3 correctness (Oct 16, audit Phase B).** Ten fixes in the plan runner, in both protocols:
+- a skipped step no longer crashes the summariser;
+- a rework that gives no new output keeps the earlier one;
+- a step with no Final Output hands on nothing instead of its last message;
+- in native mode, short text without a tool call no longer ends a step;
+- the tool-less summariser is told to list missing files, not make them;
+- a corrected dispute figure marks the steps that used it as stale;
+- an unreadable review counts as REVISE;
+- find_tool does not count as a re-check;
+- a verifier can read the full text of an input it saw cut;
+- `--failed-step dependents` is the default in the library too.
+
+Design: docs/design/D138_box3_bugs.md.
+
+**D139, the model layer finished (Oct 16, audit Phase C).**
+- Structured replies are always validated by plain code. Enum case does not matter, and a provider null falls back
+  to the field's default.
+- Every field is required in the schema sent to Claude, with optional fields made nullable.
+- A step's unchanging head is cached by the provider.
+- A block that is not a reasoning refusal gets one retry with the compact variant of its prompt.
+
+Design: docs/design/D139_model_layer.md.
+
+**D140, the model check completed (Oct 16, audit Phase C).** The check now also probes the plan observer and whether
+the model ends a step with a proper typed Final_Output. Its JSON repair call quotes the exact validation error.
+Design: docs/design/D140_model_check_gaps.md.
+
+**D141, protocol v2 for every call (Oct 16, audit Phase C).** Under `--protocol v2`, every model call asks for a
+typed reply through `ask()`, not only the step turns. The reply models have no thought field, and each typed reply
+is rendered into the text the legacy reader of that call site parses, so the code downstream is unchanged. Protocol
+v2 is a user-approved deviation from the CLAUDE.md rule to copy AutoAgents/AgentVerse prompts word for word (user
+decision, Oct 15 2026). Legacy prompts are kept unchanged under --protocol legacy. Design:
+docs/design/D141_protocol_v2_all_calls.md.
+
+**D142, the plan–execution contract (Oct 16, audit Phase D).** Each plan step can carry typed checks from a fixed
+vocabulary, each naming the requirements it proves. Box 2's gate sends a plan back when a requirement has no check,
+when a check is malformed, or when a step cannot meet its checks. Box 3 runs the checks when the step ends, and a
+failure is treated like any failed check. The final requirement check counts a requirement as met only when its
+checks passed and the answer body (not the Limitations section) covers it. Design:
+docs/design/D142_plan_execution_contract.md.
+
+**D143, planning v2 (Oct 16, audit Phase E).** Under v2, code decides how much planning a task gets: one round
+with no observers, two rounds with the plan observer, or three rounds with both. Only blocking review issues go
+back to the planner. The best round's draft is published, not the last. The planner may propose a change to Box 1's
+reading, which code accepts only when it is one of Box 1's alternatives or rests on a cited planning-search source,
+and the plan observer agreed. Design: docs/design/D143_planning_v2.md.
+
+**D144, context handling in steps (Oct 16, audit Phase F).** A step's transcript no longer grows with every full
+tool result. Long results go to a file the helper can read, file writes are summarised, and turns older than the
+last two are shown as one line each, by plain code. Each step records the characters it sent and saved. Design:
+docs/design/D144_step_context.md.
+
+**D145, the Box 4 ladder (Oct 16, audit Phase F).** A step the model service blocks is retried with the compact
+prompt, then on another candidate model, then the task stops and names the refusal categories. A tool the helper
+already holds is never granted again; its failure is a tool error. A re-plan may drop only the stuck step's
+dependents and must pass Box 2's HARD checks. A stuck upstream re-run gets one fix of its own. A step no fix
+recovered is reported as kept going under D133. Design: docs/design/D145_box4_ladder.md.
+
+**D146, measurement and verifier independence (Oct 16, audit Phase F).** Every stuck episode is recorded with all
+its signals and an empty ground-truth field, and a small command records hand grades next to the run. A profile can
+send verify steps and the plan observer to another model family; result.json says for each verify step whether it
+was independent. The verifier works out its own result without the producers' fetched pages. The evidence hash chain
+is self-consistent only: nothing anchors it outside the run folder. Design: docs/design/D146_measurement_verifier.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

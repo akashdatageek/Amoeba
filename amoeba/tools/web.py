@@ -10,10 +10,13 @@ environment, `api.tavily.com` must be on the network allowlist (search and page 
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
+import socket
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -28,15 +31,76 @@ TAVILY_KEY_ENV = "TAVILY_API_KEY"
 USER_AGENT = "Mozilla/5.0 (compatible; amoeba-research/1.0; +https://github.com/akashdatageek/amoeba)"
 
 
+NOT_PUBLIC = "refused: address not public"
+MAX_REDIRECTS = 3                       # D137: each hop is checked again
+
+
 # box: tools
-def http_get(url: str, max_bytes: int, timeout_s: float = 20.0) -> tuple[bytes, str]:
-    """D106: one direct GET (a data file or a page's links), at most max_bytes; (content, content type)."""
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
-    with urllib.request.urlopen(req, timeout=timeout_s) as r:
-        body = r.read(max_bytes + 1)
-        if len(body) > max_bytes:
-            raise WebToolError(f"{url} is larger than {max_bytes:,} bytes")
-        return body, r.headers.get("Content-Type", "")
+def public_address(ip: str) -> bool:
+    """D137: an address the harness may fetch from: not loopback, private, link-local, multicast, reserved or
+    unspecified (IPv4 and IPv6; an IPv4-mapped IPv6 address is judged as its IPv4 address)."""
+    a = ipaddress.ip_address(ip.split("%", 1)[0])
+    if isinstance(a, ipaddress.IPv6Address) and a.ipv4_mapped:
+        a = a.ipv4_mapped
+    return not (a.is_loopback or a.is_private or a.is_link_local or a.is_multicast or a.is_reserved
+                or a.is_unspecified or not a.is_global)
+
+
+# box: tools
+def check_url(url: str, resolve=None) -> None:
+    """D137: raise WebToolError unless the URL is http(s) and its host resolves only to public addresses. A host
+    that does not resolve here is allowed only when a proxy will resolve it (the proxy then reaches only the public
+    internet); an IP literal or `localhost` is always judged here."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise WebToolError(f"refused: only http and https URLs ({parts.scheme or 'no scheme'})")
+    host = parts.hostname.strip("[]").lower()
+    if host == "localhost" or host.endswith(".localhost"):
+        raise WebToolError(NOT_PUBLIC)
+    try:
+        ipaddress.ip_address(host.split("%", 1)[0])
+        addrs = [host]
+    except ValueError:
+        try:
+            addrs = [x[4][0] for x in (resolve or socket.getaddrinfo)(host, parts.port or None)]
+        except (socket.gaierror, OSError):
+            if urllib.request.getproxies().get(parts.scheme):
+                return
+            raise WebToolError(f"refused: {host} does not resolve")
+    if not addrs or not all(public_address(a) for a in addrs):
+        raise WebToolError(NOT_PUBLIC)
+
+
+# box: tools
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None                     # D137: redirects are followed by hand, each hop checked
+
+
+# box: tools
+def http_get(url: str, max_bytes: int, timeout_s: float = 20.0, resolve=None, opener=None) -> tuple[bytes, str]:
+    """D106: one direct GET (a data file or a page's links), at most max_bytes; (content, content type). D137: only
+    http(s) to public addresses; redirects followed by hand, at most MAX_REDIRECTS hops, each checked again."""
+    opener = opener or urllib.request.build_opener(_NoRedirect)
+    for _ in range(MAX_REDIRECTS + 1):
+        check_url(url, resolve)
+        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
+        try:
+            r = opener.open(req, timeout=timeout_s)
+        except urllib.error.HTTPError as e:
+            if e.code in (301, 302, 303, 307, 308) and e.headers.get("Location"):
+                url = urllib.parse.urljoin(url, e.headers["Location"])
+                continue
+            raise
+        with r:
+            if getattr(r, "status", 200) in (301, 302, 303, 307, 308) and r.headers.get("Location"):
+                url = urllib.parse.urljoin(url, r.headers["Location"])
+                continue
+            body = r.read(max_bytes + 1)
+            if len(body) > max_bytes:
+                raise WebToolError(f"{url} is larger than {max_bytes:,} bytes")
+            return body, r.headers.get("Content-Type", "")
+    raise WebToolError(f"refused: more than {MAX_REDIRECTS} redirects")
 
 
 class WebToolError(RuntimeError):

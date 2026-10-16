@@ -236,7 +236,9 @@ def pool_setup(cache):
     cfg = {"sources": [], "cache_dir": str(cache), "auth_env": {}, "paid_hosts": [],
            "limits": {"max_candidates": 5, "max_per_helper": 3, "max_per_run": 8, "max_skill_chars": 5000,
                       "max_calls_per_step": 3, "timeout_s": 5, "max_result_chars": 6000}}
-    return PoolSetup(config=cfg, env={})
+    # D137: the internet candidate here is a remote code runner, refused by default; these tests check ranking,
+    # fall-through and shared picks, so they opt in (tests/test_security_d137.py checks the refusal)
+    return PoolSetup(config=cfg, env={}, allow_remote_exec=True)
 
 
 def draft_cfg(task, envelope, text):

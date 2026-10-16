@@ -26,6 +26,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from amoeba.llm.client import validate_reply
+
 FINAL = "Final Output"          # the tool's real name in the plan runner (FINAL_OUTPUT); its function name is Final_Output
 PRINT = "Print"
 FIND_TOOL = "find_tool"
@@ -124,12 +126,15 @@ def check_args(tool: str, args, schema: dict, final_kind: str | None = None) -> 
     if not isinstance(args, dict):
         return "arguments that are not a JSON object"
     if tool == FINAL:
+        model = ResolverOutput if final_kind == "resolve" else FinalOutput
+        if validate_reply(model, args) is not None:        # D139: nulls and enum case as the provider sends them
+            return None
         try:
-            (ResolverOutput if final_kind == "resolve" else FinalOutput).model_validate(args)
+            model.model_validate(args)
         except ValidationError as e:
             return "fields that do not fit: " + "; ".join(f"{'.'.join(map(str, x['loc']))}: {x['msg']}"
                                                           for x in e.errors()[:4])
-        return None
+        return "fields that do not fit"
     props, required = schema.get("properties") or {}, schema.get("required") or []
     missing = [k for k in required if k not in args or (args[k] in ("", None) and (tool, k) not in EMPTY_OK)]
     if missing:
@@ -171,7 +176,7 @@ def typed_input(tool: str, args: dict, schema: dict) -> str:
 def final_text(args: dict) -> str:
     """The typed end of a step as the text the legacy readers parse: Verdict first, the output, one BLOCKED / NOT
     NEEDED / MISSING DATA / MISSING INPUT line per item, the Issues last."""
-    fo = FinalOutput.model_validate(args)
+    fo = FinalOutput.model_validate(validate_reply(FinalOutput, args) or args)
     lines = [f"Verdict: {fo.verdict}"] if fo.verdict else []
     lines.append(fo.output.strip())
     lines += [f"BLOCKED: {x.strip()}" for x in fo.blocked if x.strip()]
@@ -187,7 +192,7 @@ def final_text(args: dict) -> str:
 # box: plan_step
 def typed_verdict(args: dict) -> tuple[str | None, str]:
     """(verdict, issues) of a typed end of a verify step, as parse_verdict_block returns them."""
-    fo = FinalOutput.model_validate(args)
+    fo = FinalOutput.model_validate(validate_reply(FinalOutput, args) or args)
     return fo.verdict, "\n".join(f"{i}. {x.strip()}" for i, x in enumerate(fo.issues, 1)) if fo.issues else \
         ("none" if fo.verdict else "")
 
@@ -195,7 +200,7 @@ def typed_verdict(args: dict) -> tuple[str | None, str]:
 # box: plan_step
 def resolver_text(args: dict) -> str:
     """The resolver's typed figures as the blocks parse_resolution reads (settle() unchanged)."""
-    ro = ResolverOutput.model_validate(args)
+    ro = ResolverOutput.model_validate(validate_reply(ResolverOutput, args) or args)
     return "\n\n".join(f"Figure {f.n}\nValue: {f.value}\nEvidence: {f.evidence}\nVerdict: {f.verdict}"
                        for f in ro.figures)
 
@@ -203,7 +208,7 @@ def resolver_text(args: dict) -> str:
 # ---- the prompt words v2 must not use -------------------------------------------------------------------------------
 # A heading the model must write shows up as a protocol heading, a quoted heading or a # Format section; the ## headings
 # of the data a prompt shows (an input step's output, a disputed figure) are not instructions and are not banned.
-BANNED = [(r"\bActionInput\b", "ActionInput"), (r"\bAction\b", "Action"), (r"Final Output", "a 'Final Output' section"),
+BANNED = [(r"\bActionInput\b", "ActionInput"), (r"\bAction\b(?! Observer)", "Action"), (r"Final Output", "a 'Final Output' section"),
           (r"#+\s*Thought\b", "## Thought"), (r"\bCurrentStep\b", "CurrentStep"),
           (r"[\"'“]\s*##", "a quoted ## heading to write"), (r"(?m)^#+\s*Format\s*$", "a # Format section"),
           (r"(?i)must use exactly these sections", "a list of sections to write")]
@@ -269,3 +274,29 @@ UNREADABLE_NOTE_V2 = ("error: your last reply could not be read ({why}). Call on
                       "the step's output.")
 PROVIDER_BLOCKED_NOTE_V2 = ("error: the model service returned no reply for your last turn. Continue the step from where "
                             "it stands: call one of your tools, or Final_Output with the step's output.")
+
+
+# box: plan_step
+def compact_step_prompt(user: str) -> str:
+    """D141: the compact variant of a step prompt, sent once when the provider blocked the full one for a reason other
+    than a request for reasoning (D139's compact retry). The role card keeps only Name, Goal and Outputs; the rule
+    blocks (facts and sources, research, freshness) keep only the contract line plain code checks; the rest (task,
+    step, inputs, work so far, tools, how to act) is unchanged."""
+    out, section = [], None
+    for line in (user or "").split("\n"):
+        if line.startswith("# "):
+            section = line[2:].strip().lower()
+            out.append(line)
+            continue
+        if section == "your role card" and line.strip() and not line.startswith(("Name:", "Goal:", "Outputs:")):
+            continue
+        if section == "facts and sources" and not line.startswith("Plain code checks"):
+            continue
+        out.append(line)
+    text = "\n".join(out)
+    for note in ("\nResearch (plain code helps here):", "\nThis task asks for today's"):
+        i = text.find(note)
+        if i >= 0:
+            j = text.find("\n\n", i + 1)
+            text = text[:i] + (text[j:] if j > 0 else "")
+    return re.sub(r"\n{3,}", "\n\n", text)
