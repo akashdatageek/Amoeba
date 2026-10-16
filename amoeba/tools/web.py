@@ -367,7 +367,8 @@ class WebTools:
             self.on_data({"kind": "data", **rec})
         sheets = f", sheets {', '.join(table['sheets'][:5])}" if table.get("sheets") else ""
         return (f"  data file [{s['id']}] {s['title']} ({d.get('ext')}, {table.get('n_rows', 0)} rows{sheets}; "
-                f"linked from {parent or 'your fetch'}):\n" + "\n".join("    " + ln for ln in ex.splitlines()))
+                f"linked from {parent or 'your fetch'}):\n" + "\n".join("    " + ln for ln in ex.splitlines())
+                + ("\n    " + whole_note(s, "table") if s.get("workspace_file") else ""))
 
     def _page(self, source: dict, text: str) -> None:
         if self.on_data is not None and text:          # D107: the page's text goes to the workspace too
@@ -399,13 +400,22 @@ class WebTools:
         self._event("fetch_url", {"amoeba.url": url, "amoeba.source_id": s["id"], "amoeba.chars": len(text),
                                   "amoeba.chars_passed": len(cut)})
         more = f", first {len(cut)} of {len(text)} characters" if len(text) > len(cut) else ""
-        out = f"[{s['id']}] {s['title']} ({s['url']}), fetched {s['fetched_at']}{more}:\n{cut}"
         self._page(s, text)                            # D107: the page's text to the workspace (when on)
+        out = f"[{s['id']}] {s['title']} ({s['url']}), fetched {s['fetched_at']}{more}:\n{cut}"
+        if len(text) > len(cut):                       # D147: the cut says where the whole page is
+            out += f"\n… [{len(text) - len(cut)} characters cut; " + (
+                whole_note(s, "page")[1:-1] if s.get("workspace_file") else "the whole page was not saved (no workspace)]")
         if self.research:                              # D106: the data files the page links
             data = self._linked_data(text, s, s["title"])
             if data:
                 out += "\n\nData files this page links, read by plain code:\n" + "\n".join(data)
         return out
+
+
+# box: tools
+def whole_note(source: dict, what: str) -> str:
+    """D147: where the whole copy of a cut page or table is, worded like D144's spill note."""
+    return f"[the whole {what} is in {source['workspace_file']}; open it with local:Read] …"
 
 
 # box: tools

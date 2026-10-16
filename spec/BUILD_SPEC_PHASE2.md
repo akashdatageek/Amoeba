@@ -1095,6 +1095,34 @@ send verify steps and the plan observer to another model family; result.json say
 was independent. The verifier works out its own result without the producers' fetched pages. The evidence hash chain
 is self-consistent only: nothing anchors it outside the run folder. Design: docs/design/D146_measurement_verifier.md.
 
+**D147, every cut says where the full copy is (Oct 16, after run 71d2f910).** When a fetched page or a data file is
+shown only in part, the result now names the saved file in the workspace and says to open it with local:Read. A
+table excerpt also shows its last rows. Design: docs/design/D147_cut_notes.md.
+
+**D148, the gate judges effect, not text (Oct 16, after run 71d2f910).** A Bash command is no longer refused for
+containing "..": the gate follows its `cd`s and resolves each path, and refuses only what would land outside the
+workspace. A refusal names the exact part and says how to rewrite the call. Design: docs/design/D148_gate_effect.md.
+
+**D149, diagnosis fixes (Oct 16, after run 71d2f910).** When the gate refuses a tool the helper holds twice for the
+same reason within one step, Box 4 now diagnoses a tool error first, whatever else is missing. BLOCKED lines written
+in any markdown name their capability. Design: docs/design/D149_diagnosis_fixes.md.
+
+**D150, fixes don't waste their tries (Oct 16, after run 71d2f910).** A fix kind that failed on a step (for example
+more turns) is never tried again on that step, whatever its value. After one failed code fix the next try is the fix
+proposer, which reads the evidence and can change the step; code fixes of untried kinds follow only if the proposer has
+nothing. Design: docs/design/D150_fix_tries.md.
+
+**D151, budgets scale with the model and are shared fairly (Oct 16, after run 71d2f910).** The tokens all fixes of a
+task may use are six times the run's average step-attempt cost so far, not a fixed 200,000. With a run token cap, each
+step may spend 1.5 times its fair part of what is left when it starts; a step that reaches it stops retrying and is
+reported as kept_going with the reason, and the rest of the cap stays for the steps not yet run. Design:
+docs/design/D151_fair_budgets.md.
+
+**D152, two bugs from run 71d2f910 (Oct 16).** Amoeba's own cut note is no longer checked as text cited from a
+source. The reply room of a call follows what its role group has needed in the run: 1.5 times the largest reply so far
+(visible and thinking tokens together), at most twice what the caller asked, so a group that came close to its room is
+not cut and paid for twice. Design: docs/design/D152_two_bugs.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

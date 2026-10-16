@@ -32,7 +32,10 @@ from amoeba.adapt.config import adapt_config
 SIGNAL_CAUSE = {"missing_input": "missing_input", "capability_unfilled": "capability", "repeated_error": "tool_error",
                 "max_turns": "max_turns", "checks_after_retry": "checks", "no_file_change": "claimed_file_missing",
                 "unreadable_reply": "format", "missing_data": "missing_data",
-                "provider_blocked": "provider_blocked", "held_tool_failed": "tool_error"}
+                "provider_blocked": "provider_blocked", "held_tool_failed": "tool_error",
+                "repeated_refusal": "tool_error"}                                       # D149
+REFUSED = re.compile(r"^refused:\s*(local:\w+)\s*[—-]\s*(\w+)")
+REPEATED_REFUSALS = 2           # D149: a held tool refused this often in one step for one reason decides the cause
 # D117 Stage C: a lacked item is a missing input (data an earlier step should have given) unless it names a tool
 TOOL_WORDS = re.compile(r"tool|\bapi\b|_api|reader|interpreter|executor|calculator|\bcalc|access|generator|analy[sz]er|"
                         r"\bengine\b|_engine|service|search|network|browser|capability|skill|\blocal\b|local:|script|"
@@ -167,6 +170,14 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
         how = "after the retry turn" if meta.get("retried") or meta.get("refine") else "and no retry turn was possible"
         sig.append({"signal": "checks_after_retry",
                     "evidence": [f"check {c['name']} still fails {how}: {c.get('detail', '')[:140]}" for c in failed]})
+    refs = meta.get("refusals") or {}
+    if isinstance(refs, list):               # as saved in a step's meta (JSON): [{tool, reason, n}]
+        refs = {(r["tool"], r["reason"]): r["n"] for r in refs}
+    rep_ref = {k: n for k, n in refs.items() if n >= REPEATED_REFUSALS}
+    if rep_ref:                              # D149: the gate keeps refusing a held tool → tool_error, whatever else
+        sig.append({"signal": "repeated_refusal", "decides": True,
+                    "evidence": [f"{tool} refused {n} times in this step for {reason}: rewrite the call (the refusal "
+                                 f"says how)" for (tool, reason), n in rep_ref.items()]})
     turns = meta.get("unreadable_turns") or []
     blocked = [b for b in turns if b.get("blocked")]
     bad = [b for b in turns if not b.get("blocked")]
@@ -235,6 +246,18 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
 
 
 # box: stuck
+def refusal_counts(attempts: list[dict]) -> dict[tuple[str, str], int]:
+    """D149: how often each local tool was refused for each reason across a step's attempts (their tool_calls)."""
+    out: dict[tuple[str, str], int] = {}
+    for m in attempts:
+        for c in m.get("tool_calls") or []:
+            r = REFUSED.match(str(c.get("result") or ""))
+            if r:
+                out[(r.group(1), r.group(2))] = out.get((r.group(1), r.group(2)), 0) + 1
+    return out
+
+
+# box: stuck
 def open_requests(requests: list | None, holds: dict[str, set] | None = None, held_fn=None) -> list[dict]:
     """The capability requests that are really open: status unfilled, and not covered by a tool the run already has.
     "registered_tool" means the toolbox step found the tool in the run's registry (web_search and fetch_url, granted by
@@ -294,7 +317,8 @@ def diagnose(signals: list[dict], config: dict | None = None) -> dict:
     d = (config or adapt_config()).get("diagnoser") or {}
     order = list(d.get("causes") or [])
     named = [s["cause"] for s in signals]
-    cause = next((c for c in order if c in named), named[0] if named else None)
+    cause = next((s["cause"] for s in signals if s.get("decides")), None) or \
+        next((c for c in order if c in named), named[0] if named else None)        # D149: a deciding signal wins
     evidence = [e for s in signals for e in s["evidence"]][:int(d.get("max_evidence", MAX_EVIDENCE))]
     allowed = list((d.get("allowed_edits") or {}).get(cause, [])) if cause else []
     out = {"cause": cause, "signals": [s["signal"] for s in signals], "allowed_edits": allowed, "evidence": evidence,

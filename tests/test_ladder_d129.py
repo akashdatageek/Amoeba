@@ -61,11 +61,11 @@ def test_a_step_made_by_a_split_counts_its_own_fixes():
     assert limits()["max_fixes_per_substep"] == 2
 
 
-def test_the_fix_allowance_follows_the_run_cap():
-    lim = limits()
-    assert token_cap(lim, None) == 200000
-    assert token_cap(lim, 1_500_000) == 375000                            # a quarter of the run's cap
-    assert token_cap(lim, 400_000) == 200000                              # never below the fixed allowance
+def test_the_fix_allowance_follows_the_attempt_cost():
+    lim = limits()                                                        # D151 replaced the run-cap share
+    assert token_cap(lim, 0) == 0
+    assert token_cap(lim, 70_000) == 70_000 * lim["fix_tokens_per_attempt"]
+    assert token_cap(lim, 210_000) == 3 * token_cap(lim, 70_000)
 
 
 def test_the_wording_check_reads_phrases_not_words():

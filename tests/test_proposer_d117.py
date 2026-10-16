@@ -284,7 +284,7 @@ def test_the_per_step_limit_counts_the_proposer(task, envelope, trace, tools, mo
 
 
 def test_the_token_cap_applies_to_the_proposer(task, envelope, trace, tools, monkeypatch):
-    monkeypatch.setattr(pr, "fix_limits", lambda: {**limits(), "max_tokens_per_task": 0})
+    monkeypatch.setattr(pr, "fix_limits", lambda: {**limits(), "fix_tokens_per_attempt": 0})
 
     def script(messages, seed):
         return reply("Final Output", BLOCK) if step_no(messages) == "1" else good(step_no(messages))

@@ -26,7 +26,8 @@ from amoeba.adapt.toolmaker import (PREFIX as MADE, ToolLibrary, call_tool, chec
 from amoeba.adapt.fixes import POOL_OFF, all_candidates, fix_key, limits as fix_limits, token_cap
 from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
-from amoeba.adapt.stuck import diagnose, file_sig, is_stuck, norm_error, open_requests, step_signals, waived_view
+from amoeba.adapt.stuck import (diagnose, file_sig, is_stuck, norm_error, open_requests, refusal_counts, step_signals,
+                                waived_view)
 from amoeba.capabilities import normalise, snake
 from amoeba.config.prompts import PROMPT, render
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
@@ -40,7 +41,7 @@ from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_
 from amoeba.interp.freshness import stale_figure, time_sensitive
 from amoeba.interp.shorten import shorten
 from amoeba.llm.client import api_error, describe_api_error
-from amoeba.llm.limits import RunLimitReached, estimate
+from amoeba.llm.limits import RunLimitReached, billed, estimate
 from amoeba.llm.profiles import role_group
 from amoeba.llm.router import NoModelAvailable
 from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
@@ -793,6 +794,7 @@ def unmark(text: str) -> str:
     mark a helper put in bold is read like a plain one."""
     t = re.sub(r"([A-Z]{3,}[A-Z ]*)(\*\*|__|\*|_|`)\s*([:：])", r"\1\3", text or "")
     t = re.sub(r"(\*\*|__|\*|_|`)(?=\s*[A-Z]{3,}[A-Z ]*\s*[:：])", "", t)
+    t = re.sub(r"([A-Z]{3,}[A-Z ]*[:：])\s*(\*\*|__|\*|_|`)\s*", r"\1 ", t)    # D149: "*BLOCKED:*", "`BLOCKED:`"
     return re.sub(r"(?m)^([ \t>*+-]*)", "", t).replace("**", "")
 
 
@@ -830,6 +832,7 @@ class PlanRunner:
         self.ledger: dict[str, dict] = {}        # D43: figure -> its first status and the step that first wrote it
         self.contract_results: dict[int, list[dict]] = {}   # D142: each step's typed check results
         self.models_tried: dict[int, set[str]] = {}          # D145: models a switch_model fix used per step
+        self.step_refusals: dict[int, dict] = {}             # D149: (tool, reason) → refusals per step, all attempts
         self.usd_unknown = False                             # D145: a model has no price; the USD limit is not enforced
         self.fix_depth = 0                                   # D145: rerun_upstream fixes its upstream step once (depth 1)
         self.kept_going: list[dict] = []                     # D145: stuck steps no fix recovered, under D133
@@ -864,6 +867,11 @@ class PlanRunner:
         self.upstream_rerun: set[int] = set()             # steps re-run once for a missing input
         self.attached_ids: dict[int, list] = {}           # step -> pool ids a grant gave it
         self.adapt_tokens, self.adapt_spans = 0, []       # what the fix attempts used
+        self.plan_t0: int | None = None                   # D151: billed tokens when the plan run started
+        self.cur_step: int | None = None                  # D151: the step the wave loop is on (fixes and rework count to it)
+        self.step_t0: dict[int, int] = {}                 # D151: billed tokens when that step started
+        self.step_share: dict[int, dict] = {}             # D151: step -> its share of the run cap (with a token cap)
+        self.token_allowance: int | None = None           # D151: the fixes' token allowance at the last check
         self.exhausted: dict | None = None                # the stuck step no fix recovered (the task stops)
         self.proposer_gave_up: dict[int, str] = {}        # D117 Stage D: step -> why the fix proposer gave no fix
         self.workarounds: list[dict] = []                 # D117 Stage D: accepted work-arounds (for Limitations)
@@ -1145,6 +1153,7 @@ class PlanRunner:
         self.i.trace.event("plan_graph", {"amoeba.waves": ws, "amoeba.depends_on": {str(k): v for k, v in deps.items()},
                                           "amoeba.max_turns": self._max_turns(), "amoeba.max_tokens": PLAN_MAX_TOKENS,
                                           **{f"amoeba.options.{k}": v for k, v in asdict(self.opt).items()}})
+        self.plan_t0 = self.billed_now()                  # D151: attempts are averaged from here
         replan = self.opt.replan == "on"
         if replan:
             self.known = self.plan_items()                                  # D63: what the plan knew of at the start
@@ -1163,6 +1172,7 @@ class PlanRunner:
                     if by:                                                          # D133: only its dependents wait
                         self.skip_step(n, w, by)
                         continue
+                    self.begin_share(n)                                             # D151
                     self.run_step(self.steps[n], w, deps[n])
                     fixed = None
                     if self.opt.adapt == "on" and not self.finish_skip("fixes", bool(self.artifacts[n]["meta"].get("stuck"))):
@@ -1171,6 +1181,11 @@ class PlanRunner:
                         self.i.trace.event("stuck_step_kept_going", {"amoeba.step": n,
                                                                      "amoeba.cause": (self.exhausted or {}).get("cause")})
                         self.kept_going.append({**(self.exhausted or {}), "outcome": "kept_going"})   # D145
+                        fixed = None
+                    if fixed == "share":                  # D151: the step reached its share of the run cap
+                        self.i.trace.event("stuck_step_kept_going", {"amoeba.step": n, "amoeba.cause": "step_share",
+                                                                     "amoeba.why": (self.exhausted or {}).get("why")})
+                        self.kept_going.append({**(self.exhausted or {}), "outcome": "kept_going"})
                         fixed = None
                     if fixed in ("stop", "stop_blocked"):                           # no fix recovered it
                         self.ep.faults = self.faults.summary()
@@ -1265,6 +1280,55 @@ class PlanRunner:
         self.finish_skipped[kind] = self.finish_skipped.get(kind, 0) + 1
         self.i.trace.event("finish_skip", {"amoeba.kind": kind, "amoeba.count": self.finish_skipped[kind]})
         return True
+
+    # box: plan_graph
+    def billed_now(self) -> int:
+        """D151: billed tokens so far (input + output + reasoning of live calls), as the run cap counts them."""
+        return billed(self.i.trace.spans("chat"))["tokens"]
+
+    # box: plan_graph
+    def avg_attempt(self) -> float:
+        """D151: the run's average step-attempt cost so far: billed tokens since the plan run started over the step
+        attempts saved (fixes and rework included, so a model that reads or thinks more scales it)."""
+        tries = len(self.i.trace.events("step_done"))
+        return (self.billed_now() - (self.plan_t0 or 0)) / tries if tries else 0.0
+
+    # box: plan_graph
+    def begin_share(self, n: int) -> None:
+        """D151: step n starts. With a run token cap, its share is step_share (adapt.yaml run_guard) times a fair part
+        of what is left: (cap - used) / steps not yet run, this one included. Without a cap there is no share."""
+        self.cur_step, self.step_t0[n] = n, self.billed_now()
+        cap = getattr(getattr(self.i.trace, "limits", None), "max_tokens", None)
+        if not cap:
+            return
+        factor = float((adapt_config().get("run_guard") or {}).get("step_share", 1.5))
+        left = max(1, sum(1 for st in self.cfg.plan if number(st) not in self.artifacts))
+        rest = max(0, cap - self.step_t0[n])
+        self.step_share[n] = {"share": int(factor * rest / left), "left_tokens": rest, "steps_not_run": left,
+                              "factor": factor}
+
+    # box: plan_graph
+    def over_share(self) -> str | None:
+        """D151: why the current step may not retry (a fix, a rework): it has spent its share of the run cap."""
+        n = self.cur_step
+        sh = self.step_share.get(n) if n is not None else None
+        if not sh:
+            return None
+        spent = self.billed_now() - self.step_t0[n]
+        if spent < sh["share"]:
+            return None
+        return (f"limit: step {n} used {spent:,} tokens, its share of the run cap ({sh['share']:,} = {sh['factor']} x "
+                f"{sh['left_tokens']:,} tokens left / {sh['steps_not_run']} steps not yet run); the rest is kept for "
+                f"the steps not yet run")
+
+    # box: plan_graph
+    def share_skip(self, kind: str) -> bool:
+        """D151: True when an optional retry of the current step is skipped because the step reached its share."""
+        why = self.over_share()
+        if why:
+            self.finish_skipped[f"share_{kind}"] = self.finish_skipped.get(f"share_{kind}", 0) + 1
+            self.i.trace.event("share_skip", {"amoeba.kind": kind, "amoeba.step": self.cur_step, "amoeba.why": why})
+        return bool(why)
 
     # box: plan_graph
     def guard_summary(self, stopped: dict | None = None) -> dict:
@@ -1732,6 +1796,7 @@ class PlanRunner:
                 "checks": checks, "retried": retried, "refine": refine,
                 "contract_checks": planned,                                        # D142
                 "context": {"chars_sent": w.chars_sent, "chars_saved": w.chars_saved},   # D144
+                "refusals": self.count_refusals(n, w.calls),                       # D149: across the step's attempts
                 "models": sorted({s.get("gen_ai.response.model") or s.get("gen_ai.request.model") or "?"
                                   for s in self.i.trace.spans("chat")[spans0:]}),         # D146
                 "unverified_tags_removed": removed,                                # D66
@@ -1794,7 +1859,8 @@ class PlanRunner:
         if self.opt.adapt == "on":                    # D117 Stage B: watch and diagnose, no fix yet
             self.watch(n, meta, previous, file_sig(self.files_of(n)) == files_before if refine else None)
         self._save(n, wave, text, meta, prov)
-        if verifier and meta["verdict"] == "FAIL" and not reverify and not self.finish_skip("rework", True):
+        if verifier and meta["verdict"] == "FAIL" and not reverify and not self.finish_skip("rework", True) \
+                and not self.share_skip("rework"):                                  # D151
             reworked = self.rework_producers(n, deps, meta["issues"])
             if reworked:                                   # D38: check once more what the rework produced
                 self.i.trace.event("reverify", {"amoeba.step": n, "amoeba.reworked": reworked})
@@ -2430,8 +2496,7 @@ class PlanRunner:
         if not d:
             return None
         lim, why = fix_limits(), ""
-        run_cap = getattr(getattr(self.i.trace, "limits", None), "max_tokens", None)
-        cap_tokens = token_cap(lim, run_cap)                       # D129: a share of the run's cap when larger
+        share_why = None
         per_step = int(lim["max_fixes_per_substep"] if n in self.fix_epoch else lim["max_fixes_per_step"])
         while d:
             usd = self.adapt_usd()
@@ -2439,11 +2504,16 @@ class PlanRunner:
                 self.usd_unknown = True
                 self.i.trace.event("adapt_usd_unknown", {"amoeba.step": n, "amoeba.model": getattr(self.i.llm, "model", "")})
                 self.log_event("adapt_usd_unknown", {"step": n})
-            if len(self.step_fixes(n)) >= per_step:
+            avg = self.avg_attempt()                   # D151: the allowance scales with the model; no cost measured
+            cap_tokens = self.token_allowance = token_cap(lim, avg) if avg > 0 else None   # yet: the other limits
+            share_why = self.over_share()
+            if share_why:
+                why = share_why
+            elif len(self.step_fixes(n)) >= per_step:
                 why = f"limit: {per_step} fixes per " + ("sub-step" if n in self.fix_epoch else "step")
             elif len(self.fixes) >= int(lim["max_fixes_per_task"]):
                 why = f"limit: {lim['max_fixes_per_task']} fixes per task"
-            elif self.adapt_tokens >= cap_tokens:
+            elif cap_tokens is not None and self.adapt_tokens >= cap_tokens:
                 why = f"limit: adaptation tokens {self.adapt_tokens:,} of {cap_tokens:,}"
             elif usd is not None and usd >= float(lim["max_usd_per_task"]):
                 why = f"limit: adaptation cost ${usd:.2f} of ${float(lim['max_usd_per_task']):.2f}"
@@ -2455,14 +2525,29 @@ class PlanRunner:
                     self.fix_notes.add((n, note))
                     self.i.trace.event("fix_skipped", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.why": note})
                     self.log_event("fix_skipped", {"step": n, "cause": d["cause"], "why": note})
-            fix = next((f for f in cands if fix_key(f) not in self.fix_keys), None)
-            if fix is None:                               # Stage D: the fix proposer is the last rung
+            # D150: a kind that failed on this step is not tried again; after a failed code fix the proposer is next
+            mine = self.step_fixes(n)
+            failed = {f["kind"] for f in mine if str(f.get("result", "")).startswith("failed")}
+            fresh = [f for f in cands if fix_key(f) not in self.fix_keys and f["kind"] not in failed]
+            for f in cands:
+                if fix_key(f) not in self.fix_keys and f["kind"] in failed and (n, f["kind"]) not in self.fix_notes:
+                    self.fix_notes.add((n, f["kind"]))
+                    note = f"{f['kind']} already failed on step {n}; not tried again"
+                    self.i.trace.event("fix_skipped", {"amoeba.step": n, "amoeba.cause": d["cause"], "amoeba.why": note})
+                    self.log_event("fix_skipped", {"step": n, "cause": d["cause"], "why": note})
+            early = (any(f["rung"] != "D" and str(f.get("result", "")).startswith("failed") for f in mine)
+                     and not any(f["rung"] == "D" for f in mine) and n not in self.proposer_gave_up)
+            fix = None if early else (fresh[0] if fresh else None)
+            if fix is None:                               # Stage D: the fix proposer (last rung, or next after a failed fix)
                 done = self.propose_fix(n, wave, d) if n not in self.proposer_gave_up else "none"
                 if done == "replanned":
                     for k in self.fixes[-1].get("replaced_by") or []:      # D129: the new steps count their own fixes
                         self.fix_epoch[k] = len(self.fixes)
                     self.ep.adaptation = self.adapt_summary()
                     return "replanned"
+                if done == "none" and early and fresh:         # D150: the proposer had nothing; untried kinds remain
+                    d = self.artifacts[n]["meta"].get("stuck")
+                    continue
                 if done == "none":
                     parts = list(notes) or [f"no code fix left for {d['cause']}"]
                     why = "; ".join(parts + ([self.proposer_gave_up[n]] if n in self.proposer_gave_up else []))
@@ -2482,6 +2567,8 @@ class PlanRunner:
         self.exhausted = {"step": n, "cause": meta["stuck"]["cause"], "why": why,
                           "evidence": meta["stuck"]["evidence"], "categories": cats}
         self.ep.adaptation = self.adapt_summary()
+        if share_why and meta["stuck"]["cause"] != "provider_blocked":    # D151: the rest of the run still runs
+            return "share"
         if meta["stuck"]["cause"] == "provider_blocked":      # D145 rung (c): stop, naming the refusal categories
             self.exhausted["why"] = "; ".join(x for x in (why, "the model service refused the replies (categories: "
                                                           + (", ".join(cats) or "none given") + ")") if x)
@@ -2505,6 +2592,14 @@ class PlanRunner:
                 # D127: web tools this run has that the step's helpers do not hold (a missing-data fix)
                 "web_missing": sorted({t for t in WEB_TOOLS if t in self.i.tools for a in agents if t not in a.tools}),
                 **self.make_tool_ctx(n)}
+
+    # box: stuck
+    def count_refusals(self, n: int, calls: list[dict]) -> list[dict]:
+        """D149: local-tool refusals of step n so far (every attempt), by tool and reason, as [{tool, reason, n}]."""
+        seen = self.step_refusals.setdefault(n, {})
+        for k, v in refusal_counts([{"tool_calls": calls}]).items():
+            seen[k] = seen.get(k, 0) + v
+        return [{"tool": t, "reason": r, "n": c} for (t, r), c in sorted(seen.items())]
 
     # box: fixes
     def fault_hidden(self, n: int) -> set[str]:
@@ -2857,6 +2952,7 @@ class PlanRunner:
                 "stopped": None if any(k.get("step") == (self.exhausted or {}).get("step") for k in self.kept_going)
                 else self.exhausted,                                   # D145: under D133 it is kept_going
                 "kept_going": self.kept_going, "usd_limit_enforced": not self.usd_unknown,
+                "token_allowance": self.token_allowance, "step_shares": self.step_share,      # D151
                 "make_tool_unavailable": sorted({w for _, w in self.fix_notes if "local tools are off" in w}),   # D145
                 "workarounds": self.workarounds, "tools_made": self.tools_made,
                 "left_on_old_output": self.left_on_old_output()}

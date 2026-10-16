@@ -459,7 +459,9 @@ BOXES: list[dict] = [
                "A dependency on a step the planner wrote but Box 2 dropped is pointed at that step's own "
                "dependencies, and the change is logged.",
                "An unknown step number or a loop stops the team from being built, before any AI call.",
-               "Steps whose inputs are ready form a wave; waves run one after another (the wave is logged)."],
+               "Steps whose inputs are ready form a wave; waves run one after another (the wave is logged).",
+               "D151: with a run token cap, each step may spend 1.5 times its fair part of what is left; a step that "
+               "reaches it stops retrying (kept_going) and the later steps still run."],
          proposes="The depends_on lines (from the planner).",
          disposes="Plain code builds the graph, the order and what each step may see.",
          anchors=["amoeba/interp/plan_runner.py::waves", "amoeba/interp/plan_runner.py::dependencies",
@@ -528,7 +530,8 @@ BOXES: list[dict] = [
                "full text of an input it saw cut (inputs/step_<d>.md).",
                "D142: after Final Output, plain code runs the step's typed checks (files, Word, Excel, CSV, images, "
                "tables, lists, terms, citations, dates, verdict, NOT SENT) and a failed one is a failed check like any "
-               "other."],
+               "other.",
+               "D152: Amoeba's own cut note (\"… [N characters cut; …]\") is never checked as text cited from a source."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",
@@ -631,7 +634,9 @@ BOXES: list[dict] = [
                "(turn off with --no-log-content).",
                "Token counts are only recorded; no code reads them to stop a run.",
                "Every line names the model profile; each AI line holds the model asked for and the exact model name "
-               "the service returned."],
+               "the service returned.",
+               "D152: each role group's reply room follows the largest reply it has needed in the run (1.5 times, at "
+               "most twice what was asked)."],
          proposes="Nothing.", disposes="Plain code writes the log.",
          anchors=["amoeba/interp/trace.py::TraceWriter", "amoeba/interp/trace.py::TraceWriter.event",
                   "amoeba/interp/trace.py::TracedLLM.chat_messages",
@@ -666,7 +671,9 @@ BOXES: list[dict] = [
                "This is the single place any tool is ever run.",
                "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#].",
                "D137: the harness's own fetches reach only public http(s) addresses, with each redirect hop checked "
-               "again (at most 3)."],
+               "again (at most 3).",
+               "D147: a cut page or table names its saved file in the workspace (open it with local:Read), and a table "
+               "excerpt shows its last rows too."],
          proposes="A tool name and its input (from a helper).",
          disposes="Plain code checks the name and the arithmetic before anything runs.",
          anchors=["amoeba/tools/registry.py::ToolRegistry", "amoeba/tools/registry.py::calc",
@@ -723,7 +730,9 @@ BOXES: list[dict] = [
                "Skills are listed only from the kept anthropics/skills clone; an attached skill's SKILL.md goes on the helper's card. Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first (D61).",
                "D103: in the sandbox a pool skill maps to /opt/skills/<name> (the entry's root is a label; its folder is root_path), and Bash may name /opt/skills read-only so the skill's scripts run; writing there is refused.",
                "D107: every page and data file the web tools read is saved read-only under sources/ in the workspace (and uploaded into the sandbox), with sources/index.json giving each file's [S#], url and time; writes there are refused and the files never count as made.",
-               "D112: a Python program sent to local:Bash (a ```python block, or a first line that starts like Python) runs as python3 from a quoted heredoc; the rewrite is logged and the gate still screens it."],
+               "D112: a Python program sent to local:Bash (a ```python block, or a first line that starts like Python) runs as python3 from a quoted heredoc; the rewrite is logged and the gate still screens it.",
+               "D148: a Bash path is judged by where it lands after each cd, not by a '..' in its text; a refusal names "
+               "the exact part and says how to rewrite the call."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",
@@ -864,7 +873,9 @@ BOXES: list[dict] = [
                "events.jsonl. --adapt on is the command-line default.",
                "scripts/stuck_report.py runs the same functions over stored run folders, offline.",
                "D145: a lacked line about a tool the helper holds is a tool error (held_tool_failed), never a "
-               "capability; runtime requests count only for the step they came from."],
+               "capability; runtime requests count only for the step they came from.",
+               "D149: a held tool refused twice in one step for the same reason makes the cause a tool error, whatever "
+               "else is missing."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code marks the step and logs the diagnosis; no fix is made yet.",
          anchors=["amoeba/adapt/stuck.py::step_signals", "amoeba/adapt/stuck.py::diagnose",
@@ -888,7 +899,11 @@ BOXES: list[dict] = [
                "adapt_report.md says what was stuck, the cause, each fix and why it failed.",
                "D145: a provider-blocked step gets the compact prompt, then another candidate model, then the task stops "
                "naming the refusal categories; a held tool is never granted again; a re-plan drops only the stuck step's "
-               "dependents and must pass Box 2's HARD checks."],
+               "dependents and must pass Box 2's HARD checks.",
+               "D150: a fix kind that failed on a step is never tried again on it, and after one failed code fix the fix "
+               "proposer goes next.",
+               "D151: the fixes' token allowance is six times the run's average step-attempt cost so far, so it scales "
+               "with the model."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code picks, applies and judges each fix (success: the step ends done).",
          anchors=["amoeba/adapt/fixes.py::candidates", "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
