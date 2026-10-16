@@ -74,6 +74,7 @@ class ModelEntry:
     merge_system: bool = False
     reasoning_effort: str | None = None
     temperature: float | None = 0.2      # None: not sent (`temperature: omit` in models.yaml)
+    checked_at: object = None            # D135: the date scripts/model_check.py last checked this entry (--write)
 
     def usd(self, input_tokens: int, output_tokens: int, cache_read: int = 0, cache_write: int = 0) -> float:
         """D134: cache_read / cache_write are the parts of input_tokens read from / written to the provider's prompt

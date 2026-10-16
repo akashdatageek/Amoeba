@@ -1013,6 +1013,12 @@ unchanged (D128's retry was blocked every time). A reasoning refusal is named lo
 it. Other refusals go to the next model in routed mode, and Box 4's report names the categories. The old route stays as
 `claude-sonnet-compat`. Design: docs/design/D134_anthropic_client.md.
 
+**D135, check a model before using it (Oct 16).** `python -m scripts.model_check <profile>` makes one tiny call per
+call type, each through the real prompt builders and stopped after its own call. It then makes one structured call per
+output mode, and records what came back: ok, blocked with its category, or unreadable, with cost. With `--write` it
+sets the registry entry's `supports` flags. A prompt that asks for written-out reasoning fails the check and is
+named. Design: docs/design/D135_model_check.md.
+
 **D136, a clean step protocol in native mode (Oct 16).** With `--protocol v2` and native tool calling, a helper is
 never asked to write text sections. The v2 step prompts (ours) and plain code's notes speak only of tool calls. Each
 tool takes typed arguments that plain code checks before running it, and the step ends with a typed `Final_Output`.

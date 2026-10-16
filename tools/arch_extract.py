@@ -742,7 +742,9 @@ BOXES: list[dict] = [
                "D134: provider: anthropic sends Claude's calls through its own Messages API (structured outputs, "
                "effort, thinking summary, prompt caching, refusal categories). A blocked reply is never retried as "
                "it was; a refusal because the prompt asks for written-out reasoning is a loud "
-               "prompt_asks_for_reasoning line naming the prompt file, and the run summary says so."],
+               "prompt_asks_for_reasoning line naming the prompt file, and the run summary says so.",
+               "D135: scripts/model_check.py checks a model before use with one tiny call per call type and one "
+               "structured call per output mode, and can set the registry entry's supports flags."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/anthropic_client.py::AnthropicClient",
