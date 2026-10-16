@@ -14,7 +14,7 @@ Since D117 a fourth box adapts a stuck step inside one task (stuck watch, code f
 ## Setup
     ./clone_sources.sh          # repos/ with AutoAgents, AgentVerse, jiuwen_atm (read-only; never import from them)
     python -m venv .venv && . .venv/bin/activate
-    pip install pydantic pyyaml openai mcp pytest playwright
+    pip install pydantic pyyaml openai anthropic mcp pytest playwright
 
 ## Rules
 - Package name `amoeba`, layout exactly as spec §3. Python ≥3.11, pydantic v2.

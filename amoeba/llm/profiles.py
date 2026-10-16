@@ -13,12 +13,12 @@ from typing import Callable
 
 import yaml
 
-from amoeba.llm.client import ChatResponse, LLMClient, Messages, tools_kw
+from amoeba.llm.client import ChatResponse, LLMClient, Messages, opts_kw, tools_kw
 
 MODELS = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
 ROLE_GROUPS = ("planner", "observers", "workers", "reviewers", "summariser", "pool")   # pool: D56's picker
 PROFILE_KEYS = {"base_url", "model", "api_key_env", "merge_system", "reasoning_effort", "max_tokens", "roles",
-                "temperature"}
+                "temperature", "provider"}
 DEFAULT_TEMPERATURE = 0.2
 ROLE_KEYS = {"model", "max_tokens"}
 BOX2_GROUPS = {"planner": "planner", "agent_observer": "observers", "plan_observer": "observers",
@@ -39,6 +39,7 @@ class Profile:
     max_tokens: int | None = None
     roles: dict[str, dict] = field(default_factory=dict)   # group -> {model?, max_tokens?}
     temperature: float | None = DEFAULT_TEMPERATURE        # None: not sent (`temperature: omit`)
+    provider: str | None = None    # D134: `anthropic` → the Messages-API client; else the OpenAI-compatible client
 
 
 def load_profiles(path: str | Path = MODELS) -> tuple[str, dict[str, Profile]]:
@@ -108,8 +109,8 @@ class RoleRouter(LLMClient):
         return self.by_group.get(group, self.default), self.max_tokens.get(group)
 
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
-                      tools: list | None = None) -> ChatResponse:
-        return self.default.chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools))
+                      tools: list | None = None, **opts) -> ChatResponse:
+        return self.default.chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools), **opts_kw(opts))
 
     @property
     def models(self) -> dict[str, str]:

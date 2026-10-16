@@ -33,6 +33,11 @@ class ChatResponse:
     retries: list = field(default_factory=list)   # D48: [{status, wait_s, attempt, retry_after}] before this reply
     throttle_wait_s: float = 0.0       # D48: time waited for --min-seconds-between-calls
     tool_calls: list = field(default_factory=list)   # D132: native tool calls, [{"name", "input"}] in reply order
+    parsed: dict | None = None             # D134: a structured (schema) reply, validated by its pydantic model
+    thinking_summary: str | None = None    # D134: Claude's summarized thinking (thinking_display="summarized")
+    refusal_category: str | None = None    # D134: stop_details.category of a refusal (reasoning_extraction, cyber ...)
+    cache_read_tokens: int = 0             # D134: prompt tokens read from the provider's prompt cache
+    cache_write_tokens: int = 0            # D134: prompt tokens written to it
 
 
 # box: client
@@ -55,6 +60,33 @@ class LLMClient(ABC):
 def tools_kw(tools: list | None) -> dict:
     """D132: `tools=` only when there are tools, so a client without native tool calling is called as before."""
     return {"tools": tools} if tools else {}
+
+
+CALL_OPTIONS = ("schema", "effort", "thinking_display", "cache_prefix")   # D134: per-call options of chat_messages
+
+
+# box: client
+def opts_kw(opts: dict) -> dict:
+    """D134: the per-call options that are set (schema, effort, thinking_display, cache_prefix), so a wrapper passes
+    them on and a call without any is made exactly as before. An unknown option is an error, not ignored."""
+    bad = set(opts) - set(CALL_OPTIONS)
+    if bad:
+        raise TypeError(f"unknown chat_messages option(s) {sorted(bad)}; allowed: {list(CALL_OPTIONS)}")
+    return {k: v for k, v in opts.items() if v is not None}
+
+
+# box: client
+def parse_schema_reply(schema, content: str) -> dict | None:
+    """D134: a reply's JSON validated by the call's pydantic model (a dict), or None when it is not valid JSON for
+    that model."""
+    text = (content or "").strip()
+    m = re.search(r"(?s)```(?:json)?\s*(.*?)```", text)
+    text = m.group(1).strip() if m else text
+    try:
+        return schema.model_validate_json(text).model_dump(mode="json") if hasattr(schema, "model_validate_json") \
+            else json.loads(text)
+    except ValueError:
+        return None
 
 
 def _reasoning_tokens(usage) -> tuple[int, str | None]:
@@ -124,12 +156,19 @@ class OpenAICompatibleClient(LLMClient):
         return max(0.0, wait)
 
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
-                      tools: list | None = None) -> ChatResponse:
+                      tools: list | None = None, schema=None, **opts) -> ChatResponse:
+        """D134: `schema` is sent as OpenAI's response_format json_schema and the reply validated into `parsed` (an
+        endpoint that ignores it leaves parsed None); effort, thinking_display and cache_prefix do not apply here."""
+        opts_kw(opts)
         t0 = time.perf_counter()
         kw = dict(model=self.model, messages=merge_system(messages) if self.merge_system else messages,
                   max_tokens=max_tokens or self.max_tokens)
         if tools:                                      # D132: native tool calling
             kw["tools"] = tools
+        if schema is not None:                         # D134
+            from amoeba.llm.anthropic_client import claude_schema
+            kw["response_format"] = {"type": "json_schema", "json_schema": {
+                "name": getattr(schema, "__name__", "reply"), "schema": claude_schema(schema), "strict": True}}
         if self.temperature is not None:               # None: not sent (Claude's endpoint rejects values below 1)
             kw["temperature"] = self.temperature
         if self.reasoning_effort is not None:          # sent only when set (D49)
@@ -161,8 +200,10 @@ class OpenAICompatibleClient(LLMClient):
         reasoning, source = _reasoning_tokens(usage)
         calls = [{"name": t.function.name, "input": t.function.arguments or ""}
                  for t in (getattr(resp.choices[0].message, "tool_calls", None) or []) if getattr(t, "function", None)]
+        content = resp.choices[0].message.content or ""
         return ChatResponse(
-            content=resp.choices[0].message.content or "", tool_calls=calls,
+            content=content, tool_calls=calls,
+            parsed=parse_schema_reply(schema, content) if schema is not None else None,
             finish_reason=getattr(resp.choices[0], "finish_reason", None),
             reasoning_tokens=reasoning, reasoning_source=source,
             input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
@@ -306,15 +347,24 @@ class MockLLMClient(LLMClient):
         raise RuntimeError(f"MockLLMClient: no scripted response for kind={kind!r}")
 
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
-                      tools: list | None = None) -> ChatResponse:
+                      tools: list | None = None, schema=None, **opts) -> ChatResponse:
+        """D134: with `schema`, a scripted dict (or JSON text) is the reply, validated by the model into `parsed`
+        (an invalid one leaves parsed None, as a real endpoint's would). A scripted ChatResponse is returned as it
+        is (refusals and tool calls in tests)."""
+        opts = opts_kw(opts)
         kind = self.classify(messages)
         content = self._next(kind, messages, seed)
         self.calls.append({"kind": kind, "messages": messages, "seed": seed, "response": content,
-                           "max_tokens": max_tokens, "tools": tools})
+                           "max_tokens": max_tokens, "tools": tools, "schema": schema, **opts})
+        if isinstance(content, ChatResponse):
+            return content
+        if isinstance(content, dict):
+            content = json.dumps(content)
         n_in = sum(len(m.get("content", "")) for m in messages) // 4
         calls = mock_tool_calls(content, tools) if tools else []
         return ChatResponse(content="" if calls else content, input_tokens=n_in, output_tokens=len(content) // 4,
-                            model=self.model, finish_reason="tool_calls" if calls else "stop", tool_calls=calls)
+                            model=self.model, finish_reason="tool_calls" if calls else "stop", tool_calls=calls,
+                            parsed=parse_schema_reply(schema, content) if schema is not None and not calls else None)
 
     def calls_of(self, kind: str) -> list[dict]:
         return [c for c in self.calls if c["kind"] == kind]

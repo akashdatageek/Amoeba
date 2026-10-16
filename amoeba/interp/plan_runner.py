@@ -277,6 +277,9 @@ PROVIDER_BLOCKED_NOTE = ("error: the model service returned no reply for this tu
                          "content filter). Continue the step from where it stands.")
 UNREADABLE_NOTE = ("error: your reply could not be read ({why}). Write each section heading (## Thought, "
                    "## CurrentStep, ## Action, ## ActionInput) at the start of its own line.")
+REASONING_REFUSED = "reasoning_extraction"   # D134: the refusal category of a prompt that asks for written-out reasoning
+REASONING_REFUSED_NOTE = ("error: the model service refused this turn because the request asked for written-out "
+                          "reasoning. Continue the step: call one of your tools, or give the step's output.")
 LAST_TURN_AGAIN = ("Your last turn must be Final Output with a written conclusion (not a search query or a tool "
                    "request). Answer now from what you have.")
 
@@ -2048,8 +2051,10 @@ class PlanRunner:
                 w.contributions.append({"turn": w.turn + 1, "agent": agent.name, "action": act,
                                         "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
                 if act in (UNREADABLE, PROVIDER_BLOCKED):   # D123: nothing readable to pass on; the helper is told
+                    cat = getattr(self, "_refusal_category", None)                   # D134: set by unreadable_turn
                     w.unreadable.append({"agent": agent.name, "turn": w.turn + 1, "why": resp,
-                                         "blocked": act == PROVIDER_BLOCKED})               # D128
+                                         "blocked": act == PROVIDER_BLOCKED,         # D128
+                                         **({"category": cat} if cat else {})})
                     w.completed += f">{agent.name} (reply not readable):\n>Result:\n{resp}\n"
                     continue
                 w.last_message = inp.strip()
@@ -2937,7 +2942,7 @@ class PlanRunner:
             self.i.trace.event("native_text_as_output", {"amoeba.step": n, "gen_ai.agent.name": agent.name})
         else:
             e = MissingSections(["tool call"], [])
-            e.raw, e.blocked = raw, is_blocked(resp)
+            e.raw, e.blocked, e.category = raw, is_blocked(resp), resp.refusal_category
             return self.unreadable_turn(agent, n, e, self.i.trace.n_llm_calls)
         if last and act != FINAL_OUTPUT:                  # D76: only the step output is taken on the last turn
             self.i.trace.event("last_turn_forced", {"amoeba.step": n, "gen_ai.agent.name": agent.name,
@@ -3013,10 +3018,15 @@ class PlanRunner:
             self.i._record(agent, self.ep, raw, rec.get("gen_ai.usage.input_tokens", 0),
                            rec.get("gen_ai.usage.output_tokens", 0))
         blocked = bool(getattr(e, "blocked", False))         # D128: blocked by the service, not a format slip
+        category = getattr(e, "category", None)               # D134: the refusal category, when the service gave one
+        self._refusal_category = category
         why = f"missing sections {e.missing}"
         self.i.trace.event("unreadable_reply", {"amoeba.box": "plan_step", "amoeba.step": n,
                                                 "gen_ai.agent.name": agent.name, "amoeba.missing": e.missing,
-                                                "amoeba.found": e.found[:8], "amoeba.provider_blocked": blocked})
+                                                "amoeba.found": e.found[:8], "amoeba.provider_blocked": blocked,
+                                                "amoeba.refusal_category": category})
+        if category == REASONING_REFUSED:                     # D134: the prompt's fault; an unreadable turn
+            return UNREADABLE, "", REASONING_REFUSED_NOTE, None
         if blocked:
             return PROVIDER_BLOCKED, "", PROVIDER_BLOCKED_NOTE, None
         return UNREADABLE, "", UNREADABLE_NOTE.format(why=why), None

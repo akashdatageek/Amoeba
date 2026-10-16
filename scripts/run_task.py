@@ -23,6 +23,7 @@ from amoeba.config.schema import Limits
 from amoeba.interp.runtime import Interpreter
 from amoeba.interp.trace import TraceWriter
 from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, describe_api_error
+from amoeba.llm.anthropic_client import AnthropicClient, is_anthropic, make_client
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
@@ -53,7 +54,7 @@ from amoeba.adapt.config import adapt_config
 
 LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
-                 "plan_search", "provider_blocked"}   # left out of result.json when None (Phase 1 records unchanged)
+                 "plan_search", "provider_blocked", "reasoning_refusals"}   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -73,7 +74,7 @@ def planned_model(llm) -> str | None:
     if isinstance(llm, ModelRouter):
         names = [n for n in (llm.profile_allowed or llm.allowed or []) if n in llm.registry]
         return llm.registry[names[0]].model if len(names) == 1 else None
-    if isinstance(llm, (OpenAICompatibleClient, CachedLLM)):
+    if isinstance(llm, (OpenAICompatibleClient, AnthropicClient, CachedLLM)):
         return getattr(llm, "model", None) or None
     return None
 
@@ -332,6 +333,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         faults=(ep.faults or None) if ep and topology == "plan" else None,              # D119
         run_guard=(ep.run_guard or None) if ep and topology == "plan" else None,        # D122
         provider_blocked=getattr(trace, "provider_blocked", 0) or None,                # D128
+        reasoning_refusals=getattr(trace, "reasoning_refusals", None) or None,         # D134
         plan_search=(draft.plan_search if draft else search_rec),                       # D120
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
@@ -349,6 +351,22 @@ def models_of(llm, trace) -> dict:
             requested = {"all": asked[0]} if len(asked) == 1 else {"calls": asked}
     returned = sorted({s["gen_ai.response.model"] for s in trace.spans("chat") if s.get("gen_ai.response.model")})
     return {"requested": requested, "returned": returned}
+
+
+# box: runresult
+def reasoning_refusal_lines(refusals: list[dict] | None) -> list[str]:
+    """D134: the run summary's loud lines for calls the model refused because a prompt asks for its reasoning."""
+    if not refusals:
+        return []
+    out = [f"    !! {len(refusals)} call(s) REFUSED because the prompt asks for the model's reasoning "
+           f"(reasoning_extraction) — those turns were unreadable; fix the prompt or use --protocol v2"]
+    seen = set()
+    for x in refusals:
+        k = (x.get("agent"), tuple(x.get("prompt_files") or ()))
+        if k not in seen:
+            seen.add(k)
+            out.append(f"       {x.get('agent') or '?'}: {', '.join(x.get('prompt_files') or []) or 'prompt file not found'}")
+    return out
 
 
 CONTINUE = "continue"
@@ -595,11 +613,11 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
 
     def make(e):
         key = args.api_key or os.environ.get(e.api_key_env or "", "")
-        client = OpenAICompatibleClient(base_url=e.base_url, api_key=key, model=e.model, max_tokens=2048,
-                                        max_rate_retries=args.max_rate_retries, min_seconds_between_calls=0.0,
-                                        merge_system=e.merge_system if args.merge_system is None else args.merge_system,
-                                        reasoning_effort=effort or e.reasoning_effort, temperature=e.temperature,
-                                        request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
+        client = make_client(e.provider, base_url=e.base_url, api_key=key, model=e.model, max_tokens=2048,  # D134
+                             max_rate_retries=args.max_rate_retries, min_seconds_between_calls=0.0,
+                             merge_system=e.merge_system if args.merge_system is None else args.merge_system,
+                             reasoning_effort=effort or e.reasoning_effort, temperature=e.temperature,
+                             request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
         return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
             else client
     allowed_arg = getattr(args, "allowed_models", None)
@@ -615,7 +633,9 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
         # so a second entry (claude-sonnet-5-5) never takes a Gemma run's verify steps, and --profile claude-sonnet
         # runs on Claude
         prof = get_profile(getattr(args, "profile", None))
-        entry = next((n for n, e in registry.items() if e.model == prof.model), None)
+        # D134: the entry with the profile's model AND its route (the Messages API or the OpenAI-compatible one)
+        entry = next((n for n, e in registry.items() if e.model == prof.model
+                      and is_anthropic(e.provider) == is_anthropic(prof.provider)), None)
         if entry is None and getattr(args, "profile", None):
             raise SystemExit(f"--profile {args.profile}: no registry entry in amoeba/config/models.yaml has model "
                              f"{prof.model!r}; the plan runner's router (D97) calls registry models only")
@@ -649,11 +669,11 @@ def build_llm(args: argparse.Namespace) -> LLMClient:
     effort = None if args.reasoning_effort == "unset" else args.reasoning_effort or profile.reasoning_effort
 
     def make(m: str) -> LLMClient:
-        client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=m,
-                                        max_tokens=profile.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
-                                        min_seconds_between_calls=args.min_seconds_between_calls,
-                                        merge_system=merge, reasoning_effort=effort, temperature=profile.temperature,
-                                        request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
+        client = make_client(profile.provider, base_url=base_url, api_key=api_key, model=m,   # D134
+                             max_tokens=profile.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
+                             min_seconds_between_calls=args.min_seconds_between_calls,
+                             merge_system=merge, reasoning_effort=effort, temperature=profile.temperature,
+                             request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
         return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
             else client
     # a reply limit given on the command line wins over the profile's for that group (D27 flags)
@@ -992,6 +1012,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
               f"rounds={r.draft_rounds} consensus={r.consensus} status={r.status} error={r.error} answer={shown!r}")
         print(f"    {describe(r.usage)}")                                                    # D47
+        for line in reasoning_refusal_lines(r.reasoning_refusals):                         # D134: loud
+            print(line)
         if r.status == "needs_clarification":                                              # D116
             q = (r.interpretation or {}).get("pending") or []
             for x in q:

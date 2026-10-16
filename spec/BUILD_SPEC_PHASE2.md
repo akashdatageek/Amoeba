@@ -1003,3 +1003,12 @@ output is skipped (`blocked_upstream`, no call) and its dependents wait in turn;
 fix recovered no longer stops the task; and a skipped answer step gives an answer assembled by plain code from the
 outputs that exist, under a header naming the failed and skipped steps.
 
+**D134, Claude through its own API; refusals by category (Oct 16).** The probe re-run was blocked in planning. The
+reason was not the task: 13 prompt files ask the model for a "## Thought" section, and Sonnet 5.5 refuses to write out
+its reasoning (`reasoning_extraction`). Claude's OpenAI-compatible endpoint hid that: an empty `content_filter`
+reply with no reason, while response_format, strict, reasoning_effort and seed were silently ignored. With
+`provider: anthropic` (profile `claude-sonnet`), Claude's calls now go through its own Messages API: structured
+outputs, effort, a thinking summary, prompt caching, and the refusal category. A blocked reply is no longer retried
+unchanged (D128's retry was blocked every time). A reasoning refusal is named loudly with the prompt file that caused
+it. Other refusals go to the next model in routed mode, and Box 4's report names the categories. The old route stays as
+`claude-sonnet-compat`. Design: docs/design/D134_anthropic_client.md.

@@ -19,21 +19,19 @@ class Blocking(LLMClient):
     def __init__(self, n: int, answer: str = READABLE):
         self.n, self.answer, self.calls = n, answer, 0
 
-    def chat_messages(self, messages, seed=0, max_tokens=None):
+    def chat_messages(self, messages, seed=0, max_tokens=None, **kw):
         self.calls += 1
         if self.calls <= self.n:
             return ChatResponse("", 900, 0, finish_reason="content_filter")
         return ChatResponse(self.answer, 900, 30, finish_reason="stop")
 
 
-def test_a_blocked_reply_is_retried_once_and_counted():
+def test_a_blocked_reply_is_counted_and_not_retried():
+    """D134 replaces D128's one identical retry (it was blocked the same way every time): no retry."""
     tr = TraceWriter(None)
-    llm = TracedLLM(Blocking(1), tr)
-    assert llm.chat_messages(MSG).content == READABLE
-    assert tr.provider_blocked == 1 and [e["amoeba.retry"] for e in tr.events("provider_blocked")] == [True]
-    tr = TraceWriter(None)
-    stub = Blocking(5)
-    assert TracedLLM(stub, tr).chat_messages(MSG).content == "" and stub.calls == 2 and tr.provider_blocked == 2
+    stub = Blocking(1)
+    assert TracedLLM(stub, tr).chat_messages(MSG).content == "" and stub.calls == 1
+    assert tr.provider_blocked == 1 and [e["amoeba.retry"] for e in tr.events("provider_blocked")] == [False]
 
 
 def test_a_blocked_reply_gets_no_repair_call_and_says_it_was_blocked():
@@ -44,7 +42,7 @@ def test_a_blocked_reply_gets_no_repair_call_and_says_it_was_blocked():
         assert getattr(e, "blocked", False) is True
     else:
         raise AssertionError("a blocked reply has no sections")
-    assert stub.calls == 2                         # the call and its one retry; no repair call
+    assert stub.calls == 1                         # the call only: no retry (D134), no repair call
 
 
 def test_the_cache_never_stores_a_blocked_reply(tmp_path):

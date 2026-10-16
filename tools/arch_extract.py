@@ -734,9 +734,14 @@ BOXES: list[dict] = [
                "D122: no token cap by default; a runaway guard stops a plan run after --stall-calls model calls with "
                "no progress (default 60; calls, never tokens; armed once the plan runner starts). With an optional "
                "hard cap the plan runner enters finish mode past 85% of it, and a stopped plan run returns its "
-               "finished steps as a partial answer."],
+               "finished steps as a partial answer.",
+               "D134: provider: anthropic sends Claude's calls through its own Messages API (structured outputs, "
+               "effort, thinking summary, prompt caching, refusal categories). A blocked reply is never retried as "
+               "it was; a refusal because the prompt asks for written-out reasoning is a loud "
+               "prompt_asks_for_reasoning line naming the prompt file, and the run summary says so."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
+                  "amoeba/llm/anthropic_client.py::AnthropicClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
                   "amoeba/llm/cache.py::CachedLLM", "amoeba/llm/limits.py::RunLimits",
                   "amoeba/llm/limits.py::estimate", "amoeba/llm/profiles.py::RoleRouter",
