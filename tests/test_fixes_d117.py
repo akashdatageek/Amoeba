@@ -41,11 +41,11 @@ def good(n):
 NO_EDIT = "I cannot see a fix."          # a reply with no JSON edit: the proposer gives no fix (twice: no fix)
 
 
-def run(task, envelope, trace, tools, script, tmp_path=None, stock=None, setup_cfg=None, proposer=(NO_EDIT,)):
+def run(task, envelope, trace, tools, script, tmp_path=None, stock=None, setup_cfg=None, proposer=(NO_EDIT,), opts=None):
     llm, cfg = plan_team(task, envelope, trace, plan_worker=script, fix_proposer=list(proposer))
     if setup_cfg:
         setup_cfg(cfg)
-    ep = Interpreter(llm, tools, trace, run_dir=tmp_path, plan_options=ON, stock=stock).run(cfg, task, seed=0)
+    ep = Interpreter(llm, tools, trace, run_dir=tmp_path, plan_options=opts or ON, stock=stock).run(cfg, task, seed=0)
     return llm, cfg, ep
 
 
@@ -244,7 +244,8 @@ def test_with_the_pool_off_the_capability_rung_is_skipped_and_the_task_stops_wit
     def script(messages, seed):
         n = step_no(messages)
         return reply("Final Output", f"OUT-1\n{BODY}\nBLOCKED: currency_api — none") if n == "1" else good(n)
-    llm, cfg, ep = run(task, envelope, trace, tools, script, tmp_path)
+    llm, cfg, ep = run(task, envelope, trace, tools, script, tmp_path,
+                       opts=PlanOptions(adapt="on", failed_step="run", proposer="single"))   # D154: single's protocol
     [d] = ep.adaptation["fixes"]                       # the code rung is skipped; the proposer gives no fix
     assert d["rung"] == "D" and len(llm.calls_of("fix_proposer")) == 2          # one retry on an invalid reply
     assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}, {"step": 1, "why": NO_RUNNER}]

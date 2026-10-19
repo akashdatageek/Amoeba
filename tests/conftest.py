@@ -61,6 +61,51 @@ def mock(**script) -> MockLLMClient:
     return MockLLMClient(script=script)
 
 
+# D154: AMOEBA_TEST_PROPOSER=scoped runs a test module with every PlanOptions under --proposer scoped unless the test
+# sets it (tests/test_scoped_proposers_d154.py re-runs the Box 4 tests this way). A scripted single-proposer reply has
+# no `because`; the shim adds the first evidence line the proposer was shown, so the scoped checks can pass.
+if os.environ.get("AMOEBA_TEST_PROPOSER") == "scoped":
+    import json as _json
+    import re as _re
+
+    from amoeba.interp.plan_runner import PlanOptions as _PO
+
+    _po_init = _PO.__init__
+
+    def _scoped_init(self, *a, **kw):
+        _po_init(self, *a, **kw)
+        if "proposer" not in kw:
+            self.proposer = "scoped"
+
+    _PO.__init__ = _scoped_init
+    _mock_next = MockLLMClient._next
+
+    def _scoped_next(self, kind, messages, seed):
+        """A scoped call answers from the test's single fix_proposer script: the next scripted edit goes to the scope
+        whose allowed list offers its op (with the first evidence line as its `because`); the other scope is told
+        nothing fits and gives no candidate. A scope with its own script is answered from it."""
+        if kind not in ("fix_proposer_inv", "fix_proposer_dom") or kind in self._script:
+            return _mock_next(self, kind, messages, seed)
+        user = messages[-1]["content"]
+        src = self._script.get("fix_proposer")
+        nxt = (src[0] if isinstance(src, list) and src else src(messages, seed) if callable(src) else None)
+        try:
+            obj = _json.loads(nxt[nxt.index("{"):nxt.rindex("}") + 1]) if isinstance(nxt, str) else None
+        except ValueError:
+            obj = None
+        offered = _re.findall(r"^- (\w+): params", user.split("# Edits allowed for this cause", 1)[-1], _re.M)
+        if not (isinstance(obj, dict) and "edit" in obj) or obj["edit"].get("op") not in offered:
+            if isinstance(obj, dict) and "edit" in obj:
+                return "No edit of my scope fits."
+            return _mock_next(self, "fix_proposer", messages, seed)        # a scripted non-edit (no fix) is shared
+        out = _mock_next(self, "fix_proposer", messages, seed)
+        ev = _re.search(r"Cause: [^\n]*\n- ([^\n]+)", user)
+        obj["because"] = (ev.group(1) if ev else "")[:60]
+        return _json.dumps(obj)
+
+    MockLLMClient._next = _scoped_next
+
+
 # D136: AMOEBA_TEST_PROTOCOL=v2 runs a test module with every PlanOptions in native tool-calling mode and protocol v2
 # unless the test sets those itself (tests/test_protocol_v2_d136.py runs the Box 4 tests this way).
 if os.environ.get("AMOEBA_TEST_PROTOCOL") == "v2":

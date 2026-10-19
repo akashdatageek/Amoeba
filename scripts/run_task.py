@@ -612,6 +612,12 @@ def explicit_flags(argv: list[str]) -> frozenset:
     return frozenset(a.split("=", 1)[0] for a in argv if a.startswith("--"))
 
 
+def default_proposer() -> str:
+    """D154: adapt.yaml proposer.scoped → "scoped" (the default), else "single"."""
+    from amoeba.adapt.probe import scope_config
+    return "scoped" if scope_config().get("scoped", True) else "single"
+
+
 def cli_plan_options(args: argparse.Namespace):
     """The plan runner's settings from the command line (D39+)."""
     from amoeba.interp.plan_runner import PlanOptions
@@ -629,7 +635,9 @@ def cli_plan_options(args: argparse.Namespace):
                        tool_access=getattr(args, "tool_access", "asked"),
                        failed_step=getattr(args, "failed_step", "run"),
                        protocol=getattr(args, "protocol", "auto"),                         # D136, D153 auto
-                       planning_tier=getattr(args, "planning_tier", "auto"), **extra)              # D143
+                       planning_tier=getattr(args, "planning_tier", "auto"),                       # D143
+                       proposer=getattr(args, "proposer", None) or default_proposer(),               # D154
+                       fix_pick=getattr(args, "fix_pick", "code"), **extra)
 
 
 # box: runresult
@@ -900,6 +908,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "arguments and the step ends with a typed Final_Output (D136); without native tool calling the "
                         "steps fall back to legacy and the summary says so; auto (default) = v2 when the run's model "
                         "has supports.tools in models.yaml, legacy otherwise (D153)")
+    p.add_argument("--proposer", choices=["scoped", "single"], default=None,
+                   help="plan, --adapt on: Box 4's last rung. scoped = two scoped fix proposers (how the team works / "
+                        "what an expert would know), each edit tried from the same starting state, plain code picks; "
+                        "single = one proposer, one edit (D117). Default: adapt.yaml proposer.scoped (D154)")
+    p.add_argument("--fix-pick", choices=["code", "llm"], default="code",
+                   help="plan, --proposer scoped: who picks between the two probes; llm is an ablation arm for "
+                        "experiments only (one call picks; the checks still run and both are recorded) (D154)")
     p.add_argument("--planning-tier", choices=["auto", "light", "standard", "full"], default="auto",
                    help="plan: how much planning Box 2 does — light: 1 round, no observers; standard: up to 2 rounds, "
                         "the plan observer; full: up to 3 rounds, both observers; auto: decided by code from the task "

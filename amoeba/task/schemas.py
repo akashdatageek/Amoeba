@@ -15,12 +15,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from amoeba.adapt.proposer import FixReply
+from amoeba.adapt.proposer import FixReply, ScopedFixReply
 from amoeba.interp.step_protocol import FinalOutput, ResolverOutput
 
 StepFinal = FinalOutput          # Final_Output (D136)
 ResolveOut = ResolverOutput      # the dispute resolver (D136)
 FixOut = FixReply                # the fix proposer (D117 D): its params differ per op, so it goes as json_prompt
+ScopedFixOut = ScopedFixReply    # D154: a scoped fix proposer (with its `because` quote)
 
 
 def two_sentences(v: str | None) -> str | None:
@@ -211,7 +212,8 @@ class ToolWriterOut(_Out):
 SCHEMAS: dict[str, type[BaseModel]] = {
     "reading": ReadingOut, "family": FamilyOut, "plan_search": PlanSearchOut, "plan": PlanOut,
     "review": ReviewOut, "step_final": StepFinal, "resolve": ResolveOut, "replan": ReplanOut,
-    "critique": CritiqueOut, "pool_pick": PoolPickOut, "fix": FixOut, "tool_writer": ToolWriterOut,
+    "critique": CritiqueOut, "pool_pick": PoolPickOut, "fix": FixOut, "fix_scoped": ScopedFixOut,
+    "tool_writer": ToolWriterOut,
 }
 
 
@@ -222,7 +224,7 @@ def to_legacy(kind: str, out: BaseModel) -> str:
     d = out.model_dump(mode="json")
     if kind == "reading":
         return "## Entities\n```json\n" + json.dumps(d["entities"], ensure_ascii=False) + "\n```"
-    if kind in ("family", "plan_search", "fix"):
+    if kind in ("family", "plan_search", "fix", "fix_scoped"):
         return json.dumps({k: v for k, v in d.items() if k != "rationale"}, ensure_ascii=False)
     if kind == "tool_writer":
         head = {k: d[k] for k in ("name", "description", "input")}

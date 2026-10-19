@@ -20,6 +20,11 @@ limits:                       # checks the fix proposer's edit must pass (amoeba
 
 proposer:                     # D129: the fix proposer's reply room (models that think first need more; a reply cut
   max_tokens: 8192            # off is asked once more with twice the room, D27)
+  # D154: two scoped proposers (HOW THE TEAM WORKS / WHAT AN EXPERT WOULD KNOW), each edit probed from the same
+  # starting state, plain code picks; false = one proposer, one edit (D117 D). The CLI's --proposer overrides it.
+  scoped: true
+  # D154: true = after a probe ends done, the other is not run (half the cost of an easy round, no comparison)
+  stop_on_first_done: false
 
 diagnoser:                    # the stuck causes and the edits each allows (amoeba/adapt/stuck.py)
   # tie order when two causes are found at once: missing_input first (a mixed step is fixed for it, then re-checked)
@@ -27,6 +32,7 @@ diagnoser:                    # the stuck causes and the edits each allows (amoe
   # D128: provider_blocked first: while the service refuses the replies, no other fix can be judged
   causes: [provider_blocked, missing_input, capability, missing_data, format, tool_error, checks, max_turns,
            claimed_file_missing]
+  # D154: add_tool_guidance and add_watch_rule are offered only to the scoped proposers (--proposer scoped)
   # Only edits something can apply: code fixes (add_dependency, rerun_upstream, "set_run_option:<name>" for that one
   # option, grant_tool from the pool, make_tool: D125, a written tool or an approved one from the library) and the fix proposer's edits (add_role_rule, add_helper_role, grant_tool,
   # split_step, replan_remaining, work_around). Code fixes come first, the proposer only after them.
@@ -38,18 +44,21 @@ diagnoser:                    # the stuck causes and the edits each allows (amoe
     provider_blocked: [compact_prompt, switch_model]
     missing_input: [add_dependency, rerun_upstream, "set_run_option:max_input_chars", add_role_rule, split_step,
                     replan_remaining]
-    capability: [grant_tool, make_tool, add_helper_role, work_around, split_step, replan_remaining]
+    capability: [grant_tool, make_tool, add_tool_guidance, add_helper_role, work_around, split_step, replan_remaining]
     # D127: web tools when the step's helpers lack them, more turns, then the proposer (a narrower done_when with the
     # gap stated is a work_around)
-    missing_data: [grant_tool, "set_run_option:max_turns", add_role_rule, work_around, split_step, replan_remaining]
-    tool_error: [add_role_rule, grant_tool, "set_run_option:max_turns", add_helper_role, replan_remaining]
+    missing_data: [grant_tool, "set_run_option:max_turns", add_role_rule, add_tool_guidance, work_around, split_step,
+                   replan_remaining]
+    tool_error: [add_role_rule, grant_tool, add_tool_guidance, "set_run_option:max_turns", add_helper_role,
+                 replan_remaining]
     # D129: replan_remaining is the proposer's last edit for every cause but provider_blocked
-    checks: ["set_run_option:check_retry_turns", "set_run_option:max_input_chars", add_role_rule, split_step,
-             add_helper_role, replan_remaining]
-    max_turns: ["set_run_option:max_turns", split_step, add_role_rule, replan_remaining]
+    checks: ["set_run_option:check_retry_turns", "set_run_option:max_input_chars", add_role_rule, add_watch_rule,
+             split_step, add_helper_role, replan_remaining]
+    max_turns: ["set_run_option:max_turns", split_step, add_role_rule, add_watch_rule, replan_remaining]
     # D123: a reply plain code could not read (a section heading missing even after the unglue and the repair call)
-    format: ["set_run_option:max_turns", add_role_rule, split_step, replan_remaining]
-    claimed_file_missing: [add_role_rule, grant_tool, split_step, replan_remaining]
+    format: ["set_run_option:max_turns", add_role_rule, add_watch_rule, split_step, replan_remaining]
+    claimed_file_missing: [add_role_rule, grant_tool, add_tool_guidance, add_watch_rule, split_step,
+                           replan_remaining]
   max_evidence: 8             # evidence lines kept per diagnosis
   # D128: a lacked line that names the helper's own turns is running out of turns (signal max_turns), not a tool
   out_of_turns_phrases: [turn budget, turns budget, turn limit, turns limit, out of turns, ran out of turns,

@@ -15,6 +15,9 @@ from amoeba.interp.runtime import Interpreter
 from tests.test_plan_runner import BODY, plan_team, step_no
 
 ON = PlanOptions(adapt="on", failed_step="run")  # D138 (B10): the stop-the-task behaviour of failed_step "run"
+# D154: tests of the single proposer's own call protocol (call counts, its prompt, its refusal wording) pin it; the
+# scoped round's versions of them are in tests/test_scoped_proposers_d154.py
+SINGLE = PlanOptions(adapt="on", failed_step="run", proposer="single")
 BLOCK = f"OUT-1\n{BODY}\nBLOCKED: currency_api — no exchange rate"
 
 
@@ -30,9 +33,9 @@ def edit(op, reason="it lets the step finish", **params):
     return json.dumps({"edit": {"op": op, "params": params}, "reason": reason})
 
 
-def run(task, envelope, trace, tools, script, proposer, tmp_path=None):
+def run(task, envelope, trace, tools, script, proposer, tmp_path=None, opts=None):
     llm, cfg = plan_team(task, envelope, trace, plan_worker=script, fix_proposer=list(proposer))
-    ep = Interpreter(llm, tools, trace, run_dir=tmp_path, plan_options=ON).run(cfg, task, seed=0)
+    ep = Interpreter(llm, tools, trace, run_dir=tmp_path, plan_options=opts or ON).run(cfg, task, seed=0)
     return llm, cfg, ep
 
 
@@ -90,7 +93,7 @@ def test_grant_tool_after_the_pool_rung_was_skipped(task, envelope, trace, tools
             return reply("Final Output", BLOCK)
         return good(n)
     llm, cfg, ep = run(task, envelope, trace, tools, script, [edit("grant_tool", role="Cost Analyst", tool="echo")],
-                       tmp_path)
+                       tmp_path, opts=SINGLE)
     [f] = ep.adaptation["fixes"]
     assert (f["kind"], f["rung"], f["result"]) == ("grant_tool", "D", "recovered") and ep.error is None
     assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}, {"step": 1, "why": NO_RUNNER}]   # code rungs first
@@ -112,7 +115,7 @@ def test_one_retry_shows_the_refusal_then_a_valid_edit_is_applied(task, envelope
             messages[-1]["content"] else good(n)
     llm, cfg, ep = run(task, envelope, trace, tools, script,
                        [edit("grant_tool", role="Cost Analyst", tool="fx_live"),
-                        edit("grant_tool", role="Cost Analyst", tool="echo")])
+                        edit("grant_tool", role="Cost Analyst", tool="echo")], opts=SINGLE)
     first, second = proposer_prompts(llm)
     assert "refused by plain code" in second and "tool: 'fx_live' is not available in this run" in second
     [f] = ep.adaptation["fixes"]
@@ -251,7 +254,7 @@ def test_a_work_around_before_any_grant_or_helper_is_refused(task, envelope, tra
     def script(messages, seed):
         return reply("Final Output", BLOCK) if step_no(messages) == "1" else good(step_no(messages))
     wa = edit("work_around", capability="currency_api", method="m", done_when="", limitation="l")
-    llm, cfg, ep = run(task, envelope, trace, tools, script, [wa, wa])
+    llm, cfg, ep = run(task, envelope, trace, tools, script, [wa, wa], opts=SINGLE)
     [f] = ep.adaptation["fixes"]
     assert "edit 'work_around' is not allowed" in f["result"] and ep.adaptation["workarounds"] == []
 
@@ -264,7 +267,7 @@ def test_at_most_two_helpers_are_added_per_task(task, envelope, trace, tools):
         return reply("Final Output", BLOCK) if step_no(messages) == "1" else good(step_no(messages))
     llm, cfg, ep = run(task, envelope, trace, tools, script,
                        [edit("add_helper_role", role=card("A")), edit("add_helper_role", role=card("B")),
-                        edit("add_helper_role", role=card("C"))])
+                        edit("add_helper_role", role=card("C"))], opts=SINGLE)
     kinds = [(f["kind"], f.get("helper")) for f in ep.adaptation["fixes"]]
     assert kinds[:2] == [("add_helper_role", "A"), ("add_helper_role", "B")] and kinds[2][0] == "fix_proposer"
     assert "- add_helper_role: params" not in proposer_prompts(llm)[2]         # no longer offered after two
@@ -278,7 +281,7 @@ def test_the_per_step_limit_counts_the_proposer(task, envelope, trace, tools, mo
         return reply("Final Output", BLOCK) if step_no(messages) == "1" else good(step_no(messages))
     llm, cfg, ep = run(task, envelope, trace, tools, script,
                        [edit("grant_tool", role="Cost Analyst", tool="echo"),
-                        edit("work_around", capability="currency_api", method="m", done_when="", limitation="l")])
+                        edit("work_around", capability="currency_api", method="m", done_when="", limitation="l")], opts=SINGLE)
     assert len(ep.adaptation["fixes"]) == 1 and len(llm.calls_of("fix_proposer")) == 1
     assert ep.adaptation["stopped"]["why"] == "limit: 1 fixes per step"
 

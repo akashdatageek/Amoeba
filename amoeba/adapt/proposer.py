@@ -53,6 +53,14 @@ SHAPES = {"add_role_rule": '{"role": "<a role of the stuck step>", "text": "<one
                          'what is not covered) {"capability": "<the missing capability>", "method": "<the other method>", '
                          '"done_when": "<the narrower done_when, or empty to keep it>", '
                          '"limitation": "<one sentence for the final answer\'s Limitations>"}'}
+# D154: the scoped proposers' two new edits (offered only under --proposer scoped; single mode keeps D_OPS)
+NEW_OPS = ("add_tool_guidance", "add_watch_rule")
+D_OPS_SCOPED = D_OPS + NEW_OPS
+SHAPES["add_tool_guidance"] = ('{"tool": "<a tool the step\'s helpers hold>", "text": "<one line on how to use it '
+                               'for this step, at most 300 characters>"}')
+SHAPES["add_watch_rule"] = ('{"after_calls": <5 to 40>, "unless": "file_written" | "tool_called:<tool name>", '
+                            '"text": "<one reminder plain code adds once to a tool result after that many calls '
+                            'without the condition, at most 300 characters>"}')
 WORKAROUND_AFTER = ("grant_tool", "add_helper_role")   # user (Oct 6): a work-around only after one of these failed
 MAX_CARD_CHARS = 1500     # a new helper's prompt / description
 MAX_STEP_CHARS = 600      # a sub-step's text or do
@@ -108,7 +116,20 @@ class WorkAroundP(_P):
     limitation: str
 
 
-PARAMS = {"add_role_rule": RoleRuleP, "add_helper_role": HelperP, "grant_tool": GrantP, "split_step": SplitP,
+# box: proposer
+class ToolGuidanceP(_P):
+    tool: str
+    text: str
+
+
+# box: proposer
+class WatchRuleP(_P):
+    after_calls: int = Field(ge=5, le=40)
+    unless: str = Field(pattern=r"^(file_written|tool_called:\S+)$")
+    text: str
+
+
+PARAMS = {"add_role_rule": RoleRuleP, "add_tool_guidance": ToolGuidanceP, "add_watch_rule": WatchRuleP, "add_helper_role": HelperP, "grant_tool": GrantP, "split_step": SplitP,
           "replan_remaining": ReplanP, "work_around": WorkAroundP}
 
 
@@ -159,6 +180,8 @@ class FixEdit(BaseModel):
             return [("plan", p["plan"], 8000)]
         if self.op == "work_around":
             return [("method", p["method"], lim), ("done_when", p["done_when"], lim), ("limitation", p["limitation"], lim)]
+        if self.op in NEW_OPS:                                                             # D154
+            return [("tool guidance" if self.op == "add_tool_guidance" else "watch rule", p["text"], lim)]
         return []
 
 
@@ -171,7 +194,24 @@ class FixReply(BaseModel):
 
 
 # box: proposer
-def parse_fix(text: str) -> FixReply:
+class ScopedFixEdit(FixEdit):
+    """D154: a scoped proposer's edit: the six edits plus add_tool_guidance and add_watch_rule."""
+    op: Literal["add_role_rule", "add_helper_role", "grant_tool", "split_step", "replan_remaining", "work_around",
+                "add_tool_guidance", "add_watch_rule"]
+
+
+# box: proposer
+class ScopedFixReply(BaseModel):
+    """D154: a scoped proposer's reply: the edit, the reason, and `because`, a quote (at most 200 characters) from the
+    evidence or the last attempt it was shown; plain code refuses an edit whose quote is not in that text."""
+    model_config = ConfigDict(extra="forbid")
+    edit: ScopedFixEdit
+    reason: str = Field(max_length=300)
+    because: str = Field(max_length=200)
+
+
+# box: proposer
+def parse_fix(text: str, scoped: bool = False) -> FixReply:
     """The reply's edit: the last top-level JSON object that holds an "edit" (a code fence around it is allowed).
     Gemma's thought section often quotes JSON from the prompt (a fix already tried, a params shape) before the answer,
     so the first "{" of the reply is not the edit. With no object holding "edit", the last object is validated (its
@@ -188,7 +228,8 @@ def parse_fix(text: str) -> FixReply:
         i = s.find("{", end)
     if not objs:
         raise ValueError("no JSON object in the reply")
-    return FixReply.model_validate(next((o for o in reversed(objs) if "edit" in o), objs[-1]))
+    return (ScopedFixReply if scoped else FixReply).model_validate(next((o for o in reversed(objs) if "edit" in o),
+                                                                        objs[-1]))
 
 
 # box: proposer
@@ -199,7 +240,8 @@ def allowed_text(allowed: list[str], next_step: int) -> str:
 
 # box: proposer
 def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[str, str], tried: set[str],
-                 roles_of_step: list[str], tried_kinds: set[str] = frozenset(), step: int | None = None) -> list[str]:
+                 roles_of_step: list[str], tried_kinds: set[str] = frozenset(), step: int | None = None,
+                 held: set[str] | None = None) -> list[str]:
     """The checks that need no live plan. tools: name → description of the tools available in this run; tried: the
     keys of the fixes already tried in this task; roles_of_step: the stuck step's role names; tried_kinds: the kinds of
     the fixes already tried for this step (work_around needs a grant_tool or add_helper_role among them)."""
@@ -221,6 +263,9 @@ def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[st
         hits = [w for w in cfg["denylist"] if re.search(r"(?<![a-z0-9])" + re.escape(w), low)]
         if hits:
             out.append(f"wording: {where}: denied wording {hits}")
+        if CHECK_EDIT.search(low):                                                         # D154 (B4)
+            out.append(f"checks: {where}: an edit may not add, change or remove a check, the contract or a "
+                       "checker script")
     if e.op in ("add_role_rule", "grant_tool") and p["role"] not in roles_of_step:
         out.append(f"role {p['role']!r} is not a role of the stuck step ({', '.join(roles_of_step)})")
     if e.op == "add_role_rule" and not p["text"].strip():
@@ -234,6 +279,23 @@ def fix_problems(reply: FixReply, cause: str, allowed: list[str], tools: dict[st
             out.append(f"tool: {t!r} acts outside the run")
         elif "x402" in t.lower() or "paid" in t.lower():
             out.append(f"tool: {t!r} is a paid endpoint")
+    if e.op == "add_tool_guidance" and held is not None and p["tool"] not in held:        # D154
+        out.append(f"tool: {p['tool']!r} is not held by the stuck step's helpers")
     if e.key(step) in tried:
         out.append("this edit was already tried in this task")
     return out
+
+
+# D154 (B4): wording that would change what the step is checked against (a check, the contract, a checker script)
+CHECK_EDIT = re.compile(r"(?<![a-z0-9])(?:add|remove|delete|drop|change|edit|rewrite|relax|loosen|lower|weaken|replace|"
+                        r"turn off)\b[^.;]{0,40}\b(?:checks?|contract|checker(?: script)?)\b|"
+                        r"\b(?:checks?|contract|checker(?: script)?)\b[^.;]{0,20}\b(?:removed|deleted|dropped|changed|"
+                        r"relaxed|loosened|lowered|weakened|replaced|rewritten)\b")
+
+
+# box: proposer
+def quote_found(quote: str, shown: str) -> bool:
+    """D154: whether a scoped proposer's `because` quote is in the text it was shown (whitespace and case folded)."""
+    norm = lambda t: " ".join((t or "").lower().split())
+    q = norm(quote).strip(" \"'.")
+    return bool(q) and q in norm(shown)

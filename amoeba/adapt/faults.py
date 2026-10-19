@@ -128,6 +128,18 @@ class Faults:
     def __bool__(self) -> bool:
         return bool(self.faults)
 
+    def snapshot(self) -> dict:
+        """D154: the faults' state (how often each fired, whether it cleared, tools hidden, upstreams saved), so each
+        Box 4 probe faces exactly the fault state the stuck attempt faced."""
+        import copy
+        return {"faults": copy.deepcopy(self.faults), "hidden": copy.deepcopy(self.hidden), "saved": set(self.saved)}
+
+    def put_back(self, state: dict) -> None:
+        """D154: put back a snapshot()."""
+        import copy
+        self.faults, self.hidden = copy.deepcopy(state["faults"]), copy.deepcopy(state["hidden"])
+        self.saved = set(state["saved"])
+
     def _event(self, name: str, f: Fault, **extra) -> None:
         if self.trace is not None:
             self.trace.event(name, {"amoeba.box": "faults", "amoeba.fault": f.cause, "amoeba.step": f.step,

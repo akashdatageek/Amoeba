@@ -60,8 +60,9 @@ def test_diagnose_picks_one_cause_in_the_table_order_with_its_allowed_edits():
     assert d["cause"] == "capability" and d["signals"] == ["repeated_error", "max_turns", "capability_unfilled"]
     assert "grant_tool" in d["allowed_edits"]   # D117: model edits are gone
     t = diagnose(step_signals(meta(tool_calls=m["tool_calls"])))
-    assert t["cause"] == "tool_error" and t["allowed_edits"][:3] == ["add_role_rule", "grant_tool",
-                                                                     "set_run_option:max_turns"]
+    from amoeba.adapt.proposer import NEW_OPS                 # D154: the scoped edits sit in the row too
+    assert t["cause"] == "tool_error" and [a for a in t["allowed_edits"] if a not in NEW_OPS][:3] == [
+        "add_role_rule", "grant_tool", "set_run_option:max_turns"] and "add_tool_guidance" in t["allowed_edits"]
     assert len(diagnose(step_signals(meta(checks=[{"name": f"c{i}", "pass": False} for i in range(20)])))
                ["evidence"]) == 8
 

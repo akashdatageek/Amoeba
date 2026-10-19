@@ -489,7 +489,9 @@ BOXES: list[dict] = [
                "output unless it is the last turn or clearly an answer.",
                "D144: a step's transcript keeps the last two turns in full and older turns as one line each; tool "
                "results over 2,000 characters go to a file (first 800 and last 400 characters kept), and file writes are "
-               "summarised."],
+               "summarised.",
+               "D154: add_tool_guidance adds a line to a held tool's section, and add_watch_rule adds a reminder once to "
+               "a tool result, in both protocols."],
          proposes="One action and its input per turn; the step's output.",
          disposes="Plain code decides what the helper sees, runs the tools, and caps the turns.",
          prompts=["plan_step", "plan_step_system", "plan_critique", "plan_step_v2"],
@@ -954,7 +956,9 @@ BOXES: list[dict] = [
                "size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second "
                "failure is no fix. The adaptation limits apply; success is the step ending done.",
                "D155: a split or a re-plan never drops a check: the replaced steps' checks move to the new steps by "
-               "plain code, and a re-plan may not write checks."],
+               "plain code, and a re-plan may not write checks.",
+               "D154: under --proposer scoped the last rung is a round: two scoped proposers, each edit probed from one "
+               "snapshot and undone, plain code picks; the winner's probed state is kept."],
          proposes="One edit with a reason (fix_proposer prompt).",
          disposes="Plain code refuses, or applies the edit and judges the step by its checks and contract.",
          prompts=["fix_proposer"],

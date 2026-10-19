@@ -890,6 +890,46 @@ result shaped the draft; plain code records `used_in` and removes the ids before
 team's `[S#]` sources, D74's citation check or provenance. Design and the differences from it:
 `docs/design/D120_plan_search.md` ("As built"). To be tested after Stage E as its own off-vs-on comparison on Box 2.
 
+**D154, the scoped round (Oct 19).** Box 4's last rung became a round under plain code's control.
+- Two fix proposers are called, each with a scope:
+  - HOW THE TEAM WORKS: procedure, tool use, reading inputs, self-checks, turns;
+  - WHAT AN EXPERT WOULD KNOW: output content, domain rules, authoritative sources, what "done" means.
+- Each must quote the evidence it acts on.
+- Each edit that passes the checks is probed: applied from one saved state, the step re-run, its stuck signals
+  compared with the stuck attempt's, everything undone.
+- Plain code picks the probe that ends done (fewer new signals, then fewer tokens), else a work-around that finished
+  with its limitation, else the probe that cleared most as the base for the next rung.
+- The winner's probed state is kept without a third run. Plan edits are applied only when the probes did not
+  recover the step.
+- A round is one try toward the fix limits; its tokens count per probe.
+- New edits: `add_tool_guidance` and `add_watch_rule`.
+- In sandbox mode the round falls back to single, with the reason logged.
+- Design: docs/design/D154_scoped_proposers.md.
+
+```
+ stuck step (its stuck signals)
+        │
+        ▼
+ snapshot: the team, the step, its options, the counters, the fault state, the workspace files
+        │
+   ┌────┴─────────────────────────────┐
+   ▼                                  ▼
+ INV proposer                       DOM proposer
+ how the team works                 what an expert would know
+ (rule, tool, tool guidance,        (rule, helper, work-around,
+  watch rule, split)                 re-plan)
+   │ plain-code checks + quote        │ plain-code checks + quote
+   ▼                                  ▼
+ probe: apply, re-run, diff, undo   probe: apply, re-run, diff, undo
+   └────────────────┬─────────────────┘
+                    ▼
+ plain code picks: done → fewer new signals → fewer tokens
+                   (else a work-around that finished with limitation,
+                    else the probe that cleared most becomes the base)
+                    ▼
+ the winner's probed state is put back; the loser stays undone
+```
+
 **D121, two Box 4 fixes from the H3 run (Oct 11).** The run (`eval/manual/h3/REPORT.md`) stopped at step 1: the stuck
 watch counted capability requests marked `unfilled (registered_tool)`, which the run already covers (web_search and
 fetch_url, D32), as missing capabilities, and the fix proposer's parser read the reply from its first brace (JSON quoted

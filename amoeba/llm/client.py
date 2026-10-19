@@ -349,6 +349,9 @@ class MockLLMClient(LLMClient):
         "interpreter": "You read a task before any planning",                                            # D77
         "family_classifier": "You sort a task into one of a fixed list of task families",                  # D101
         "replanner": "You are the Action Observer of a team",                                            # D63
+        "fix_proposer_inv": "SCOPE: HOW THE TEAM WORKS",                                              # D154
+        "fix_proposer_dom": "SCOPE: WHAT AN EXPERT WOULD KNOW",                                       # D154
+        "fix_picker": "You compare two attempts at one step of a team plan",                          # D154
         "fix_proposer": "You propose one fix for a stuck step of a team plan",                         # D117 D
         "tool_writer": "You write one small Python tool. A team is carrying out the task",               # D125
         "plan_searcher": "You decide, before a team is planned for a task, whether the planner needs",  # D120
@@ -388,6 +391,8 @@ class MockLLMClient(LLMClient):
 
     def _next(self, kind: str, messages: Messages, seed: int) -> str:
         src = self._script.get(kind)
+        if src is None and kind in ("fix_proposer_inv", "fix_proposer_dom"):   # D154: a test scripting one proposer
+            src = self._script.get("fix_proposer")                               # answers both scoped calls
         if callable(src):
             return src(messages, seed)
         if isinstance(src, list) and src:

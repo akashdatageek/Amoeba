@@ -11,7 +11,9 @@ def stall(messages, seed):
 
 
 def test_after_a_failed_more_turns_fix_the_proposer_comes_next(task, envelope, trace, tools, tmp_path):
-    llm, cfg, ep = run(task, envelope, trace, tools, stall, tmp_path, proposer=(NO_EDIT,))
+    from amoeba.interp.plan_runner import PlanOptions          # D154: counts the single proposer's calls
+    llm, cfg, ep = run(task, envelope, trace, tools, stall, tmp_path, proposer=(NO_EDIT,),
+                       opts=PlanOptions(adapt="on", failed_step="run", proposer="single"))
     kinds = [(f["kind"], f["rung"]) for f in ep.adaptation["fixes"] if f["step"] == 1]
     assert kinds[0] == ("set_run_option:max_turns", 1)
     assert kinds[1][1] == "D", kinds                          # the proposer, not a second max_turns fix

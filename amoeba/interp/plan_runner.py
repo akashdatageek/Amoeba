@@ -24,7 +24,7 @@ from amoeba.adapt.faults import Faults
 from amoeba.adapt.toolmaker import (PREFIX as MADE, ToolLibrary, call_tool, check_code, feasible, install,
                                      parse_tool, self_test as tool_self_test, tool_text, tw_config)
 from amoeba.adapt.fixes import POOL_OFF, all_candidates, fix_key, limits as fix_limits, token_cap
-from amoeba.adapt.proposer import (D_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
+from amoeba.adapt.proposer import (D_OPS, NEW_OPS, WORKAROUND_AFTER, allowed_text as proposer_allowed, fix_problems,
                                    parse_fix)
 from amoeba.adapt.stuck import (diagnose, file_sig, is_stuck, norm_error, open_requests, refusal_counts, step_signals,
                                 waived_view)
@@ -48,7 +48,7 @@ from amoeba.pool.stock import pool_skill_notes, pool_tool_notes, roles_named, sp
 from amoeba.llm.cache import is_blocked
 from amoeba.llm.client import tool_fn_name
 from amoeba.llm.ask import Unreadable, ask                                     # D141
-from amoeba.task.schemas import CritiqueOut, FixOut, ReplanOut, ToolWriterOut, to_legacy   # D141
+from amoeba.task.schemas import CritiqueOut, FixOut, ReplanOut, ScopedFixOut, ToolWriterOut, to_legacy   # D141
 from amoeba.interp.step_protocol import (HOW_TO_ACT, HOW_TO_ACT_TEXT, compact_step_prompt, PROVIDER_BLOCKED_NOTE_V2, UNREADABLE_NOTE_V2,  # D136
                                          bad_call_text, check_args, final_text, resolver_text, tool_schema,
                                          typed_input, typed_verdict, v2_text)
@@ -201,6 +201,11 @@ class PlanOptions:
     # typed arguments plain code checks, and the step ends with a typed Final_Output (amoeba/interp/step_protocol.py).
     # Without native tool calling the steps fall back to legacy (event protocol_fallback). Default legacy.
     protocol: str = "legacy"
+    # D154: Box 4's last rung: "scoped" = two scoped proposers, each edit probed from the same state, plain code picks
+    # (amoeba/adapt/probe.py); "single" = one proposer, one edit (D117 D). Library default single; the CLI's default
+    # comes from adapt.yaml proposer.scoped. fix_pick "llm" is the ablation arm (one call picks between the probes).
+    proposer: str = "single"
+    fix_pick: str = "code"
     protocol_from: str = ""          # D153: "auto" when --protocol auto chose `protocol` from the model's supports.tools
     planning_tier: str = "auto"      # D143: light | standard | full | auto (Box 2's rounds and observers; legacy auto = full)
 
@@ -589,6 +594,8 @@ class _Work:
         self.unreadable: list[dict] = []        # D123: turns whose reply could not be read (who, turn, why)
         self.blocked_turns: list[dict] = []     # D153: turns the model service refused (never a format slip)
         self.rework_no_output: list[str] = []   # D138 (B2): reworks (refine / revision) that gave no new Final Output
+        self.warned: set[int] = set()           # D154: watch rules already added this attempt
+        self.files_at_start: list[dict] = []    # D154: the step's files when this attempt began (file_written)
 
     @property
     def completed(self) -> str:
@@ -870,6 +877,11 @@ class PlanRunner:
         self.attached_ids: dict[int, list] = {}           # step -> pool ids a grant gave it
         self.adapt_tokens, self.adapt_spans = 0, []       # what the fix attempts used
         self.done_when_kept: dict[int, str] = {}          # D155: a work-around's step -> its done_when before it
+        self.tool_guidance: dict[int, dict[str, str]] = {}  # D154: step -> tool -> one guidance line (add_tool_guidance)
+        self.watch_rules: dict[int, list[dict]] = {}      # D154: step -> reminders plain code adds (add_watch_rule)
+        self.scoped_fallbacks: list[dict] = []            # D154: rounds run single because files could not be undone
+        self.fault_at_start: dict[int, dict] = {}         # D154: step -> the fault state when its last attempt began
+        self._proposer_shown = ""                         # D154: the evidence + last attempt the proposer was shown
         self.plan_t0: int | None = None                   # D151: billed tokens when the plan run started
         self.cur_step: int | None = None                  # D151: the step the wave loop is on (fixes and rework count to it)
         self.step_t0: dict[int, int] = {}                 # D151: billed tokens when that step started
@@ -1563,6 +1575,8 @@ class PlanRunner:
         n = number(step)
         spans0 = len(self.i.trace.spans("chat"))                                 # D146: the models this attempt used
         previous = (self.artifacts.get(n) or {}).get("meta")                     # D117: the attempt before, if any
+        if self.faults and not (fixing or {}).get("scope"):                     # D154: what a probe starts from
+            self.fault_at_start[n] = self.faults.snapshot()
         agents = [self.agents[a] for a in step.agent_ids]
         self.faults.hide(n, agents)                                               # D119 capability
         summarising = self.is_summary_step(step)                                  # D35
@@ -1624,6 +1638,7 @@ class PlanRunner:
                                           bool(self.step_opts.get(n, {}).get("max_turns")))   # D119 max_turns
         (self.no_last_turn.discard if forced else self.no_last_turn.add)(n)
         w = _Work(max_turns=turns)
+        w.files_at_start = self.files_of(n)                                       # D154: for add_watch_rule
         if mine and not mine["reused"]:          # D90: the re-checks of the verifier's own result are its tool calls too
             w.calls, w.tool_results = list(mine["tool_calls"]), list(mine["tool_results"])
         template = PROMPT.plan_summarise if summarising else PROMPT.plan_step
@@ -2421,6 +2436,7 @@ class PlanRunner:
                     resp = self.same_error_hint(agent, act, w, resp)                  # D131
                     shown_in = write_summary(inp.strip()) if act.endswith("Write") else inp.strip()   # D144
                     shown = self.spill(n, len(w.tool_results), resp.strip())                         # D144
+                    shown += self.watch_note(n, w)                                                    # D154
                     w.add(f">{agent.name} ({act}):\n{shown_in}\n>Result:\n{shown}\n",
                           one_line(agent.name, act, shown_in, resp, tool_ok(resp)))
                 elif FINAL_OUTPUT in act:
@@ -2491,6 +2507,8 @@ class PlanRunner:
             return None
         d = {"step": n, "attempt": len([s for s in self.stuck if s["step"] == n]) + 1, **diagnose(signals),
              "signals_detail": [{k: v for k, v in s.items() if k != "requests"} for s in signals]}   # D146
+        if self.opt.proposer != "scoped":     # D154: the scoped edits are offered only to the scoped proposers
+            d["allowed_edits"] = [a for a in d["allowed_edits"] if a not in NEW_OPS]
         meta["stuck"] = d
         self.stuck.append(d)
         self.ep.stuck = list(self.stuck)
@@ -2971,6 +2989,7 @@ class PlanRunner:
                 else self.exhausted,                                   # D145: under D133 it is kept_going
                 "kept_going": self.kept_going, "usd_limit_enforced": not self.usd_unknown,
                 "token_allowance": self.token_allowance, "step_shares": self.step_share,      # D151
+                "proposer": self.opt.proposer, "scoped_fallbacks": self.scoped_fallbacks,     # D154
                 "make_tool_unavailable": sorted({w for _, w in self.fix_notes if "local tools are off" in w}),   # D145
                 "workarounds": self.workarounds, "tools_made": self.tools_made,
                 "left_on_old_output": self.left_on_old_output()}
@@ -3067,17 +3086,45 @@ class PlanRunner:
     # ---- D117 Stage D: the fix proposer ------------------------------------------------------------------------
     # box: proposer
     def propose_fix(self, n: int, wave: int, d: dict) -> str:
-        """The last rung for a stuck step: one fix-proposer call (one retry on an invalid reply), plain code's checks,
+        """The last rung for a stuck step. D154: under --proposer scoped, a scoped round (amoeba/adapt/probe.py: two
+        scoped proposers, each edit probed from the same state, plain code picks); single (and a scoped round that
+        cannot undo files) is today's: one fix-proposer call (one retry on an invalid reply), plain code's checks,
         then the edit is applied. "applied" (step n was re-run), "replanned" (the plan changed; its steps run next)
         or "none" (no edit allowed, or no valid reply twice: recorded in proposer_gave_up)."""
-        tried_here = {f["kind"] for f in self.step_fixes(n)}
+        if self.opt.proposer == "scoped":
+            from amoeba.adapt.probe import fallback_reason, scoped_round
+            why = fallback_reason(self)
+            if why is None:
+                return scoped_round(self, n, wave, d)
+            self.scoped_fallbacks.append({"step": n, "why": why})
+            self.i.trace.event("scoped_fallback", {"amoeba.step": n, "amoeba.why": why})
+            self.log_event("scoped_fallback", {"step": n, "why": why})
+        return self._propose_single(n, wave, d)
+
+    # box: proposer
+    def tried_kinds(self, n: int) -> set[str]:
+        """The kinds of fix tried for step n since its current version; D154: a scoped round counts every edit it
+        probed (a grant_tool probed in a round lets a later work_around through, as a tried grant does)."""
+        return {f["kind"] for f in self.step_fixes(n)} | {
+            x["op"] for f in self.step_fixes(n) for x in (f.get("round") or {}).get("probes") or []}
+
+    # box: proposer
+    def allowed_edits(self, n: int, d: dict, ops: tuple = D_OPS) -> list[str]:
+        """The proposer edits the cause allows for step n, after plain code's filters (D117 D, D127, D129)."""
+        tried_here = self.tried_kinds(n)
         gone = self.unfillable(n)                     # D129: nothing can supply it: only edits that work without it
-        allowed = [a for a in d.get("allowed_edits") or [] if a in D_OPS
-                   and not (gone and a in ("grant_tool", "add_helper_role"))
-                   and not (a == "work_around" and d["cause"] == "capability"
-                            and not tried_here & set(WORKAROUND_AFTER))                    # user rule (Oct 6)
-                   and not (a == "work_around" and d["cause"] == "missing_data" and not tried_here)   # D127
-                   and not (a == "add_helper_role" and self.helpers_added >= int(fix_limits()["max_added_helpers"]))]
+        return [a for a in d.get("allowed_edits") or [] if a in ops
+                and not (gone and a in ("grant_tool", "add_helper_role"))
+                and not (a == "work_around" and d["cause"] == "capability"
+                         and not tried_here & set(WORKAROUND_AFTER))                    # user rule (Oct 6)
+                and not (a == "work_around" and d["cause"] == "missing_data" and not tried_here)   # D127
+                and not (a == "add_helper_role" and self.helpers_added >= int(fix_limits()["max_added_helpers"]))]
+
+    # box: proposer
+    def _propose_single(self, n: int, wave: int, d: dict) -> str:
+        """D117 D (unchanged by D154): one proposer, one edit."""
+        tried_here = {f["kind"] for f in self.step_fixes(n)}
+        allowed = self.allowed_edits(n, d)
         if not allowed:
             self.proposer_gave_up[n] = f"fix proposer: no edit allowed for {d['cause']}"
             return "none"
@@ -3130,27 +3177,7 @@ class PlanRunner:
                        dropped=change["drop"], result="applied: the plan changed; judged when its steps have run")
             self._fix_done(rec, t0, s0)
             return "replanned"
-        writers = [self.agents[a] for a in self.steps[n].agent_ids]
-        if op == "add_role_rule":
-            a = next(x for x in writers if x.name == p["role"])
-            a.constraints = [*a.constraints, p["text"]]
-        elif op == "grant_tool":
-            a = next(x for x in writers if x.name == p["role"])
-            a.tools = [*a.tools, p["tool"]]
-            a.missing_tools = [t for t in a.missing_tools if t != p["tool"]]
-        elif op == "add_helper_role":
-            aid, _ = self.add_agent(change["role"])
-            ids = self.steps[n].agent_ids
-            self.steps[n].agent_ids = [aid, *ids] if p.get("lead") else [*ids, aid]
-            rec["helper"] = change["role"].name
-            self.helpers_added += 1
-        elif op == "work_around":
-            if p["done_when"].strip():
-                self.done_when_kept.setdefault(n, self.steps[n].done_when)   # D155: the checks still read the original
-                self.steps[n].done_when = p["done_when"].strip()
-            note = WORKAROUND_NOTE.format(cap=p["capability"], method=p["method"],
-                                          done_when=self.steps[n].done_when or "as written")
-            self.waived.setdefault(n, set()).add(p["capability"])       # D124: the watch stops asking for it
+        note = self.apply_edit(n, op, p, change, rec)
         self.keep_try(n)
         self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n],
                       fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note})
@@ -3165,6 +3192,59 @@ class PlanRunner:
             self.workarounds.append({"step": n, **p})
         self._fix_done(rec, t0, s0)
         return "applied"
+
+    # box: plan_step
+    def watch_note(self, n: int, w: "_Work") -> str:
+        """D154 add_watch_rule: once the step has made `after_calls` tool calls without the condition (a file written
+        by this step, or a call of a named tool), the rule's text is added once to the tool result entering the turn
+        history. It never blocks a call and never ends the step."""
+        out = ""
+        for i, r in enumerate(self.watch_rules.get(n) or []):
+            if i in w.warned or len(w.calls) < int(r["after_calls"]):
+                continue
+            cond = r["unless"]
+            met = bool(self.files_of(n)) and self.files_of(n) != w.files_at_start if cond == "file_written" else \
+                any(c.get("tool") == cond.split(":", 1)[1] for c in w.calls)
+            if not met:
+                w.warned.add(i)
+                out += f"\n[Note from plain code: {r['text']}]"
+                self.i.trace.event("watch_rule", {"amoeba.step": n, "amoeba.calls": len(w.calls),
+                                                  "amoeba.unless": cond})
+        return out
+
+    # box: proposer
+    def apply_edit(self, n: int, op: str, p: dict, change: dict | None, rec: dict) -> str:
+        """Apply one proposer edit (not split_step / replan_remaining) to the live team for step n; returns the note
+        the re-run is told. D154: also the scoped proposers' add_tool_guidance and add_watch_rule, and a grant that
+        gives a fault-hidden tool back ends that fault (as the code fix's grant does)."""
+        writers = [self.agents[a] for a in self.steps[n].agent_ids]
+        note = ""
+        if op == "add_role_rule":
+            a = next(x for x in writers if x.name == p["role"])
+            a.constraints = [*a.constraints, p["text"]]
+        elif op == "grant_tool":
+            a = next(x for x in writers if x.name == p["role"])
+            a.tools = [*a.tools, p["tool"]]
+            a.missing_tools = [t for t in a.missing_tools if t != p["tool"]]
+            self.faults.granted(n, [p["tool"]])                                            # D154
+        elif op == "add_helper_role":
+            aid, _ = self.add_agent(change["role"])
+            ids = self.steps[n].agent_ids
+            self.steps[n].agent_ids = [aid, *ids] if p.get("lead") else [*ids, aid]
+            rec["helper"] = change["role"].name
+            self.helpers_added += 1
+        elif op == "work_around":
+            if p["done_when"].strip():
+                self.done_when_kept.setdefault(n, self.steps[n].done_when)   # D155: the checks still read the original
+                self.steps[n].done_when = p["done_when"].strip()
+            note = WORKAROUND_NOTE.format(cap=p["capability"], method=p["method"],
+                                          done_when=self.steps[n].done_when or "as written")
+            self.waived.setdefault(n, set()).add(p["capability"])       # D124: the watch stops asking for it
+        elif op == "add_tool_guidance":                                                    # D154
+            self.tool_guidance.setdefault(n, {})[p["tool"]] = p["text"].strip()
+        elif op == "add_watch_rule":                                                       # D154
+            self.watch_rules.setdefault(n, []).append(dict(p))
+        return note
 
     # box: proposer
     def _d_live(self, reply, n: int) -> tuple[list[str], dict | None]:
@@ -3305,7 +3385,8 @@ class PlanRunner:
         return errors, change
 
     # box: proposer
-    def _proposer_call(self, n: int, d: dict, allowed: list[str], refused: list[str] | None) -> str:
+    def _proposer_call(self, n: int, d: dict, allowed: list[str], refused: list[str] | None,
+                       scope: str | None = None) -> str:
         """The proposer's input, kept small: the task, the step's card, the diagnosis, the last attempt's errors and
         checks (trimmed), the team (one line per role), the tools and skills of this run, the allowed edits and the
         fixes already tried in this task."""
@@ -3331,20 +3412,24 @@ class PlanRunner:
         tools = ", ".join(sorted(self.i.tools.names())) if hasattr(self.i.tools, "names") else "none"
         tried = "\n".join(f"- {f['kind']} on step {f['target']} {json.dumps(f.get('params', {}), default=str)[:200]}: "
                           f"{f['result'][:160]}" for f in self.fixes) or "None yet."
-        user = render(PROMPT.fix_proposer, task=self.task.prompt[:1500], step=str(n), card=card, cause=d["cause"],
-                      evidence="\n".join(f"- {e}" for e in d["evidence"]), attempt=attempt, team=team,
+        evidence = "\n".join(f"- {e}" for e in d["evidence"])
+        self._proposer_shown = f"{evidence}\n{attempt}"                      # D154: what a `because` must quote
+        template = getattr(PROMPT, f"fix_proposer_{scope}") if scope else PROMPT.fix_proposer       # D154
+        user = render(template, task=self.task.prompt[:1500], step=str(n), card=card, cause=d["cause"],
+                      evidence=evidence, attempt=attempt, team=team,
                       tools=f"tools: {tools}\nskills: {', '.join(skills) or 'none'}",
                       allowed=proposer_allowed(allowed, self.max_num + 1), tried=tried)
         if refused:
             user += ("\n\n# Your previous reply was refused by plain code\n" + "\n".join(f"- {x}" for x in refused)
                      + "\nReply again with one valid edit.")
-        with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": "fix_proposer", "amoeba.box": "proposer"}):
-            if self.typed:                                # D141: a typed FixReply
-                return self.struct_call("fix", FixOut, [{"role": "user", "content": user}],
-                                       int((adapt_config().get("proposer") or {}).get("max_tokens", 8192)),
-                                       "fix_proposer")
+        name = f"fix_proposer_{scope}" if scope else "fix_proposer"
+        with self.i.trace.span("invoke_agent", {"gen_ai.agent.name": name, "amoeba.box": "proposer"}):
+            if self.typed:                                # D141: a typed FixReply (D154: the scoped reply for a scope)
+                return self.struct_call("fix_scoped" if scope else "fix", ScopedFixOut if scope else FixOut,
+                                        [{"role": "user", "content": user}],
+                                        int((adapt_config().get("proposer") or {}).get("max_tokens", 8192)), name)
             resp = self.i.llm.chat_messages([{"role": "user", "content": user}], self.ep.seed,
-                                            agent_name="fix_proposer", role="planner",
+                                            agent_name=name, role="planner",
                                             max_tokens=int((adapt_config().get("proposer") or {}).get("max_tokens",
                                                                                                      8192)))   # D129
         self.ep.total_tokens += resp.input_tokens + resp.output_tokens
@@ -3450,7 +3535,9 @@ class PlanRunner:
                       unavailable="\n".join([UNAVAILABLE.format(name=t) for t in agent.missing_tools
                                               if t not in agent.tools and not held_tool(agent, t)   # D132
                                               and self.opt.tool_access != "core"]
-                                             + pool_tool_notes(agent)))   # D56
+                                             + pool_tool_notes(agent)                                   # D56
+                                             + [f"On {t}: {g}" for t, g in self.tool_guidance.get(n, {}).items()
+                                                if t in agent.tools]))                                  # D154
         c = self.current_contract.get(agent.name)
         if c and (c["needs"] or c["items"]):     # D61: what plain code will check, on the helper's prompt
             items = [*(f"{x} (asked for, not available)" for x in c["needs"]),
@@ -3513,7 +3600,8 @@ class PlanRunner:
         return act, inp, resp, gap
 
     # box: plan_step
-    def native_specs(self, tools: list[str], kind: str | None = None) -> tuple[list[dict], dict[str, str]]:
+    def native_specs(self, tools: list[str], kind: str | None = None, n: int | None = None
+                     ) -> tuple[list[dict], dict[str, str]]:
         """D132: the helper's tools as function specs (one string argument `input`) and the map back from the
         function name to the tool's real name. D136 (v2): typed arguments (step_protocol.tool_schema)."""
         descs = self.i.tools.descriptions() if hasattr(self.i.tools, "descriptions") else {}
@@ -3524,6 +3612,9 @@ class PlanRunner:
             params = tool_schema(t, self.mcp_schema(t), kind) if self.v2 else \
                 {"type": "object", "properties": {"input": {"type": "string"}}, "required": ["input"]}
             desc = (NATIVE_SPECIAL_V2.get(t) if self.v2 else None) or NATIVE_SPECIAL.get(t) or descs.get(t) or t
+            guide = self.tool_guidance.get(n, {}).get(t) if n is not None else None       # D154: add_tool_guidance
+            if guide:
+                desc = f"On this step: {guide}\n{desc}"                     # first, so the 600-character cut keeps it
             specs.append({"type": "function", "function": {
                 "name": fn, "description": (v2_text(desc) if self.v2 else desc)[:600], "parameters": params}})
         return specs, back
@@ -3544,7 +3635,7 @@ class PlanRunner:
         step's output (Final Output); a blocked reply is a provider_blocked turn (D128); an empty one is unreadable."""
         if "\n# Format\n" in user:                       # D136: the v2 prompts carry their own # How to act
             user = user.split("\n# Format\n")[0].rstrip() + "\n\n" + (HOW_TO_ACT_TEXT if self.v2 else NATIVE_FORMAT)
-        specs, back = self.native_specs(tools, kind)
+        specs, back = self.native_specs(tools, kind, n)
         try:
             resp = self.i.llm.chat_messages([{"role": "system", "content": system}, {"role": "user", "content": user}],
                                             self.ep.seed, agent_id=agent.agent_id, agent_name=agent.name,

@@ -1,7 +1,8 @@
 # D154 — two scoped fix proposers, probed and picked by plain code
 
-Status: **plan, waiting for approval** (branch claude/box4-scoped). This is the prompt's "D148". The reason for the
-new number and the base branch is given at the top of `docs/design/D153_plumbing.md`.
+Status: **built** (branch claude/box4-scoped, Oct 19). This is the prompt's "D148"; the numbers D153–D155 and the
+stacked base branch were approved (see `docs/design/D153_plumbing.md`). Built after D155, so both proposer modes
+already keep every check.
 
 Source idea: Harness² (arXiv 2610.14224), at the level of one task only. Nothing carries over between tasks: no
 library, no recipes, no outer loop.
@@ -90,15 +91,15 @@ further.
 - `fix_keys` additions, `proposer_gave_up`, `workarounds`.
 - Per-step tool guidance and watch rules (B3).
 
-**Files.**
+**Files.** (Sandbox risk accepted, your decision.)
 - In in-process mode (`--local-tools-mode inprocess`, the mode the live runs used): a copy of the workspace, except
   the read-only parts the gate protects: `sources/`, `skills/`, `made_tools/` (`amoeba/localtools/gate.py:131-132`).
 - After each probe, files the probe added are deleted and files it changed are put back.
-- **Open point, to settle during the build:**
-  - in sandbox mode (OpenShell) the workspace lives in the sandbox. I will restore files through the toolbox's own
-    file calls.
-  - If that cannot restore them reliably, the scoped round falls back to single for that run, with a logged reason.
-    It will never run on half-restored files.
+- In sandbox mode (OpenShell) the workspace lives in the sandbox, and a probe's files cannot be undone reliably from
+  the host. **The round falls back to single** for that run, with the reason logged (`scoped_fallback` in the trace
+  and events.jsonl; `adaptation.scoped_fallbacks` in result.json). It never runs on half-restored files.
+- A stage_e comparison shares its pass-through flags, so both arms use the same local-tools mode; each row of
+  `pairs.jsonl` records that mode and the arm's fallback count.
 
 **Faults (D119).**
 - Today a `tool_error` fault fires on the first n tool calls *in total*, across attempts (`faults.py:169-179`), and a
@@ -124,13 +125,10 @@ further.
 3. Otherwise none recovered. The base for the next rung is the candidate with the most cleared and the fewest new
    signals, or the original state if neither cleared anything.
 
-**Winner and loser.**
+**Winner and loser** (your decision 6).
 - The loser stays undone.
-- The winner: its post-probe state is put back (a second snapshot is taken after each probe). The step is **not run a
-  third time**.
-  - The prompt says "re-apply only the winner's edit". Re-applying and re-running would cost a third run and could
-    end differently. Restoring the probed state gives exactly the result that was judged.
-  - Say if you want a re-run instead.
+- The winner: its probed state is put back (agents, options, files, the step's artifact), from a second snapshot
+  taken right after its probe. **The step is not run a third time.**
 - No LLM composer, and the two edits are never merged.
 - When the two probes cleared different signals: `complementary: true`.
 
@@ -147,9 +145,9 @@ further.
 - If only one probe fits the remaining budget, the scope is picked by cause: INV for tool_error, format, max_turns
   and claimed_file_missing; DOM otherwise.
 
-**Question for you.** As written, both probes run even when the first ends `done`, so the tie-breaks can apply. Short-
-circuiting after a `done` first probe would halve the cost of an easy round, but the comparison would be lost. I'll
-build it as written unless you say otherwise.
+**Both probes run** even when the first ends `done` (your decision 5), so the tie-breaks can apply. The setting
+`adapt.yaml proposer.stop_on_first_done: false` switches this; `true` skips the second probe after a done first
+one. Both settings are tested.
 
 ### B3. Two new edits — new
 Both go into `D_OPS`, `SHAPES` and `PARAMS` (`proposer.py:39-112`) and into adapt.yaml `allowed_edits`. The size,
@@ -185,8 +183,8 @@ denylist and rollback rules apply to both.
     - a re-planned step that replaces the stuck step keeps its checks, and a proposer reply that writes a `checks:`
       line is refused;
     - keyword checks keep using the original done_when.
-  - **This changes today's split, re-plan and work_around behaviour in single mode too.** Say if you want it limited
-    to scoped mode.
+  - This is now its own decision, **D155**, built first and applied in both modes (your decision 7):
+    `docs/design/D155_checks_kept.md`.
 - `samples: 1` on every probe record. Nothing reads one probe as proof that an edit works in general.
 - **`shared_failure: <signal>`** when both candidates fail with the same new signal.
 
@@ -223,8 +221,104 @@ denylist and rollback rules apply to both.
 - I will also add the Box 4 files missing from the D136 list: test_ladder_d145, test_fix_tries_d150,
   test_faults_d119, test_budgets_d151 and test_diagnosis_d149.
 
-## As built
-(Filled in after the build.)
+## As built (Oct 19)
+**Where the code is.**
+- `amoeba/adapt/probe.py`: `scoped_round`, `propose`, `probe`, `pick`, `round_flags`, `scopes_for`, `Snapshot`,
+  `fallback_reason`, `probes_affordable`, `llm_pick`, `finish`.
+- `amoeba/adapt/proposer.py`: `ScopedFixEdit` and `ScopedFixReply` (with `because`), `NEW_OPS`, `D_OPS_SCOPED`, the
+  two param models, `CHECK_EDIT`, `quote_found`; `fix_problems(held=…)`.
+- `PlanRunner` (`amoeba/interp/plan_runner.py`):
+  - `propose_fix` dispatches: scoped → `scoped_round`; single or a sandbox fallback → `_propose_single`, today's
+    body;
+  - `allowed_edits` and `apply_edit` were factored out of it, and `tried_kinds` added;
+  - `_proposer_call(scope=…)` picks the scoped prompt and keeps what the proposer was shown;
+  - `watch_note` (add_watch_rule) and the tool-guidance lines in `_turn` / `native_specs`;
+  - `fault_at_start` and `scoped_fallbacks`.
+- `amoeba/adapt/faults.py`: `snapshot` / `put_back`.
+- Prompts: `fix_proposer_inv.txt`, `fix_proposer_dom.txt`, `fix_picker.txt`.
+- CLI: `--proposer scoped|single` (default from adapt.yaml) and `--fix-pick code|llm`.
+- `scripts/stuck_report.py` `scope_summary`; `scripts/stage_e.py --arms proposer`.
+
+**Departures from the prompt, and why.**
+1. **The signal diff** uses the `step_signals()` output the watch stores for each attempt (`signals_detail`), rather
+   than calling `step_signals()` a second time with fewer inputs. It is the same function's result, with the step's
+   real inputs.
+2. **Library default `single`, CLI default `scoped`.** `PlanOptions.proposer` defaults to `single` (like `protocol`
+   defaults to legacy in the library), so offline tests and library callers keep today's behaviour unless they ask.
+   The command line takes its default from `adapt.yaml proposer.scoped: true`.
+3. **The two new edits are in adapt.yaml's `allowed_edits` rows**, as asked. In single mode the watch strips them
+   from the stored allowed list, so the single proposer is offered exactly today's edits.
+4. **What a round is called in `fixes`:**
+   - a round whose winner recovered the step, or whose plan edit was applied, carries that edit's kind;
+   - a failed round with one probe carries that probe's kind;
+   - a failed round with two probes is `scoped_round`;
+   - a round with no valid candidate is `fix_proposer`, with "no valid edit in two replies from either scope".
+   - Why: D150 (no failed kind twice) and D124 (a work-around only after a grant or helper) read the kinds, and this
+     keeps them working. The full round is in `fix["round"]`.
+5. **Faults.** Each probe starts from the fault state at the *start* of the stuck attempt, not from after it. A
+   tool-error fault fires on the first n calls in total, so starting from after the stuck attempt would leave the
+   probes a weaker fault than the stuck attempt faced.
+6. **The proposer's grant_tool now ends a capability fault, as the code fix's grant does.** This is a small change
+   in single mode too, visible only in fault-injection runs.
+7. **sources/ is never undone.** It is read-only input (the gate protects it). A page a probe fetched stays
+   available, as any fetched page does.
+8. **`--fix-pick llm` labels the probes A (INV) and B (DOM)** in a fixed order, so a run can be replayed. A
+   shuffled order would be a separate ablation.
+9. **stage_e `--arms proposer`** was added so the live check can compare single and scoped on one draft. With
+   `--arms adapt`, the off/on pair would have spent an off run per pair for nothing.
+10. **Tests:**
+    - the mock answers `fix_proposer_inv` / `fix_proposer_dom` from a test's single `fix_proposer` script when it
+      has none of its own;
+    - under `AMOEBA_TEST_PROPOSER=scoped`, a conftest shim gives a scripted edit to the scope whose list offers it,
+      with the first evidence line as its quote.
+
+**Existing tests that changed.**
+- Pinned to `--proposer single`, because they test the single proposer's own call protocol (how many single calls,
+  its prompt text, its refusal wording). Their scoped versions are in the new test file:
+  - test_proposer_d117: grant_tool_after_the_pool_rung_was_skipped, one_retry_shows_the_refusal…,
+    a_work_around_before_any_grant_or_helper_is_refused, at_most_two_helpers_are_added_per_task,
+    the_per_step_limit_counts_the_proposer;
+  - test_fixes_d117: with_the_pool_off_the_capability_rung_is_skipped…;
+  - test_fix_tries_d150: after_a_failed_more_turns_fix_the_proposer_comes_next.
+- `test_stuck_d117::test_diagnose_picks_one_cause…`: the tool_error row now holds add_tool_guidance; the assertion
+  reads the row without the scoped edits and checks that one is there.
+- `test_ladder_d145` is re-run under scoped in legacy mode only. Under v2 it already failed on the base branch,
+  before this change: a blocked turn gets its compact retry inside the call (D139), so the step never reaches Box
+  4's compact rung.
 
 ## Tests
-(Filled in after the build.)
+tests/test_scoped_proposers_d154.py, 29 tests:
+- **The two proposers:**
+  - two scoped calls, each with its own prompt; a scope with no allowed edit makes no call;
+  - an unquoted candidate is refused twice and leaves one probe;
+  - an edit touching a check, or carrying checks, is refused.
+- **The pick:**
+  - the done candidate wins and the loser is undone (its rule is gone; both probes' files are kept);
+  - the pick rules (done, then fewer new signals, then fewer tokens; limitation; base; original);
+  - complementary and shared_failure;
+  - a non-done base stays for the next rung;
+  - stop_on_first_done, both settings.
+- **Rollback and fallback:**
+  - full rollback of agents, tools, missing tools, constraints, an added helper, done_when, run options, tool
+    guidance, watch rules, counters, waived items, the fault state, workspace files and the step file (sources/
+    kept);
+  - the sandbox falls back to single and logs why.
+- **Budget:** a round is one try, with tokens per probe; with one probe left, the scope follows the cause.
+- **Plan edits:** a split is applied only after the other probe failed, and is not probed.
+- **The new edits:** add_watch_rule warns once and is rolled back, and add_tool_guidance reaches the tool section
+  and is rolled back, each in legacy and v2; guidance for a tool the step does not hold is refused.
+- **Faults:** both probes face the same fault.
+- **Logging:**
+  - `--fix-pick llm` records the pick, the code's pick and the checks' verdict;
+  - one events.jsonl row per round;
+  - the per-scope summary in stuck_report;
+  - stage_e's proposer arms share one draft and record fallbacks;
+  - the summary names the proposer.
+- **The Box 4 test files in every mode**, in subprocesses:
+  - scoped, legacy: the D136 list, plus test_ladder_d145, test_fix_tries_d150, test_faults_d119,
+    test_budgets_d151, test_diagnosis_d149 and test_checks_kept_d155;
+  - single, v2: the same list without test_ladder_d145;
+  - scoped, v2: the same list without test_ladder_d145.
+  - Single, legacy is the normal suite.
+
+Full suite: 1025 passed, 9 skipped before D154; 1054 passed, 9 skipped after.
