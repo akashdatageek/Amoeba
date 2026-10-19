@@ -612,6 +612,7 @@ def explicit_flags(argv: list[str]) -> frozenset:
     return frozenset(a.split("=", 1)[0] for a in argv if a.startswith("--"))
 
 
+# box: runresult
 def default_proposer() -> str:
     """D154: adapt.yaml proposer.scoped → "scoped" (the default), else "single"."""
     from amoeba.adapt.probe import scope_config
