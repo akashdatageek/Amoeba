@@ -869,6 +869,7 @@ class PlanRunner:
         self.upstream_rerun: set[int] = set()             # steps re-run once for a missing input
         self.attached_ids: dict[int, list] = {}           # step -> pool ids a grant gave it
         self.adapt_tokens, self.adapt_spans = 0, []       # what the fix attempts used
+        self.done_when_kept: dict[int, str] = {}          # D155: a work-around's step -> its done_when before it
         self.plan_t0: int | None = None                   # D151: billed tokens when the plan run started
         self.cur_step: int | None = None                  # D151: the step the wave loop is on (fixes and rework count to it)
         self.step_t0: dict[int, int] = {}                 # D151: billed tokens when that step started
@@ -1639,7 +1640,7 @@ class PlanRunner:
         agents_all, agents = agents, writers
         exact = computed_values(self.computed_results(w))                          # D66
         text, removed = strip_unverified(self._text(agents, w), exact)
-        checks = step_checks(step, text, deps, self.artifacts, verifier)          # D34
+        checks = step_checks(self.check_view(step, n), text, deps, self.artifacts, verifier)   # D34, D155
         checks += conclusion_check(text, w)                                       # D76
         checks += self.domain_checks(n, text, inputs, w, answer_step)             # D102
         checks += self.xlsx_checks(n, text)                                       # D113
@@ -1662,7 +1663,7 @@ class PlanRunner:
             exact = computed_values(self.computed_results(w))
             text, again = strip_unverified(self._text(agents, w), exact)
             removed += again
-            checks = step_checks(step, text, deps, self.artifacts, verifier)
+            checks = step_checks(self.check_view(step, n), text, deps, self.artifacts, verifier)   # D155
             checks += conclusion_check(text, w)
             checks += self.domain_checks(n, text, inputs, w, answer_step)
             checks += self.xlsx_checks(n, text)
@@ -1900,6 +1901,14 @@ class PlanRunner:
             return []
         from amoeba.checks import run_checks
         return run_checks(["xlsx_formulas"], text, {"xlsx_files": books, "task": self.task.prompt, "step": n})
+
+    # box: step_check
+    def check_view(self, step: PlanStep, n: int) -> PlanStep:
+        """D155: the step as its plain-code checks see it: a work-around may narrow the done_when the helpers are
+        told, but the keyword checks drawn from done_when keep reading the original (the typed checks, the citation
+        checks and the contract are never touched by an edit)."""
+        kept = self.done_when_kept.get(n)
+        return step if kept is None else step.model_copy(update={"done_when": kept})
 
     # box: step_check
     def planned_checks(self, step: PlanStep, n: int, text: str, prov: dict, answer_step: bool) -> list[dict]:
@@ -3116,7 +3125,8 @@ class PlanRunner:
             self.artifacts.pop(n)                          # the stuck attempt is reopened; its files are kept
             self.keep_try(n)
             self.apply_decision({"reason": reply.reason}, change)
-            rec.update(replaced_by=sorted(s["number"] for s in change["steps"]),
+            rec.update(checks_carried=change.get("checks_carried") or [],                     # D155
+                       replaced_by=sorted(s["number"] for s in change["steps"]),
                        dropped=change["drop"], result="applied: the plan changed; judged when its steps have run")
             self._fix_done(rec, t0, s0)
             return "replanned"
@@ -3136,6 +3146,7 @@ class PlanRunner:
             self.helpers_added += 1
         elif op == "work_around":
             if p["done_when"].strip():
+                self.done_when_kept.setdefault(n, self.steps[n].done_when)   # D155: the checks still read the original
                 self.steps[n].done_when = p["done_when"].strip()
             note = WORKAROUND_NOTE.format(cap=p["capability"], method=p["method"],
                                           done_when=self.steps[n].done_when or "as written")
@@ -3187,12 +3198,53 @@ class PlanRunner:
                 errors, change = self.validate_decision({"decision": "REVISE_REMAINING", "steps": p["plan"],
                                                          "role": "", "requests": "", "reason": reply.reason,
                                                          "unmet": ""}, stuck=n, stuck_method=stuck_method)
+                if not errors and any(x["fields"].get("checks") for x in change["steps"]):    # D155
+                    errors.append("a re-plan may not write checks: plain code carries the replaced steps' checks "
+                                  "to the new steps")
+                if not errors:
+                    self.carry_checks(change, n)               # D155: the checks and the contract stay
                 if not errors:                                 # D145: Box 2's HARD checks on the plan after the edit
                     errors += self.replan_hard_problems(change)
                 return errors, change
-            return self._split_change(n, p["steps"])
+            errors, change = self._split_change(n, p["steps"])
+            if not errors:
+                self.carry_checks(change, n, split=True)       # D155: the last sub-step carries them
+            return errors, change
         finally:
             self.artifacts[n] = stash
+
+    # box: proposer
+    def carry_checks(self, change: dict, n: int, split: bool = False) -> None:
+        """D155: a split or a re-plan never loses a check (Box 2's contract). Every typed check of a step it replaces
+        (the stuck step, and the not-done steps a re-plan rewrites or drops) goes to one new step: for a split, the
+        last sub-step (the one the waiting steps read); for a re-plan, the last new step that covers what the check
+        covers (else the step's requirements), else the last new work step. The step's requirements (covers) go with
+        its checks. A check already on that step (same name and params) is not added twice. What moved is recorded in
+        change["checks_carried"]."""
+        old = {number(x): x for x in self.cfg.plan}
+        new = change.get("steps") or []
+        if not new:
+            return
+        replaced = [k for k in dict.fromkeys([n, *change.get("drop", []), *(x["number"] for x in new)]) if k in old
+                    and k not in self.artifacts]
+        same = lambda a, b: a.get("name") == b.get("name") and a.get("params") == b.get("params")
+        carried = []
+        for k in replaced:
+            for c in old[k].checks:
+                want = set(c.get("covers") or old[k].covers)
+                if split:
+                    target = new[-1]
+                else:
+                    hits = [x for x in new if want & set(x["fields"].get("covers") or [])]
+                    work = [x for x in new if x["fields"].get("kind", "work") != "verify"]
+                    target = (hits or work or new)[-1]
+                f = target["fields"]
+                f.setdefault("checks", [])
+                if not any(same(c, x) for x in f["checks"]):
+                    f["checks"].append(dict(c))
+                    f["covers"] = list(dict.fromkeys([*(f.get("covers") or []), *want]))
+                    carried.append({"check": c.get("name"), "from": k, "to": target["number"]})
+        change["checks_carried"] = carried
 
     # box: proposer
     def replan_hard_problems(self, change: dict) -> list[str]:

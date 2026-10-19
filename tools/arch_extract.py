@@ -531,7 +531,8 @@ BOXES: list[dict] = [
                "D142: after Final Output, plain code runs the step's typed checks (files, Word, Excel, CSV, images, "
                "tables, lists, terms, citations, dates, verdict, NOT SENT) and a failed one is a failed check like any "
                "other.",
-               "D152: Amoeba's own cut note (\"… [N characters cut; …]\") is never checked as text cited from a source."],
+               "D152: Amoeba's own cut note (\"… [N characters cut; …]\") is never checked as text cited from a source.",
+               "D155: after a work-around, the keyword checks still read the original done_when."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",
@@ -951,7 +952,9 @@ BOXES: list[dict] = [
                "Plain code checks, all in proposer.py and the plan runner: allowed for the cause, the schema, tools "
                "this run has (no outside action, not paid), text sizes and denied wording (adapt.yaml limits), team "
                "size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second "
-               "failure is no fix. The adaptation limits apply; success is the step ending done."],
+               "failure is no fix. The adaptation limits apply; success is the step ending done.",
+               "D155: a split or a re-plan never drops a check: the replaced steps' checks move to the new steps by "
+               "plain code, and a re-plan may not write checks."],
          proposes="One edit with a reason (fix_proposer prompt).",
          disposes="Plain code refuses, or applies the edit and judges the step by its checks and contract.",
          prompts=["fix_proposer"],

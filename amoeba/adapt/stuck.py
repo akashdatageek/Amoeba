@@ -276,6 +276,9 @@ def open_requests(requests: list | None, holds: dict[str, set] | None = None, he
     return out
 
 
+CITATION_CHECK = re.compile(r"cites_every_figure|figures_dated|citation", re.I)   # D155: never waived
+
+
 # box: stuck
 def waived_view(meta: dict, unfilled: list[dict], waived: set[str] | None, files: bool = True
                 ) -> tuple[dict, list[dict]]:
@@ -298,7 +301,8 @@ def waived_view(meta: dict, unfilled: list[dict], waived: set[str] | None, files
         view["output_spec"] = drop.sub("", meta.get("output_spec") or "")
         view["claimed_files_missing"] = [f for f in meta.get("claimed_files_missing") or []
                                          if not drop.search(f)]
-        view["checks"] = [c for c in meta.get("checks") or [] if not drop.search(c.get("name", ""))]
+        view["checks"] = [c for c in meta.get("checks") or [] if not drop.search(c.get("name", ""))
+                          or CITATION_CHECK.search(c.get("name", ""))]          # D155: citation checks stay
     keep = [q for q in unfilled or [] if not ({str(q.get("name") or "").lower(),
                                                str(q.get("canonical") or "").lower()} & names)]
     return view, keep

@@ -1129,6 +1129,12 @@ now has tools. A reply the model service refused is never counted as unreadable.
 sentence end. A capability request for several roles is stored once per role, and team.yaml names the models the
 helpers' calls really used. Design: docs/design/D153_plumbing.md.
 
+**D155, an edit never drops a check (Oct 19).** A Box 4 edit may change the work, never the bar it is judged by. When a
+step is split, its last sub-step carries the step's checks. When the rest of the plan is re-planned, every check of
+the replaced steps moves to the new step that covers the same requirements, and a re-plan may not write checks of its
+own. A work-around may narrow done_when, but the checks still read the original, and citation checks are never
+waived. Design: docs/design/D155_checks_kept.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
