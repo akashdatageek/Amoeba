@@ -179,7 +179,7 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
                     "evidence": [f"{tool} refused {n} times in this step for {reason}: rewrite the call (the refusal "
                                  f"says how)" for (tool, reason), n in rep_ref.items()]})
     turns = meta.get("unreadable_turns") or []
-    blocked = [b for b in turns if b.get("blocked")]
+    blocked = [*(meta.get("blocked_turns") or []), *(b for b in turns if b.get("blocked"))]   # D153 (old runs: flag)
     bad = [b for b in turns if not b.get("blocked")]
     if blocked and not meta.get("finished", False):   # D128: the service refused the replies; not a format slip
         cats = [b.get("category") for b in blocked]

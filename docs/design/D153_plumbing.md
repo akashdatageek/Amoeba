@@ -1,19 +1,16 @@
 # D153 — plumbing found in the live runs
 
-Status: **plan, waiting for approval** (branch claude/box4-scoped). This is the prompt's "D147".
+Status: **built** (branch claude/box4-scoped, stacked on claude/run-gaps / PR #45; approved Oct 19). This is the prompt's "D147".
 
 **Numbering.** The prompt calls this D147. That number is already used on the unmerged branch claude/run-gaps
 (PR #45): D147–D152 there are cut notes, the gate, diagnosis fixes, fix tries, fair budgets and two bugs. Two
 decisions with one number would collide in the spec's §11 table. So this note is **D153**, and the scoped proposers
-are **D154**. Say if you want different numbers.
+are **D154** (approved).
 
-**Base branch.** The prompt says "new branch from main". `main` stops at PR #40 (D131). The code and notes the
-prompt asks me to build on (D136, D141, D143, D145, D146, protocol v2, the typed proposer call) exist only on
-`claude/zen-fermi-mnaurm` (PRs #41–#44) and on PR #45. Built on `main`, none of this work could start. This branch
-starts from claude/run-gaps (PR #45, D147–D152). **Decision for you:**
-- (a) keep this base;
-- (b) merge zen-fermi and #45 into main first, then branch from main;
-- (c) branch from zen-fermi without #45. In that case A5 (below) has to be built differently.
+**Base branch.** The prompt said "new branch from main", but `main` stops at PR #40 (D131). The code this work
+builds on (D136, D141, D143, D145, D146, protocol v2, the typed proposer call) exists only on `claude/zen-fermi-mnaurm`
+(PRs #41–#44) and on PR #45. **Decided (Oct 19):** this branch stays stacked on claude/run-gaps (PR #45); you merge
+zen-fermi → #45 → run-gaps into main separately.
 
 Every item below was checked against the code on this branch. `PR` means `amoeba/interp/plan_runner.py`.
 
@@ -48,12 +45,12 @@ Each item says: already fixed or not, the exact code I will change, and any conf
 - **Planning v2 (D143)** has no protocol switch of its own: it follows `trace.protocol`. It is left as it is, so under
   `auto` planning follows the same choice as the steps. Its separate `--planning-tier` (`run_task.py:838`) is left as
   it is.
-- **Decision for you (not changed):**
-  - Gemma's registry entry says `supports: {tools: false}` (`amoeba/config/models.yaml:97-114`). So `auto` gives
-    legacy on Gemma.
-  - My Oct 17 check called gemma-4-31b-it with one tool and got a correct tool call (`calc`, `17*23`). That is one
-    call, not a model check.
-  - `python -m scripts.model_check gemma-api` would settle it. Your call.
+- **Gemma (your decision: run the model check).** `python -m scripts.model_check gemma-api --protocol v2` (Oct 19,
+  free tier, $0): every call type ok; the native-tools step made a tool call (`calc`); output modes: `schema`
+  unreadable, `submit_tool` ok, `json_prompt` ok. Both probes that decide it passed, so the entry now says
+  `supports: {json: true, tools: true, vision: true, output_mode: submit_tool}` and `checked_at: 2026-10-19`
+  (`amoeba/config/models.yaml`). The check's result is kept in `eval/manual/box4_scoped/model_check/gemma-4-31b.json`.
+  So `auto` now gives v2 on Gemma.
 - **Test:** auto picks v2 for a tools model and legacy for a non-tools model; legacy and v2 override auto; the
   baselines stay legacy.
 
@@ -124,7 +121,7 @@ Measured on this branch with `blocked_marks` (`PR:802-810`):
 - **Test:** the multi-role split is seen by the watch; a regression test for (a); (c) and (d) are covered by
   existing tests, which I will name in the as-built section.
 
-### A5. Box 4's token budget follows the model — already fixed by D151, in a different form. Decision for you
+### A5. Box 4's token budget follows the model — already covered by D151
 - **Today (D151, on PR #45):**
   - The fixes' token allowance is `fix_tokens_per_attempt` (6) × the run's **average** step-attempt cost so far
     (`amoeba/adapt/fixes.py:47-52`, `PR:1290-1294`, `PR:2507-2508`).
@@ -136,14 +133,14 @@ Measured on this branch with `blocked_marks` (`PR:802-810`):
   - only without a run cap.
 - **Conflict:** D151 already made the budget follow the model, so building A5 as written would undo part of
   D151.
-- **Options:**
-  - (a) record A5 as already fixed by D151 and change nothing (my recommendation);
-  - (b) switch D151's rule to the prompt's: bring back `max_tokens_per_task` as a floor, use the median and N = 3,
-    and keep the per-step share for runs with a cap.
+- **Decided: covered by D151, unchanged.** Where it lives: `token_cap` (`amoeba/adapt/fixes.py:47`), the average
+  attempt cost `PlanRunner.avg_attempt` (`amoeba/interp/plan_runner.py:1292`), the allowance computed before each fix
+  in `fix_stuck` (`plan_runner.py:2517`), the per-step share `begin_share` / `over_share` (`plan_runner.py:1299,
+  1313`), and the settings `fix_tokens_per_attempt: 6` and `run_guard.step_share: 1.5` (`amoeba/config/adapt.yaml:88,
+  79`).
 - **USD:** the USD limit is already the hard stop when a model has a price (`PR:2933-2936`, D145). Side note: on
   Gemma the price is `null` in prices.yaml but `0.0` in models.yaml, so the USD limit reports "not enforced". This
   is not changed.
-- **Test (if b):** both cases (with and without a price).
 
 ### A6. team.yaml names the model actually used — partly fixed by D131
 - **Today:** team.yaml is written once, before any step runs. The label is `planned_model(llm)`
@@ -161,8 +158,33 @@ Measured on this branch with `blocked_marks` (`PR:802-810`):
     function `used_models(trace)` beside `planned_model`.
 - **Test:** a routed run where one helper's calls fell back to another model; team.yaml names the model used.
 
-## As built
-(Filled in after the build.)
+## As built (Oct 19)
+- **A1.** `resolve_protocol` and `model_has_tools` in `scripts/run_task.py`; called in `run_one` before
+  `trace.protocol` is set, plan topology only. `PlanOptions.protocol_from` records "auto"; `protocol_used` reports
+  `{asked: "auto", used, why}`; the trace has a `protocol_auto` event. A plain client is looked up in the registry by
+  its model name; a mock has no native tools, so offline tests stay legacy unless they ask for v2.
+- **A2.** `_Work.blocked_turns` (`plan_runner.py`); `meta["blocked_turns"]`; the status line says "blocked replies: N
+  (categories: …)". `step_signals` reads both the new list and the old `blocked` flag, so stored runs replay the same.
+- **A3.** The name in a BLOCKED line also ends at ". " or a final "."; a dot inside a name stays. The duplicate check
+  is case-blind on both sides.
+- **A4.** `roles_named` and `split_by_role` (`amoeba/pool/stock.py`); `helpers_for` uses the same rule. Applied where
+  requests are stored: `run_one` (planner requests), `attach_missing` (Box 4), `apply_decision` (re-plan), and the
+  watch's requests raised during the run. (a), (c) and (d) needed no change.
+- **A5.** Unchanged (D151).
+- **A6.** `used_models` and `relabel_team` (`scripts/run_task.py`): after the run, team.yaml is written again when a
+  helper's calls used a model other than its label; a helper with several models lists them, most used first.
+- **Changed test:** `tests/test_tools_d132.py::test_the_router_says_whether_every_model_can_call_tools` used Gemma
+  as its model without tools. It now marks Gemma tool-less inside the test, since the test is about the rule, not
+  about Gemma.
 
 ## Tests
-(Filled in after the build. Every new test runs offline with MockLLMClient.)
+tests/test_plumbing_d153.py, 11 tests:
+- A1: auto is the CLI default; auto gives v2 for a tools model and legacy for a non-tools model; Gemma gives v2 after
+  its check; legacy and v2 override auto; a mock stays legacy; a flat baseline run has no protocol_auto event.
+- A2: a step whose replies are all refused has blocked_turns and no unreadable turns, "blocked replies" in its status,
+  no repair call, and only provider_blocked among its causes; an old run with the flag replays the same.
+- A3: the four lines from the prompt (the H2 line verbatim gives "Census API key"), a dotted name, a duplicate.
+- A4: the five shell names map to code_execution; an "A; B" request is one row per role and the watch sees it.
+- A6: a helper whose calls a fallback answered is relabelled with that model; the others keep theirs.
+
+Full suite: 1008 passed, 9 skipped before; 1019 passed, 9 skipped after.

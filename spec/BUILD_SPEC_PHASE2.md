@@ -1123,6 +1123,12 @@ source. The reply room of a call follows what its role group has needed in the r
 (visible and thinking tokens together), at most twice what the caller asked, so a group that came close to its room is
 not cut and paid for twice. Design: docs/design/D152_two_bugs.md.
 
+**D153, plumbing from the live runs (Oct 19).** `--protocol auto` is the new default: v2 when the run's model supports
+native tool calling, legacy otherwise. Gemma's model check passed the native-tools step and submit_tool, so its entry
+now has tools. A reply the model service refused is never counted as unreadable. A BLOCKED line's name ends at a
+sentence end. A capability request for several roles is stored once per role, and team.yaml names the models the
+helpers' calls really used. Design: docs/design/D153_plumbing.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

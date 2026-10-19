@@ -40,7 +40,8 @@ def test_tool_names_become_function_names_and_the_mock_answers_with_a_call():
 
 def test_the_router_says_whether_every_model_can_call_tools(monkeypatch):
     registry, policy = load_registry()
-    env = {"CLAUDE_API_KEY": "x", "GEMINI_API_KEY": "x"}
+    registry["gemma-4-31b"].supports = {**registry["gemma-4-31b"].supports, "tools": False}   # D153: Gemma now
+    env = {"CLAUDE_API_KEY": "x", "GEMINI_API_KEY": "x"}                       # has tools; one model without them
     claude = ModelRouter(registry, policy, make=None, mode="routed", profile_allowed=["claude-sonnet-5-5"], env=env)
     both = ModelRouter(registry, policy, make=None, mode="routed", env=env)
     assert claude.can_use("tools") and not both.can_use("tools")

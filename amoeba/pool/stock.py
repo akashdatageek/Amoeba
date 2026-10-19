@@ -209,13 +209,35 @@ def vet(e: dict, setup: PoolSetup) -> tuple[str | None, dict, str | None]:
 
 
 # box: toolbox
+def roles_named(for_role: str | None, names) -> list[str]:
+    """D153: the team roles a request's for_role names: the exact name, else each role whose whole name appears in the
+    field ("Analyst; Verifier", "Analyst and Verifier"); [] when it names none (helpers_for's rule)."""
+    names = [x for x in names if x and x.strip()]
+    if not for_role:
+        return []
+    if for_role in names:
+        return [for_role]
+    return [x for x in names if re.search(rf"(?<![\w]){re.escape(x.strip())}(?![\w])", for_role, re.I)]
+
+
+# box: toolbox
+def split_by_role(rows: list[dict], names) -> list[dict]:
+    """D153: a stored capability request whose for_role names several roles becomes one row per role, so every reader
+    that compares for_role with one role name (the stuck watch, the step contract, web tools, re-plan checks) sees it.
+    A row naming one role or none is kept as it is."""
+    out = []
+    for r in rows:
+        hit = roles_named(r.get("for_role"), names)
+        out += [{**r, "for_role": x} for x in hit] if len(hit) > 1 else [r]
+    return out
+
+
+# box: toolbox
 def helpers_for(q, cfg: TeamConfig) -> list[AgentSpec]:
     """The helper(s) a request is for: its for_role, else every helper whose missing tools name it. D127: a for_role
     that names several roles ("Analyst; Verifier", "Analyst and Verifier") is for each role it names."""
-    named = [a for a in cfg.agents.values() if q.for_role and a.name == q.for_role]
-    if not named and q.for_role:            # each role whose whole name appears in the field (names may hold "and")
-        named = [a for a in cfg.agents.values() if a.name.strip() and re.search(
-            rf"(?<![\w]){re.escape(a.name.strip())}(?![\w])", q.for_role, re.I)]
+    hit = set(roles_named(q.for_role, [a.name for a in cfg.agents.values()]))      # D153: one shared rule
+    named = [a for a in cfg.agents.values() if a.name in hit]
     return named or [a for a in cfg.agents.values() if q.name in a.missing_tools]
 
 

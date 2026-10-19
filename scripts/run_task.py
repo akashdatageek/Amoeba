@@ -47,7 +47,7 @@ from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, attach_verifier, build_router, get_profile
 from amoeba.interp.plan_runner import verifier_independence   # D146
 from amoeba.tools.web import TavilyProvider, web_registry
-from amoeba.pool.stock import PoolSetup, SharedPicks, stock_toolbox
+from amoeba.pool.stock import split_by_role, PoolSetup, SharedPicks, stock_toolbox
 from amoeba.localtools.gate import SandboxRequired, require_sandbox
 from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 from amoeba.adapt.faults import check_flag
@@ -80,6 +80,32 @@ def planned_model(llm) -> str | None:
     if isinstance(llm, (OpenAICompatibleClient, AnthropicClient, CachedLLM)):
         return getattr(llm, "model", None) or None
     return None
+
+
+# box: runresult
+def used_models(trace) -> dict[str, list[str]]:
+    """D153: per helper (gen_ai.agent.id), the models its live calls were answered by, most-used first (the response
+    model, else the requested one)."""
+    from collections import Counter
+    by: dict[str, Counter] = {}
+    for s in trace.spans("chat"):
+        aid, m = s.get("gen_ai.agent.id"), s.get("gen_ai.response.model") or s.get("gen_ai.request.model")
+        if aid and m:
+            by.setdefault(aid, Counter())[m] += 1
+    return {a: [m for m, _ in c.most_common()] for a, c in by.items()}
+
+
+# box: runresult
+def relabel_team(cfg, trace) -> bool:
+    """D153: after the run, each helper's team.yaml `model` names the model(s) its calls actually used (a routed run,
+    per-role models, a fallback or a switch_model fix can differ from the planned label); a helper with no calls keeps
+    the planned label. True when a label changed."""
+    used, changed = used_models(trace), False
+    for aid, a in cfg.agents.items():
+        label = ", ".join(used.get(aid) or [])
+        if label and label != a.model:
+            a.model, changed = label, True
+    return changed
 
 
 # box: ov_leave, capreq, runresult
@@ -125,6 +151,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id, log_content=log_content,
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
+    if topology == "plan":
+        plan_options = resolve_protocol(plan_options, llm, trace)          # D153: auto → v2 when the model has tools
     trace.protocol = getattr(plan_options, "protocol", "legacy") if topology == "plan" else "legacy"   # D141
     if hasattr(llm, "begin_run"):  # D97: the router's account for this run (data class)
         llm.begin_run(data_class="sensitive" if "sensitive" in (task.tags or []) else "normal", role_prefs=None)
@@ -250,8 +278,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         if pool is not None or box is not None:   # D56: Box 3 starts by stocking the toolbox, before the runner
             tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed, local=box, picks=picks)
         # D61: what became of each request, for the step contract (an unfilled one is a capability the helper lacks)
-        cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical,
-                                            "status": q.status, "reason": q.reason} for q in requests]
+        cfg.meta["capability_requests"] = split_by_role(                          # D153: one row per role named
+            [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical, "status": q.status, "reason": q.reason}
+             for q in requests], [a.name for a in cfg.agents.values()])
         label = planned_model(llm)                        # D131: the model the calls will go to, not the default
         if label:
             for a in cfg.agents.values():
@@ -271,6 +300,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
                              stock=restock, max_agents=envelope.max_agents, timezone=timezone).run(cfg, task, seed)
             answer, error = ep.answer, ep.error
+            if relabel_team(cfg, trace):                         # D153: the models the helpers' calls really used
+                dump_yaml(cfg, run_dir / "team.yaml")
             answer, stated = enforce_opening(answer, interp)     # D77: an assumed subject is stated, by plain code
             if stated:
                 trace.event("assumption_stated", {"amoeba.line": opening_line(interp), **{
@@ -371,13 +402,46 @@ def models_of(llm, trace) -> dict:
 
 # box: runresult
 def protocol_used(plan_options) -> dict | None:
-    """D136: the step protocol asked for and the one used (v2 needs native tool calling); None for legacy."""
+    """D136: the step protocol asked for and the one used (v2 needs native tool calling); None for legacy. D153: under
+    --protocol auto, `asked` is "auto" and `why` says what the model's registry entry decided."""
     asked = getattr(plan_options, "protocol", "legacy") if plan_options is not None else "legacy"
+    auto = getattr(plan_options, "protocol_from", "") == "auto"
     if asked != "v2":
-        return None
+        return {"asked": "auto", "used": "legacy", "why": "the model has no native tool calling (supports.tools)"} \
+            if auto else None
     native = getattr(plan_options, "native_tools", "off") == "on"
-    return {"asked": "v2", "used": "v2" if native else "legacy",
+    return {"asked": "auto" if auto else "v2", "used": "v2" if native else "legacy",
             "why": "native tool calling" if native else "no native tool calling on this run's models"}
+
+
+# box: runresult
+def model_has_tools(llm) -> bool:
+    """D153: whether every model this run may use supports native tool calling (models.yaml `supports.tools`): the
+    router answers for itself; a plain client is looked up in the registry by its model name; a mock has none."""
+    inner = getattr(llm, "llm", llm)
+    inner = getattr(inner, "inner", inner)                 # a response cache around the router or client
+    if getattr(inner, "can_use", None):
+        return bool(inner.can_use("tools"))
+    if not isinstance(inner, (OpenAICompatibleClient, AnthropicClient)):
+        return False
+    from amoeba.llm.router import load_registry
+    entries = [e for e in load_registry()[0].values() if e.model == getattr(inner, "model", None)]
+    return bool(entries) and all((e.supports or {}).get("tools") for e in entries)
+
+
+# box: runresult
+def resolve_protocol(plan_options, llm, trace):
+    """D153: --protocol auto (the CLI default) becomes v2 when the run's model supports native tool calling, legacy
+    otherwise; legacy and v2 stay explicit overrides. Decided before drafting, so planning (D141/D143), the steps and
+    Box 4 all follow the same choice. The choice is a trace event."""
+    if plan_options is None or getattr(plan_options, "protocol", "legacy") != "auto":
+        return plan_options
+    from dataclasses import replace as _replace
+    tools = model_has_tools(llm)
+    trace.event("protocol_auto", {"amoeba.box": "client", "amoeba.protocol": "v2" if tools else "legacy",
+                                  "amoeba.why": "the model supports native tool calling" if tools else
+                                  "the model has no native tool calling (supports.tools)"})
+    return _replace(plan_options, protocol="v2" if tools else "legacy", protocol_from="auto")
 
 
 # box: runresult
@@ -564,7 +628,7 @@ def cli_plan_options(args: argparse.Namespace):
                        native_tools=getattr(args, "native_tools", "off"),
                        tool_access=getattr(args, "tool_access", "asked"),
                        failed_step=getattr(args, "failed_step", "run"),
-                       protocol=getattr(args, "protocol", "legacy"),                               # D136
+                       protocol=getattr(args, "protocol", "auto"),                         # D136, D153 auto
                        planning_tier=getattr(args, "planning_tier", "auto"), **extra)              # D143
 
 
@@ -831,10 +895,11 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan: helpers call their tools through the model's native tool calling, not the text "
                         "sections ## Action / ## ActionInput; auto = on when every model the run may use has "
                         "supports.tools in models.yaml (D132)")
-    p.add_argument("--protocol", choices=["legacy", "v2"], default="legacy",
+    p.add_argument("--protocol", choices=["auto", "legacy", "v2"], default="auto",
                    help="plan: v2 = in native tool-calling mode the step prompts have no text sections, tools take typed "
                         "arguments and the step ends with a typed Final_Output (D136); without native tool calling the "
-                        "steps fall back to legacy and the summary says so")
+                        "steps fall back to legacy and the summary says so; auto (default) = v2 when the run's model "
+                        "has supports.tools in models.yaml, legacy otherwise (D153)")
     p.add_argument("--planning-tier", choices=["auto", "light", "standard", "full"], default="auto",
                    help="plan: how much planning Box 2 does — light: 1 round, no observers; standard: up to 2 rounds, "
                         "the plan observer; full: up to 3 rounds, both observers; auto: decided by code from the task "

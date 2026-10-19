@@ -656,7 +656,8 @@ BOXES: list[dict] = [
                "their reasons, each search's [P#] results and where the draft cited them (used_in), the lines "
                "screened out and the tokens; left out when the flag is off.",
                "D142: a requirement is met only when every check covering it passed and its key terms are above the "
-               "Limitations section; only under Limitations it is reported_missing; met_legacy keeps the old measure."],
+               "Limitations section; only under Limitations it is reported_missing; met_legacy keeps the old measure.",
+               "D153: team.yaml names the models each helper's calls really used."],
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,
@@ -714,7 +715,8 @@ BOXES: list[dict] = [
                "runs this step again for it with code_pick: plain code takes the first vetted candidate not given to "
                "that step before (no AI call, no shared pick); with both off the rung is skipped.",
                "D137: a pool server that runs code for the caller (remote code execution) is refused at vetting and "
-               "after connecting unless --allow-remote-exec; code runs only through local:Bash in the sandbox."],
+               "after connecting unless --allow-remote-exec; code runs only through local:Bash in the sandbox.",
+               "D153: a request naming several roles is stored once per role."],
          proposes="The picker names one candidate (or NONE); never for an in-task fix (code_pick).",
          disposes="Plain code ranks the candidates, rejects anything unsafe or over the caps, and attaches.",
          anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
@@ -786,7 +788,9 @@ BOXES: list[dict] = [
                "defaults); the schema sent to Claude makes every field required and optional ones nullable; with "
                "cache_prefix the step prompt's stable head is cached; a non-reasoning block gets one compact retry.",
                "D141: under --protocol v2 every call asks for a typed reply through ask() in the model's output mode "
-               "(schema, submit tool or JSON in the prompt), checked by code with one repair call that quotes the error."],
+               "(schema, submit tool or JSON in the prompt), checked by code with one repair call that quotes the error.",
+               "D153: --protocol auto (the default) picks v2 when the model supports native tool calling, legacy "
+               "otherwise; Gemma has tools after its model check."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/anthropic_client.py::AnthropicClient",
@@ -875,7 +879,8 @@ BOXES: list[dict] = [
                "D145: a lacked line about a tool the helper holds is a tool error (held_tool_failed), never a "
                "capability; runtime requests count only for the step they came from.",
                "D149: a held tool refused twice in one step for the same reason makes the cause a tool error, whatever "
-               "else is missing."],
+               "else is missing.",
+               "D153: refused replies are blocked turns, never unreadable ones, and feed only provider_blocked."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code marks the step and logs the diagnosis; no fix is made yet.",
          anchors=["amoeba/adapt/stuck.py::step_signals", "amoeba/adapt/stuck.py::diagnose",

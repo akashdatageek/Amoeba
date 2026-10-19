@@ -44,7 +44,7 @@ from amoeba.llm.client import api_error, describe_api_error
 from amoeba.llm.limits import RunLimitReached, billed, estimate
 from amoeba.llm.profiles import role_group
 from amoeba.llm.router import NoModelAvailable
-from amoeba.pool.stock import pool_skill_notes, pool_tool_notes
+from amoeba.pool.stock import pool_skill_notes, pool_tool_notes, roles_named, split_by_role
 from amoeba.llm.cache import is_blocked
 from amoeba.llm.client import tool_fn_name
 from amoeba.llm.ask import Unreadable, ask                                     # D141
@@ -201,6 +201,7 @@ class PlanOptions:
     # typed arguments plain code checks, and the step ends with a typed Final_Output (amoeba/interp/step_protocol.py).
     # Without native tool calling the steps fall back to legacy (event protocol_fallback). Default legacy.
     protocol: str = "legacy"
+    protocol_from: str = ""          # D153: "auto" when --protocol auto chose `protocol` from the model's supports.tools
     planning_tier: str = "auto"      # D143: light | standard | full | auto (Box 2's rounds and observers; legacy auto = full)
 
 
@@ -586,6 +587,7 @@ class _Work:
         self.last_message = ""                  # D44: the last helper message, passed on when no Final Output came
         self.requests: list[str] = []           # D76: every tool request / non-final message of the step
         self.unreadable: list[dict] = []        # D123: turns whose reply could not be read (who, turn, why)
+        self.blocked_turns: list[dict] = []     # D153: turns the model service refused (never a format slip)
         self.rework_no_output: list[str] = []   # D138 (B2): reworks (refine / revision) that gave no new Final Output
 
     @property
@@ -802,10 +804,10 @@ def unmark(text: str) -> str:
 def blocked_marks(text: str) -> list[str]:
     """D36: the capabilities named in 'BLOCKED: <capability> — ...' lines of a step's output."""
     names = []
-    for m in re.finditer(r"BLOCKED\s*[:：]\s*`?([A-Za-z][\w ./+-]{0,60}?)`?\s*(?:[—–:;,(\n]|-\s|$)",
-                         unmark(text)):                                  # D128: "**BLOCKED:**" is read too
+    for m in re.finditer(r"BLOCKED\s*[:：]\s*`?([A-Za-z][\w ./+-]{0,60}?)`?\s*(?:[—–:;,(\n]|-\s|\.\s|\.$|$)",
+                         unmark(text)):                # D128: "**BLOCKED:**" is read too; D153: ". " ends the name
         name = m.group(1).strip(" .-")
-        if name and name.lower() not in names and name.lower() not in ("none", "n/a"):
+        if name and name.lower() not in {x.lower() for x in names} and name.lower() not in ("none", "n/a"):
             names.append(name)
     return names
 
@@ -1724,6 +1726,10 @@ class PlanRunner:
             reason += "; not declared by the helper: " + ", ".join(undeclared)
         if w.unreadable and not finished:            # D123: turns lost to replies that could not be read
             reason = "; ".join(x for x in (reason, f"unreadable replies: {len(w.unreadable)}") if x)
+        if w.blocked_turns and not finished:         # D153: refused by the service, counted apart from unreadable
+            cats = sorted({b["category"] for b in w.blocked_turns if b.get("category")})
+            reason = "; ".join(x for x in (reason, f"blocked replies: {len(w.blocked_turns)}"
+                                           + (f" (categories: {', '.join(cats)})" if cats else "")) if x)
         if unused:
             status = "partial" if status == "done" else status
             reason = "; ".join(x for x in (reason, "attached unused: " + ", ".join(unused)) if x)
@@ -1809,6 +1815,7 @@ class PlanRunner:
                 "missing_data": data_gaps,                                          # D127 marks, read by D117
                 "fix_of": {k: v for k, v in fixing.items() if k != "note"} if fixing else None,
                 "unreadable_turns": w.unreadable,                                  # D123, read by the stuck watch
+                "blocked_turns": w.blocked_turns,                                  # D153: refused, not unreadable
                 **({"no_final_output": True, "last_message": w.last_message[:2000]}       # D138 (B3)
                    if not any(w.done.get(x.agent_id) or w.partial.get(x.agent_id) for x in agents) else {}),
                 **({"rework_no_output": list(w.rework_no_output)} if w.rework_no_output else {}),   # D138 (B2)
@@ -2383,9 +2390,10 @@ class PlanRunner:
                                         "input": inp[:400], "final": FINAL_OUTPUT in act, "blocked": gap})
                 if act in (UNREADABLE, PROVIDER_BLOCKED):   # D123: nothing readable to pass on; the helper is told
                     cat = getattr(self, "_refusal_category", None)                   # D134: set by unreadable_turn
-                    w.unreadable.append({"agent": agent.name, "turn": w.turn + 1, "why": resp,
-                                         "blocked": act == PROVIDER_BLOCKED,         # D128
-                                         **({"category": cat} if cat else {})})
+                    (w.blocked_turns if act == PROVIDER_BLOCKED else w.unreadable).append(   # D153: kept apart
+                        {"agent": agent.name, "turn": w.turn + 1, "why": resp,
+                         "blocked": act == PROVIDER_BLOCKED,                                   # D128
+                         **({"category": cat} if cat else {})})
                     w.add(f">{agent.name} (reply not readable):\n>Result:\n{resp}\n",
                           one_line(agent.name, "reply not readable", "", resp, False))
                     continue
@@ -2452,10 +2460,11 @@ class PlanRunner:
         holds = {a.name: set(a.tools) for a in self.agents.values()}
         by_name = {a.name: a for a in self.agents.values()}
         held_fn = lambda role, name: bool(by_name.get(role) and held_tool(by_name[role], name or ""))   # D145
-        unfilled = open_requests(list(self.cfg.meta.get("capability_requests", [])) + [
+        unfilled = open_requests(list(self.cfg.meta.get("capability_requests", [])) + split_by_role([
             {**q.model_dump(), "status": "unfilled", "reason": "raised_during_run"}
-            for q in self.ep.requested_capabilities if q.for_role in roles and self.pool is not None
-            and q.step in (None, n)], holds, held_fn)                     # D145: requests are per step
+            for q in self.ep.requested_capabilities if set(roles_named(q.for_role, list(by_name))) & set(roles)
+            and self.pool is not None
+            and q.step in (None, n)], list(by_name)), holds, held_fn)          # D153: one row per role named                     # D145: requests are per step
         mine = [self.agents[a] for a in self.steps[n].agent_ids] if n in self.steps else []
         held, hidden = {}, self.fault_hidden(n)
         for x in list(meta.get("blocked") or []) + list(meta.get("contract_missing") or []):
@@ -2563,7 +2572,8 @@ class PlanRunner:
         if meta["status"] == "done" or not meta.get("stuck"):
             return None
         cats = sorted({c for s in meta["stuck"].get("signals_detail") or [] for c in s.get("categories") or []}
-                      | {u.get("category") for u in meta.get("unreadable_turns") or [] if u.get("category")})
+                      | {u.get("category") for u in [*(meta.get("unreadable_turns") or []),
+                                                    *(meta.get("blocked_turns") or [])] if u.get("category")})
         self.exhausted = {"step": n, "cause": meta["stuck"]["cause"], "why": why,
                           "evidence": meta["stuck"]["evidence"], "categories": cats}
         self.ep.adaptation = self.adapt_summary()
@@ -2921,10 +2931,9 @@ class PlanRunner:
             for x in summary.get("attached", []):
                 got.append(x["as"])
                 self.attached_ids.setdefault(n, []).append(x["id"])
-            for q in reqs:
-                self.cfg.meta.setdefault("capability_requests", []).append(
-                    {"name": q.name, "for_role": q.for_role, "canonical": q.canonical, "status": q.status,
-                     "reason": q.reason, "source": "adapt"})
+            self.cfg.meta.setdefault("capability_requests", []).extend(split_by_role(     # D153
+                [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical, "status": q.status,
+                  "reason": q.reason, "source": "adapt"} for q in reqs], [a.name for a in self.agents.values()]))
         if self.web is not None:
             self.grant_web_tools()
         return got
@@ -4084,10 +4093,10 @@ class PlanRunner:
             self.i.tools = reg
             self.pool = getattr(reg, "pool", None)
             self.local = getattr(reg, "local", None)
+        self.cfg.meta.setdefault("capability_requests", []).extend(split_by_role(         # D153
+            [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical, "status": q.status,
+              "reason": q.reason, "source": "replan"} for q in requests], [a.name for a in self.agents.values()]))
         for q in requests:
-            self.cfg.meta.setdefault("capability_requests", []).append(
-                {"name": q.name, "for_role": q.for_role, "canonical": q.canonical, "status": q.status,
-                 "reason": q.reason, "source": "replan"})
             self.known.update(x for x in (q.name, q.canonical) if x)
         if self.web is not None:
             self.grant_web_tools()
