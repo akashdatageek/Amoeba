@@ -1192,6 +1192,11 @@ same gates. Design: docs/design/D158_sandbox_libs.md.
 every helper, and protected from writes like sources/. A plan in which no step names a given file is sent back by the
 quality gate. Design: docs/design/D157_input_files.md.
 
+**D159, local-tool calls scale with the plan (Oct 21).** The fixed 60 local calls per run became 12 per planned step,
+and each step gets a share of what is left (1.5 x calls left / steps not yet run), like D151's token share. A plan of
+the old size is treated as before; an 11-step plan is no longer stopped halfway. Design:
+docs/design/D159_local_call_share.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

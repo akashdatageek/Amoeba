@@ -747,7 +747,9 @@ BOXES: list[dict] = [
                "the exact part and says how to rewrite the call.",
                "D158: one library list (config/sandbox/libs.txt) for the image and in-process mode, LibreOffice Calc and "
                "Writer in both; Glob and Grep the server no longer offers are served through its Bash by plain code, "
-               "quoted, behind the same gates."],
+               "quoted, behind the same gates.",
+               "D159: local calls scale with the plan — 12 per planned step for the run, and each step a share of what "
+               "is left (1.5 x calls left / steps not yet run), refused as step_share with the numbers."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",

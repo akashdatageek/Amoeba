@@ -55,10 +55,11 @@ from amoeba.adapt.faults import check_flag
 from amoeba.adapt.config import adapt_config
 
 
-LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
+LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached", "local_step_shares"}
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
                  "plan_search", "provider_blocked", "reasoning_refusals", "protocol",
-                 "planning_tier", "published_round", "reading_revised", "verifier_independence"}   # left out of result.json when None (Phase 1 records unchanged)
+                 "planning_tier", "published_round", "reading_revised", "verifier_independence",
+                 "input_files", "local_step_shares"}   # D157, D159   # left out of result.json when None (Phase 1 records unchanged)
 
 
 

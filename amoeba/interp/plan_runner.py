@@ -1589,8 +1589,9 @@ class PlanRunner:
             self.web.begin_step(n, self.i.trace)
         if self.pool is not None:
             self.pool.begin_step(n, self.i.trace)
-        if self.local is not None:
-            self.local.begin_step(n, self.i.trace)
+        if self.local is not None:                                                # D159: the plan's size, for the share
+            self.local.begin_step(n, self.i.trace, plan_steps=len(self.cfg.plan),
+                                  not_run=max(1, sum(1 for st in self.cfg.plan if number(st) not in self.artifacts)))
         self.i.trace.event("step_input", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.depends_on": deps,
                                           "amoeba.received": deps, "amoeba.input_chars": len(inputs),
                                           "amoeba.verification": verifier, "amoeba.rework": bool(rework)})

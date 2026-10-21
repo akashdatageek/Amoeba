@@ -334,6 +334,7 @@ def infra_error(error: str | None) -> bool:
 class RunResult(BaseModel):
     interpretation: dict = Field(default_factory=dict)   # D77: the task interpretation step and what it settled
     input_files: list[dict] | None = None                # D157: [{path, size}] given with the task (None: none)
+    local_step_shares: dict | None = None                # D159: {step: {share, left, not_run, factor}} local calls
     run_id: str
     task_id: str
     draft_source: str | None = None   # D45: the saved draft reused (eval_draft file stem or run id); None = drafted

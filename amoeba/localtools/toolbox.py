@@ -67,9 +67,11 @@ REWRITE = {"unsafe_command": "Rewrite it to stay in the workspace: write paths f
                              "sources/S1_page.txt, out/table.csv), no cd out of it, no ~ or system paths.",
            "outside_workspace": "Write paths from the workspace root (e.g. sources/S1_page.txt); nothing outside it.",
            "network_command": "Use the web tools (web_search, fetch_url) for anything on the network.",
-           "protected_config": "Write your own files elsewhere in the workspace; sources/, skills and configs are "
-                               "read-only."}
+           "protected_config": "Write your own files elsewhere in the workspace; sources/, inputs/, skills and "
+                               "configs are read-only.",
+           "step_share": "Finish this step with what you have, or say what is missing; later steps need their calls."}
 READ_TOOLS = {"Read", "Glob", "Grep"}
+DEFAULT_STEPS = 5                                 # D159: without a plan, calls_per_step x 5 = the old 60 per run
 BY_BASH = ("Glob", "Grep")                        # D158: served through the server's Bash when it does not list them
 GLOB_PY = ("import glob, sys\nhits = sorted(glob.glob(sys.argv[1], recursive=True))\n"
            "print('\\n'.join(hits[:200]) if hits else 'no files match')")
@@ -203,6 +205,9 @@ class LocalToolbox:
         self.step: int | None = None
         self.calls = 0
         self.step_calls = 0
+        self.plan_steps = 0                           # D159: the plan's size (0: no plan; the old 60 calls apply)
+        self.step_shares: dict[int, dict] = {}        # D159: step -> its share of the run's local calls
+        self.share_from = 0                           # D159: self.calls when the current step started
         self.refusals: dict[str, int] = {}
         self.files: dict[str, dict] = {}             # workspace-relative path -> {path, size, step}
         self._seen = self._snapshot()
@@ -379,8 +384,28 @@ class LocalToolbox:
         return True
 
     # ---- calls -----------------------------------------------------------------------------------------------
-    def begin_step(self, step: int, trace=None) -> None:
+    def allowance(self) -> int:
+        """D159: the run's local calls — calls_per_step for every planned step (DEFAULT_STEPS without a plan), or an
+        explicit max_calls_per_run when one is set."""
+        fixed = self.lim.get("max_calls_per_run")
+        if fixed is not None:
+            return int(fixed)
+        return int(self.lim.get("calls_per_step", 12)) * (self.plan_steps or DEFAULT_STEPS)
+
+    def begin_step(self, step: int, trace=None, plan_steps: int | None = None, not_run: int | None = None) -> None:
+        """D159: plan_steps (the plan's size) and not_run (steps not yet run, this one included) come from the plan
+        runner; the step's share is step_share x (allowance - used) / not_run, like D151's token share."""
         self.step, self.step_calls = step, 0
+        self.share_from = self.calls
+        if plan_steps:
+            self.plan_steps = max(self.plan_steps, int(plan_steps))   # a re-plan may add steps, never shrink it
+        if not_run:
+            factor = float(self.lim.get("step_share", 1.5))
+            left = max(0, self.allowance() - self.calls)
+            self.step_shares[step] = {"share": int(factor * left / max(1, not_run)), "left": left,
+                                      "not_run": int(not_run), "factor": factor}
+        else:
+            self.step_shares.pop(step, None)
         if trace is not None:
             self.trace = trace
         if isinstance(self.book, SourceBook):        # WebTools is stepped by its own runner call
@@ -432,8 +457,13 @@ class LocalToolbox:
         except ValueError as e:
             args, bad = {}, str(e)
         what = self.what(tool, args) or (text or "")[:120]
-        if self.calls >= int(self.lim["max_calls_per_run"]):
-            return self.refuse(tool, "run_cap", f"{self.lim['max_calls_per_run']} calls per run", what)
+        if self.calls >= self.allowance():
+            return self.refuse(tool, "run_cap", f"{self.allowance()} calls per run", what)
+        sh = self.step_shares.get(self.step)
+        if sh and self.calls - self.share_from >= sh["share"]:                   # D159
+            return self.refuse(tool, "step_share", f"step {self.step} used {self.calls - self.share_from} local calls, "
+                               f"its share ({sh['share']} = {sh['factor']} x {sh['left']} calls left / {sh['not_run']} "
+                               f"steps not yet run); the rest is kept for the steps not yet run", what)
         if self.step_calls >= int(self.lim["max_calls_per_step"]):
             return self.refuse(tool, "step_cap", f"{self.lim['max_calls_per_step']} calls per step", what)
         if tool not in self.exposed:
@@ -658,4 +688,5 @@ class LocalToolbox:
         now = self._snapshot()
         files = [{**v, "size": now.get(p, (v["size"],))[0]} for p, v in sorted(self.files.items()) if p in now]
         return {"files_created": files, "local_tool_calls": self.calls, "local_refusals": dict(self.refusals),
-                "skills_attached": self.skills_attached}
+                "skills_attached": self.skills_attached,
+                "local_step_shares": {str(k): v for k, v in self.step_shares.items()} or None}   # D159
