@@ -807,7 +807,10 @@ BOXES: list[dict] = [
                "D153: --protocol auto (the default) picks v2 when the model supports native tool calling, legacy "
                "otherwise; Gemma has tools after its model check.",
                "D156: amoeba/llm/quota.py::parse_quota reads a 429 quota reply: per-minute (retried) or daily (it will "
-               "not clear today), its limit and the wait."],
+               "not clear today), its limit and the wait.",
+               "D160: a per-minute quota 429 waits as long as the reply asks; a daily one is not retried "
+               "(quota_exhausted), the run stops cleanly and --resume continues another day with finished calls replayed "
+               "from the cache."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/anthropic_client.py::AnthropicClient",

@@ -40,7 +40,7 @@ from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_
                                       strip_unverified)
 from amoeba.interp.freshness import stale_figure, time_sensitive
 from amoeba.interp.shorten import shorten
-from amoeba.llm.client import api_error, describe_api_error
+from amoeba.llm.client import api_error, describe_api_error, quota_exhausted
 from amoeba.llm.limits import RunLimitReached, billed, estimate
 from amoeba.llm.profiles import role_group
 from amoeba.llm.router import NoModelAvailable
@@ -1215,6 +1215,9 @@ class PlanRunner:
         except ParseError as e:                           # D123: a reply no repair could read, outside a helper turn
             return self.answer_on_stop(e, f"parse: {str(e)[:300]}")
         except Exception as e:
+            if quota_exhausted(e):                        # D160: the daily quota; stop cleanly, resume another day
+                self.i.trace.event("quota_exhausted", {"error.type": describe_api_error(e)[:300]})
+                return self.answer_on_stop(e, "quota_exhausted")
             if api_error(e):                              # D123: the model service failed after its retries (D57)
                 self.i.trace.event("api_error", {"error.type": describe_api_error(e)[:300]})
                 return self.answer_on_stop(e, f"api: {describe_api_error(e)}")

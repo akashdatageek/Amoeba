@@ -1197,6 +1197,11 @@ and each step gets a share of what is left (1.5 x calls left / steps not yet run
 the old size is treated as before; an 11-step plan is no longer stopped halfway. Design:
 docs/design/D159_local_call_share.md.
 
+**D160, quota handling (Oct 21).** A per-minute quota is waited out for as long as the reply asks, then retried. A
+daily quota is not retried: the run stops cleanly with status quota_exhausted, saves what it needs, and
+`run_task --resume <run_id>` continues another day with the same flags, task, cache and date, so finished calls replay
+without being paid again. Design: docs/design/D160_quota.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
