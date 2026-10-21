@@ -1202,6 +1202,11 @@ daily quota is not retried: the run stops cleanly with status quota_exhausted, s
 `run_task --resume <run_id>` continues another day with the same flags, task, cache and date, so finished calls replay
 without being paid again. Design: docs/design/D160_quota.md.
 
+**D161, the frozen judge and the task scorer (Oct 21).** The files that judge a run are listed and hashed at the start
+of every run, and runs judged by different files are never compared. A task may name a scorer, whose result goes to
+sim_score.json; only a deterministic stand-in exists until a simulator is chosen. Tasks may be marked stream (learned
+from) or replay (only the outer loop's test). Design: docs/design/D161_frozen_judge.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

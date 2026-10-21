@@ -529,6 +529,20 @@ already covers (`unfilled (registered_tool)`, such as web_search) or a helper al
 stuck, and a registry grant marks its request filled; the fix proposer's reply is read from the last JSON object that
 holds an edit, not from the first brace (Gemma's thought often quotes JSON from the prompt).
 
+## Lessons across tasks and the outer loop (D161–D166)
+
+Box 4 used to forget what it learned when a task ended. These decisions keep a record of every fix round, judge each
+edit by plain code, keep the edits that helped in one lesson library shared by every task, let later tasks read it,
+and let a hand-run outer loop turn a lesson that kept helping into a general config change, tested first. Nothing is
+built for one niche. Spec: `spec/BUILD_SPEC_BOX4_RSI.md`.
+
+**D161: the frozen judge and the task scorer (Oct 21).** The files that judge a run are listed in
+`amoeba/config/frozen.yaml` (domain checks, Box 2's plan checks, the answer score, the scorers, baseline results).
+They are hashed at the start of every run, and the hash goes to `result.json`. Runs whose judge hashes differ are never
+compared. A task may name a scorer in its `sim` field; after the run its score, the baseline's score, the delta and the
+seed go to `sim_score.json` (`--sim-seed`, default `--seed`). Only a deterministic stand-in exists; a real simulator
+becomes one more scorer. Tasks may carry `set: stream | replay`. Design: `docs/design/D161_frozen_judge.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

@@ -994,6 +994,17 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code runs the pairs and counts.",
          anchors=["scripts/stage_e.py::run_pairs", "scripts/stage_e_report.py::run_record"], guard_anchors=[]),
+    dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorer (D161)", kind="code", plan=None,
+         sentence="Hashes every file that judges a run at the start of the run, and scores a task with the scorer it "
+                  "names, so a later comparison knows both the score and the judge that gave it.",
+         what=["config/frozen.yaml lists the judge: the domain checks, Box 2's plan checks, the answer score, the "
+               "scorers and the baseline results. The digest goes to result.json and sim_score.json.",
+               "Runs whose judge hashes differ, or are unknown, are refused for comparison (same_judge).",
+               "A task may name a scorer in its sim field; only a deterministic stand-in exists (the answer's first "
+               "number against an expected value). A real simulator becomes one more scorer."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code hashes the files, scores the run and refuses mixed comparisons.",
+         anchors=["amoeba/eval/judge.py::judge_hash", "amoeba/eval/sim_score.py::score_run"], guard_anchors=[]),
     dict(id="faults", view="adapt", title="Fault injection (D119, test-only)", kind="code", plan=None,
          sentence="Puts one known fault into one step, so the stuck watch's diagnosis and the fixes can be checked "
                   "against a ground truth; refused unless AMOEBA_TEST_FAULTS=1.",

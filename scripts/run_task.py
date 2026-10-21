@@ -44,6 +44,8 @@ from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.task.inputs import copy_inputs, inputs_text
+from amoeba.eval.judge import judge_hash
+from amoeba.eval.sim_score import score_run
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, attach_verifier, build_router, get_profile
 from amoeba.interp.plan_runner import verifier_independence   # D146
@@ -60,7 +62,7 @@ LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_a
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
                  "plan_search", "provider_blocked", "reasoning_refusals", "protocol",
                  "planning_tier", "published_round", "reading_revised", "verifier_independence",
-                 "input_files", "local_step_shares", "resumed_from"}   # D157, D159, D160   # left out of result.json when None (Phase 1 records unchanged)
+                 "input_files", "local_step_shares", "resumed_from", "sim_score"}   # D157, D159, D160, D161   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -119,6 +121,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
             picks_only: bool = False, timezone: str | None = None, interpret: bool = False,
             context=None, disabled_tools=(), today=None, resumed_from: str | None = None,
+            sim_seed: int | None = None,
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
             default_max_turns: int | None = None, family_classify: bool = False,
             niche=None, deliverable_check: bool = False,
@@ -155,6 +158,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
     inputs = copy_inputs(task.files, run_dir / "workspace") if task.files else []    # D157: before any call
+    judge = judge_hash()["sha256"]                                                   # D161: the frozen judge
+    trace.event("judge_hash", {"amoeba.box": "frozen_judge", "amoeba.judge_hash": judge})
     if inputs:
         trace.event("input_files", {"amoeba.box": "interpret", "amoeba.files": inputs})
     if topology == "plan":
@@ -398,8 +403,14 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         reading_revised=draft.reading_revision if draft else None,
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
+    result.judge_hash = judge
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
+    if task.sim:                                     # D161: the task's scorer, after the answer is on disk
+        result.sim_score = score_run(run_dir, task, seed if sim_seed is None else sim_seed, judge)
+        exclude.discard("sim_score")
+        (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None),
+                                             encoding="utf-8")
     return result
 
 
@@ -848,6 +859,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--resume", default=None, metavar="RUN_ID",
                    help="D160: continue a run stopped by the model's daily quota (status quota_exhausted): the same "
                         "flags, task, date and response cache, so finished calls replay and are not paid again")
+    p.add_argument("--sim-seed", type=int, default=None, metavar="N",
+                   help="D161: the seed the task's scorer (its `sim` field) is run with (default: --seed)")
     p.add_argument("--run-date", default=None, metavar="YYYY-MM-DD",
                    help="D160: the date the run's helpers are told (default: today where the run is, --timezone)")
     p.add_argument("--file", action="append", default=[], metavar="PATH",
@@ -1223,7 +1236,8 @@ def main(argv: list[str] | None = None) -> int:
                     workspace_sources=args.workspace_sources == "on" and args.topology == "plan",   # D107
                     ask_assumed=args.ask_assumed, clarify=parse_clarify(args.clarify),                  # D116
                     plan_search=args.plan_search == "on",                                             # D120
-                    today=day, resumed_from=resumed["run_id"] if resumed else None)                     # D160
+                    today=day, resumed_from=resumed["run_id"] if resumed else None,                     # D160
+                    sim_seed=args.sim_seed)                                                             # D161
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
