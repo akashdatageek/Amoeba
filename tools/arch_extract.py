@@ -677,7 +677,10 @@ BOXES: list[dict] = [
                "D137: the harness's own fetches reach only public http(s) addresses, with each redirect hop checked "
                "again (at most 3).",
                "D147: a cut page or table names its saved file in the workspace (open it with local:Read), and a table "
-               "excerpt shows its last rows too."],
+               "excerpt shows its last rows too.",
+               "D156: scripts/preflight.py checks, before a real run, every piece a task category needs (keys, model, "
+               "quota, sandbox, libraries, office suite, local tools, skills) and prints how to fix each missing one; "
+               "exit 1 when a needed piece is missing."],
          proposes="A tool name and its input (from a helper).",
          disposes="Plain code checks the name and the arithmetic before anything runs.",
          anchors=["amoeba/tools/registry.py::ToolRegistry", "amoeba/tools/registry.py::calc",
@@ -793,7 +796,9 @@ BOXES: list[dict] = [
                "D141: under --protocol v2 every call asks for a typed reply through ask() in the model's output mode "
                "(schema, submit tool or JSON in the prompt), checked by code with one repair call that quotes the error.",
                "D153: --protocol auto (the default) picks v2 when the model supports native tool calling, legacy "
-               "otherwise; Gemma has tools after its model check."],
+               "otherwise; Gemma has tools after its model check.",
+               "D156: amoeba/llm/quota.py::parse_quota reads a 429 quota reply: per-minute (retried) or daily (it will "
+               "not clear today), its limit and the wait."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/anthropic_client.py::AnthropicClient",

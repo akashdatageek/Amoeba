@@ -1175,6 +1175,13 @@ the replaced steps moves to the new step that covers the same requirements, and 
 own. A work-around may narrow done_when, but the checks still read the original, and citation checks are never
 waived. Design: docs/design/D155_checks_kept.md.
 
+**D156, preflight (Oct 21).** One command checks, before anything is spent, that every piece a task category needs is
+there, and prints how to fix each missing one: keys and one live call each, the model check, quota, the sandbox,
+libraries, the office suite, the six local tools and the four document skills. The local checks run through the
+run's own toolbox, so what is checked is what a helper gets. Its first live run found a sandbox that would not start
+(mismatched OpenShell images), missing scipy, pytest and LibreOffice, and Glob and Grep never offered.
+Design: docs/design/D156_preflight.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
