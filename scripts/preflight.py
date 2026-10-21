@@ -158,6 +158,7 @@ class LiveBox:
             self.tmp.cleanup()
 
 
+# box: tools
 def _row(check, ok, detail, fix, needed, warn=False) -> Row:
     return Row(check, "ok" if ok else ("warn" if warn else "missing"), detail, "" if ok else fix, tuple(needed))
 
@@ -251,6 +252,7 @@ def check_host(w: World) -> list[Row]:
 OFFICE_RUN = "python3 preflight_office.py"
 
 
+# box: tools
 def office_source() -> str:
     """office.py's own check, made runnable alone (it needs only openpyxl and soffice), printing JSON."""
     from amoeba.localtools import office
@@ -304,6 +306,7 @@ def check_local(w: World) -> list[Row]:
     return rows
 
 
+# box: tools
 def _stdout(out: str) -> str:
     """The text a local call printed: the server answers Bash with {"stdout": ..., "stderr": ...} after a header."""
     body = (out or "").split("\n", 1)[-1] if (out or "").startswith("[local:") else (out or "")
@@ -315,6 +318,7 @@ def _stdout(out: str) -> str:
         else body
 
 
+# box: tools
 def _json_tail(out: str) -> dict:
     for line in reversed(_stdout(out).splitlines()):
         line = line.strip()
