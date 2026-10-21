@@ -740,7 +740,10 @@ BOXES: list[dict] = [
                "D107: every page and data file the web tools read is saved read-only under sources/ in the workspace (and uploaded into the sandbox), with sources/index.json giving each file's [S#], url and time; writes there are refused and the files never count as made.",
                "D112: a Python program sent to local:Bash (a ```python block, or a first line that starts like Python) runs as python3 from a quoted heredoc; the rewrite is logged and the gate still screens it.",
                "D148: a Bash path is judged by where it lands after each cd, not by a '..' in its text; a refusal names "
-               "the exact part and says how to rewrite the call."],
+               "the exact part and says how to rewrite the call.",
+               "D158: one library list (config/sandbox/libs.txt) for the image and in-process mode, LibreOffice Calc and "
+               "Writer in both; Glob and Grep the server no longer offers are served through its Bash by plain code, "
+               "quoted, behind the same gates."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",

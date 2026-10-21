@@ -64,7 +64,8 @@ def events(b, name):
 
 # ---- 1. connect: allowed tools only ----------------------------------------------------------------------------
 def test_allowed_tools_are_exposed_and_run_in_the_workspace(box):
-    assert box.exposed == ["Bash", "Read", "Write", "Edit"]          # Glob and Grep: not offered by this server
+    # Glob and Grep: not offered by this server; D158 serves them through its Bash
+    assert box.exposed == ["Bash", "Read", "Write", "Edit", "Glob", "Grep"] and box.served_by_bash == ["Glob", "Grep"]
     assert [e["gen_ai.tool.name"] for e in events(box, "local_tool_missing")] == ["Glob", "Grep"]
     out = box.call("Bash", "pwd")
     assert out.startswith("[local:Bash]") and str(box.workspace.resolve()) in out
@@ -347,7 +348,8 @@ def test_a_real_file_keeps_the_step_done_and_is_recorded(skills, tmp_path, envel
     assert res["files_created"] == [{"path": "chart.png", "size": 3, "step": 1}]
     assert res["local_tool_calls"] == 1 and res["local_refusals"] == {} and res["skills_attached"] == []
     assert (run / "artifacts" / "files" / "chart.png").read_bytes() == b"PNG"
-    assert res["pool"]["local"]["exposed"] == ["local:Bash", "local:Read", "local:Write", "local:Edit"]
+    assert res["pool"]["local"]["exposed"] == ["local:Bash", "local:Read", "local:Write", "local:Edit",
+                                               "local:Glob", "local:Grep"]                     # D158
     assert res["pool"]["pool"] == "off"                                # --no-pool: local items only
     lines = [json.loads(l) for l in (run / "trace.jsonl").read_text().splitlines()]
     assert [l["gen_ai.tool.name"] for l in lines if l["name"] == "local_call"] == ["local:Bash"]

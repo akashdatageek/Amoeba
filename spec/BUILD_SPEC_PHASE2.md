@@ -1182,6 +1182,11 @@ run's own toolbox, so what is checked is what a helper gets. Its first live run 
 (mismatched OpenShell images), missing scipy, pytest and LibreOffice, and Glob and Grep never offered.
 Design: docs/design/D156_preflight.md.
 
+**D158, the sandbox holds what the checks need (Oct 21).** One library list (libs.txt) is installed in the sandbox
+image and, for in-process mode, on the host, and LibreOffice Calc and Writer are in both. Glob and Grep, which
+Claude Code's server no longer offers, are served through its Bash by plain code with every argument quoted and the
+same gates. Design: docs/design/D158_sandbox_libs.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

@@ -69,6 +69,9 @@ REWRITE = {"unsafe_command": "Rewrite it to stay in the workspace: write paths f
            "protected_config": "Write your own files elsewhere in the workspace; sources/, skills and configs are "
                                "read-only."}
 READ_TOOLS = {"Read", "Glob", "Grep"}
+BY_BASH = ("Glob", "Grep")                        # D158: served through the server's Bash when it does not list them
+GLOB_PY = ("import glob, sys\nhits = sorted(glob.glob(sys.argv[1], recursive=True))\n"
+           "print('\\n'.join(hits[:200]) if hits else 'no files match')")
 PLAIN_ARG = {"Bash": "command", "Read": "file_path", "Glob": "pattern", "Grep": "pattern"}
 
 
@@ -194,6 +197,7 @@ class LocalToolbox:
         self.home = self.run_dir / "localtools_home"
         self.server = None
         self.exposed: list[str] = []                  # allowed and offered by the server
+        self.served_by_bash: list[str] = []           # D158: Glob / Grep the server lacks, run through its Bash
         self.listing: list[dict] = []
         self.step: int | None = None
         self.calls = 0
@@ -241,6 +245,9 @@ class LocalToolbox:
         allowed = list(self.setup.config["allowed_tools"])
         names = [t["name"] for t in self.listing]
         self.exposed = [n for n in allowed if n in names]
+        if "Bash" in self.exposed:                    # D158: Claude Code's server no longer lists Glob or Grep
+            self.served_by_bash = [n for n in BY_BASH if n in allowed and n not in names]
+            self.exposed += self.served_by_bash
         for n in names:                               # refused once each, at the start
             if n not in allowed:
                 self._refuse_tool(n, "not_allowed")
@@ -471,7 +478,7 @@ class LocalToolbox:
         self.step_calls += 1
         t0 = time.perf_counter()
         try:
-            out, is_error = self.server.call(tool, args, timeout_s + 5)
+            out, is_error = self.server.call(*self.served(tool, args, timeout_s), timeout_s + 5)
             timed_out = False
         except TimeoutError:
             out, is_error, timed_out = f"timed out after {timeout_s:.0f} s", True, True
@@ -501,6 +508,19 @@ class LocalToolbox:
             self.trace.event("local_source", {"amoeba.box": "localtools", "amoeba.step": self.step,
                                               "gen_ai.tool.name": f"local:{tool}", "amoeba.source_id": s["id"]})
         return f"[local:{tool}{' error' if is_error else ''}]{src}\n{cut}{more}"
+
+    def served(self, tool: str, args: dict, timeout_s: float) -> tuple[str, dict]:
+        """D158: the server call for a tool. Glob and Grep the server lacks become one Bash call that plain code
+        writes, every argument shell-quoted (the pattern is data, never a command); the path was already checked."""
+        if tool not in self.served_by_bash:
+            return tool, args
+        path, pattern = str(args.get("path") or "."), str(args.get("pattern") or "")
+        if tool == "Glob":
+            cmd = (f"cd {shlex.quote(path)} && python3 -c {shlex.quote(GLOB_PY)} {shlex.quote(pattern)}")
+        else:
+            cmd = (f"hits=$(grep -rInI --exclude-dir=.git -m 20 -e {shlex.quote(pattern)} -- {shlex.quote(path)} "
+                   f"| head -n 200); if [ -n \"$hits\" ]; then printf '%s\\n' \"$hits\"; else echo 'no matches'; fi")
+        return "Bash", {"command": cmd, "timeout": int(timeout_s * 1000)}
 
     # ---- files -----------------------------------------------------------------------------------------------
     def _snapshot(self) -> dict[str, tuple[int, int]]:
