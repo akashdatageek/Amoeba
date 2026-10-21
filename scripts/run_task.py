@@ -22,7 +22,7 @@ from amoeba.config.io import dump_yaml
 from amoeba.config.schema import Limits
 from amoeba.interp.runtime import Interpreter
 from amoeba.interp.trace import TraceWriter
-from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, describe_api_error
+from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, describe_api_error, quota_exhausted
 from amoeba.llm.anthropic_client import AnthropicClient, is_anthropic, make_client
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
@@ -43,6 +43,7 @@ from amoeba.tools.registry import ToolRegistry, default_registry
 from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
+from amoeba.task.inputs import copy_inputs, inputs_text
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, attach_verifier, build_router, get_profile
 from amoeba.interp.plan_runner import verifier_independence   # D146
@@ -52,12 +53,14 @@ from amoeba.localtools.gate import SandboxRequired, require_sandbox
 from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 from amoeba.adapt.faults import check_flag
 from amoeba.adapt.config import adapt_config
+from datetime import date
 
 
-LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
+LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached", "local_step_shares"}
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
                  "plan_search", "provider_blocked", "reasoning_refusals", "protocol",
-                 "planning_tier", "published_round", "reading_revised", "verifier_independence"}   # left out of result.json when None (Phase 1 records unchanged)
+                 "planning_tier", "published_round", "reading_revised", "verifier_independence",
+                 "input_files", "local_step_shares", "resumed_from"}   # D157, D159, D160   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -115,7 +118,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
             local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
             picks_only: bool = False, timezone: str | None = None, interpret: bool = False,
-            context=None, disabled_tools=(),
+            context=None, disabled_tools=(), today=None, resumed_from: str | None = None,
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
             default_max_turns: int | None = None, family_classify: bool = False,
             niche=None, deliverable_check: bool = False,
@@ -151,6 +154,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id, log_content=log_content,
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
+    inputs = copy_inputs(task.files, run_dir / "workspace") if task.files else []    # D157: before any call
+    if inputs:
+        trace.event("input_files", {"amoeba.box": "interpret", "amoeba.files": inputs})
     if topology == "plan":
         plan_options = resolve_protocol(plan_options, llm, trace)          # D153: auto → v2 when the model has tools
     trace.protocol = getattr(plan_options, "protocol", "legacy") if topology == "plan" else "legacy"   # D141
@@ -213,7 +219,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None,
                                    disabled=disabled_tools, turns=max_turns or Limits().max_turns)   # D130
             if interpret:             # D77: what the task is about is settled before the Planner drafts
-                interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed, environment=env_text)
+                interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed,
+                                   environment=env_text + inputs_text(inputs))                     # D157
                 if interp["ambiguous"] and clarify:              # D116: answers given with --clarify
                     interp = apply_clarify(interp, clarify)
                     if interp.get("clarified"):
@@ -246,7 +253,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             tier = getattr(plan_options, "planning_tier", "auto") if topology == "plan" else "auto"   # D143
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                quality_gate=quality_gate, toolbox=toolbox, interpretation=interp,   # D68, D77
-                               lessons=lessons, planning_tier=tier)                                   # D82
+                               lessons=lessons, planning_tier=tier, inputs=inputs)                   # D82, D157
             if (draft.reading_revision or {}).get("accepted"):    # D143: the planner's reading, accepted by code
                 old = task_note(interp)
                 interp = draft.interpretation
@@ -261,7 +268,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     task = task.model_copy(update={"prompt": f"{task.prompt}\n\nUser clarification: {clarification}"})
                     draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                        quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
-                                       toolbox=toolbox, interpretation=interp, lessons=lessons, planning_tier=tier)
+                                       toolbox=toolbox, interpretation=interp, lessons=lessons, planning_tier=tier,
+                                       inputs=inputs)
                     draft.plan_search = with_used_in(search_rec, draft)                                # D120
         task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})    # D77: Box 3 reads it too
         if prof is not None and prof.done_when:           # D102: what "done" means here, on the answer step(s)
@@ -273,6 +281,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             for a in cfg.agents.values():
                 a.limits.max_turns = max_turns
         team_id = cfg.team_id
+        if inputs:                                        # D157: every helper's role card lists the given files
+            for a in cfg.agents.values():
+                a.pool.append({"kind": "inputs", "id": "inputs", "name": "input files", "text": inputs_text(inputs)})
         requests = [q.model_copy(deep=True) for q in work.capability_requests]
         picks = SharedPicks(picks_file, task.id) if picks_file else None           # D70
         if pool is not None or box is not None:   # D56: Box 3 starts by stocking the toolbox, before the runner
@@ -298,7 +309,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             plan_options = resolve_native(plan_options, llm, trace)                   # D132
             protocol = protocol_used(plan_options)                                     # D136
             ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
-                             stock=restock, max_agents=envelope.max_agents, timezone=timezone).run(cfg, task, seed)
+                             stock=restock, max_agents=envelope.max_agents, timezone=timezone,
+                             today=today).run(cfg, task, seed)                       # D160: a resumed run's date
             answer, error = ep.answer, ep.error
             if relabel_team(cfg, trace):                         # D153: the models the helpers' calls really used
                 dump_yaml(cfg, run_dir / "team.yaml")
@@ -319,8 +331,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     except Exception as e:            # D57: the model service failed after its retries (drafting or the pool pick)
         if not api_error(e):
             raise
-        error = f"api: {describe_api_error(e)}"
-        trace.event("api_error", {"error.type": error[:300]})
+        error = ("quota_exhausted: " if quota_exhausted(e) else "api: ") + describe_api_error(e)   # D160
+        trace.event("quota_exhausted" if quota_exhausted(e) else "api_error", {"error.type": error[:300]})
     finally:
         # a failed draft is kept too: the error and every round up to it
         saved = draft.model_dump(mode="json") if draft else \
@@ -377,6 +389,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         provider_blocked=getattr(trace, "provider_blocked", 0) or None,                # D128
         reasoning_refusals=getattr(trace, "reasoning_refusals", None) or None,         # D134
         protocol=protocol,                                                             # D136
+        input_files=inputs or None,                                                    # D157
+        resumed_from=resumed_from,                                                     # D160
         plan_search=(draft.plan_search if draft else search_rec),                       # D120
         planning_tier=draft.planning_tier if draft and topology == "plan" else None,     # D143
         verifier_independence=(verifier_independence(ep.steps) or None) if ep and topology == "plan" else None,  # D146
@@ -831,6 +845,14 @@ def build_box3_tools(args: argparse.Namespace, tools: ToolRegistry) -> ToolRegis
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("prompt", nargs="?", help="a free-text task (cannot be scored)")
+    p.add_argument("--resume", default=None, metavar="RUN_ID",
+                   help="D160: continue a run stopped by the model's daily quota (status quota_exhausted): the same "
+                        "flags, task, date and response cache, so finished calls replay and are not paid again")
+    p.add_argument("--run-date", default=None, metavar="YYYY-MM-DD",
+                   help="D160: the date the run's helpers are told (default: today where the run is, --timezone)")
+    p.add_argument("--file", action="append", default=[], metavar="PATH",
+                   help="D157: an input file for the free-text task (repeat for more); copied read-only to the run's "
+                        "workspace/inputs/. In --tasks files a task names its own (\"files\": [...])")
     p.add_argument("--toy", action="store_true", help="run generated toy tasks with known answers")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n", type=int, default=20, help="number of toy tasks")
@@ -1052,8 +1074,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
-    if not args.toy and not args.prompt and not args.tasks:
-        p.error("give a prompt, --toy or --tasks")
+    if not args.toy and not args.prompt and not args.tasks and not args.resume:   # D160: --resume brings its own
+        p.error("give a prompt, --toy, --tasks or --resume")
     if args.interactive and args.drafts_from:
         p.error("--interactive reviews a fresh draft; it cannot be combined with --drafts-from")
     args.explicit = explicit_flags(argv if argv is not None else sys.argv[1:])
@@ -1102,16 +1124,61 @@ def family_classify_on(flag: str, topology: str) -> bool:
 
 
 # box: free_text
+def run_date(tz: str | None = None):
+    """D160: the run's date, fixed once per invocation (a run that crosses midnight keeps one date)."""
+    from amoeba.interp.clock import run_clock
+    return run_clock(tz)["date"]
+
+
+# box: runresult
+def default_cache(args: argparse.Namespace) -> None:
+    """D160: a live run without --llm-cache records its responses under <runs-dir>/llm_cache, in a namespace of its
+    own, so a run stopped by the daily quota can resume without paying again (D73's replay). The mock is unchanged."""
+    if args.llm != "mock" and not args.llm_cache and args.llm_cache_mode != "off":
+        args.llm_cache = str(Path(args.runs_dir) / "llm_cache")
+        args.llm_cache_namespace = args.llm_cache_namespace or f"run-{uuid4().hex[:10]}"
+
+
+# box: runresult
+def save_resume(args: argparse.Namespace, argv: list[str], task: Task, r: RunResult, day) -> Path:
+    """D160: what --resume needs: the flags, the task, the cache and the date the run was told."""
+    path = Path(args.runs_dir) / r.run_id / "resume.json"
+    path.write_text(json.dumps({"run_id": r.run_id, "argv": argv, "task": task.model_dump(mode="json"),
+                                "llm_cache": args.llm_cache, "namespace": args.llm_cache_namespace,
+                                "run_date": day.isoformat(), "timezone": args.timezone, "error": r.error},
+                               indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+# box: free_text
 def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    args = parse_args(raw)
+    resumed = None
+    if args.resume:                                   # D160: the stopped run's own flags, task, date and cache
+        saved = Path(args.runs_dir) / args.resume / "resume.json"
+        if not saved.is_file():
+            print(f"--resume: no {saved} (only a run stopped by the daily quota can be resumed)")
+            return 2
+        resumed = json.loads(saved.read_text(encoding="utf-8"))
+        raw = [*resumed["argv"], "--runs-dir", args.runs_dir, "--run-date", resumed["run_date"],
+               *(["--llm-cache", resumed["llm_cache"], "--llm-cache-namespace", resumed["namespace"] or ""]
+                 if resumed.get("llm_cache") else [])]
+        args = parse_args(raw)
+        print(f"== resuming {resumed['run_id']} (stopped: {str(resumed.get('error'))[:120]}); finished calls replay "
+              f"from {resumed.get('llm_cache')}")
+    default_cache(args)                               # D160
+    day = date.fromisoformat(args.run_date) if args.run_date else run_date(args.timezone)
     llm = build_llm(args)
     disabled = [n.strip() for n in args.disable_tools.split(",") if n.strip()]          # D80
     tools, _, _ = disable_tools(disabled, default_registry())
     envelope = Envelope.from_registry(tools, model=llm.model)
-    if args.tasks:
+    if resumed is not None:                           # D160: only the stopped task
+        tasks = [Task.model_validate(resumed["task"])]
+    elif args.tasks:
         tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding="utf-8").splitlines() if l.strip()]
     else:
-        tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
+        tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt, files=args.file)]
     saved = load_saved_drafts(args.drafts_from) if args.drafts_from else None
     pool = PoolSetup(cache_dir=args.pool_dir, allow_remote_exec=getattr(args, "allow_remote_exec", False)) \
         if args.pool else None                                                   # D56; D137
@@ -1155,7 +1222,8 @@ def main(argv: list[str] | None = None) -> int:
                     deliverable_check=args.deliverable_check == "on" and args.topology == "plan",   # D105
                     workspace_sources=args.workspace_sources == "on" and args.topology == "plan",   # D107
                     ask_assumed=args.ask_assumed, clarify=parse_clarify(args.clarify),                  # D116
-                    plan_search=args.plan_search == "on")                                             # D120
+                    plan_search=args.plan_search == "on",                                             # D120
+                    today=day, resumed_from=resumed["run_id"] if resumed else None)                     # D160
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
@@ -1167,6 +1235,11 @@ def main(argv: list[str] | None = None) -> int:
             print(line)
         if r.protocol and r.protocol["used"] != r.protocol["asked"]:                      # D136
             print(f"    protocol {r.protocol['asked']} asked; steps used {r.protocol['used']} ({r.protocol['why']})")
+        if r.status == "quota_exhausted":                                                  # D160
+            save_resume(args, [x for x in raw if x != "--resume"], task, r, day)
+            print(f"    the model's daily quota is spent; the run stopped cleanly. Resume another day with:\n"
+                  f"    python -m scripts.run_task --resume {r.run_id} --runs-dir {args.runs_dir}")
+            break                                                                          # later tasks would stop too
         if r.status == "needs_clarification":                                              # D116
             q = (r.interpretation or {}).get("pending") or []
             for x in q:

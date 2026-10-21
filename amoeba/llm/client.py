@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from amoeba.config.proxy import refresh_proxy
+from amoeba.llm.quota import parse_quota
 
 Messages = list[dict[str, str]]
 
@@ -232,11 +233,17 @@ class OpenAICompatibleClient(LLMClient):
                 break
             except Exception as e:
                 status, lost = getattr(e, "status_code", None), dropped(e)   # D57: dropped connections too
+                quota = parse_quota(str(e)) if status == 429 else None         # D160
+                if quota and quota["kind"] == "daily":    # it will not clear today: retrying only wastes the waits
+                    e.amoeba_quota, e.amoeba_retries = quota, retries
+                    raise
                 if (status not in RATE_STATUS and lost is None) or len(retries) >= self.max_rate_retries \
                         or spend_cap(e):
                     e.amoeba_retries = retries   # the trace records the waits even when the call finally fails
                     raise
                 after = retry_after(e)
+                if after is None and quota and quota["retry_s"] is not None:   # D160: the wait the reply asks for
+                    after = min(60.0, quota["retry_s"])
                 wait = after if after is not None else min(60.0, 2.0 * 2 ** len(retries))
                 retries.append({"status": status, "wait_s": wait, "attempt": len(retries) + 1,
                                 "retry_after": after, "error": lost})
@@ -309,6 +316,15 @@ def api_error(e: BaseException) -> bool:
 def describe_api_error(e: BaseException) -> str:
     status = getattr(e, "status_code", None)
     return f"{type(e).__name__}{f' {status}' if status else ''}: {' '.join(str(e).split())[:200]}"
+
+
+# box: client
+def quota_exhausted(e: BaseException) -> bool:
+    """D160: the model service's daily quota is spent (a 429 whose quota is per day); the run stops and resumes later."""
+    q = getattr(e, "amoeba_quota", None)
+    if q is None and getattr(e, "status_code", None) == 429:
+        q = parse_quota(str(e))
+    return bool(q and q.get("kind") == "daily")
 
 
 def spend_cap(e: Exception) -> bool:

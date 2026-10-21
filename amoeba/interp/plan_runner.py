@@ -40,7 +40,7 @@ from amoeba.interp.provenance import (check_provenance, claim_numbers, computed_
                                       strip_unverified)
 from amoeba.interp.freshness import stale_figure, time_sensitive
 from amoeba.interp.shorten import shorten
-from amoeba.llm.client import api_error, describe_api_error
+from amoeba.llm.client import api_error, describe_api_error, quota_exhausted
 from amoeba.llm.limits import RunLimitReached, billed, estimate
 from amoeba.llm.profiles import role_group
 from amoeba.llm.router import NoModelAvailable
@@ -289,7 +289,8 @@ def plan_card(agent: AgentSpec) -> str:
              f"Success criteria: {'; '.join(agent.success_criteria)}" if agent.success_criteria else "",
              f"Instructions: {agent.role_prompt}" if agent.role_prompt else "",
              f"Suggestions: {agent.suggestions}" if agent.suggestions else "",
-             *pool_skill_notes(agent)]   # D56: skills from the pool, as data
+             *pool_skill_notes(agent),   # D56: skills from the pool, as data
+             *(p["text"].strip() for p in agent.pool if p["kind"] == "inputs")]   # D157: the given files
     return "\n".join(x for x in lines if x)
 
 
@@ -1214,6 +1215,9 @@ class PlanRunner:
         except ParseError as e:                           # D123: a reply no repair could read, outside a helper turn
             return self.answer_on_stop(e, f"parse: {str(e)[:300]}")
         except Exception as e:
+            if quota_exhausted(e):                        # D160: the daily quota; stop cleanly, resume another day
+                self.i.trace.event("quota_exhausted", {"error.type": describe_api_error(e)[:300]})
+                return self.answer_on_stop(e, "quota_exhausted")
             if api_error(e):                              # D123: the model service failed after its retries (D57)
                 self.i.trace.event("api_error", {"error.type": describe_api_error(e)[:300]})
                 return self.answer_on_stop(e, f"api: {describe_api_error(e)}")
@@ -1588,8 +1592,9 @@ class PlanRunner:
             self.web.begin_step(n, self.i.trace)
         if self.pool is not None:
             self.pool.begin_step(n, self.i.trace)
-        if self.local is not None:
-            self.local.begin_step(n, self.i.trace)
+        if self.local is not None:                                                # D159: the plan's size, for the share
+            self.local.begin_step(n, self.i.trace, plan_steps=len(self.cfg.plan),
+                                  not_run=max(1, sum(1 for st in self.cfg.plan if number(st) not in self.artifacts)))
         self.i.trace.event("step_input", {"amoeba.step": n, "amoeba.wave": wave, "amoeba.depends_on": deps,
                                           "amoeba.received": deps, "amoeba.input_chars": len(inputs),
                                           "amoeba.verification": verifier, "amoeba.rework": bool(rework)})

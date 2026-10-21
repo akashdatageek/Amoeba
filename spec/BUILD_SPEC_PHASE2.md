@@ -1175,6 +1175,33 @@ the replaced steps moves to the new step that covers the same requirements, and 
 own. A work-around may narrow done_when, but the checks still read the original, and citation checks are never
 waived. Design: docs/design/D155_checks_kept.md.
 
+**D156, preflight (Oct 21).** One command checks, before anything is spent, that every piece a task category needs is
+there, and prints how to fix each missing one: keys and one live call each, the model check, quota, the sandbox,
+libraries, the office suite, the six local tools and the four document skills. The local checks run through the
+run's own toolbox, so what is checked is what a helper gets. Its first live run found a sandbox that would not start
+(mismatched OpenShell images), missing scipy, pytest and LibreOffice, and Glob and Grep never offered.
+Design: docs/design/D156_preflight.md.
+
+**D158, the sandbox holds what the checks need (Oct 21).** One library list (libs.txt) is installed in the sandbox
+image and, for in-process mode, on the host, and LibreOffice Calc and Writer are in both. Glob and Grep, which
+Claude Code's server no longer offers, are served through its Bash by plain code with every argument quoted and the
+same gates. Design: docs/design/D158_sandbox_libs.md.
+
+**D157, task input files (Oct 21).** A task may give files. They are copied read-only into the run's workspace
+(and the sandbox) under inputs/ before any call, listed with sizes for the reader, the planner, both observers and
+every helper, and protected from writes like sources/. A plan in which no step names a given file is sent back by the
+quality gate. Design: docs/design/D157_input_files.md.
+
+**D159, local-tool calls scale with the plan (Oct 21).** The fixed 60 local calls per run became 12 per planned step,
+and each step gets a share of what is left (1.5 x calls left / steps not yet run), like D151's token share. A plan of
+the old size is treated as before; an 11-step plan is no longer stopped halfway. Design:
+docs/design/D159_local_call_share.md.
+
+**D160, quota handling (Oct 21).** A per-minute quota is waited out for as long as the reply asks, then retried. A
+daily quota is not retried: the run stops cleanly with status quota_exhausted, saves what it needs, and
+`run_task --resume <run_id>` continues another day with the same flags, task, cache and date, so finished calls replay
+without being paid again. Design: docs/design/D160_quota.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

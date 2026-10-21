@@ -219,7 +219,9 @@ BOXES: list[dict] = [
                "Planner and both checkers as a data block with [P#] ids. [P#] citations in the draft are recorded "
                "(used_in) and removed before Box 3 builds the team: never in the team's [S#] sources.",
                "D143: a reading the planner revised on evidence is stated in the opening line: I read X as Y because of "
-               "the reason; Z is not available."],
+               "the reason; Z is not available.",
+               "D157: a task may give input files; plain code copies them read-only into the workspace's inputs/ before "
+               "any call, and the reader, the planner, both observers and every helper see the list with sizes."],
          proposes="The entities, their readings, a reason and a confidence for each; D120: whether planning needs web "
                   "facts, and at most 3 queries.",
          disposes="Plain code decides whether a reading is clear, whether to ask, and checks the answer's opening line; "
@@ -299,7 +301,9 @@ BOXES: list[dict] = [
                "round with the failed checks listed, within the round cap.",
                "D142: three HARD checks on the plan's typed step checks: every requirement has a check "
                "(requirements_checked), every check is in the vocabulary with good parameters (checks_valid), and each "
-               "step can meet its checks (checks_reachable)."],
+               "step can meet its checks (checks_reachable).",
+               "D157: HARD check input_files_named — every file given with the task is named by a step, or the plan goes "
+               "back."],
          proposes="The final draft text.",
          disposes="Everything listed here; the original project trusted the AI for all of it.",
          anchors=[("amoeba/task/draft.py::draft_team", "# publish", None), "amoeba/task/draft.py::pick_summariser",
@@ -677,7 +681,10 @@ BOXES: list[dict] = [
                "D137: the harness's own fetches reach only public http(s) addresses, with each redirect hop checked "
                "again (at most 3).",
                "D147: a cut page or table names its saved file in the workspace (open it with local:Read), and a table "
-               "excerpt shows its last rows too."],
+               "excerpt shows its last rows too.",
+               "D156: scripts/preflight.py checks, before a real run, every piece a task category needs (keys, model, "
+               "quota, sandbox, libraries, office suite, local tools, skills) and prints how to fix each missing one; "
+               "exit 1 when a needed piece is missing."],
          proposes="A tool name and its input (from a helper).",
          disposes="Plain code checks the name and the arithmetic before anything runs.",
          anchors=["amoeba/tools/registry.py::ToolRegistry", "amoeba/tools/registry.py::calc",
@@ -737,7 +744,12 @@ BOXES: list[dict] = [
                "D107: every page and data file the web tools read is saved read-only under sources/ in the workspace (and uploaded into the sandbox), with sources/index.json giving each file's [S#], url and time; writes there are refused and the files never count as made.",
                "D112: a Python program sent to local:Bash (a ```python block, or a first line that starts like Python) runs as python3 from a quoted heredoc; the rewrite is logged and the gate still screens it.",
                "D148: a Bash path is judged by where it lands after each cd, not by a '..' in its text; a refusal names "
-               "the exact part and says how to rewrite the call."],
+               "the exact part and says how to rewrite the call.",
+               "D158: one library list (config/sandbox/libs.txt) for the image and in-process mode, LibreOffice Calc and "
+               "Writer in both; Glob and Grep the server no longer offers are served through its Bash by plain code, "
+               "quoted, behind the same gates.",
+               "D159: local calls scale with the plan — 12 per planned step for the run, and each step a share of what "
+               "is left (1.5 x calls left / steps not yet run), refused as step_share with the numbers."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",
@@ -793,7 +805,12 @@ BOXES: list[dict] = [
                "D141: under --protocol v2 every call asks for a typed reply through ask() in the model's output mode "
                "(schema, submit tool or JSON in the prompt), checked by code with one repair call that quotes the error.",
                "D153: --protocol auto (the default) picks v2 when the model supports native tool calling, legacy "
-               "otherwise; Gemma has tools after its model check."],
+               "otherwise; Gemma has tools after its model check.",
+               "D156: amoeba/llm/quota.py::parse_quota reads a 429 quota reply: per-minute (retried) or daily (it will "
+               "not clear today), its limit and the wait.",
+               "D160: a per-minute quota 429 waits as long as the reply asks; a daily one is not retried "
+               "(quota_exhausted), the run stops cleanly and --resume continues another day with finished calls replayed "
+               "from the cache."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
                   "amoeba/llm/anthropic_client.py::AnthropicClient",

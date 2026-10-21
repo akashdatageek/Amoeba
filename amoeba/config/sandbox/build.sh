@@ -8,7 +8,9 @@ rm -rf "$here/skills" && mkdir -p "$here/skills"
 src="$repo/data/pool/repos/anthropics_skills"
 [ -d "$src" ] && (cd "$src" && tar --exclude=.git -cf - .) | (cd "$here/skills" && tar -xf -)
 secret=""
+base=""
+[ -n "$BASE_REGISTRY" ] && base="--build-arg BASE_REGISTRY=$BASE_REGISTRY"   # D158: a Docker Hub mirror
 [ -n "$CA_BUNDLE" ] && secret="--secret id=ca,src=$CA_BUNDLE"
-docker build --network host $secret --build-arg HTTPS_PROXY --build-arg HTTP_PROXY --build-arg NO_PROXY \
+docker build --network host $secret $base --build-arg HTTPS_PROXY --build-arg HTTP_PROXY --build-arg NO_PROXY \
   -t amoeba-sandbox:local "$here"
 rm -rf "$here/skills"

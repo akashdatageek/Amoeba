@@ -11,7 +11,7 @@ from amoeba.config.prompts import PROMPT, render, resolve
 from amoeba.config.schema import AgentSpec, PlanStep, TeamConfig
 from amoeba.interp.clock import run_clock
 from amoeba.interp.trace import NoopListener, TracedLLM, TraceWriter
-from amoeba.llm.client import LLMClient, Messages, api_error, describe_api_error
+from amoeba.llm.client import LLMClient, Messages, api_error, describe_api_error, quota_exhausted
 from amoeba.task.models import AgentResult, CapabilityRequest, Episode, Message, Task
 from amoeba.task.parsers import MissingSections, ParseError, parse_critic
 from amoeba.llm.limits import RunLimitReached
@@ -140,7 +140,8 @@ def role_card(agent: AgentSpec) -> str:
              f"Skills: {'; '.join(agent.skills)}" if agent.skills else "",
              f"Outputs: {'; '.join(_output_text(o) for o in agent.outputs)}" if agent.outputs else "",
              f"Success criteria: {'; '.join(agent.success_criteria)}" if agent.success_criteria else "",
-             *pool_skill_notes(agent)]   # D56: skills from the pool, as data
+             *pool_skill_notes(agent),   # D56: skills from the pool, as data
+             *(p["text"].strip() for p in agent.pool if p["kind"] == "inputs")]   # D157: the given files
     return "\n".join(x for x in lines if x)
 
 
@@ -205,7 +206,8 @@ class Interpreter:
             except Exception as e:                           # D57: the model service failed after its retries
                 if not api_error(e):
                     raise
-                ep.answer, ep.error = None, f"api: {describe_api_error(e)}"
+                ep.answer, ep.error = None, ("quota_exhausted: " if quota_exhausted(e) else "api: ") \
+                    + describe_api_error(e)                                           # D160: the daily quota
                 self.trace.event("api_error", {"error.type": ep.error[:300]})
         ep.latency_ms = int((time.perf_counter() - t0) * 1000)
         return ep
