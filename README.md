@@ -472,6 +472,58 @@ answer and `adapt_report.md` say what was stuck, the cause, each fix tried and w
 each step that used an upstream output from before that step was re-run.
 `result.json` `adaptation` lists every fix with its result and tokens. `--adapt off` turns the watch and the fixes off.
 
+**D154: two scoped fix proposers, tried side by side (Oct 19).** With `--proposer scoped` (the default from the
+command line; `adapt.yaml proposer.scoped`), Box 4's last rung is a round instead of one proposer call.
+- **Two proposers, each with a scope.**
+  - One looks at *how the team works*: procedure, tool use, reading inputs in full, checking its own output, turns.
+  - The other looks at *what an expert would know*: what the output must contain, domain rules, authoritative
+    sources, what "done" means.
+  - Each is offered only its scope's edits that the cause allows, and must quote the evidence it acts on; plain
+    code refuses an edit whose quote it was never shown.
+- **Each edit is tried from the same starting point.** Plain code saves everything the edit and the re-run can
+  change (the team, the step, its options, the counters, the fault state, the workspace files), applies the edit,
+  re-runs the step, notes which stuck signals it cleared or added, then undoes everything.
+- **Plain code picks:** a candidate that ends done (on a tie, fewer new signals, then fewer tokens); else a
+  work-around that finished with its limitation; else the one that cleared most becomes the base for the next rung.
+- **What is kept:** the winner's probed state is put back, without a third run; the loser stays undone. The two
+  edits are never merged.
+- **Plan edits** (split, re-plan) are not probed: the other scope is tried first, and the plan edit is applied only
+  if that did not recover the step.
+- **Budget:** a round counts as one try toward the fix limits, while its tokens and dollars count per probe.
+- **Two new edits:** `add_tool_guidance` (one line on how to use a tool the step holds) and `add_watch_rule` (a
+  reminder plain code adds once to a tool result after N calls without a file written or a named tool called).
+- **Sandbox:** in sandbox mode a probe's files cannot be undone, so the round falls back to single and says why.
+- `--proposer single` keeps the one-proposer rung exactly.
+- `--fix-pick llm` (experiments only) lets one call pick between the two probe outputs, and records the pick next to
+  the checks' verdict.
+- `python -m scripts.stuck_report` adds a per-scope summary.
+- `python -m scripts.stage_e --arms proposer` compares single and scoped on one draft.
+- Design: `docs/design/D154_scoped_proposers.md`.
+
+```
+ stuck step (its stuck signals)
+        │
+        ▼
+ snapshot: the team, the step, its options, the counters, the fault state, the workspace files
+        │
+   ┌────┴─────────────────────────────┐
+   ▼                                  ▼
+ INV proposer                       DOM proposer
+ how the team works                 what an expert would know
+ (rule, tool, tool guidance,        (rule, helper, work-around,
+  watch rule, split)                 re-plan)
+   │ plain-code checks + quote        │ plain-code checks + quote
+   ▼                                  ▼
+ probe: apply, re-run, diff, undo   probe: apply, re-run, diff, undo
+   └────────────────┬─────────────────┘
+                    ▼
+ plain code picks: done → fewer new signals → fewer tokens
+                   (else a work-around that finished with limitation,
+                    else the probe that cleared most becomes the base)
+                    ▼
+ the winner's probed state is put back; the loser stays undone
+```
+
 **D121 (Oct 11).** Two fixes from the H3 end-to-end run (`eval/manual/h3/REPORT.md`): a capability request the run
 already covers (`unfilled (registered_tool)`, such as web_search) or a helper already holds no longer makes a step
 stuck, and a registry grant marks its request filled; the fix proposer's reply is read from the last JSON object that

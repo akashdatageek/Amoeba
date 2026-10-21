@@ -167,7 +167,7 @@ class FakeLocal:
     def __init__(self, files):
         self.files, self.book = files, None
 
-    def begin_step(self, step, trace=None):
+    def begin_step(self, step, trace=None, **kw):   # D159: plan_steps, not_run
         pass
 
     def has_file(self, name):

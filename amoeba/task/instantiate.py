@@ -35,7 +35,8 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
 
     if topology == "flat":
         plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text, kind=s.kind, covers=s.covers,
-                         depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when)   # D24 detail
+                         depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when,   # D24 detail
+                         checks=s.checks)   # D142
                 for s in draft.plan]
         edges = [Edge(src=a, dst=b, type="sequential")
                  for s1, s2 in pairwise(plan) for a in s1.agent_ids for b in s2.agent_ids]
@@ -58,15 +59,17 @@ def instantiate(draft: Draft, topology: str, task: Task, envelope: Envelope) -> 
         cfg = TeamConfig(**common, topology="boss_reviewers", agents=agents, edges=edges,
                          entry=[solver_id], exit=solver_id, max_inner_turns=3)
     elif topology == "plan":   # D31: the plan runner over depends_on (amoeba/interp/plan_runner.py)
-        from amoeba.interp.plan_runner import PLAN_MAX_TOKENS, number, relink
+        from amoeba.interp.plan_runner import PLAN_MAX_TOKENS, PLAN_MAX_TURNS, number, relink
         plan = [PlanStep(index=s.index, agent_ids=[by_name[n] for n in s.agent_names], text=s.text, kind=s.kind, covers=s.covers,
-                         depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when)
+                         depends_on=s.depends_on, do=s.do, output=s.output, done_when=s.done_when,
+                         checks=s.checks)                                                     # D142
                 for s in draft.plan]
         written = {i + 1: list(w.get("depends_on") or []) for i, w in enumerate(draft.rounds[-1].plan)} \
             if draft.rounds else {}
         plan, relinked = relink(plan, written)
         for a in agents.values():
             a.max_tokens = PLAN_MAX_TOKENS
+            a.limits.max_turns = PLAN_MAX_TURNS          # D145: 6 (two "more turns" fixes fit under the cap of 12)
         steps = {number(s): s for s in plan}
         edges = list({(a, b): Edge(src=a, dst=b, type="sequential") for s in plan for d in s.depends_on
                       if d in steps for a in steps[d].agent_ids for b in s.agent_ids if a != b}.values())

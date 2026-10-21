@@ -142,7 +142,11 @@ def estimate(chat_spans: list[dict], model: str, prices: dict | None = None) -> 
             cost = None
             break
         u = billed(spans)
-        cost += u["input"] / 1e6 * pin + (u["output"] + u["reasoning"]) / 1e6 * pout
+        live = [x for x in spans if not x.get("amoeba.cache_hit")]
+        cr = sum(x.get("amoeba.usage.cache_read_tokens", 0) for x in live)       # D134: prompt-cache reads
+        cw = sum(x.get("amoeba.usage.cache_write_tokens", 0) for x in live)      # and writes, priced apart
+        p_r, p_w = price.get("cache_read", pin), price.get("cache_write", pin)
+        cost += ((u["input"] - cr - cw) * pin + cr * p_r + cw * p_w + (u["output"] + u["reasoning"]) * pout) / 1e6
     # the label is the model the calls asked for (the most-used one when there are several), not the caller's
     # default: a routed Claude run used to be labelled with the registry's default model (gemma-4-31b)
     called = max(by_model, key=lambda m: len(by_model[m])) if chat_spans else model

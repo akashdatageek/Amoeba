@@ -54,7 +54,8 @@ def test_fetch_truncates_and_accepts_a_source_id():
     web.web_search("q")
     out = web.fetch_url("[S2]")
     assert out.startswith("[S2] Result 2 for q (https://ex.com/2)") and "first 500 of 10000 characters" in out
-    assert len(out.split(":\n", 1)[1]) == 500 and web.sources[1]["fetched"] is True
+    assert len(out.split(":\n", 1)[1].split("\n… [")[0]) == 500 and web.sources[1]["fetched"] is True
+    assert "9500 characters cut" in out                                                 # D147: the cut is said
     assert web.fetch_url("not a url").startswith("error: fetch_url needs")
     assert web.fetch_url("S9").startswith("error: fetch_url: no source S9")
 

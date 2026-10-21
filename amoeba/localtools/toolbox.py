@@ -40,6 +40,7 @@ from amoeba.pool.mcp import SourceBook, data_block
 
 MADE_TOOLS = "made_tools"    # D125: tools the tool writer made (code, not a file the team made)
 INPUTS = "sources"            # D107: the workspace folder of read-only input files (fetched pages and data tables)
+GIVEN = "inputs"              # D157: the read-only files given with the task (amoeba/task/inputs.py)
 
 CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "localtools.yaml"
 
@@ -61,7 +62,19 @@ TOOL_TEXT = {
     "Grep": ("search the contents of files in the workspace", "ActionInput: {\"pattern\": \"...\", \"path\": \".\"}."),
 }
 PATH_ARG = {"Read": "file_path", "Write": "file_path", "Edit": "file_path", "Glob": "path", "Grep": "path"}
+# D148: every refusal ends with one line on how to rewrite the call
+REWRITE = {"unsafe_command": "Rewrite it to stay in the workspace: write paths from the workspace root (e.g. "
+                             "sources/S1_page.txt, out/table.csv), no cd out of it, no ~ or system paths.",
+           "outside_workspace": "Write paths from the workspace root (e.g. sources/S1_page.txt); nothing outside it.",
+           "network_command": "Use the web tools (web_search, fetch_url) for anything on the network.",
+           "protected_config": "Write your own files elsewhere in the workspace; sources/, inputs/, skills and "
+                               "configs are read-only.",
+           "step_share": "Finish this step with what you have, or say what is missing; later steps need their calls."}
 READ_TOOLS = {"Read", "Glob", "Grep"}
+DEFAULT_STEPS = 5                                 # D159: without a plan, calls_per_step x 5 = the old 60 per run
+BY_BASH = ("Glob", "Grep")                        # D158: served through the server's Bash when it does not list them
+GLOB_PY = ("import glob, sys\nhits = sorted(glob.glob(sys.argv[1], recursive=True))\n"
+           "print('\\n'.join(hits[:200]) if hits else 'no files match')")
 PLAIN_ARG = {"Bash": "command", "Read": "file_path", "Glob": "pattern", "Grep": "pattern"}
 
 
@@ -187,10 +200,14 @@ class LocalToolbox:
         self.home = self.run_dir / "localtools_home"
         self.server = None
         self.exposed: list[str] = []                  # allowed and offered by the server
+        self.served_by_bash: list[str] = []           # D158: Glob / Grep the server lacks, run through its Bash
         self.listing: list[dict] = []
         self.step: int | None = None
         self.calls = 0
         self.step_calls = 0
+        self.plan_steps = 0                           # D159: the plan's size (0: no plan; the old 60 calls apply)
+        self.step_shares: dict[int, dict] = {}        # D159: step -> its share of the run's local calls
+        self.share_from = 0                           # D159: self.calls when the current step started
         self.refusals: dict[str, int] = {}
         self.files: dict[str, dict] = {}             # workspace-relative path -> {path, size, step}
         self._seen = self._snapshot()
@@ -219,6 +236,7 @@ class LocalToolbox:
                 self.box = OpenShellBox(scfg, str(self.run_dir.resolve()), record=lambda e, d: self.trace.event(
                     e, {"amoeba.box": "localtools", **d}))
                 self.box.create()
+                self._push_given()                    # D157: the task's files, into the sandbox's workspace
                 cmd = [sys.executable, "-m", "amoeba.localtools.sandbox", "bridge", self.box.name,
                        "--endpoint", scfg["endpoint"], "--", *cmd]
                 env = {"PATH": env["PATH"], "LANG": "C.UTF-8"}   # the relay needs nothing else
@@ -234,6 +252,9 @@ class LocalToolbox:
         allowed = list(self.setup.config["allowed_tools"])
         names = [t["name"] for t in self.listing]
         self.exposed = [n for n in allowed if n in names]
+        if "Bash" in self.exposed:                    # D158: Claude Code's server no longer lists Glob or Grep
+            self.served_by_bash = [n for n in BY_BASH if n in allowed and n not in names]
+            self.exposed += self.served_by_bash
         for n in names:                               # refused once each, at the start
             if n not in allowed:
                 self._refuse_tool(n, "not_allowed")
@@ -363,8 +384,28 @@ class LocalToolbox:
         return True
 
     # ---- calls -----------------------------------------------------------------------------------------------
-    def begin_step(self, step: int, trace=None) -> None:
+    def allowance(self) -> int:
+        """D159: the run's local calls — calls_per_step for every planned step (DEFAULT_STEPS without a plan), or an
+        explicit max_calls_per_run when one is set."""
+        fixed = self.lim.get("max_calls_per_run")
+        if fixed is not None:
+            return int(fixed)
+        return int(self.lim.get("calls_per_step", 12)) * (self.plan_steps or DEFAULT_STEPS)
+
+    def begin_step(self, step: int, trace=None, plan_steps: int | None = None, not_run: int | None = None) -> None:
+        """D159: plan_steps (the plan's size) and not_run (steps not yet run, this one included) come from the plan
+        runner; the step's share is step_share x (allowance - used) / not_run, like D151's token share."""
         self.step, self.step_calls = step, 0
+        self.share_from = self.calls
+        if plan_steps:
+            self.plan_steps = max(self.plan_steps, int(plan_steps))   # a re-plan may add steps, never shrink it
+        if not_run:
+            factor = float(self.lim.get("step_share", 1.5))
+            left = max(0, self.allowance() - self.calls)
+            self.step_shares[step] = {"share": int(factor * left / max(1, not_run)), "left": left,
+                                      "not_run": int(not_run), "factor": factor}
+        else:
+            self.step_shares.pop(step, None)
         if trace is not None:
             self.trace = trace
         if isinstance(self.book, SourceBook):        # WebTools is stepped by its own runner call
@@ -378,6 +419,7 @@ class LocalToolbox:
         key = "command" if tool == "Bash" else PATH_ARG.get(tool, "")
         return str(args.get(key) or args.get("pattern") or "")[:300]
 
+    # box: localtools
     def refuse(self, tool: str, reason: str, detail: str = "", what: str = "") -> str:
         self.refusals[reason] = self.refusals.get(reason, 0) + 1
         self.trace.event("local_refused", {"amoeba.box": "localtools", "amoeba.step": self.step,
@@ -385,7 +427,7 @@ class LocalToolbox:
                                            "amoeba.decision": "refused", "amoeba.reason": reason,
                                            "amoeba.detail": detail[:200]})
         return f"refused: local:{tool} — {reason}" + (f" ({detail[:200]})" if detail else "") + \
-               ". Nothing was run; stay inside the workspace, with no network."
+               f". Nothing was run. {REWRITE.get(reason, 'Stay inside the workspace, with no network.')}"
 
     def arguments(self, tool: str, text: str) -> dict:
         if tool == "Bash" and self.setup.config.get("bash_python", True):
@@ -415,8 +457,13 @@ class LocalToolbox:
         except ValueError as e:
             args, bad = {}, str(e)
         what = self.what(tool, args) or (text or "")[:120]
-        if self.calls >= int(self.lim["max_calls_per_run"]):
-            return self.refuse(tool, "run_cap", f"{self.lim['max_calls_per_run']} calls per run", what)
+        if self.calls >= self.allowance():
+            return self.refuse(tool, "run_cap", f"{self.allowance()} calls per run", what)
+        sh = self.step_shares.get(self.step)
+        if sh and self.calls - self.share_from >= sh["share"]:                   # D159
+            return self.refuse(tool, "step_share", f"step {self.step} used {self.calls - self.share_from} local calls, "
+                               f"its share ({sh['share']} = {sh['factor']} x {sh['left']} calls left / {sh['not_run']} "
+                               f"steps not yet run); the rest is kept for the steps not yet run", what)
         if self.step_calls >= int(self.lim["max_calls_per_step"]):
             return self.refuse(tool, "step_cap", f"{self.lim['max_calls_per_step']} calls per step", what)
         if tool not in self.exposed:
@@ -463,7 +510,7 @@ class LocalToolbox:
         self.step_calls += 1
         t0 = time.perf_counter()
         try:
-            out, is_error = self.server.call(tool, args, timeout_s + 5)
+            out, is_error = self.server.call(*self.served(tool, args, timeout_s), timeout_s + 5)
             timed_out = False
         except TimeoutError:
             out, is_error, timed_out = f"timed out after {timeout_s:.0f} s", True, True
@@ -494,13 +541,26 @@ class LocalToolbox:
                                               "gen_ai.tool.name": f"local:{tool}", "amoeba.source_id": s["id"]})
         return f"[local:{tool}{' error' if is_error else ''}]{src}\n{cut}{more}"
 
+    def served(self, tool: str, args: dict, timeout_s: float) -> tuple[str, dict]:
+        """D158: the server call for a tool. Glob and Grep the server lacks become one Bash call that plain code
+        writes, every argument shell-quoted (the pattern is data, never a command); the path was already checked."""
+        if tool not in self.served_by_bash:
+            return tool, args
+        path, pattern = str(args.get("path") or "."), str(args.get("pattern") or "")
+        if tool == "Glob":
+            cmd = (f"cd {shlex.quote(path)} && python3 -c {shlex.quote(GLOB_PY)} {shlex.quote(pattern)}")
+        else:
+            cmd = (f"hits=$(grep -rInI --exclude-dir=.git -m 20 -e {shlex.quote(pattern)} -- {shlex.quote(path)} "
+                   f"| head -n 200); if [ -n \"$hits\" ]; then printf '%s\\n' \"$hits\"; else echo 'no matches'; fi")
+        return "Bash", {"command": cmd, "timeout": int(timeout_s * 1000)}
+
     # ---- files -----------------------------------------------------------------------------------------------
     def _snapshot(self) -> dict[str, tuple[int, int]]:
         out = {}
         if self.workspace.is_dir():
             for f in self.workspace.rglob("*"):
                 rel = f.relative_to(self.workspace)
-                if f.is_file() and not f.is_symlink() and rel.parts[0] not in ("skills", INPUTS, MADE_TOOLS):   # D107, D125
+                if f.is_file() and not f.is_symlink() and rel.parts[0] not in ("skills", INPUTS, GIVEN, MADE_TOOLS):   # D107, D157, D125
                     st = f.stat()
                     out[str(rel)] = (st.st_size, st.st_mtime_ns)
         return out
@@ -515,12 +575,12 @@ class LocalToolbox:
         return changed
 
     # box: localtools
-    def add_input(self, name: str, content: bytes) -> str:
+    def add_input(self, name: str, content: bytes, folder: str = INPUTS) -> str:
         """D107: a read-only input file in <workspace>/sources/ — on the host and, in sandbox mode, in the sandbox's
         workspace (no network there: this is how fetched data reaches the analysts). Never counted as made."""
         safe = re.sub(r"[^\w.-]+", "_", name).strip("._")[:120] or "source"
-        rel = f"{INPUTS}/{safe}"
-        p = self.workspace / INPUTS / safe
+        rel = f"{folder}/{safe}"
+        p = self.workspace / folder / safe
         p.parent.mkdir(parents=True, exist_ok=True)
         if p.exists():
             p.chmod(0o644)
@@ -529,7 +589,7 @@ class LocalToolbox:
         if self.box is not None:
             q = shlex.quote(f"{SANDBOX_WORKSPACE}/{rel}")
             try:
-                r = self.box.exec(["bash", "-c", f"mkdir -p {SANDBOX_WORKSPACE}/{INPUTS} && rm -f {q} && cat > {q} "
+                r = self.box.exec(["bash", "-c", f"mkdir -p {SANDBOX_WORKSPACE}/{folder} && rm -f {q} && cat > {q} "
                                                  f"&& chmod 0444 {q}"], stdin=content, timeout_s=60)
                 if getattr(r, "exit_code", 0) != 0:
                     raise RuntimeError(f"exit {r.exit_code}")
@@ -537,6 +597,14 @@ class LocalToolbox:
                 self.trace.event("input_upload_failed", {"amoeba.box": "localtools", "amoeba.file": rel,
                                                          "amoeba.error": str(e)[:200]})
         return rel
+
+    # box: localtools
+    def _push_given(self) -> None:
+        """D157: the files given with the task (already in the host workspace's inputs/) go into the sandbox too."""
+        folder = self.workspace / GIVEN
+        for f in sorted(folder.iterdir()) if folder.is_dir() else []:
+            if f.is_file():
+                self.add_input(f.name, f.read_bytes(), folder=GIVEN)
 
     # box: localtools
     def put_file(self, rel: str, content: bytes) -> None:
@@ -620,4 +688,5 @@ class LocalToolbox:
         now = self._snapshot()
         files = [{**v, "size": now.get(p, (v["size"],))[0]} for p, v in sorted(self.files.items()) if p in now]
         return {"files_created": files, "local_tool_calls": self.calls, "local_refusals": dict(self.refusals),
-                "skills_attached": self.skills_attached}
+                "skills_attached": self.skills_attached,
+                "local_step_shares": {str(k): v for k, v in self.step_shares.items()} or None}   # D159

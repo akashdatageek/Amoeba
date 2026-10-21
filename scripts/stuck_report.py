@@ -129,6 +129,37 @@ def _row(name: str, s: dict) -> str:
 
 
 # box: stuck
+def scope_summary(roots: list[str]) -> dict:
+    """D154: per scope of Box 4's scoped rounds, over the stored runs' result.json: candidates offered, probes run,
+    recoveries (the round picked that scope and the step ended done or finished with limitation), signals cleared,
+    probe tokens; plus rounds that fell back to single."""
+    out = {s: {"candidates": 0, "probes": 0, "recoveries": 0, "signals_cleared": 0, "tokens": 0} for s in ("inv", "dom")}
+    fallbacks = rounds = 0
+    for root in roots:
+        for res in Path(root).rglob("result.json"):
+            try:
+                a = json.loads(res.read_text(encoding="utf-8")).get("adaptation") or {}
+            except (ValueError, OSError):
+                continue
+            fallbacks += len(a.get("scoped_fallbacks") or [])
+            for f in a.get("fixes") or []:
+                rnd = f.get("round")
+                if not rnd:
+                    continue
+                rounds += 1
+                for c in rnd.get("candidates") or []:
+                    out[c["scope"]]["candidates"] += c.get("op") is not None
+                for x in rnd.get("probes") or []:
+                    s = out[x["scope"]]
+                    s["probes"] += 1
+                    s["signals_cleared"] += len(x.get("cleared") or [])
+                    s["tokens"] += int(x.get("tokens") or 0)
+                if rnd.get("pick") in out and f.get("result") in ("recovered", "finished with limitation"):
+                    out[rnd["pick"]]["recoveries"] += 1
+    return {"rounds": rounds, "fallbacks_to_single": fallbacks, "scopes": out}
+
+
+# box: stuck
 def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("roots", nargs="+")
@@ -138,6 +169,13 @@ def main(argv: list[str] | None = None) -> None:
     for name, s in sorted(r["sets"].items()):
         print(_row(name, s))
     print(_row("TOTAL", r["total"]))
+    sc = scope_summary(a.roots)                                                     # D154
+    if sc["rounds"] or sc["fallbacks_to_single"]:
+        print(f"Box 4 scoped rounds {sc['rounds']} (fell back to single {sc['fallbacks_to_single']})")
+        for name, x in sc["scopes"].items():
+            print(f"  {name}: candidates {x['candidates']}, probes {x['probes']}, recoveries {x['recoveries']}, "
+                  f"signals cleared {x['signals_cleared']}, tokens {x['tokens']:,}")
+    r["scoped"] = sc
     if a.json:
         Path(a.json).write_text(json.dumps(r, indent=2, default=dict), encoding="utf-8")
 

@@ -209,12 +209,14 @@ def parse_table(content: bytes, ext: str, max_rows: int = 3000, max_cols: int = 
 
 
 # box: tools
-def table_excerpt(table: dict, query: str, head: int = 8, matches: int = 12) -> str:
-    """The first rows (titles and header) and the rows that name a query word, as pipe-separated lines."""
+def table_excerpt(table: dict, query: str, head: int = 8, matches: int = 12, tail: int = 4) -> str:
+    """The first rows (titles and header), the rows that name a query word and (D147) the last rows, as
+    pipe-separated lines in table order: a series that runs oldest-first shows its newest rows too."""
     rows = table.get("rows") or []
     words = terms(query)
     pick = list(range(min(head, len(rows))))
     pick += [i for i, r in enumerate(rows) if i >= head and any(w in " ".join(r).lower() for w in words)][:matches]
+    pick = sorted(set(pick) | set(range(max(len(rows) - tail, 0), len(rows))))
     out = [" | ".join(c.strip()[:40] for c in rows[i]) for i in pick]
     more = f"\n[{len(pick)} of {table.get('n_rows', len(rows))} rows shown]"
     return "\n".join(out) + more

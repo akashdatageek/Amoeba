@@ -178,7 +178,12 @@ BOXES: list[dict] = [
                "types continue, or a correction that is added to the job before one more round.",
                "D68: with our prompts it and both checkers are shown every tool the team will really have (calc, web "
                "search and fetch, the local tools and skills when on, and that a tool pool exists); a document format "
-               "or a house style is a skill; what only the user can supply is an open question or a request."],
+               "or a house style is a skill; what only the user can supply is an open question or a request.",
+               "D141: under --protocol v2 the planner and both observers answer with typed PlanOut and ReviewOut, "
+               "rendered by plain code into the same sections the parsers read.",
+               "D143 (v2): code sets the planning tier (light, standard, full), sends back only blocking issues and "
+               "failed HARD checks, publishes the best round's draft, and accepts a reading revision only on Box 1's "
+               "alternatives or a cited [P#] source with the plan observer's approval."],
          proposes="Helpers (name, description, tools, suggestions, instructions), the step plan, and replies to the "
                   "checkers' feedback.",
          disposes="Nothing is accepted yet: the draft goes to the two checkers, and only the last draft is cleaned "
@@ -212,7 +217,11 @@ BOXES: list[dict] = [
                "too long, URL, email, key-shape, repeated, task-restating and over-cap queries, runs the rest through "
                "the run's own search provider, drops result lines that address a model, and shows the results to the "
                "Planner and both checkers as a data block with [P#] ids. [P#] citations in the draft are recorded "
-               "(used_in) and removed before Box 3 builds the team: never in the team's [S#] sources."],
+               "(used_in) and removed before Box 3 builds the team: never in the team's [S#] sources.",
+               "D143: a reading the planner revised on evidence is stated in the opening line: I read X as Y because of "
+               "the reason; Z is not available.",
+               "D157: a task may give input files; plain code copies them read-only into the workspace's inputs/ before "
+               "any call, and the reader, the planner, both observers and every helper see the list with sizes."],
          proposes="The entities, their readings, a reason and a confidence for each; D120: whether planning needs web "
                   "facts, and at most 3 queries.",
          disposes="Plain code decides whether a reading is clear, whether to ask, and checks the answer's opening line; "
@@ -289,7 +298,12 @@ BOXES: list[dict] = [
                "compute, compare and more) must reach a requirement or a given; a phrase ends at sentence "
                "punctuation, not inside an email address or a decimal.",
                "With the quality gate on, a draft failing a must-have check goes back to the planner for one more "
-               "round with the failed checks listed, within the round cap."],
+               "round with the failed checks listed, within the round cap.",
+               "D142: three HARD checks on the plan's typed step checks: every requirement has a check "
+               "(requirements_checked), every check is in the vocabulary with good parameters (checks_valid), and each "
+               "step can meet its checks (checks_reachable).",
+               "D157: HARD check input_files_named — every file given with the task is named by a step, or the plan goes "
+               "back."],
          proposes="The final draft text.",
          disposes="Everything listed here; the original project trusted the AI for all of it.",
          anchors=[("amoeba/task/draft.py::draft_team", "# publish", None), "amoeba/task/draft.py::pick_summariser",
@@ -449,7 +463,9 @@ BOXES: list[dict] = [
                "A dependency on a step the planner wrote but Box 2 dropped is pointed at that step's own "
                "dependencies, and the change is logged.",
                "An unknown step number or a loop stops the team from being built, before any AI call.",
-               "Steps whose inputs are ready form a wave; waves run one after another (the wave is logged)."],
+               "Steps whose inputs are ready form a wave; waves run one after another (the wave is logged).",
+               "D151: with a run token cap, each step may spend 1.5 times its fair part of what is left; a step that "
+               "reaches it stops retrying (kept_going) and the later steps still run."],
          proposes="The depends_on lines (from the planner).",
          disposes="Plain code builds the graph, the order and what each step may see.",
          anchors=["amoeba/interp/plan_runner.py::waves", "amoeba/interp/plan_runner.py::dependencies",
@@ -467,10 +483,22 @@ BOXES: list[dict] = [
                "most 2 rounds (--collab critique); the step keeps one output.",
                "With --step-contract on (D61) its prompt lists what plain code will check: each capability it asked "
                "for and lacks, and each tool or skill it was given; it must use each one or write BLOCKED or NOT "
-               "NEEDED with a reason."],
+               "NEEDED with a reason.",
+               "D136 (--protocol v2, with native tool calling): the step prompt asks for no text sections; each tool "
+               "takes typed arguments that plain code checks before running it (a bad call gets the schema and an "
+               "example), and the step ends with Final_Output's typed fields, which plain code turns into the usual "
+               "BLOCKED / MISSING / Verdict lines. Without native tool calling the steps fall back to legacy.",
+               "D138: a step with no Final Output hands on nothing (its last message stays in meta), a rework that gives "
+               "no new output keeps the earlier one, and in native mode short text without a tool call is not the step's "
+               "output unless it is the last turn or clearly an answer.",
+               "D144: a step's transcript keeps the last two turns in full and older turns as one line each; tool "
+               "results over 2,000 characters go to a file (first 800 and last 400 characters kept), and file writes are "
+               "summarised.",
+               "D154: add_tool_guidance adds a line to a held tool's section, and add_watch_rule adds a reminder once to "
+               "a tool result, in both protocols."],
          proposes="One action and its input per turn; the step's output.",
          disposes="Plain code decides what the helper sees, runs the tools, and caps the turns.",
-         prompts=["plan_step", "plan_step_system", "plan_critique"],
+         prompts=["plan_step", "plan_step_system", "plan_critique", "plan_step_v2"],
          anchors=["amoeba/interp/plan_runner.py::PlanRunner.run_step", "amoeba/interp/plan_runner.py::PlanRunner._loop",
                   "amoeba/interp/plan_runner.py::PlanRunner._turn", "amoeba/interp/plan_runner.py::plan_card",
                   "amoeba/interp/plan_runner.py::step_detail", "amoeba/interp/runtime.py::full_action_input",
@@ -502,7 +530,15 @@ BOXES: list[dict] = [
                "D102: the niche profile's domain checks (amoeba/checks/<name>.py, e.g. calc: every final figure is a stated input or a calc result) run here next to the step checks; a failed one earns the same retry turn.",
                "D109 (resolver): plain code pairs the verifier's blind figures with the worker's by label (5% tolerance); one fresh resolver call settles each disagreement by source text or a re-run, plain code checks its evidence, a settled value replaces the wrong one, and an unresolved one keeps the step from PASS and goes into Limitations.",
                "D110 (part of D105's final-answer check): every web-sourced figure of the final answer must carry its source's date (line or source entry); undated ones share the refine turn, and those still undated are listed in Limitations.",
-               "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked."],
+               "D104: the citation check leaves out a calculation's result shown on the line (after = or ≈), a power's base and exponent, and the years of a range; the operands are still checked.",
+               "D138: an unreadable review counts as REVISE after one repair call, never AGREE; find_tool and failed "
+               "calls are not re-checks; a corrected dispute figure marks its consumers stale; a verifier can read the "
+               "full text of an input it saw cut (inputs/step_<d>.md).",
+               "D142: after Final Output, plain code runs the step's typed checks (files, Word, Excel, CSV, images, "
+               "tables, lists, terms, citations, dates, verdict, NOT SENT) and a failed one is a failed check like any "
+               "other.",
+               "D152: Amoeba's own cut note (\"… [N characters cut; …]\") is never checked as text cited from a source.",
+               "D155: after a work-around, the keyword checks still read the original done_when."],
          proposes="The step's output and verdict (from the helper); BLOCKED and NOT NEEDED lines.",
          disposes="Plain code decides done, partial or incomplete, the retry and the rework, from the contract and "
                   "the evidence.",
@@ -605,7 +641,9 @@ BOXES: list[dict] = [
                "(turn off with --no-log-content).",
                "Token counts are only recorded; no code reads them to stop a run.",
                "Every line names the model profile; each AI line holds the model asked for and the exact model name "
-               "the service returned."],
+               "the service returned.",
+               "D152: each role group's reply room follows the largest reply it has needed in the run (1.5 times, at "
+               "most twice what was asked)."],
          proposes="Nothing.", disposes="Plain code writes the log.",
          anchors=["amoeba/interp/trace.py::TraceWriter", "amoeba/interp/trace.py::TraceWriter.event",
                   "amoeba/interp/trace.py::TracedLLM.chat_messages",
@@ -623,7 +661,10 @@ BOXES: list[dict] = [
                "are left out of result.json when there are none.",
                "D120: plan_search (with --plan-search on): the decision and why, the queries kept and refused with "
                "their reasons, each search's [P#] results and where the draft cited them (used_in), the lines "
-               "screened out and the tokens; left out when the flag is off."],
+               "screened out and the tokens; left out when the flag is off.",
+               "D142: a requirement is met only when every check covering it passed and its key terms are above the "
+               "Limitations section; only under Limitations it is reported_missing; met_legacy keeps the old measure.",
+               "D153: team.yaml names the models each helper's calls really used."],
          proposes="Nothing.", disposes="Plain code.",
          anchors=["amoeba/task/models.py::RunResult", "scripts/run_task.py::run_one"], guard_anchors=[]),
     dict(id="tools", view="run", title="Tool box", kind="code", plan=None,
@@ -636,7 +677,14 @@ BOXES: list[dict] = [
                "Pool tools (D56) are remote MCP servers registered as pool:<name> for the helper that asked; they "
                "run here too, with the same caps, [S#] source ids and error lines.",
                "This is the single place any tool is ever run.",
-               "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#]."],
+               "D106 (research on, plan runner): a packed web_search is split (quoted queries, places, years; at most 4); each search reads its top 3 results itself, official domains first, and parses the .csv/.xlsx/.json files a read page links into tables with their own [S#].",
+               "D137: the harness's own fetches reach only public http(s) addresses, with each redirect hop checked "
+               "again (at most 3).",
+               "D147: a cut page or table names its saved file in the workspace (open it with local:Read), and a table "
+               "excerpt shows its last rows too.",
+               "D156: scripts/preflight.py checks, before a real run, every piece a task category needs (keys, model, "
+               "quota, sandbox, libraries, office suite, local tools, skills) and prints how to fix each missing one; "
+               "exit 1 when a needed piece is missing."],
          proposes="A tool name and its input (from a helper).",
          disposes="Plain code checks the name and the arithmetic before anything runs.",
          anchors=["amoeba/tools/registry.py::ToolRegistry", "amoeba/tools/registry.py::calc",
@@ -675,7 +723,10 @@ BOXES: list[dict] = [
                "architectures), when it passes vetting again; --picks-only makes the picks in a pre-pass.",
                "D117 Stage C: when a stuck step lacks a capability and the pool or local tools are on, the plan runner "
                "runs this step again for it with code_pick: plain code takes the first vetted candidate not given to "
-               "that step before (no AI call, no shared pick); with both off the rung is skipped."],
+               "that step before (no AI call, no shared pick); with both off the rung is skipped.",
+               "D137: a pool server that runs code for the caller (remote code execution) is refused at vetting and "
+               "after connecting unless --allow-remote-exec; code runs only through local:Bash in the sandbox.",
+               "D153: a request naming several roles is stored once per role."],
          proposes="The picker names one candidate (or NONE); never for an in-task fix (code_pick).",
          disposes="Plain code ranks the candidates, rejects anything unsafe or over the caps, and attaches.",
          anchors=["amoeba/pool/stock.py::stock_toolbox", "amoeba/pool/stock.py::pick", "amoeba/pool/stock.py::vet",
@@ -691,7 +742,14 @@ BOXES: list[dict] = [
                "Skills are listed only from the kept anthropics/skills clone; an attached skill's SKILL.md goes on the helper's card. Aliases (code runner → local:Bash, spreadsheet → the xlsx skill …) put local items first (D61).",
                "D103: in the sandbox a pool skill maps to /opt/skills/<name> (the entry's root is a label; its folder is root_path), and Bash may name /opt/skills read-only so the skill's scripts run; writing there is refused.",
                "D107: every page and data file the web tools read is saved read-only under sources/ in the workspace (and uploaded into the sandbox), with sources/index.json giving each file's [S#], url and time; writes there are refused and the files never count as made.",
-               "D112: a Python program sent to local:Bash (a ```python block, or a first line that starts like Python) runs as python3 from a quoted heredoc; the rewrite is logged and the gate still screens it."],
+               "D112: a Python program sent to local:Bash (a ```python block, or a first line that starts like Python) runs as python3 from a quoted heredoc; the rewrite is logged and the gate still screens it.",
+               "D148: a Bash path is judged by where it lands after each cd, not by a '..' in its text; a refusal names "
+               "the exact part and says how to rewrite the call.",
+               "D158: one library list (config/sandbox/libs.txt) for the image and in-process mode, LibreOffice Calc and "
+               "Writer in both; Glob and Grep the server no longer offers are served through its Bash by plain code, "
+               "quoted, behind the same gates.",
+               "D159: local calls scale with the plan — 12 per planned step for the run, and each step a share of what "
+               "is left (1.5 x calls left / steps not yet run), refused as step_share with the numbers."],
          proposes="A helper's tool call (name and input); the picker's choice of a local item.",
          disposes="Plain code allows the tool, checks every path and command, caps calls and output, and checks "
                   "claimed files.",
@@ -734,9 +792,28 @@ BOXES: list[dict] = [
                "D122: no token cap by default; a runaway guard stops a plan run after --stall-calls model calls with "
                "no progress (default 60; calls, never tokens; armed once the plan runner starts). With an optional "
                "hard cap the plan runner enters finish mode past 85% of it, and a stopped plan run returns its "
-               "finished steps as a partial answer."],
+               "finished steps as a partial answer.",
+               "D134: provider: anthropic sends Claude's calls through its own Messages API (structured outputs, "
+               "effort, thinking summary, prompt caching, refusal categories). A blocked reply is never retried as "
+               "it was; a refusal because the prompt asks for written-out reasoning is a loud "
+               "prompt_asks_for_reasoning line naming the prompt file, and the run summary says so.",
+               "D135: scripts/model_check.py checks a model before use with one tiny call per call type and one "
+               "structured call per output mode, and can set the registry entry's supports flags.",
+               "D139: every structured reply is validated by plain code (enum case ignored, provider nulls fall back to "
+               "defaults); the schema sent to Claude makes every field required and optional ones nullable; with "
+               "cache_prefix the step prompt's stable head is cached; a non-reasoning block gets one compact retry.",
+               "D141: under --protocol v2 every call asks for a typed reply through ask() in the model's output mode "
+               "(schema, submit tool or JSON in the prompt), checked by code with one repair call that quotes the error.",
+               "D153: --protocol auto (the default) picks v2 when the model supports native tool calling, legacy "
+               "otherwise; Gemma has tools after its model check.",
+               "D156: amoeba/llm/quota.py::parse_quota reads a 429 quota reply: per-minute (retried) or daily (it will "
+               "not clear today), its limit and the wait.",
+               "D160: a per-minute quota 429 waits as long as the reply asks; a daily one is not retried "
+               "(quota_exhausted), the run stops cleanly and --resume continues another day with finished calls replayed "
+               "from the cache."],
          proposes="Nothing.", disposes="Plain code sends and receives; it never changes the text.",
          anchors=["amoeba/llm/client.py::OpenAICompatibleClient", "amoeba/llm/client.py::LLMClient",
+                  "amoeba/llm/anthropic_client.py::AnthropicClient",
                   "amoeba/llm/client.py::ChatResponse", "amoeba/llm/client.py::merge_system",
                   "amoeba/llm/cache.py::CachedLLM", "amoeba/llm/limits.py::RunLimits",
                   "amoeba/llm/limits.py::estimate", "amoeba/llm/profiles.py::RoleRouter",
@@ -758,7 +835,10 @@ BOXES: list[dict] = [
                "branch, at most one commit per 10 minutes plus a final one; each commit message carries the chain "
                "head. Shipping runs in the harness only; agents never get git credentials or cloud credentials.",
                "D117: the loop that wrote it is gone; the log is kept for in-task adaptation: every stuck step, "
-               "diagnosis, fix tried and stop is a row (settings read through amoeba/adapt/config.py)."],
+               "diagnosis, fix tried and stop is a row (settings read through amoeba/adapt/config.py).",
+               "D146: every stuck row carries all its signals and ground_truth null for hand grading (python -m "
+               "scripts.grade_episodes); the hash chain is self-consistent only, with no outside anchor, because "
+               "make_shipper is never called."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes, chains and verifies the log.",
          anchors=[]),
@@ -787,7 +867,8 @@ BOXES: list[dict] = [
                "Box 3 refuses any tool outside the profile even when a plan or a replan asks for it, and logs the "
                "refusal; the router refuses any model outside it; domain checks (amoeba/checks/) run after each step "
                "and a failed one earns a retry turn.",
-               "D113: after a step that made a workbook, typed totals and typed derived cells (row or column sums, products of row cells) fail the domain_xlsx_formulas check with the cell names and earn the retry turn."],
+               "D113: after a step that made a workbook, typed totals and typed derived cells (row or column sums, products of row cells) fail the domain_xlsx_formulas check with the cell names and earn the retry turn.",
+               "D137: local: and made: tools are never counted as outside actions; the allow list still applies."],
          proposes="Nothing: a person writes the profile.",
          disposes="Plain code applies the profile's allowlists, limits, done clauses and checks.",
          anchors=[]),
@@ -814,7 +895,12 @@ BOXES: list[dict] = [
                "most eight evidence lines.",
                "The event goes to the trace, step_N.json, result.json (stuck) and the run's hash-chained "
                "events.jsonl. --adapt on is the command-line default.",
-               "scripts/stuck_report.py runs the same functions over stored run folders, offline."],
+               "scripts/stuck_report.py runs the same functions over stored run folders, offline.",
+               "D145: a lacked line about a tool the helper holds is a tool error (held_tool_failed), never a "
+               "capability; runtime requests count only for the step they came from.",
+               "D149: a held tool refused twice in one step for the same reason makes the cause a tool error, whatever "
+               "else is missing.",
+               "D153: refused replies are blocked turns, never unreadable ones, and feed only provider_blocked."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code marks the step and logs the diagnosis; no fix is made yet.",
          anchors=["amoeba/adapt/stuck.py::step_signals", "amoeba/adapt/stuck.py::diagnose",
@@ -835,7 +921,14 @@ BOXES: list[dict] = [
                "proposer (Stage D) is the next and last rung.",
                "Limits from adapt.yaml (adapt): three fixes per step and eight per task, the proposer's included, a "
                "token and dollar cap; a fix is never repeated. When nothing recovers the step the task stops: "
-               "adapt_report.md says what was stuck, the cause, each fix and why it failed."],
+               "adapt_report.md says what was stuck, the cause, each fix and why it failed.",
+               "D145: a provider-blocked step gets the compact prompt, then another candidate model, then the task stops "
+               "naming the refusal categories; a held tool is never granted again; a re-plan drops only the stuck step's "
+               "dependents and must pass Box 2's HARD checks.",
+               "D150: a fix kind that failed on a step is never tried again on it, and after one failed code fix the fix "
+               "proposer goes next.",
+               "D151: the fixes' token allowance is six times the run's average step-attempt cost so far, so it scales "
+               "with the model."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code picks, applies and judges each fix (success: the step ends done).",
          anchors=["amoeba/adapt/fixes.py::candidates", "amoeba/interp/plan_runner.py::PlanRunner.fix_stuck",
@@ -878,7 +971,11 @@ BOXES: list[dict] = [
                "Plain code checks, all in proposer.py and the plan runner: allowed for the cause, the schema, tools "
                "this run has (no outside action, not paid), text sizes and denied wording (adapt.yaml limits), team "
                "size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second "
-               "failure is no fix. The adaptation limits apply; success is the step ending done."],
+               "failure is no fix. The adaptation limits apply; success is the step ending done.",
+               "D155: a split or a re-plan never drops a check: the replaced steps' checks move to the new steps by "
+               "plain code, and a re-plan may not write checks.",
+               "D154: under --proposer scoped the last rung is a round: two scoped proposers, each edit probed from one "
+               "snapshot and undone, plain code picks; the winner's probed state is kept."],
          proposes="One edit with a reason (fix_proposer prompt).",
          disposes="Plain code refuses, or applies the edit and judges the step by its checks and contract.",
          prompts=["fix_proposer"],

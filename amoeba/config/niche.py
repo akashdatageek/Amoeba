@@ -89,7 +89,9 @@ def tool_allowed(name: str, prof: NicheProfile, description: str = "") -> tuple[
     allowed = prof.allowed_tools
     if allowed is not None and not any(fnmatch(name, pat) for pat in allowed):
         return False, f"not in the {prof.name} profile's tools"
-    if prof.safety.outside_actions is False:
+    if prof.safety.outside_actions is False and not name.startswith(("local:", "made:")):
+        # D137: local and made tools act only inside the run's sandboxed workspace, so Write/Edit are not outside
+        # actions; the allow list above still applies to them
         from amoeba.pool.stock import side_effect
         hit = side_effect(name, description)
         if hit:

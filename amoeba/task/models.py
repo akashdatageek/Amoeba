@@ -61,6 +61,7 @@ class Task(BaseModel):
     ground_truth: str | None = None  # toy tasks only
     tags: list[str] = Field(default_factory=list)
     rubric: Rubric | None = None   # D30: scoring for tasks without one right answer; read by evaluate only
+    files: list[str] = Field(default_factory=list)   # D157: input files (paths); copied read-only to inputs/
 
 
 class Message(BaseModel):
@@ -128,6 +129,7 @@ class CapabilityRequest(BaseModel):
     # planner = listed under "## Capability Requests"; unregistered_tool = a role's tools named it and the resolver
     # found no such tool; runtime_unknown_tool = a helper chose it as an action during the run
     source: Literal["planner", "unregistered_tool", "runtime_unknown_tool"] = "planner"
+    step: int | None = None   # D145: the step a runtime request was raised in (requests are per step, not per role)
     # D29: the canonical name from amoeba/capabilities/aliases.yaml; `name` keeps what the model wrote
     canonical: str = ""
     mapped: bool = False
@@ -227,6 +229,7 @@ class DraftPlanStep(BaseModel):
     do: str = ""
     output: str = ""
     done_when: str = ""
+    checks: list[dict] = Field(default_factory=list)          # D142: typed checks {name, params, covers} (contract.py)
 
 
 class DraftRound(BaseModel):
@@ -238,6 +241,9 @@ class DraftRound(BaseModel):
     plan: list[dict] = Field(default_factory=list)                # [{"agents": [...], "text": "..."}] as written
     capability_requests: list[CapabilityRequest] = Field(default_factory=list)   # this reply's own section (D19)
     agent_observer_raw: str = ""
+    score: dict | None = None             # D143 (v2): {hard_failed, blocking}; the best round's draft is published
+    plan_diff: dict | None = None         # D143 (v2): what the planner changed from the previous round's PlanOut
+    reading_revision: dict | None = None  # D143 (v2): the planner's proposed revision and code's verdict on it
     agent_observer: str = ""                                      # its Suggestions section
     plan_observer_raw: str = ""
     plan_observer: str = ""
@@ -275,12 +281,19 @@ class Draft(BaseModel):
     # D120 --plan-search on: the search before planning (decision, queries, sources the Planner saw); left out of the
     # dump when None, so a draft made without it is unchanged and a reused draft still says what its Planner saw
     plan_search: dict | None = None
+    # D143 (planning v2): the tier, the round whose draft was published and its score, the reading revision
+    planning_tier: str | None = None
+    planning_signals: dict | None = None
+    published_round: int | None = None
+    published_score: dict | None = None
+    reading_revision: dict | None = None
 
     @model_serializer(mode="wrap")
     def _drop_unset_phase2(self, handler):
         out = handler(self)
         if isinstance(out, dict):
-            for k in ("recipe_applied", "plan_search"):
+            for k in ("recipe_applied", "plan_search", "planning_tier", "planning_signals", "published_round",
+                      "published_score", "reading_revision"):
                 if k in out and out[k] is None:
                     out.pop(k)
         return out
@@ -306,6 +319,8 @@ def run_status(error: str | None) -> str:
         return "needs_clarification"
     if e.startswith("stuck:"):                              # D117 Stage C: a stuck step no fix recovered
         return "stuck"
+    if e.startswith("quota_exhausted"):                     # D160: the model's daily quota; resume another day
+        return "quota_exhausted"
     if e.startswith("api:"):
         m = re.match(r"api: \w+ (\d{3})\b", e)
         return "agent_error" if m and int(m.group(1)) in TEAM_API_STATUS else "infra_error"
@@ -320,6 +335,9 @@ def infra_error(error: str | None) -> bool:
 # box: runresult
 class RunResult(BaseModel):
     interpretation: dict = Field(default_factory=dict)   # D77: the task interpretation step and what it settled
+    input_files: list[dict] | None = None                # D157: [{path, size}] given with the task (None: none)
+    local_step_shares: dict | None = None                # D159: {step: {share, left, not_run, factor}} local calls
+    resumed_from: str | None = None                      # D160: the run this one resumed (--resume)
     run_id: str
     task_id: str
     draft_source: str | None = None   # D45: the saved draft reused (eval_draft file stem or run id); None = drafted
@@ -368,6 +386,12 @@ class RunResult(BaseModel):
     faults: list[dict] | None = None  # D119 (test-only, --inject-fault): each injected fault; left out when none
     run_guard: dict | None = None     # D122: finish mode / skipped extras / a stop with the answer assembled; left out when none
     provider_blocked: int | None = None   # D128: calls the model service blocked (content_filter), retries included
+    reasoning_refusals: list[dict] | None = None   # D134: calls refused because the prompt asks for reasoning
+    protocol: dict | None = None      # D136 --protocol v2: {asked, used, why}; left out for legacy
+    planning_tier: str | None = None  # D143: light | standard | full (plan topology)
+    verifier_independence: list | None = None   # D146: per verify step, independent / same_family / same_model
+    published_round: int | None = None   # D143 (v2): the round whose draft was published (the best, not the last)
+    reading_revised: dict | None = None  # D143 (v2): the planner's reading revision and whether code accepted it
     plan_search: dict | None = None   # D120 --plan-search on: the search before planning (Draft.plan_search)
     status: str | None = None    # D111: ok | infra_error | agent_error (D105: no_deliverable); run_status
     routing: dict | None = None  # D97: the router's per-model calls, tokens and USD, and its decision counts

@@ -8,8 +8,14 @@ bash_python: true                    # D112: Python sent to local:Bash (a ```pyt
 limits:
   timeout_s: 300                   # one call (D96a: 300 s; per niche profile, D102)
   max_output_chars: 8000           # of one call's result, passed to the helper
-  max_calls_per_step: 20
-  max_calls_per_run: 60
+  max_calls_per_step: 20          # the ceiling of one step attempt, whatever its share
+  # D159: the run's local calls scale with the plan: calls_per_step for every planned step (12 x 5 steps = the old
+  # fixed 60 per run; 12 x 11 = 132), and each step may use step_share x (calls left / steps not yet run, itself
+  # included). 1.5 lets a hard step borrow half a share from the others, as D151 does for tokens. Without a plan
+  # (flat, boss_reviewers) the run gets calls_per_step x 5. max_calls_per_run: a number sets a fixed cap instead.
+  calls_per_step: 12
+  step_share: 1.5
+  max_calls_per_run: null
   max_skill_chars: 5000            # of a SKILL.md put on the role card (the whole folder is copied to the workspace)
 
 # Where skills are listed from: the anthropics/skills clone that `python -m amoeba pool refresh` keeps under

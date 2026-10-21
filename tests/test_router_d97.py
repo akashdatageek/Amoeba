@@ -43,7 +43,7 @@ MSG = [{"role": "user", "content": "hello"}]
 
 def test_the_registry_holds_gemma_with_its_limits_and_price():
     reg, policy = load_registry()
-    assert list(reg) == ["gemma-4-31b", "claude-sonnet-5-5"]   # Claude: used only with --profile claude-sonnet
+    assert list(reg) == ["gemma-4-31b", "claude-sonnet-5-5", "claude-sonnet-5-5-compat"]   # Claude: used only with --profile claude-sonnet
     g = reg["gemma-4-31b"]
     assert (g.family, g.model, g.api_key_env, g.privacy) == ("gemma", "gemma-4-31b-it", "GEMINI_API_KEY", "cloud")
     assert g.rate["rpm"] == 15 and g.price == {"input": 0.0, "output": 0.0} and g.context_window >= 128000
@@ -198,7 +198,7 @@ def test_a_second_model_in_the_registry_only_is_used_with_no_code_change(tmp_pat
                                      "    price: {input: 0.0, output: 0.0}\n    rate: {rpm: 60, tpm: null}\n"
                                      "    privacy: cloud\n\nrouting:\n", 1))
     reg, policy = load_registry(reg_file)
-    assert set(reg) == {"gemma-4-31b", "claude-sonnet-5-5", "mock-qwen"}   # Claude: filtered here (no key)
+    assert set(reg) == {"gemma-4-31b", "claude-sonnet-5-5", "claude-sonnet-5-5-compat", "mock-qwen"}   # Claude: filtered here (no key)
     r = ModelRouter(reg, policy, lambda e: MockLLMClient(responder=lambda m, s, n=e.name: f"from {n}"),
                     env={"GEMINI_API_KEY": "k", "MOCK_KEY": "k"}, rate_dir=tmp_path / "rate", sleep=lambda s: None)
     resp, dec = r.call(CallSpec(role="worker", step=1), MSG, 0, 100)
