@@ -71,3 +71,14 @@ The checks:
 - the server's JSON Bash replies are read;
 - the exit-code rule;
 - main prints the table.
+
+## Addendum (Oct 21, after a container reset)
+The session's container was reset. The preflight was run again on a fresh machine and found three more setup gaps:
+- The gateway's signing certificates were missing ("docker sandboxes require launch-scoped gateway authentication").
+  The fix is the one-time `generate-certs` step in docs/RUNNING_ON_A_VM.md.
+- The `amoeba` package was not installed in the venv, so the sandbox bridge (`python -m amoeba.localtools.sandbox`)
+  could not start.
+- The pool cache (`data/pool`) was gone. `python -m amoeba pool refresh` brings it back.
+
+When the toolbox does not start, the row now shows the last line of the server's stderr and names the matching fix
+(image mismatch, missing certificates, or `pip install -e .`). Test: `test_a_toolbox_that_will_not_start_names_the_fix`.

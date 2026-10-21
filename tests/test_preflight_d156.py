@@ -218,3 +218,17 @@ def test_main_prints_the_table_and_returns_the_code(capsys):
     code = main(["--mode", "sandbox"], world=Fake(missing=("scipy",)))
     out = capsys.readouterr().out
     assert code == 1 and "import scipy" in out and "missing" in out and "exact" in out
+
+
+def test_a_toolbox_that_will_not_start_names_the_fix():
+    class NoBox(Fake):
+        def __init__(self, err, **kw):
+            super().__init__(**kw)
+            self.err = err
+
+        def toolbox(self):
+            raise RuntimeError(self.err)
+    fix = lambda err: next(r.fix for r in run_checks(NoBox(err)) if r.check == "local toolbox")
+    assert "pip install -e ." in fix("python: No module named 'amoeba' | LocalServerError: bridge failed")
+    assert "certs" in fix("GatewayError: docker sandboxes require launch-scoped gateway authentication")
+    assert "must match" in fix("SandboxError: sandbox am-1 entered error phase")

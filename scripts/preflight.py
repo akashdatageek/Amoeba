@@ -138,7 +138,9 @@ class LiveBox:
                                 TraceWriter(None, episode_id="preflight"))
         self.box.start()
         if self.box.server is None:
-            raise RuntimeError(self.box.error or "the local-tool server did not start")
+            log = Path(self.tmp.name) / "localtools.stderr.log"
+            tail = log.read_text(errors="replace").strip().splitlines()[-1:] if log.exists() else []
+            raise RuntimeError(" | ".join([*tail, self.box.error or "the local-tool server did not start"]))
 
     def call(self, tool: str, text: str) -> str:
         self.box.begin_step(1)
@@ -267,9 +269,13 @@ def check_local(w: World) -> list[Row]:
         box = w.toolbox()
     except Exception as e:
         why = f"{type(e).__name__}: {e}"[:120]
+        why = f"{type(e).__name__}: {e}"[-160:]
         fix = ("the gateway and the sandbox supervisor images must match: docker pull "
                "ghcr.io/nvidia/openshell/gateway:latest, then docker compose ... up -d again"
-               if "error phase" in why else "see the docker / gateway rows above")
+               if "error phase" in why else
+               "pip install -e . (the sandbox bridge runs python -m amoeba...)" if "No module named 'amoeba'" in why else
+               "generate the gateway's certs once (docs/RUNNING_ON_A_VM.md), then restart it"
+               if "launch-scoped" in why else "see the docker / gateway rows above")
         return [Row("local toolbox", "missing", why, fix, LOCAL)]
     calls = {"Write": '{"file_path": "preflight.txt", "content": "hello"}', "Read": "preflight.txt",
              "Edit": '{"file_path": "preflight.txt", "old_string": "hello", "new_string": "hello again"}',
