@@ -140,7 +140,8 @@ def role_card(agent: AgentSpec) -> str:
              f"Skills: {'; '.join(agent.skills)}" if agent.skills else "",
              f"Outputs: {'; '.join(_output_text(o) for o in agent.outputs)}" if agent.outputs else "",
              f"Success criteria: {'; '.join(agent.success_criteria)}" if agent.success_criteria else "",
-             *pool_skill_notes(agent)]   # D56: skills from the pool, as data
+             *pool_skill_notes(agent),   # D56: skills from the pool, as data
+             *(p["text"].strip() for p in agent.pool if p["kind"] == "inputs")]   # D157: the given files
     return "\n".join(x for x in lines if x)
 
 

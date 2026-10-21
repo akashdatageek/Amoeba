@@ -43,6 +43,7 @@ from amoeba.tools.registry import ToolRegistry, default_registry
 from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
+from amoeba.task.inputs import copy_inputs, inputs_text
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, attach_verifier, build_router, get_profile
 from amoeba.interp.plan_runner import verifier_independence   # D146
@@ -151,6 +152,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id, log_content=log_content,
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
+    inputs = copy_inputs(task.files, run_dir / "workspace") if task.files else []    # D157: before any call
+    if inputs:
+        trace.event("input_files", {"amoeba.box": "interpret", "amoeba.files": inputs})
     if topology == "plan":
         plan_options = resolve_protocol(plan_options, llm, trace)          # D153: auto → v2 when the model has tools
     trace.protocol = getattr(plan_options, "protocol", "legacy") if topology == "plan" else "legacy"   # D141
@@ -213,7 +217,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None,
                                    disabled=disabled_tools, turns=max_turns or Limits().max_turns)   # D130
             if interpret:             # D77: what the task is about is settled before the Planner drafts
-                interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed, environment=env_text)
+                interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed,
+                                   environment=env_text + inputs_text(inputs))                     # D157
                 if interp["ambiguous"] and clarify:              # D116: answers given with --clarify
                     interp = apply_clarify(interp, clarify)
                     if interp.get("clarified"):
@@ -246,7 +251,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             tier = getattr(plan_options, "planning_tier", "auto") if topology == "plan" else "auto"   # D143
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                quality_gate=quality_gate, toolbox=toolbox, interpretation=interp,   # D68, D77
-                               lessons=lessons, planning_tier=tier)                                   # D82
+                               lessons=lessons, planning_tier=tier, inputs=inputs)                   # D82, D157
             if (draft.reading_revision or {}).get("accepted"):    # D143: the planner's reading, accepted by code
                 old = task_note(interp)
                 interp = draft.interpretation
@@ -261,7 +266,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     task = task.model_copy(update={"prompt": f"{task.prompt}\n\nUser clarification: {clarification}"})
                     draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                        quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
-                                       toolbox=toolbox, interpretation=interp, lessons=lessons, planning_tier=tier)
+                                       toolbox=toolbox, interpretation=interp, lessons=lessons, planning_tier=tier,
+                                       inputs=inputs)
                     draft.plan_search = with_used_in(search_rec, draft)                                # D120
         task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})    # D77: Box 3 reads it too
         if prof is not None and prof.done_when:           # D102: what "done" means here, on the answer step(s)
@@ -273,6 +279,9 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             for a in cfg.agents.values():
                 a.limits.max_turns = max_turns
         team_id = cfg.team_id
+        if inputs:                                        # D157: every helper's role card lists the given files
+            for a in cfg.agents.values():
+                a.pool.append({"kind": "inputs", "id": "inputs", "name": "input files", "text": inputs_text(inputs)})
         requests = [q.model_copy(deep=True) for q in work.capability_requests]
         picks = SharedPicks(picks_file, task.id) if picks_file else None           # D70
         if pool is not None or box is not None:   # D56: Box 3 starts by stocking the toolbox, before the runner
@@ -377,6 +386,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         provider_blocked=getattr(trace, "provider_blocked", 0) or None,                # D128
         reasoning_refusals=getattr(trace, "reasoning_refusals", None) or None,         # D134
         protocol=protocol,                                                             # D136
+        input_files=inputs or None,                                                    # D157
         plan_search=(draft.plan_search if draft else search_rec),                       # D120
         planning_tier=draft.planning_tier if draft and topology == "plan" else None,     # D143
         verifier_independence=(verifier_independence(ep.steps) or None) if ep and topology == "plan" else None,  # D146
@@ -831,6 +841,9 @@ def build_box3_tools(args: argparse.Namespace, tools: ToolRegistry) -> ToolRegis
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("prompt", nargs="?", help="a free-text task (cannot be scored)")
+    p.add_argument("--file", action="append", default=[], metavar="PATH",
+                   help="D157: an input file for the free-text task (repeat for more); copied read-only to the run's "
+                        "workspace/inputs/. In --tasks files a task names its own (\"files\": [...])")
     p.add_argument("--toy", action="store_true", help="run generated toy tasks with known answers")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n", type=int, default=20, help="number of toy tasks")
@@ -1111,7 +1124,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.tasks:
         tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding="utf-8").splitlines() if l.strip()]
     else:
-        tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
+        tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt, files=args.file)]
     saved = load_saved_drafts(args.drafts_from) if args.drafts_from else None
     pool = PoolSetup(cache_dir=args.pool_dir, allow_remote_exec=getattr(args, "allow_remote_exec", False)) \
         if args.pool else None                                                   # D56; D137

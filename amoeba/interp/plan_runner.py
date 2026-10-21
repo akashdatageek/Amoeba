@@ -289,7 +289,8 @@ def plan_card(agent: AgentSpec) -> str:
              f"Success criteria: {'; '.join(agent.success_criteria)}" if agent.success_criteria else "",
              f"Instructions: {agent.role_prompt}" if agent.role_prompt else "",
              f"Suggestions: {agent.suggestions}" if agent.suggestions else "",
-             *pool_skill_notes(agent)]   # D56: skills from the pool, as data
+             *pool_skill_notes(agent),   # D56: skills from the pool, as data
+             *(p["text"].strip() for p in agent.pool if p["kind"] == "inputs")]   # D157: the given files
     return "\n".join(x for x in lines if x)
 
 

@@ -61,6 +61,7 @@ class Task(BaseModel):
     ground_truth: str | None = None  # toy tasks only
     tags: list[str] = Field(default_factory=list)
     rubric: Rubric | None = None   # D30: scoring for tasks without one right answer; read by evaluate only
+    files: list[str] = Field(default_factory=list)   # D157: input files (paths); copied read-only to inputs/
 
 
 class Message(BaseModel):
@@ -332,6 +333,7 @@ def infra_error(error: str | None) -> bool:
 # box: runresult
 class RunResult(BaseModel):
     interpretation: dict = Field(default_factory=dict)   # D77: the task interpretation step and what it settled
+    input_files: list[dict] | None = None                # D157: [{path, size}] given with the task (None: none)
     run_id: str
     task_id: str
     draft_source: str | None = None   # D45: the saved draft reused (eval_draft file stem or run id); None = drafted

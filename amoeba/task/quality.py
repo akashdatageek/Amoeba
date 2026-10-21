@@ -17,7 +17,8 @@ ROLE_FIELDS = ("goal", "skills", "outputs", "success_criteria", "prompt")
 # D28: the checks --quality-gate enforces (a failure sends the draft back for another round)
 HARD_CHECKS = ("requirements_covered", "independent_verification", "summariser", "task_coverage",
                "done_when_properties", "outside_action_fallback", "done_when_reachable",   # D130: these three
-               "requirements_checked", "checks_valid", "checks_reachable")                 # D142: the step checks
+               "requirements_checked", "checks_valid", "checks_reachable",                 # D142: the step checks
+               "input_files_named")                                                         # D157: given files
 # D130: properties a requirement can ask of a deliverable, each with the words that state it; a step that covers the
 # requirement must state the same property in its done_when, output or do (word forms count alike)
 PROPERTIES = {"citations": r"\bcit(?:e|es|ed|ing|ation|ations)\b|\bsources?\b|\burls?\b|\blinks?\b|\breferences?\b|"
@@ -122,8 +123,9 @@ def task_coverage(task_text: str, requirements: dict[str, str], givens: list[str
 
 
 # box: checks
-def draft_quality(d: Draft, task_text: str = "") -> dict:
-    """task_text: the task as Box 2 saw it; without it (or without requirement ids) task_coverage is n/a."""
+def draft_quality(d: Draft, task_text: str = "", input_files=()) -> dict:
+    """task_text: the task as Box 2 saw it; without it (or without requirement ids) task_coverage is n/a.
+    input_files: D157 — the workspace paths of the files given with the task (none: input_files_named is n/a)."""
     checks: dict[str, dict] = {}
     req = list(d.requirements)
     steps = d.plan
@@ -218,10 +220,23 @@ def draft_quality(d: Draft, task_text: str = "") -> dict:
     checks.update(plan_contract_quality(req, steps, {x.name: list(x.tools) + list(x.missing_tools)
                                                      for x in d.created_roles}))
 
+    checks["input_files_named"] = input_files_named(d, list(input_files))    # 15. D157
+
     oks = [c["ok"] for c in checks.values()]
     return {"checks": checks, "passed": oks.count(True), "failed": oks.count(False), "na": oks.count(None),
             "failed_checks": [k for k, c in checks.items() if c["ok"] is False],
             "hard_failed": [k for k in HARD_CHECKS if checks.get(k, {}).get("ok") is False]}
+
+
+# box: checks
+def input_files_named(d: Draft, files: list[str]) -> dict:
+    """D157: every file given with the task is named (inputs/<name> or <name>) by at least one step, so the step that
+    needs it knows it is there. n/a when no file was given."""
+    if not files:
+        return {"ok": None, "detail": "no input files"}
+    text = "\n".join(f"{s.text}\n{s.do}\n{s.output}\n{s.done_when}" for s in d.plan).lower()
+    missing = [f for f in files if f.lower() not in text and f.rsplit("/", 1)[-1].lower() not in text]
+    return {"ok": not missing, "files": len(files), "not_named": missing}
 
 
 # box: checks
@@ -300,6 +315,9 @@ def gate_suggestions(q: dict) -> str:
             lines.append("Task phrases no requirement keeps (same verb, same object): "
                          + "; ".join(f'"{x}"' for x in tc["missing_phrases"])
                          + ". Add a requirement for each, keeping the task's own verb.")
+    if "input_files_named" in q["hard_failed"]:                                       # D157
+        lines.append(f"Input files given with the task that no step names: {', '.join(c['input_files_named']['not_named'])}. "
+                     f"Name each file in the do line of the step that reads it.")
     if "done_when_properties" in q["hard_failed"]:
         g = c["done_when_properties"]["gaps"]
         lines.append("A done_when that only checks that a deliverable exists lets it through without what the "

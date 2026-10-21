@@ -129,11 +129,11 @@ def in_workspace(command: str, workspace: Path) -> str:
 
 # ---- D96: protected configs and read-only roots ------------------------------------------------------------------------
 PROTECTED_PARTS = {".claude", ".mcp.json", "CLAUDE.md", "skills", "managed-settings.json", ".git",
-                   "sources"}                         # D107: the read-only input files
+                   "sources", "inputs"}               # D107: the read-only fetched files; D157: the given files
 PROTECTED_COMMAND = re.compile(r"\.claude\b|\.mcp\.json|managed-settings|claude-code/|CLAUDE\.md"
-                               r"|>>?\s*[^\s|;&]*\b(?:skills|sources)/"
-                               r"|\b(mv|rm|tee|sed\s+-i|chmod|chown|ln|touch|truncate)\b[^|;&]*\b(?:skills|sources)/"
-                               r"|\b(cp|install)\b[^|;&]*\s[^\s|;&]*\b(?:skills|sources)/[^\s|;&]*\s*(?:$|[|;&])",   # D107: copying FROM is fine
+                               r"|>>?\s*[^\s|;&]*\b(?:skills|sources|inputs)/"
+                               r"|\b(mv|rm|tee|sed\s+-i|chmod|chown|ln|touch|truncate)\b[^|;&]*\b(?:skills|sources|inputs)/"
+                               r"|\b(cp|install)\b[^|;&]*\s[^\s|;&]*\b(?:skills|sources|inputs)/[^\s|;&]*\s*(?:$|[|;&])",   # D107: copying FROM is fine
                                re.I)
 
 

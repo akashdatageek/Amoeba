@@ -30,7 +30,7 @@ def test_full_d24_draft(db_task, envelope, trace):
          "independent": False}]}
     assert q["failed_checks"] == ["verification_step", "independent_verification"]
     assert c["task_coverage"]["ok"] and c["task_coverage"]["numbers"] == ["50", "200"]       # D52
-    assert q["hard_failed"] == ["independent_verification"] and (q["passed"], q["failed"], q["na"]) == (9, 2, 3)   # D130: +3 checks; D142: +3 n/a (no step checks)
+    assert q["hard_failed"] == ["independent_verification"] and (q["passed"], q["failed"], q["na"]) == (9, 2, 4)   # D130: +3 checks; D142: +3 n/a (no step checks); D157: +1 n/a (no input files)
     [ev] = trace.events("draft_quality")
     assert ev["amoeba.quality.failed_checks"] == "verification_step,independent_verification"
 
@@ -59,7 +59,7 @@ def test_d19_draft_reports_na_where_it_has_no_fields(task, envelope, trace):
     q = draft_team(task, mock(planner=[fx("draft_round_ok")]), envelope, trace).quality
     c = q["checks"]
     assert c["requirements_covered"]["ok"] is None and c["verification_step"]["ok"] is None
-    assert c["dependencies_valid"]["ok"] is None and c["independent_verification"]["ok"] is None and q["na"] == 9   # D130; D142 +3
+    assert c["dependencies_valid"]["ok"] is None and c["independent_verification"]["ok"] is None and q["na"] == 10   # D130; D142 +3; D157 +1
     assert c["task_coverage"]["ok"] is None                                                    # D52: no R ids
     assert c["summariser"]["ok"] is True          # d19 is judged on tools and ownership, not a declaration (D28)
     assert c["tools_accounted"] == {"ok": False, "missing_not_requested_by_planner": ["web_search"]}

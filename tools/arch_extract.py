@@ -219,7 +219,9 @@ BOXES: list[dict] = [
                "Planner and both checkers as a data block with [P#] ids. [P#] citations in the draft are recorded "
                "(used_in) and removed before Box 3 builds the team: never in the team's [S#] sources.",
                "D143: a reading the planner revised on evidence is stated in the opening line: I read X as Y because of "
-               "the reason; Z is not available."],
+               "the reason; Z is not available.",
+               "D157: a task may give input files; plain code copies them read-only into the workspace's inputs/ before "
+               "any call, and the reader, the planner, both observers and every helper see the list with sizes."],
          proposes="The entities, their readings, a reason and a confidence for each; D120: whether planning needs web "
                   "facts, and at most 3 queries.",
          disposes="Plain code decides whether a reading is clear, whether to ask, and checks the answer's opening line; "
@@ -299,7 +301,9 @@ BOXES: list[dict] = [
                "round with the failed checks listed, within the round cap.",
                "D142: three HARD checks on the plan's typed step checks: every requirement has a check "
                "(requirements_checked), every check is in the vocabulary with good parameters (checks_valid), and each "
-               "step can meet its checks (checks_reachable)."],
+               "step can meet its checks (checks_reachable).",
+               "D157: HARD check input_files_named — every file given with the task is named by a step, or the plan goes "
+               "back."],
          proposes="The final draft text.",
          disposes="Everything listed here; the original project trusted the AI for all of it.",
          anchors=[("amoeba/task/draft.py::draft_team", "# publish", None), "amoeba/task/draft.py::pick_summariser",

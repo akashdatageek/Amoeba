@@ -40,6 +40,7 @@ from amoeba.pool.mcp import SourceBook, data_block
 
 MADE_TOOLS = "made_tools"    # D125: tools the tool writer made (code, not a file the team made)
 INPUTS = "sources"            # D107: the workspace folder of read-only input files (fetched pages and data tables)
+GIVEN = "inputs"              # D157: the read-only files given with the task (amoeba/task/inputs.py)
 
 CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "localtools.yaml"
 
@@ -230,6 +231,7 @@ class LocalToolbox:
                 self.box = OpenShellBox(scfg, str(self.run_dir.resolve()), record=lambda e, d: self.trace.event(
                     e, {"amoeba.box": "localtools", **d}))
                 self.box.create()
+                self._push_given()                    # D157: the task's files, into the sandbox's workspace
                 cmd = [sys.executable, "-m", "amoeba.localtools.sandbox", "bridge", self.box.name,
                        "--endpoint", scfg["endpoint"], "--", *cmd]
                 env = {"PATH": env["PATH"], "LANG": "C.UTF-8"}   # the relay needs nothing else
@@ -528,7 +530,7 @@ class LocalToolbox:
         if self.workspace.is_dir():
             for f in self.workspace.rglob("*"):
                 rel = f.relative_to(self.workspace)
-                if f.is_file() and not f.is_symlink() and rel.parts[0] not in ("skills", INPUTS, MADE_TOOLS):   # D107, D125
+                if f.is_file() and not f.is_symlink() and rel.parts[0] not in ("skills", INPUTS, GIVEN, MADE_TOOLS):   # D107, D157, D125
                     st = f.stat()
                     out[str(rel)] = (st.st_size, st.st_mtime_ns)
         return out
@@ -543,12 +545,12 @@ class LocalToolbox:
         return changed
 
     # box: localtools
-    def add_input(self, name: str, content: bytes) -> str:
+    def add_input(self, name: str, content: bytes, folder: str = INPUTS) -> str:
         """D107: a read-only input file in <workspace>/sources/ — on the host and, in sandbox mode, in the sandbox's
         workspace (no network there: this is how fetched data reaches the analysts). Never counted as made."""
         safe = re.sub(r"[^\w.-]+", "_", name).strip("._")[:120] or "source"
-        rel = f"{INPUTS}/{safe}"
-        p = self.workspace / INPUTS / safe
+        rel = f"{folder}/{safe}"
+        p = self.workspace / folder / safe
         p.parent.mkdir(parents=True, exist_ok=True)
         if p.exists():
             p.chmod(0o644)
@@ -557,7 +559,7 @@ class LocalToolbox:
         if self.box is not None:
             q = shlex.quote(f"{SANDBOX_WORKSPACE}/{rel}")
             try:
-                r = self.box.exec(["bash", "-c", f"mkdir -p {SANDBOX_WORKSPACE}/{INPUTS} && rm -f {q} && cat > {q} "
+                r = self.box.exec(["bash", "-c", f"mkdir -p {SANDBOX_WORKSPACE}/{folder} && rm -f {q} && cat > {q} "
                                                  f"&& chmod 0444 {q}"], stdin=content, timeout_s=60)
                 if getattr(r, "exit_code", 0) != 0:
                     raise RuntimeError(f"exit {r.exit_code}")
@@ -565,6 +567,14 @@ class LocalToolbox:
                 self.trace.event("input_upload_failed", {"amoeba.box": "localtools", "amoeba.file": rel,
                                                          "amoeba.error": str(e)[:200]})
         return rel
+
+    # box: localtools
+    def _push_given(self) -> None:
+        """D157: the files given with the task (already in the host workspace's inputs/) go into the sandbox too."""
+        folder = self.workspace / GIVEN
+        for f in sorted(folder.iterdir()) if folder.is_dir() else []:
+            if f.is_file():
+                self.add_input(f.name, f.read_bytes(), folder=GIVEN)
 
     # box: localtools
     def put_file(self, rel: str, content: bytes) -> None:

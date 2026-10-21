@@ -1187,6 +1187,11 @@ image and, for in-process mode, on the host, and LibreOffice Calc and Writer are
 Claude Code's server no longer offers, are served through its Bash by plain code with every argument quoted and the
 same gates. Design: docs/design/D158_sandbox_libs.md.
 
+**D157, task input files (Oct 21).** A task may give files. They are copied read-only into the run's workspace
+(and the sandbox) under inputs/ before any call, listed with sizes for the reader, the planner, both observers and
+every helper, and protected from writes like sources/. A plan in which no step names a given file is sent back by the
+quality gate. Design: docs/design/D157_input_files.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

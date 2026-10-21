@@ -211,7 +211,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
                prompts: str = D19, max_tokens: dict | None = None, quality_gate: bool = False,
                max_rounds: int = MAX_ROUNDS, history: str = "", toolbox: str | None = None,
                interpretation: dict | None = None, lessons: dict[str, str] | None = None,
-               planning_tier: str = "auto") -> Draft:
+               planning_tier: str = "auto", inputs: list[dict] | None = None) -> Draft:
     """history: the previous draft the Planner revises (manager.py:26 roles_plan; "" at first). D53 --interactive
     re-drafts once: max_rounds=1, history = the draft the user clarified. toolbox: D68 — what Box 3 will really
     have (toolbox_text), shown to the d24 Planner and both observers instead of the installed-tool list.
@@ -219,7 +219,8 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     text. It is kept on the draft, and an open question about an interpreted entity is answered from it.
     lessons: D82 — text for the d24 prompts' {lessons} slot, one per reader ("planner", "agent_observer",
     "plan_observer"). D117 removed the recipes that filled it; nothing passes it now, and None or empty leaves the
-    prompts unchanged."""
+    prompts unchanged. inputs: D157 — the files given with the task ([{path, size}]); listed with the tools for the
+    Planner and both observers, and every one must be named by a step (HARD check input_files_named)."""
     if prompts not in DRAFT_PROMPTS:
         raise ValueError(f"unknown draft prompts {prompts!r}; expected one of {DRAFT_PROMPTS}")
     v2 = protocol_of(trace) == "v2"                   # D141: typed replies; the d24 prompts' content and parsers
@@ -236,6 +237,9 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
     limits = token_limits(max_tokens)                 # D27: per role, CLI > env > 8192
     tl = TracedLLM(llm, trace)
     tools = toolbox if (toolbox and d24) else envelope.tool_catalog_string()
+    from amoeba.task.inputs import inputs_text
+    tools += inputs_text(inputs or [])                # D157: "" without files (prompts unchanged)
+    given = [r["path"] for r in inputs or []]
     lessons = lessons or {}                           # D82: "" fills the slot with nothing (prompts byte-identical)
     ctx = f"[Question/Task: {task.prompt}]"          # manager.py:32 str(important_memory) — keep the bracketed form
     sugg_roles, sugg_plan = "", ""                    # manager.py:26 — cumulative strings
@@ -357,7 +361,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
             q = None
             if quality_gate or v2:   # D28: plain code checks this round's draft; D143: v2 scores every round
                 try:
-                    q = draft_quality(assemble(sec, raw, prompts, envelope), task.prompt)
+                    q = draft_quality(assemble(sec, raw, prompts, envelope), task.prompt, given)
                 except DraftError:
                     q = None   # no usable team in this reply; publish (or the next round) reports it
             if v2:            # D143: the round's score, and the planner's reading revision judged by code
@@ -419,7 +423,7 @@ def draft_team(task: Task, llm: LLMClient, envelope: Envelope, trace: TraceWrite
         d.open_questions, routed = route_open_questions(d.open_questions, interpretation)
         if routed:
             trace.event("subject_questions_routed", {"amoeba.questions": routed})
-    d.quality = draft_quality(d, task.prompt)         # D24: measured; used only by --quality-gate (D28)
+    d.quality = draft_quality(d, task.prompt, given)         # D24: measured; used only by --quality-gate (D28)
     trace.event("draft_quality", {"amoeba.quality.passed": d.quality["passed"],
                                   "amoeba.quality.failed": d.quality["failed"],
                                   "amoeba.quality.failed_checks": ",".join(d.quality["failed_checks"]) or None})
