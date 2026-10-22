@@ -1202,6 +1202,36 @@ daily quota is not retried: the run stops cleanly with status quota_exhausted, s
 `run_task --resume <run_id>` continues another day with the same flags, task, cache and date, so finished calls replay
 without being paid again. Design: docs/design/D160_quota.md.
 
+**D161, the frozen judge and the task scorer (Oct 21).** The files that judge a run are listed and hashed at the start
+of every run, and runs judged by different files are never compared. A task may name a scorer, whose result goes to
+sim_score.json; only a deterministic stand-in exists until a simulator is chosen. Tasks may be marked stream (learned
+from) or replay (only the outer loop's test). Design: docs/design/D161_frozen_judge.md.
+
+**D162, Box 4 saves every round (Oct 22).** Each Box 4 round, scoped or single, is written as one row in the run's
+rounds.jsonl and as a round event in its hash-chained event log: the edits and their quotes, what each probe cleared,
+kept or added, the pick and the step's status. A run_end row closes it with the task score. Nothing about the run
+changes. Design: docs/design/D162_rounds.md.
+
+**D163, verdicts and one lesson library (Oct 22).** Plain code judges every edit of every Box 4 round (helped, hurt,
+no effect, confounded) and counts it in one library shared by every task, keyed by cause, op and scope; the niche of
+each count is only recorded. When an edit helped, one AI call writes a general lesson, which plain code checks for task
+facts, denied wording and length. Entries wait for the user's approval. Design: docs/design/D163_lessons.md.
+
+**D164, Box 2 and Box 4 read the library (Oct 22).** With --lessons on, plain code shows approved lessons that never
+hurt in this niche to Box 4's proposers (for the stuck step's cause) and to the Planner and observers. A lesson is a
+hint: an edit must still quote this run's evidence. Reading and writing are separate switches, a replay task never
+writes, and with reading off the prompts are unchanged. Design: docs/design/D164_lessons_read.md.
+
+**D165, compose two complementary edits (Oct 22).** When each of a round's two edits cleared a different stuck signal
+and neither recovered the step, a third probe tries both together from the same starting state and keeps the result
+only when it ends done or clears more and adds nothing. Plan edits are never composed. Off by default. Design:
+docs/design/D165_compose.md.
+
+**D166, the outer loop (Oct 22).** Run by hand, it turns an approved lesson that helped on several tasks and never
+hurt into one general setting (the order of a cause's edits, a planner rule, or a tool's guidance line), tests it on
+the replay set against today's config with everything else fixed and the judge frozen, and keeps it only when the
+results get better. It writes a report and a patch; the user applies it. Design: docs/design/D166_promote.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

@@ -44,6 +44,9 @@ from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.task.inputs import copy_inputs, inputs_text
+from amoeba.eval.judge import judge_hash
+from amoeba.adapt.rounds import close_rounds
+from amoeba.eval.sim_score import score_run
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, attach_verifier, build_router, get_profile
 from amoeba.interp.plan_runner import verifier_independence   # D146
@@ -60,7 +63,7 @@ LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_a
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
                  "plan_search", "provider_blocked", "reasoning_refusals", "protocol",
                  "planning_tier", "published_round", "reading_revised", "verifier_independence",
-                 "input_files", "local_step_shares", "resumed_from"}   # D157, D159, D160   # left out of result.json when None (Phase 1 records unchanged)
+                 "input_files", "local_step_shares", "resumed_from", "sim_score", "lessons"}   # D157, D159, D160, D161, D164   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -119,6 +122,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
             picks_only: bool = False, timezone: str | None = None, interpret: bool = False,
             context=None, disabled_tools=(), today=None, resumed_from: str | None = None,
+            sim_seed: int | None = None,
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
             default_max_turns: int | None = None, family_classify: bool = False,
             niche=None, deliverable_check: bool = False,
@@ -155,6 +159,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
     inputs = copy_inputs(task.files, run_dir / "workspace") if task.files else []    # D157: before any call
+    judge = judge_hash()["sha256"]                                                   # D161: the frozen judge
+    trace.event("judge_hash", {"amoeba.box": "frozen_judge", "amoeba.judge_hash": judge})
     if inputs:
         trace.event("input_files", {"amoeba.box": "interpret", "amoeba.files": inputs})
     if topology == "plan":
@@ -197,6 +203,31 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         from dataclasses import replace as _replace
         from amoeba.interp.plan_runner import PlanOptions
         plan_options = _replace(plan_options or PlanOptions(), final_check="on")
+    rules = ((adapt_config().get("promoted") or {}).get("planner_rules") or []) if topology == "plan" else []
+    if rules and saved_draft is None:                                   # D166: rules the user applied from a promotion
+        lessons = dict(lessons)
+        text = "\n\n# Rules learned from earlier tasks\n" + "\n".join(f"- {x}" for x in rules)
+        for who in ("planner", "agent_observer", "plan_observer"):
+            lessons[who] = lessons.get(who, "") + text
+    lessons_rec = None                                                  # D164: what the library gave this run
+    if topology == "plan" and plan_options is not None and (plan_options.lessons == "on"
+                                                            or plan_options.lessons_write == "on"):
+        from dataclasses import replace as _replace
+        lessons_rec = {"read": plan_options.lessons, "write": plan_options.lessons_write, "shown": [], "used": []}
+        if task.task_set == "replay" and plan_options.lessons_write == "on":    # the replay set is never learned from
+            plan_options = _replace(plan_options, lessons_write="off")
+            lessons_rec["write"] = "off (replay task)"
+        if plan_options.lessons == "on" and saved_draft is None:
+            from amoeba.adapt.lessons import LessonLibrary
+            from amoeba.adapt.retrieval import box2_section, retrieve
+            shown = retrieve(LessonLibrary(plan_options.lessons_dir), prof.name if prof is not None else "general")
+            text = box2_section(shown)
+            if text:
+                lessons = dict(lessons)
+                for who in ("planner", "agent_observer", "plan_observer"):
+                    lessons[who] = lessons.get(who, "") + text
+                lessons_rec["shown"] = [e["id"] for e in shown]
+                trace.event("lessons_shown", {"amoeba.box": "lessons_read", "amoeba.lessons": lessons_rec["shown"]})
     max_turns = max_turns or default_max_turns          # --max-turns, else a harness default (--option-defaults)
     draft = ep = failed = clarification = None
     answer = error = None
@@ -398,8 +429,20 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         reading_revised=draft.reading_revision if draft else None,
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
+    result.judge_hash = judge
+    if lessons_rec is not None:                                    # D164: the lessons shown (Box 2 and Box 4) and used
+        box4 = ((ep.adaptation or {}).get("lessons") or {}) if ep else {}
+        lessons_rec["shown"] = list(dict.fromkeys(lessons_rec["shown"] + box4.get("shown", [])))
+        lessons_rec["used"] = box4.get("used", [])
+        result.lessons = lessons_rec
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
+    if task.sim:                                     # D161: the task's scorer, after the answer is on disk
+        result.sim_score = score_run(run_dir, task, seed if sim_seed is None else sim_seed, judge)
+        exclude.discard("sim_score")
+        (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None),
+                                             encoding="utf-8")
+    close_rounds(run_dir, task.id, result.sim_score, judge, result.status)          # D162: when Box 4 ran a round
     return result
 
 
@@ -652,7 +695,11 @@ def cli_plan_options(args: argparse.Namespace):
                        protocol=getattr(args, "protocol", "auto"),                         # D136, D153 auto
                        planning_tier=getattr(args, "planning_tier", "auto"),                       # D143
                        proposer=getattr(args, "proposer", None) or default_proposer(),               # D154
-                       fix_pick=getattr(args, "fix_pick", "code"), **extra)
+                       fix_pick=getattr(args, "fix_pick", "code"),
+                       lessons=getattr(args, "lessons", "off"),                                        # D164
+                       lessons_write=getattr(args, "lessons_write", None) or
+                       ("on" if getattr(args, "adapt", "off") == "on" else "off"),                      # D163/D164
+                       lessons_dir=getattr(args, "lessons_dir", None), **extra)
 
 
 # box: runresult
@@ -848,6 +895,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--resume", default=None, metavar="RUN_ID",
                    help="D160: continue a run stopped by the model's daily quota (status quota_exhausted): the same "
                         "flags, task, date and response cache, so finished calls replay and are not paid again")
+    p.add_argument("--sim-seed", type=int, default=None, metavar="N",
+                   help="D161: the seed the task's scorer (its `sim` field) is run with (default: --seed)")
     p.add_argument("--run-date", default=None, metavar="YYYY-MM-DD",
                    help="D160: the date the run's helpers are told (default: today where the run is, --timezone)")
     p.add_argument("--file", action="append", default=[], metavar="PATH",
@@ -931,6 +980,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "arguments and the step ends with a typed Final_Output (D136); without native tool calling the "
                         "steps fall back to legacy and the summary says so; auto (default) = v2 when the run's model "
                         "has supports.tools in models.yaml, legacy otherwise (D153)")
+    p.add_argument("--lessons", choices=["on", "off"], default="off",
+                   help="D164: show approved lessons from the library to Box 2 (Planner and observers) and to Box 4's "
+                        "proposers for the stuck step's cause (default off)")
+    p.add_argument("--lessons-write", choices=["on", "off"], default=None,
+                   help="D163/D164: count every Box 4 verdict in the library and ask the reflector for a lesson when "
+                        "an edit helped (default: on with --adapt on); a task with set: replay never writes")
+    p.add_argument("--lessons-dir", default=None, metavar="DIR",
+                   help="D163: the lesson library folder (default: adapt.yaml lessons.library)")
     p.add_argument("--proposer", choices=["scoped", "single"], default=None,
                    help="plan, --adapt on: Box 4's last rung. scoped = two scoped fix proposers (how the team works / "
                         "what an expert would know), each edit tried from the same starting state, plain code picks; "
@@ -1223,7 +1280,8 @@ def main(argv: list[str] | None = None) -> int:
                     workspace_sources=args.workspace_sources == "on" and args.topology == "plan",   # D107
                     ask_assumed=args.ask_assumed, clarify=parse_clarify(args.clarify),                  # D116
                     plan_search=args.plan_search == "on",                                             # D120
-                    today=day, resumed_from=resumed["run_id"] if resumed else None)                     # D160
+                    today=day, resumed_from=resumed["run_id"] if resumed else None,                     # D160
+                    sim_seed=args.sim_seed)                                                             # D161
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "

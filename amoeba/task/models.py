@@ -53,6 +53,17 @@ class Rubric(BaseModel):
     must_not: list[RubricMustNot] = Field(default_factory=list)
 
 
+# box: frozen_judge
+class SimSpec(BaseModel):
+    """D161: which scorer scores a task, and its settings. Typed (no free-form object), so a Task stays a schema a
+    model's structured output can carry."""
+    model_config = ConfigDict(extra="forbid")
+    scorer: str                      # a name in amoeba/eval/sim_score.py SCORERS
+    expected: float | None = None    # the stand-in's target value
+    baseline: float = 0.0            # the baseline's score on the same seed (the stand-in reads it from here)
+    config: str | None = None        # a scorer's own config file (a simulator's setup), when it has one
+
+
 # box: ov_task, task_record
 class Task(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
@@ -62,6 +73,11 @@ class Task(BaseModel):
     tags: list[str] = Field(default_factory=list)
     rubric: Rubric | None = None   # D30: scoring for tasks without one right answer; read by evaluate only
     files: list[str] = Field(default_factory=list)   # D157: input files (paths); copied read-only to inputs/
+    # D161: "stream" (learned from) or "replay" (never learned from; only the outer loop's test, D166); JSONL "set"
+    task_set: str | None = Field(default=None, alias="set")
+    sim: SimSpec | None = None     # D161: the task's scorer (amoeba/eval/sim_score.py); None: no score
+
+    model_config = {"populate_by_name": True}
 
 
 class Message(BaseModel):
@@ -338,6 +354,9 @@ class RunResult(BaseModel):
     input_files: list[dict] | None = None                # D157: [{path, size}] given with the task (None: none)
     local_step_shares: dict | None = None                # D159: {step: {share, left, not_run, factor}} local calls
     resumed_from: str | None = None                      # D160: the run this one resumed (--resume)
+    judge_hash: str | None = None                        # D161: the frozen judge's hash at run start (eval/judge.py)
+    sim_score: dict | None = None                        # D161: the task scorer's result (sim_score.json)
+    lessons: dict | None = None                          # D164: {read, write, shown: [ids], used: [{id, step}]}
     run_id: str
     task_id: str
     draft_source: str | None = None   # D45: the saved draft reused (eval_draft file stem or run id); None = drafted

@@ -6,6 +6,7 @@ limits) and `evidence`. Nothing here is read by a model.
 """
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -17,9 +18,21 @@ CONFIG = Path(__file__).resolve().parents[1] / "config" / "adapt.yaml"
 
 
 # box: diag_edits
-@lru_cache(maxsize=1)
+def config_path() -> Path:
+    """adapt.yaml, or the copy AMOEBA_ADAPT_CONFIG names (D166: the outer loop's changed arm runs on a temporary copy,
+    never the live file)."""
+    return Path(os.environ.get("AMOEBA_ADAPT_CONFIG") or CONFIG)
+
+
+# box: diag_edits
 def adapt_config() -> dict:
-    return yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    return _load(str(config_path()))
+
+
+# box: diag_edits
+@lru_cache(maxsize=4)
+def _load(path: str) -> dict:
+    return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
 
 
 # box: niche

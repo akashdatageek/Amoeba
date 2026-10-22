@@ -208,6 +208,9 @@ class PlanOptions:
     fix_pick: str = "code"
     protocol_from: str = ""          # D153: "auto" when --protocol auto chose `protocol` from the model's supports.tools
     planning_tier: str = "auto"      # D143: light | standard | full | auto (Box 2's rounds and observers; legacy auto = full)
+    lessons_write: str = "off"       # D163: on = count every Box 4 verdict in the library, reflector on a helped edit
+    lessons: str = "off"             # D164: on = Box 4's proposers are shown approved lessons for the cause
+    lessons_dir: str | None = None   # D163: the library folder (None: adapt.yaml lessons.library)
 
 
 class PlanGraphError(ValueError):
@@ -879,6 +882,10 @@ class PlanRunner:
         self.adapt_tokens, self.adapt_spans = 0, []       # what the fix attempts used
         self.done_when_kept: dict[int, str] = {}          # D155: a work-around's step -> its done_when before it
         self.tool_guidance: dict[int, dict[str, str]] = {}  # D154: step -> tool -> one guidance line (add_tool_guidance)
+        self.rounds: list[dict] = []                      # D162: every Box 4 round, as written to rounds.jsonl
+        self.learned: list[dict] = []                     # D163: per round, the verdicts counted and the lesson written
+        self.lessons_shown: list[str] = []                # D164: lesson ids shown to Box 4's proposers
+        self.lessons_used: list[dict] = []                # D164: {id, step} of a shown lesson whose fix ended done
         self.watch_rules: dict[int, list[dict]] = {}      # D154: step -> reminders plain code adds (add_watch_rule)
         self.scoped_fallbacks: list[dict] = []            # D154: rounds run single because files could not be undone
         self.fault_at_start: dict[int, dict] = {}         # D154: step -> the fault state when its last attempt began
@@ -2995,6 +3002,8 @@ class PlanRunner:
                 "kept_going": self.kept_going, "usd_limit_enforced": not self.usd_unknown,
                 "token_allowance": self.token_allowance, "step_shares": self.step_share,      # D151
                 "proposer": self.opt.proposer, "scoped_fallbacks": self.scoped_fallbacks,     # D154
+                "lessons_learned": self.learned,                                               # D163
+                "lessons": {"shown": self.lessons_shown, "used": self.lessons_used},             # D164
                 "make_tool_unavailable": sorted({w for _, w in self.fix_notes if "local tools are off" in w}),   # D145
                 "workarounds": self.workarounds, "tools_made": self.tools_made,
                 "left_on_old_output": self.left_on_old_output()}
@@ -3136,6 +3145,8 @@ class PlanRunner:
         t0, s0 = self.i.trace.total_tokens, len(self.i.trace.spans("chat"))
         tools = self.i.tools.descriptions() if hasattr(self.i.tools, "descriptions") else {}
         roles = [self.agents[a].name for a in self.steps[n].agent_ids]
+        from amoeba.adapt.probe import signal_names
+        sig0 = signal_names(self.artifacts[n]["meta"]) or list(d.get("signals") or [])   # D162: before the edit
         refused, reply, change, replies = None, None, None, []
         for attempt in (1, 2):
             raw = self._proposer_call(n, d, allowed, refused)
@@ -3166,6 +3177,7 @@ class PlanRunner:
             why = "fix proposer: no valid edit in two replies (" + "; ".join(refused or [])[:300] + ")"
             self.proposer_gave_up[n] = why
             rec.update(status_after=self.artifacts[n]["meta"]["status"], result=f"failed: {why}")
+            self._single_round(n, d, None, sig0, None, "none", why)                      # D162
             self._fix_done(rec, t0, s0)
             return "none"
         self.fix_keys.add(reply.edit.key(n))                                    # D145: per step
@@ -3180,10 +3192,12 @@ class PlanRunner:
             rec.update(checks_carried=change.get("checks_carried") or [],                     # D155
                        replaced_by=sorted(s["number"] for s in change["steps"]),
                        dropped=change["drop"], result="applied: the plan changed; judged when its steps have run")
+            self._single_round(n, d, reply, sig0, None, "replanned", f"the plan edit {op} is applied (not probed)")
             self._fix_done(rec, t0, s0)
             return "replanned"
         note = self.apply_edit(n, op, p, change, rec)
         self.keep_try(n)
+        tb = self.billed_now()
         self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n],
                       fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note})
         m = self.artifacts[n]["meta"]
@@ -3195,8 +3209,25 @@ class PlanRunner:
             if m.get("stuck") else f"failed: not stuck but {m['status']} ({m['status_reason'][:160]})"
         if op == "work_around" and (m["status"] == "done" or limited):
             self.workarounds.append({"step": n, **p})
+        sig1 = signal_names(m)
+        self._single_round(n, d, reply, sig0, {
+            "scope": "single", "op": op, "params": p, "status": m["status"], "limited": limited,
+            "cleared": [x for x in sig0 if x not in sig1], "kept": [x for x in sig0 if x in sig1],
+            "new": [x for x in sig1 if x not in sig0], "tokens": self.billed_now() - tb, "turns": m.get("turns"),
+            "samples": 1}, "applied", rec["result"])
         self._fix_done(rec, t0, s0)
         return "applied"
+
+    # box: rounds
+    def _single_round(self, n: int, d: dict, reply, sig0: list[str], probe: dict | None, outcome: str,
+                      why: str) -> dict:
+        """D162: the single rung's round, in the scoped round's shape (one candidate, at most one probe)."""
+        from amoeba.adapt.rounds import round_row, write_round
+        rnd = {"cause": d["cause"], "signals": sig0,
+               "candidates": [{"scope": "single", "op": reply.edit.op, "params": reply.edit.params,
+                               "because": getattr(reply, "because", "") or reply.reason}] if reply else [],
+               "probes": [probe] if probe else [], "pick": "single" if reply else None, "pick_reason": why}
+        return write_round(self, round_row(self, n, rnd, "single", outcome))
 
     # box: plan_step
     def watch_note(self, n: int, w: "_Work") -> str:
@@ -3423,7 +3454,8 @@ class PlanRunner:
         user = render(template, task=self.task.prompt[:1500], step=str(n), card=card, cause=d["cause"],
                       evidence=evidence, attempt=attempt, team=team,
                       tools=f"tools: {tools}\nskills: {', '.join(skills) or 'none'}",
-                      allowed=proposer_allowed(allowed, self.max_num + 1), tried=tried)
+                      allowed=proposer_allowed(allowed, self.max_num + 1), tried=tried,
+                      lessons=self.box4_lessons(d["cause"]))                                # D164: "" when off
         if refused:
             user += ("\n\n# Your previous reply was refused by plain code\n" + "\n".join(f"- {x}" for x in refused)
                      + "\nReply again with one valid edit.")
@@ -3440,6 +3472,31 @@ class PlanRunner:
         self.ep.total_tokens += resp.input_tokens + resp.output_tokens
         self.ep.n_llm_calls += 1
         return resp.content or ""
+
+    # box: promote
+    def guidance(self, n: int) -> dict[str, str]:
+        """One guidance line per tool for step n: D166's promoted defaults (adapt.yaml promoted.tool_guidance), then
+        the step's own (D154's add_tool_guidance wins)."""
+        promoted = (adapt_config().get("promoted") or {}).get("tool_guidance") or {}
+        return {**promoted, **self.tool_guidance.get(n, {})}
+
+    # box: lessons_read
+    def box4_lessons(self, cause: str) -> str:
+        """D164: with --lessons on, the approved lessons for this cause ("" otherwise); the ids shown are kept."""
+        if getattr(self.opt, "lessons", "off") != "on":
+            return ""
+        from amoeba.adapt.lessons import LessonLibrary
+        from amoeba.adapt.retrieval import box4_section, retrieve
+        from amoeba.adapt.rounds import niche_of
+        try:
+            entries = retrieve(LessonLibrary(self.opt.lessons_dir), niche_of(self), cause=cause)
+        except Exception as e:                       # an unreadable library never stops a fix
+            self.i.trace.event("lessons_unreadable", {"amoeba.box": "lessons_read", "amoeba.why": str(e)[:200]})
+            return ""
+        for e in entries:
+            if e["id"] not in self.lessons_shown:
+                self.lessons_shown.append(e["id"])
+        return box4_section(entries)
 
     # box: proposer
     def left_on_old_output(self) -> list[dict]:
@@ -3541,8 +3598,8 @@ class PlanRunner:
                                               if t not in agent.tools and not held_tool(agent, t)   # D132
                                               and self.opt.tool_access != "core"]
                                              + pool_tool_notes(agent)                                   # D56
-                                             + [f"On {t}: {g}" for t, g in self.tool_guidance.get(n, {}).items()
-                                                if t in agent.tools]))                                  # D154
+                                             + [f"On {t}: {g}" for t, g in self.guidance(n).items()
+                                                if t in agent.tools]))                                  # D154, D166
         c = self.current_contract.get(agent.name)
         if c and (c["needs"] or c["items"]):     # D61: what plain code will check, on the helper's prompt
             items = [*(f"{x} (asked for, not available)" for x in c["needs"]),
@@ -3617,7 +3674,7 @@ class PlanRunner:
             params = tool_schema(t, self.mcp_schema(t), kind) if self.v2 else \
                 {"type": "object", "properties": {"input": {"type": "string"}}, "required": ["input"]}
             desc = (NATIVE_SPECIAL_V2.get(t) if self.v2 else None) or NATIVE_SPECIAL.get(t) or descs.get(t) or t
-            guide = self.tool_guidance.get(n, {}).get(t) if n is not None else None       # D154: add_tool_guidance
+            guide = self.guidance(n).get(t) if n is not None else None       # D154: add_tool_guidance; D166
             if guide:
                 desc = f"On this step: {guide}\n{desc}"                     # first, so the 600-character cut keeps it
             specs.append({"type": "function", "function": {

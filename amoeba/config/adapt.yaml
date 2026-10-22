@@ -79,6 +79,42 @@ tool_writer:                  # D125: Box 4 writes a missing tool (amoeba/adapt/
     csv: []
     json: []
 
+# D165: compose — when the two probes of a scoped round were complementary (each cleared a different signal) and
+# neither recovered the step, a third probe applies both edits from the same starting state; it is kept when it ends
+# done, or clears more signals than either probe alone and adds none. Plan edits are never composed. It counts as a
+# probe toward the fix tokens and dollars, and runs only when one more probe fits the allowance.
+compose:
+  enabled: false
+
+# D163: the lesson library (amoeba/adapt/lessons.py). One library for every task: an entry is (cause, op, scope) and
+# the niche of each count is recorded, never used to split. Box 4 counts every verdict of every round (helped, hurt,
+# no_effect, confounded) with --lessons-write on, and asks the reflector for a lesson only when an edit helped.
+lessons:
+  library: "data/lessons"     # index.jsonl + one folder per entry; entries start "unreviewed" (scripts/lessons.py)
+  max_chars: 300              # a cue or a lesson the reflector writes
+  reflector_max_tokens: 1024  # the reflector's reply room
+  lock_timeout_s: 30          # how long a writer waits for the library's file lock
+  evidence_kept: 20           # evidence lines shown in EXPERIENCE.md (all are kept in evidence.jsonl)
+  max_entries: 5              # D164: lessons shown to one prompt
+  max_section_chars: 1500     # D164: characters of the lessons section in one prompt
+
+# D166: general settings the outer loop (scripts/promote.py) may change, after testing on the replay set and only
+# when the user applies its report. Empty = today's behaviour. planner_rules go to the Planner and both observers
+# ("Rules learned from earlier tasks"); tool_guidance (tool -> one line) to every helper that holds the tool.
+promoted:
+  planner_rules: []
+  tool_guidance: {}
+
+# D166: the outer loop (scripts/promote.py), run by hand, never during a task. All decisions are plain code.
+promote:
+  min_helped: 3               # an approved entry is a candidate after helping this often ...
+  min_tasks: 2                # ... on at least this many different tasks, and with hurt 0 in every niche
+  seeds: 3                    # sim seeds per replay task, in both arms
+  max_task_drop: 0.05         # no replay task's mean score may drop by more than this
+  max_text_chars: 300         # a planner rule or a tool-guidance line the proposal writes
+  proposal_max_tokens: 1024   # the proposal call's reply room
+  dir: "promotions"           # reports, patches, the temporary configs and the arms' runs
+
 run_guard:                    # D122: limits that must not throw away nearly finished work (amoeba/llm/limits.py)
   stall_calls: 60             # stop a plan run after this many model calls with no progress (0 = off; calls, never tokens)
   finish_share: 0.85          # with a hard cap (--max-tokens-per-run / --max-calls-per-run): finish mode after this share
