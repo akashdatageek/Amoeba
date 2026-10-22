@@ -208,6 +208,9 @@ class PlanOptions:
     fix_pick: str = "code"
     protocol_from: str = ""          # D153: "auto" when --protocol auto chose `protocol` from the model's supports.tools
     planning_tier: str = "auto"      # D143: light | standard | full | auto (Box 2's rounds and observers; legacy auto = full)
+    lessons_write: str = "off"       # D163: on = count every Box 4 verdict in the library, reflector on a helped edit
+    lessons: str = "off"             # D164: on = Box 4's proposers are shown approved lessons for the cause
+    lessons_dir: str | None = None   # D163: the library folder (None: adapt.yaml lessons.library)
 
 
 class PlanGraphError(ValueError):
@@ -880,6 +883,7 @@ class PlanRunner:
         self.done_when_kept: dict[int, str] = {}          # D155: a work-around's step -> its done_when before it
         self.tool_guidance: dict[int, dict[str, str]] = {}  # D154: step -> tool -> one guidance line (add_tool_guidance)
         self.rounds: list[dict] = []                      # D162: every Box 4 round, as written to rounds.jsonl
+        self.learned: list[dict] = []                     # D163: per round, the verdicts counted and the lesson written
         self.watch_rules: dict[int, list[dict]] = {}      # D154: step -> reminders plain code adds (add_watch_rule)
         self.scoped_fallbacks: list[dict] = []            # D154: rounds run single because files could not be undone
         self.fault_at_start: dict[int, dict] = {}         # D154: step -> the fault state when its last attempt began
@@ -2996,6 +3000,7 @@ class PlanRunner:
                 "kept_going": self.kept_going, "usd_limit_enforced": not self.usd_unknown,
                 "token_allowance": self.token_allowance, "step_shares": self.step_share,      # D151
                 "proposer": self.opt.proposer, "scoped_fallbacks": self.scoped_fallbacks,     # D154
+                "lessons_learned": self.learned,                                               # D163
                 "make_tool_unavailable": sorted({w for _, w in self.fix_notes if "local tools are off" in w}),   # D145
                 "workarounds": self.workarounds, "tools_made": self.tools_made,
                 "left_on_old_output": self.left_on_old_output()}

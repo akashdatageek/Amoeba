@@ -1006,6 +1006,23 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code writes the rows from the round the probes already recorded.",
          anchors=["amoeba/adapt/rounds.py::round_row", "amoeba/adapt/rounds.py::close_rounds"], guard_anchors=[]),
+    dict(id="lessons", view="adapt", title="Verdicts, reflector and lesson library (D163)", kind="ai", plan=None,
+         sentence="Judges every edit of every Box 4 round by plain code, counts the verdict in one library shared by "
+                  "every task, and asks one AI call for a general lesson when an edit helped.",
+         what=["Verdicts: done or finished with limitation, or cleared a signal and added none = helped; added a "
+               "signal and cleared none = hurt; nothing cleared or new = no effect; both, or tried only together "
+               "with another edit = confounded.",
+               "The library (data/lessons/) is keyed by cause, op and scope; the niche of each count is recorded, "
+               "never used to split. A repeat updates the counts. New entries are unreviewed until the user "
+               "approves them (scripts/lessons.py).",
+               "The reflector sees the round and the step card, never a score, and returns a cue and a lesson or "
+               "NO_ENTRY; plain code refuses one with a task fact, denied wording or over the cap, asks once more, "
+               "then drops it. It is skipped, and the skip logged, when the allowance would not hold it.",
+               "Writes take a file lock and replace files atomically, so several runs may write at once."],
+         proposes="The reflector proposes a cue and a lesson for an edit that helped.",
+         disposes="Plain code gives the verdicts, counts them, checks the lesson and keeps it unreviewed.",
+         anchors=["amoeba/adapt/lessons.py::verdict", "amoeba/adapt/lessons.py::learn_from_round",
+                  "amoeba/adapt/lessons.py::LessonLibrary"], guard_anchors=[]),
     dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorer (D161)", kind="code", plan=None,
          sentence="Hashes every file that judges a run at the start of the run, and scores a task with the scorer it "
                   "names, so a later comparison knows both the score and the judge that gave it.",

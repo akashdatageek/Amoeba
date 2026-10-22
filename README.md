@@ -554,6 +554,19 @@ one row goes to `<run>/rounds.jsonl` and, as a `round` event, to the run's hash-
 A closing `run_end` row carries the run's task score. No model call is added and nothing about the run changes.
 Design: `docs/design/D162_rounds.md`.
 
+**D163: verdicts, the reflector and one lesson library (Oct 22).**
+- **Verdicts.** Every edit of every Box 4 round gets a plain-code verdict: `helped`, `hurt`, `no_effect` or
+  `confounded`.
+- **The library.** With `--lessons-write on`, each verdict is counted in one library shared by every task
+  (`data/lessons/`, git-ignored). It is keyed by cause, op and scope; the niche of each count is recorded, never used to
+  split.
+- **The reflector.** When an edit helped, one AI call writes a lesson: a cue and an operation, with no task facts.
+  Plain code refuses a lesson with a task's number or name, denied wording, or over 300 characters, asks once more,
+  then drops it. The reflector is skipped and logged when the run cap or the fix allowance would not hold it.
+- **Review.** Entries stay `unreviewed` until you approve them: `python -m scripts.lessons list|show|approve|reject`.
+
+Design: `docs/design/D163_lessons.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

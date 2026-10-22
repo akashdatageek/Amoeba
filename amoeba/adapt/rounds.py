@@ -47,6 +47,10 @@ def write_round(r, row: dict) -> dict:
             fh.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
         r.log_event("round", row)
     r.rounds.append(row)
+    from amoeba.adapt.lessons import learn_from_round
+    out = learn_from_round(r, row)                       # D163: off unless --lessons-write on
+    if out["verdicts"] or out["skipped"]:
+        r.learned.append({"step": row["step"], **out})
     return row
 
 

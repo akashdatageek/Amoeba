@@ -1212,6 +1212,11 @@ rounds.jsonl and as a round event in its hash-chained event log: the edits and t
 kept or added, the pick and the step's status. A run_end row closes it with the task score. Nothing about the run
 changes. Design: docs/design/D162_rounds.md.
 
+**D163, verdicts and one lesson library (Oct 22).** Plain code judges every edit of every Box 4 round (helped, hurt,
+no effect, confounded) and counts it in one library shared by every task, keyed by cause, op and scope; the niche of
+each count is only recorded. When an edit helped, one AI call writes a general lesson, which plain code checks for task
+facts, denied wording and length. Entries wait for the user's approval. Design: docs/design/D163_lessons.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
