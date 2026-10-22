@@ -59,6 +59,21 @@ def fallback_reason(r) -> str | None:
     return None
 
 
+# box: proposer
+def proposer_mode(adapt: str, proposer: str, local_tools: str, local_tools_mode: str) -> tuple[str, str]:
+    """D172: the Box 4 mode a run will actually get, from its flags, and why when it is not the one asked for:
+    ("scoped", ""), ("single", why) or ("none", why). The same rule as fallback_reason: with local tools in the
+    OpenShell sandbox a probe's workspace cannot be undone, so a scoped round falls back to single."""
+    if adapt != "on":
+        return "none", "adapt is off: Box 4 does not run"
+    if proposer != "scoped":
+        return "single", "--proposer single (asked for)"
+    if local_tools == "on" and local_tools_mode == "sandbox":
+        return "single", ("falls back: the workspace of a probe cannot be undone in the sandbox (local tools not "
+                          "in-process); no INV/DOM comparison, compose or control")
+    return "scoped", ""
+
+
 # ---- the snapshot ----------------------------------------------------------------------------------------------------
 # box: proposer
 class Snapshot:

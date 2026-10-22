@@ -992,6 +992,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "an edit helped (default: on with --adapt on); a task with set: replay never writes")
     p.add_argument("--lessons-dir", default=None, metavar="DIR",
                    help="D163: the lesson library folder (default: adapt.yaml lessons.library)")
+    p.add_argument("--allow-single-learning", action="store_true",
+                   help="D172: allow --lessons-write on when Box 4's scoped round would fall back to single "
+                        "(local tools in the sandbox): no INV/DOM comparison, compose or control")
     p.add_argument("--proposer", choices=["scoped", "single"], default=None,
                    help="plan, --adapt on: Box 4's last rung. scoped = two scoped fix proposers (how the team works / "
                         "what an expert would know), each edit tried from the same starting state, plain code picks; "
@@ -1161,6 +1164,15 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             require_sandbox()
         except SandboxRequired as e:
             p.error(str(e))
+    if args.topology == "plan" and not getattr(args, "allow_single_learning", False):          # D172
+        from amoeba.adapt.probe import proposer_mode
+        write = args.lessons_write or ("on" if args.adapt == "on" else "off")
+        mode, why = proposer_mode(args.adapt, args.proposer or default_proposer(), args.local_tools,
+                                  args.local_tools_mode)
+        if write == "on" and args.proposer != "single" and mode == "single":
+            p.error(f"--lessons-write on, but Box 4's scoped round {why}. Run inside the runner container "
+                    "(scripts/vm/run.sh, --local-tools-mode inprocess), or pass --lessons-write off, or "
+                    "--allow-single-learning to learn from single rounds anyway")
     return args
 
 

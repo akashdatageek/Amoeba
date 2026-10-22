@@ -1242,6 +1242,8 @@ results get better. It writes a report and a patch; the user applies it. Design:
 
 **D171, real scorers (Oct 22).** A task can now be scored by an answer key (numbers with a tolerance, exact strings), by hidden tests run against a copy of the delivered code, by plain-code checks on the delivered files, or by a fixed rubric grader (a fixed prompt, a fixed model and temperature, the median of three calls), alone or weighted together. The keys, the hidden tests and the grader are part of the frozen judge. Design: docs/design/D171_scorers.md.
 
+**D172, no silent fallback (Oct 22).** When local tools run in the sandbox, Box 4's scoped round cannot undo a probe's files and falls back to the single rung. Preflight now says so, a run that would learn from such rounds is refused unless the user allows it, and a throwaway runner container lets local tools run in-process so the scoped round runs in full. Design: docs/design/D172_runner_container.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

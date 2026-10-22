@@ -975,12 +975,17 @@ BOXES: list[dict] = [
                "D155: a split or a re-plan never drops a check: the replaced steps' checks move to the new steps by "
                "plain code, and a re-plan may not write checks.",
                "D154: under --proposer scoped the last rung is a round: two scoped proposers, each edit probed from one "
-               "snapshot and undone, plain code picks; the winner's probed state is kept."],
+               "snapshot and undone, plain code picks; the winner's probed state is kept.",
+               "D172: with local tools in the OpenShell sandbox a probe's files cannot be undone and the round falls "
+               "back to single; preflight reports the mode a run will get (proposer_mode), run_task refuses "
+               "--lessons-write on with that fallback unless --allow-single-learning, and scripts/vm/ is a runner "
+               "container in which local tools run in-process."],
          proposes="One edit with a reason (fix_proposer prompt).",
          disposes="Plain code refuses, or applies the edit and judges the step by its checks and contract.",
          prompts=["fix_proposer"],
          anchors=["amoeba/adapt/proposer.py::fix_problems", "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
-                  "amoeba/interp/plan_runner.py::PlanRunner._d_live"], guard_anchors=[]),
+                  "amoeba/interp/plan_runner.py::PlanRunner._d_live", "amoeba/adapt/probe.py::proposer_mode"],
+         guard_anchors=[]),
     dict(id="stage_e", view="adapt", title="Stage E: --adapt off vs on (pairs and report)", kind="code", plan=None,
          sentence="Runs each task and seed with --adapt off, then on with the off run's draft and pool picks, and reports the two arms side by side.",
          what=[

@@ -646,6 +646,13 @@ The report lists every pair, with the wins, losses, ties and the mean delta. Des
 
 The keys, the hidden tests, the grader prompt and `judge.yaml` are all in the judge hash. A task whose files include its own key is refused. Design: `docs/design/D171_scorers.md`.
 
+**D172: Box 4's scoped round must not fall back silently (Oct 22).** With local tools in the OpenShell sandbox, a probe's files cannot be undone, so the scoped round falls back to single.
+- **Preflight** now reports the proposer mode a run will actually get.
+- **The refusal.** `run_task` refuses `--lessons-write on` (its default with adapt on) when the round would fall back, unless you pass `--allow-single-learning`.
+- **The runner container.** `scripts/vm/` holds a throwaway runner container: `docker build -f scripts/vm/Dockerfile -t amoeba-runner:local .`, then `scripts/vm/run.sh <out-dir> "<command>"`. Only the output folder is mounted, the keys are passed by name from the environment, and local tools run in-process (`AMOEBA_SANDBOX=1`, `--local-tools-mode inprocess`).
+
+Design: `docs/design/D172_runner_container.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault
