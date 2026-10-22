@@ -258,6 +258,7 @@ def parse_change(raw: str) -> dict | None:
     return json.loads(m.group(0))
 
 
+# box: promote
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -384,6 +385,7 @@ def apply_report(report: str | Path, config: Path = CONFIG) -> dict:
     return rec
 
 
+# box: promote
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     passthrough = argv[argv.index("--") + 1:] if "--" in argv else []

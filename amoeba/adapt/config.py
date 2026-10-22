@@ -29,6 +29,7 @@ def adapt_config() -> dict:
     return _load(str(config_path()))
 
 
+# box: diag_edits
 @lru_cache(maxsize=4)
 def _load(path: str) -> dict:
     return yaml.safe_load(Path(path).read_text(encoding="utf-8"))
