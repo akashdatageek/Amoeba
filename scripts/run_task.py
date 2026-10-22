@@ -45,6 +45,7 @@ from amoeba.task.saved_drafts import load_saved_drafts, pick
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
 from amoeba.task.inputs import copy_inputs, inputs_text
 from amoeba.eval.judge import judge_hash
+from amoeba.adapt.rounds import close_rounds
 from amoeba.eval.sim_score import score_run
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
 from amoeba.llm.profiles import ROLE_GROUPS, attach_verifier, build_router, get_profile
@@ -411,6 +412,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         exclude.discard("sim_score")
         (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None),
                                              encoding="utf-8")
+    close_rounds(run_dir, task.id, result.sim_score, judge, result.status)          # D162: when Box 4 ran a round
     return result
 
 

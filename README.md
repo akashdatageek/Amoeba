@@ -543,6 +543,17 @@ compared. A task may name a scorer in its `sim` field; after the run its score, 
 seed go to `sim_score.json` (`--sim-seed`, default `--seed`). Only a deterministic stand-in exists; a real simulator
 becomes one more scorer. Tasks may carry `set: stream | replay`. Design: `docs/design/D161_frozen_judge.md`.
 
+**D162: Box 4 saves every round (Oct 22).** After each Box 4 round (scoped, or the single rung with one probe),
+one row goes to `<run>/rounds.jsonl` and, as a `round` event, to the run's hash-chained `events.jsonl`:
+- the task, the niche (recorded only) and the cause;
+- each edit with its scope and `because` quote;
+- each probe's status, its cleared / kept / new signals, tokens and samples;
+- the pick and why;
+- the step's status after the round.
+
+A closing `run_end` row carries the run's task score. No model call is added and nothing about the run changes.
+Design: `docs/design/D162_rounds.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

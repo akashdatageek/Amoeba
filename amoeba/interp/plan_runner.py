@@ -879,6 +879,7 @@ class PlanRunner:
         self.adapt_tokens, self.adapt_spans = 0, []       # what the fix attempts used
         self.done_when_kept: dict[int, str] = {}          # D155: a work-around's step -> its done_when before it
         self.tool_guidance: dict[int, dict[str, str]] = {}  # D154: step -> tool -> one guidance line (add_tool_guidance)
+        self.rounds: list[dict] = []                      # D162: every Box 4 round, as written to rounds.jsonl
         self.watch_rules: dict[int, list[dict]] = {}      # D154: step -> reminders plain code adds (add_watch_rule)
         self.scoped_fallbacks: list[dict] = []            # D154: rounds run single because files could not be undone
         self.fault_at_start: dict[int, dict] = {}         # D154: step -> the fault state when its last attempt began
@@ -3136,6 +3137,8 @@ class PlanRunner:
         t0, s0 = self.i.trace.total_tokens, len(self.i.trace.spans("chat"))
         tools = self.i.tools.descriptions() if hasattr(self.i.tools, "descriptions") else {}
         roles = [self.agents[a].name for a in self.steps[n].agent_ids]
+        from amoeba.adapt.probe import signal_names
+        sig0 = signal_names(self.artifacts[n]["meta"]) or list(d.get("signals") or [])   # D162: before the edit
         refused, reply, change, replies = None, None, None, []
         for attempt in (1, 2):
             raw = self._proposer_call(n, d, allowed, refused)
@@ -3166,6 +3169,7 @@ class PlanRunner:
             why = "fix proposer: no valid edit in two replies (" + "; ".join(refused or [])[:300] + ")"
             self.proposer_gave_up[n] = why
             rec.update(status_after=self.artifacts[n]["meta"]["status"], result=f"failed: {why}")
+            self._single_round(n, d, None, sig0, None, "none", why)                      # D162
             self._fix_done(rec, t0, s0)
             return "none"
         self.fix_keys.add(reply.edit.key(n))                                    # D145: per step
@@ -3180,10 +3184,12 @@ class PlanRunner:
             rec.update(checks_carried=change.get("checks_carried") or [],                     # D155
                        replaced_by=sorted(s["number"] for s in change["steps"]),
                        dropped=change["drop"], result="applied: the plan changed; judged when its steps have run")
+            self._single_round(n, d, reply, sig0, None, "replanned", f"the plan edit {op} is applied (not probed)")
             self._fix_done(rec, t0, s0)
             return "replanned"
         note = self.apply_edit(n, op, p, change, rec)
         self.keep_try(n)
+        tb = self.billed_now()
         self.run_step(self.steps[n], wave, dependencies(self.cfg.plan)[n],
                       fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note})
         m = self.artifacts[n]["meta"]
@@ -3195,8 +3201,25 @@ class PlanRunner:
             if m.get("stuck") else f"failed: not stuck but {m['status']} ({m['status_reason'][:160]})"
         if op == "work_around" and (m["status"] == "done" or limited):
             self.workarounds.append({"step": n, **p})
+        sig1 = signal_names(m)
+        self._single_round(n, d, reply, sig0, {
+            "scope": "single", "op": op, "params": p, "status": m["status"], "limited": limited,
+            "cleared": [x for x in sig0 if x not in sig1], "kept": [x for x in sig0 if x in sig1],
+            "new": [x for x in sig1 if x not in sig0], "tokens": self.billed_now() - tb, "turns": m.get("turns"),
+            "samples": 1}, "applied", rec["result"])
         self._fix_done(rec, t0, s0)
         return "applied"
+
+    # box: rounds
+    def _single_round(self, n: int, d: dict, reply, sig0: list[str], probe: dict | None, outcome: str,
+                      why: str) -> dict:
+        """D162: the single rung's round, in the scoped round's shape (one candidate, at most one probe)."""
+        from amoeba.adapt.rounds import round_row, write_round
+        rnd = {"cause": d["cause"], "signals": sig0,
+               "candidates": [{"scope": "single", "op": reply.edit.op, "params": reply.edit.params,
+                               "because": getattr(reply, "because", "") or reply.reason}] if reply else [],
+               "probes": [probe] if probe else [], "pick": "single" if reply else None, "pick_reason": why}
+        return write_round(self, round_row(self, n, rnd, "single", outcome))
 
     # box: plan_step
     def watch_note(self, n: int, w: "_Work") -> str:

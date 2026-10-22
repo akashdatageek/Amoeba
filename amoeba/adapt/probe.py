@@ -418,5 +418,7 @@ def finish(r, n: int, rec: dict, rnd: dict, t0: int, sp0: int, outcome: str) -> 
                                    "amoeba.reason": rnd.get("pick_reason"), "amoeba.probes": len(rnd["probes"])})
     r.log_event("box4_round", {k: v for k, v in rnd.items() if k != "probes"} |
                 {"probes": [{k: v for k, v in x.items() if k != "text"} for x in rnd["probes"]]})
+    from amoeba.adapt.rounds import round_row, write_round
+    write_round(r, round_row(r, n, rnd, "scoped", outcome))                     # D162
     r._fix_done(rec, t0, sp0)
     return outcome

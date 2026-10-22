@@ -1207,6 +1207,11 @@ of every run, and runs judged by different files are never compared. A task may 
 sim_score.json; only a deterministic stand-in exists until a simulator is chosen. Tasks may be marked stream (learned
 from) or replay (only the outer loop's test). Design: docs/design/D161_frozen_judge.md.
 
+**D162, Box 4 saves every round (Oct 22).** Each Box 4 round, scoped or single, is written as one row in the run's
+rounds.jsonl and as a round event in its hash-chained event log: the edits and their quotes, what each probe cleared,
+kept or added, the pick and the step's status. A run_end row closes it with the task score. Nothing about the run
+changes. Design: docs/design/D162_rounds.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

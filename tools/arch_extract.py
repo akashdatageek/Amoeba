@@ -994,6 +994,18 @@ BOXES: list[dict] = [
          proposes="Nothing: no AI works here.",
          disposes="Plain code runs the pairs and counts.",
          anchors=["scripts/stage_e.py::run_pairs", "scripts/stage_e_report.py::run_record"], guard_anchors=[]),
+    dict(id="rounds", view="adapt", title="Box 4 round record (D162)", kind="code", plan=None,
+         sentence="Writes one row per Box 4 round to the run's rounds.jsonl and to the hash-chained event log, so later "
+                  "tasks can learn from what each edit did.",
+         what=["A row holds the task, the niche (recorded, never used to split), the cause, each edit with its scope "
+               "and quote, each probe's status and its cleared, kept and new signals, tokens and samples, the pick "
+               "and why, and the step's status after the round.",
+               "The single rung is written in the same shape with one probe; a closing run_end row carries the run's "
+               "task score and judge hash.",
+               "No model call is made and nothing about the run changes."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code writes the rows from the round the probes already recorded.",
+         anchors=["amoeba/adapt/rounds.py::round_row", "amoeba/adapt/rounds.py::close_rounds"], guard_anchors=[]),
     dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorer (D161)", kind="code", plan=None,
          sentence="Hashes every file that judges a run at the start of the run, and scores a task with the scorer it "
                   "names, so a later comparison knows both the score and the judge that gave it.",

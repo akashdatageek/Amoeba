@@ -104,7 +104,7 @@ def test_grant_tool_after_the_pool_rung_was_skipped(task, envelope, trace, tools
     assert "- add_dependency" not in prompt                                    # code fixes are not offered
     assert "- work_around" not in prompt                                       # not before a grant or a helper
     rows = [json.loads(l)["event"] for l in (tmp_path / "events.jsonl").read_text().splitlines()]
-    assert rows == ["stuck", "fix_skipped", "fix_skipped", "fix"]
+    assert rows == ["stuck", "fix_skipped", "fix_skipped", "round", "fix"]          # D162: the round's own row
     assert "## Step 1 — cause capability" in (tmp_path / "adapt_report.md").read_text()
 
 
