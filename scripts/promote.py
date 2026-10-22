@@ -17,7 +17,9 @@ change, tested first on the replay set, and applied only by the user.
    checks that the judge hash is the same before and after.
 3. **Test.** Only the replay set (`set: replay`) runs, through `scripts/stage_e.py --arms config`.
    - The two arms are today's adapt.yaml and a temporary copy with the change. The live file is never touched.
-   - Both arms use the same drafts, picks and sim seeds (`promote.seeds` per task) and `--lessons-write off`.
+   - Both arms use the same picks and sim seeds and `--lessons-write off`. D169: a `planner_rule` change runs with
+     both arms planning fresh on `promote.planner_seeds` seeds (default 5), so the changed arm's Planner sees the
+     rule; the other kinds share the current arm's draft on `promote.seeds` seeds. The report says which, and why.
    - Every run must carry the same judge hash.
 4. **Accept (plain code)** only if:
    - the mean sim-score delta (changed - current) is above 0;
@@ -57,7 +59,7 @@ KINDS = {"reorder_allowed_edits": {"kind", "cause", "order", "file"}, "planner_r
 
 # box: promote
 def promote_config() -> dict:
-    return {"min_helped": 3, "min_tasks": 2, "seeds": 3, "max_task_drop": 0.05, "max_text_chars": 300,
+    return {"min_helped": 3, "min_tasks": 2, "seeds": 3, "planner_seeds": 5, "max_task_drop": 0.05, "max_text_chars": 300,
             "proposal_max_tokens": 1024, "dir": "promotions", **(adapt_config().get("promote") or {})}
 
 
@@ -168,11 +170,33 @@ def replay_ids(tasks: Path) -> list[str]:
 
 
 # box: promote
-def stage_e_runner(tasks, ids, seeds, out, config_b, passthrough) -> list[dict]:
-    """The two config arms through scripts/stage_e.py (same drafts, picks and seeds; lesson writing off)."""
+def stage_e_runner(tasks, ids, seeds, out, config_b, passthrough, fresh_plans: bool = False) -> list[dict]:
+    """The two config arms through scripts/stage_e.py (same picks and seeds; lesson writing off). The changed arm
+    reuses the current arm's draft, unless fresh_plans (D169): then each arm plans for itself."""
     from scripts.stage_e import CONFIG_ARMS, run_pairs
     return run_pairs(Path(tasks), list(ids), list(seeds), Path(out), list(passthrough), arms=CONFIG_ARMS,
-                     lessons_write="off", config_b=str(config_b))
+                     lessons_write="off", config_b=str(config_b), fresh_plans=fresh_plans)
+
+
+# box: promote
+def drafts_with_slot(passthrough) -> bool:
+    """D169: the run_task flags draft with prompts that hold the {lessons} slot (only the d24 prompts do)."""
+    flags = list(passthrough)
+    return "--draft-prompts" in flags and flags[flags.index("--draft-prompts") + 1] == "d24"
+
+
+# box: promote
+def arm_mode(change: dict, pcfg: dict) -> dict:
+    """D169: how the arms are run for this change. A planner rule acts while the Planner drafts, so both arms plan
+    fresh on promote.planner_seeds seeds (a shared draft would hide the rule); the other kinds act after planning,
+    so the arms share one draft and differ only where the change acts."""
+    if change["kind"] == "planner_rule":
+        return {"mode": "fresh plans", "seeds": int(pcfg["planner_seeds"]),
+                "why": "a planner rule acts while the Planner drafts, so each arm plans for itself (a shared draft "
+                       "would hide the rule from the changed arm's planner)"}
+    return {"mode": "shared draft", "seeds": int(pcfg["seeds"]),
+            "why": f"a {change['kind']} change acts after planning, so both arms run the same draft and differ only "
+                   "where the change acts"}
 
 
 # box: promote
@@ -330,8 +354,14 @@ def promote(lib: LessonLibrary, entry_id: str, replay: Path, llm, out_dir: Path,
     ids = replay_ids(replay)
     if not ids:
         return done("refused", f"{replay} has no task with set: replay")
-    seeds = list(seeds) if seeds is not None else list(range(int(pcfg["seeds"])))
-    rows = (runner or stage_e_runner)(replay, ids, seeds, out_dir / "arms" / name, tmp, list(passthrough))
+    mode = arm_mode(change, pcfg)                                       # D169
+    rec["test_mode"] = mode
+    if mode["mode"] == "fresh plans" and not drafts_with_slot(passthrough):
+        return done("refused", "a planner rule reaches the Planner only through the d24 drafting prompts' lessons "
+                               "slot; pass --draft-prompts d24 after --")
+    seeds = list(seeds) if seeds is not None else list(range(mode["seeds"]))
+    rows = (runner or stage_e_runner)(replay, ids, seeds, out_dir / "arms" / name, tmp, list(passthrough),
+                                      **({"fresh_plans": True} if mode["mode"] == "fresh plans" else {}))
     try:
         summary = summarise(rows)
     except JudgeMismatch as e:
@@ -358,8 +388,11 @@ def report_text(rec: dict, entry: dict | None) -> str:
                   "```", ""]
     if rec.get("arms"):
         a = rec["arms"]
-        lines += ["**The test** (replay set only, both arms on the same drafts, picks and seeds, lesson writing off; "
-                  f"judge {a['judge_hash'][:12]}):", "",
+        tm = rec.get("test_mode") or {}
+        lines += [f"**The test mode:** {tm.get('mode', 'shared draft')} — {tm.get('why', '')}.", "",
+                  "**The test** (replay set only, both arms on the same picks and seeds"
+                  + (", each arm planning fresh" if tm.get("mode") == "fresh plans" else ", on the same drafts")
+                  + f", lesson writing off; judge {a['judge_hash'][:12]}):", "",
                   "| task | seeds | current | changed | drop |", "|---|---|---|---|---|",
                   *[f"| {t['task']} | {t['seeds']} | {t['current']:.4f} | {t['changed']:.4f} | {t['drop']:+.4f} |"
                     for t in a["per_task"]], "",

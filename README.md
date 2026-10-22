@@ -622,6 +622,14 @@ Design: `docs/design/D167_lesson_identity.md`.
 
 Design: `docs/design/D168_control_probe.md`.
 
+**D169: planner-rule changes are tested with real planning (Oct 22).** The changed arm used to reuse the current arm's plan, so the Planner never saw a promoted planner rule.
+- **Planner rules.** A `planner_rule` change now runs both arms with fresh plans (`stage_e --fresh-plans`) on `promote.planner_seeds` seeds per task (default 5).
+- **Other kinds.** `tool_guidance` and `reorder_allowed_edits` keep the shared draft.
+- **Report.** It states the mode and why.
+- **Refusal.** A planner rule is refused before any run unless the arms draft with `--draft-prompts d24`, the only drafting prompts with the lessons slot.
+
+Design: `docs/design/D169_planner_rule_arms.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

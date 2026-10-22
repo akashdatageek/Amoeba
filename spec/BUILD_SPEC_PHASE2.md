@@ -1236,6 +1236,8 @@ results get better. It writes a report and a patch; the user applies it. Design:
 
 **D168, helped is measured against a control (Oct 22).** A scoped round re-runs the stuck step once more with no edit from the same start. An edit helped only when it did better than that control; doing as well is no effect, and a verdict without a control is recorded as uncontrolled and never promoted. The control is never picked and counts toward the fix allowance. Design: docs/design/D168_control_probe.md.
 
+**D169, planner-rule changes are tested with real planning (Oct 22).** A planner rule acts while the Planner drafts, so its test runs both arms with fresh plans on five seeds each instead of sharing the current arm's plan, which had hidden the rule. Other kinds keep the shared draft. The report says which mode ran and why. Design: docs/design/D169_planner_rule_arms.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

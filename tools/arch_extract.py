@@ -1078,12 +1078,15 @@ BOXES: list[dict] = [
                "proposes one change of adapt.yaml: the order of the cause's allowed edits, a planner rule, or one "
                "tool's guidance line. Code, prompts and the frozen judge are refused before any run.",
                "The test runs only the replay set through stage_e's config arms: today's adapt.yaml against a "
-               "temporary copy, same drafts, picks and seeds, lesson writing off, one judge hash for every run.",
+               "temporary copy, same picks and seeds, lesson writing off, one judge hash for every run. D169: a "
+               "planner rule runs both arms with fresh plans on promote.planner_seeds seeds (it acts while the "
+               "Planner drafts); the other kinds share one draft. The report names the mode.",
                "Accepted only if the mean score rises, no task drops more than the margin and the step-contract pass "
                "rate does not fall. A report and a patch are written; nothing is applied until --apply."],
          proposes="The promoter proposes one general setting from one lesson.",
          disposes="Plain code checks the change, runs the arms, applies the accept rule and never applies it itself.",
-         anchors=["scripts/promote.py::promote", "scripts/promote.py::accept", "scripts/promote.py::change_problems"],
+         anchors=["scripts/promote.py::promote", "scripts/promote.py::accept", "scripts/promote.py::change_problems",
+                  "scripts/promote.py::arm_mode"],
          guard_anchors=[]),
     dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorer (D161)", kind="code", plan=None,
          sentence="Hashes every file that judges a run at the start of the run, and scores a task with the scorer it "
