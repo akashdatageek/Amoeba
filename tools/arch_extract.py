@@ -1012,9 +1012,10 @@ BOXES: list[dict] = [
          what=["Verdicts: done or finished with limitation, or cleared a signal and added none = helped; added a "
                "signal and cleared none = hurt; nothing cleared or new = no effect; both, or tried only together "
                "with another edit = confounded.",
-               "The library (data/lessons/) is keyed by cause, op and scope; the niche of each count is recorded, "
-               "never used to split. A repeat updates the counts. New entries are unreviewed until the user "
-               "approves them (scripts/lessons.py).",
+               "The library (data/lessons/) has families, keyed by cause, op and scope, that count every verdict "
+               "for reports; the niche of each count is recorded, never used to split. D167: each written lesson is "
+               "its own entry with fixed text, its own status and counts, unreviewed until the user approves it "
+               "(scripts/lessons.py); it gains evidence only from its writing round and from probes that cite it.",
                "The reflector sees the round and the step card, never a score, and returns a cue and a lesson or "
                "NO_ENTRY; plain code refuses one with a task fact, denied wording or over the cap, asks once more, "
                "then drops it. It is skipped, and the skip logged, when the allowance would not hold it.",
@@ -1026,17 +1027,20 @@ BOXES: list[dict] = [
     dict(id="lessons_read", view="adapt", title="Box 2 and Box 4 read the library (D164)", kind="code", plan=None,
          sentence="With --lessons on, shows approved lessons to Box 4's proposers for the stuck step's cause and to the "
                   "Planner and both observers, picked by plain code.",
-         what=["An entry is shown when it is approved, has a lesson, helped more often than it hurt and never hurt in "
-               "this run's niche (and, for Box 4, has the stuck step's cause). Same-niche entries come first, then "
-               "the most-helped, within a count and a character cap.",
+         what=["A lesson is shown when it is approved, helped more often than it hurt (its own uses, D167) and never "
+               "hurt in this run's niche (and, for Box 4, has the stuck step's cause). Same-niche lessons come first, "
+               "then the most-helped, within a count and a character cap.",
+               "D167: Box 4 sees each lesson's id; a proposer whose edit follows one names it in from_lesson, and "
+               "plain code refuses a citation not shown for this cause or of another op or scope.",
                "Box 4: a 'What helped before for this cause' section in the proposer prompts; an edit must still "
                "quote this run's evidence. Box 2: the drafting prompts' existing {lessons} slot.",
                "--lessons-write (default on with --adapt on) is a separate switch; a replay task never writes. "
-               "result.json lists the lessons shown and each shown lesson whose fix ended done.",
+               "result.json lists the lessons shown and the lessons a probe's edit cited.",
                "With --lessons off the prompts are byte-identical to before."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code picks the lessons and builds the sections.",
-         anchors=["amoeba/adapt/retrieval.py::retrieve", "amoeba/adapt/retrieval.py::box4_section"],
+         anchors=["amoeba/adapt/retrieval.py::retrieve", "amoeba/adapt/retrieval.py::box4_section",
+                  "amoeba/adapt/probe.py::lesson_cite_problems"],
          guard_anchors=[]),
     dict(id="compose", view="adapt", title="Compose two complementary edits (D165)", kind="code", plan=None,
          sentence="When the two probes of a scoped round each cleared a different signal and neither recovered the "

@@ -14,12 +14,13 @@ prompts/reflector.txt) may write a lesson for it: a cue (the shape of the situat
 lesson (the operation, naming the op and the scope). Plain code refuses a lesson over the character cap, with denied
 wording, or with a number or proper noun from the task prompt; a refused lesson is asked for once more, then dropped.
 
-The library (`adapt.yaml lessons.library`, data/lessons/) is one for every task: entries are keyed by
-(cause, op, scope). The niche of each count is recorded (`by_niche`), never used to split. `index.jsonl` holds one
-row per entry; each entry's folder holds `edit.json` (the op and the params that helped), `evidence.jsonl` (one line
-per verdict: run, task, niche, verdict, the probe's signals) and `EXPERIENCE.md` (the cue, the lesson and the evidence
-for a person to read). New entries are `unreviewed`; only the user approves one (scripts/lessons.py). Writes take a
-file lock and replace files atomically, so runs may write at once.
+The library (`adapt.yaml lessons.library`, data/lessons/) is one for every task. D167: a *family* is (cause, op,
+scope) and counts every verdict, for reports (`index.jsonl`; its folder holds `edit.json`, the params that helped,
+`evidence.jsonl` and `EXPERIENCE.md`). Every lesson the reflector writes is its own entry in `lessons.jsonl`
+(`<family>__L<k>`), with its own text, which never changes, its own status and its own counts. A lesson gains
+evidence only when it is used: the round that wrote it, then probes whose proposer cited it (`from_lesson`). The niche
+of each count is recorded (`by_niche`), never used to split. New lessons are `unreviewed`; only the user approves one
+(scripts/lessons.py). Writes take a file lock and replace files atomically, so runs may write at once.
 """
 from __future__ import annotations
 
@@ -38,6 +39,8 @@ from amoeba.adapt.config import adapt_config
 ROOT = Path(__file__).resolve().parents[2]
 VERDICTS = ("helped", "hurt", "no_effect", "confounded")
 STATUSES = ("unreviewed", "approved", "rejected", "promoted", "promotion_failed")
+LESSONS = "lessons.jsonl"                                       # D167: one row per lesson
+OLD_KEYS = ("status", "cue", "lesson", "confidence", "lesson_run")   # D167: what a pre-D167 index row held
 WORD = re.compile(r"[A-Za-z][A-Za-z'\-]*|\d[\d.,]*")
 
 
@@ -78,11 +81,13 @@ def round_verdicts(row: dict) -> list[dict]:
     confounded verdict to each edit it combined."""
     out = []
     for p in row.get("probes") or []:
-        parts = p.get("composed_of") or [{"scope": p["scope"], "op": p["op"], "params": p.get("params") or {}}]
+        parts = p.get("composed_of") or [{"scope": p["scope"], "op": p["op"], "params": p.get("params") or {},
+                                          "from_lesson": p.get("from_lesson")}]
         v = verdict(p)
         for part in parts:
             out.append({"id": key_of(row["cause"], part["op"], part["scope"]), "cause": row["cause"],
                         "op": part["op"], "scope": part["scope"], "params": part.get("params") or {}, "verdict": v,
+                        "from_lesson": part.get("from_lesson"),
                         "probe": {k: p.get(k) for k in ("status", "cleared", "kept", "new", "tokens", "samples")}})
     return out
 
@@ -124,14 +129,19 @@ def lesson_problems(cue: str, lesson: str, task_prompt: str, cfg: dict | None = 
 
 # box: lessons
 class LessonLibrary:
-    """data/lessons/: index.jsonl (one row per (cause, op, scope)) and one folder per entry. Safe for several
-    writers: every change holds an exclusive file lock and replaces files atomically."""
+    """data/lessons/ (D167): `index.jsonl` holds one row per family (cause, op, scope) with every verdict counted, for
+    reports; `lessons.jsonl` one row per lesson the reflector wrote, with its own id, text, status and counts. A
+    lesson's text never changes (new text is a new lesson). Each family and each lesson has a folder (evidence.jsonl,
+    EXPERIENCE.md; a family also edit.json). Safe for several writers: every change holds an exclusive file lock and
+    replaces files atomically. A library written before D167 is migrated when opened."""
 
     def __init__(self, root: str | Path | None = None):
         cfg = lessons_config()
         self.root = Path(root) if root is not None else ROOT / cfg["library"]
         self.timeout = float(cfg["lock_timeout_s"])
         self.kept = int(cfg["evidence_kept"])
+        if any(k in r for r in self._rows().values() for k in OLD_KEYS):
+            self.migrate()
 
     # ---- storage -----------------------------------------------------------------------------------------------
     @contextmanager
@@ -159,21 +169,44 @@ class LessonLibrary:
             fh.write(text)
         os.replace(tmp, path)
 
-    def _rows(self) -> dict[str, dict]:
-        p = self.root / "index.jsonl"
+    def _rows(self, name: str = "index.jsonl") -> dict[str, dict]:
+        p = self.root / name
         rows = [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()] if p.exists() else []
         return {r["id"]: r for r in rows}
 
-    def _save(self, rows: dict[str, dict]) -> None:
-        self._write(self.root / "index.jsonl",
-                    "".join(json.dumps(rows[k], ensure_ascii=False) + "\n" for k in sorted(rows)))
+    def _save(self, rows: dict[str, dict], name: str = "index.jsonl") -> None:
+        self._write(self.root / name, "".join(json.dumps(rows[k], ensure_ascii=False) + "\n" for k in sorted(rows)))
+
+    def _append(self, entry_id: str, line: dict) -> None:
+        folder = self.root / entry_id
+        folder.mkdir(parents=True, exist_ok=True)
+        with open(folder / "evidence.jsonl", "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+    @staticmethod
+    def _count(row: dict, v: dict, niche: str, task_id: str, run_id: str, now: str) -> None:
+        row["counts"][v["verdict"]] += 1
+        row["by_niche"].setdefault(niche, dict.fromkeys(VERDICTS, 0))[v["verdict"]] += 1
+        for k, x in (("task_ids", task_id), ("run_ids", run_id)):
+            if x and x not in row[k]:
+                row[k].append(x)
+        row["updated_at"] = now
 
     # ---- reading -----------------------------------------------------------------------------------------------
     def entries(self) -> list[dict]:
+        """The families (every verdict counted; for reports only)."""
         return list(self._rows().values())
 
+    def lessons(self, family: str | None = None) -> list[dict]:
+        """The lessons, of one family or of all."""
+        return [x for x in self._rows(LESSONS).values() if family is None or x["family"] == family]
+
+    def lesson(self, lesson_id: str) -> dict | None:
+        return self._rows(LESSONS).get(lesson_id)
+
     def get(self, entry_id: str) -> dict | None:
-        return self._rows().get(entry_id)
+        """A family or a lesson by its id."""
+        return self._rows().get(entry_id) or self.lesson(entry_id)
 
     def evidence(self, entry_id: str) -> list[dict]:
         p = self.root / entry_id / "evidence.jsonl"
@@ -181,72 +214,147 @@ class LessonLibrary:
 
     # ---- writing -----------------------------------------------------------------------------------------------
     def record(self, v: dict, niche: str, task_id: str, run_id: str) -> dict:
-        """Count one verdict (D163: every verdict counts, hurt included); a new key starts an unreviewed entry."""
-        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        """Count one verdict in its family (D163: every verdict counts, hurt included); a new key starts a family."""
+        now = _now()
         with self.locked():
             rows = self._rows()
             row = rows.get(v["id"]) or {"id": v["id"], "cause": v["cause"], "op": v["op"], "scope": v["scope"],
                                         "counts": dict.fromkeys(VERDICTS, 0), "by_niche": {}, "task_ids": [],
-                                        "run_ids": [], "status": "unreviewed", "cue": "", "lesson": "",
-                                        "confidence": None, "created_at": now}
-            row["counts"][v["verdict"]] += 1
-            row["by_niche"].setdefault(niche, dict.fromkeys(VERDICTS, 0))[v["verdict"]] += 1
-            for k, x in (("task_ids", task_id), ("run_ids", run_id)):
-                if x and x not in row[k]:
-                    row[k].append(x)
-            row["updated_at"] = now
+                                        "run_ids": [], "created_at": now}
+            self._count(row, v, niche, task_id, run_id, now)
             rows[v["id"]] = row
             self._save(rows)
+            self._append(v["id"], {"run_id": run_id, "task_id": task_id, "niche": niche, "verdict": v["verdict"],
+                                   "probe": v["probe"], **({"from_lesson": v["from_lesson"]}
+                                                           if v.get("from_lesson") else {}), "at": now})
             folder = self.root / v["id"]
-            folder.mkdir(parents=True, exist_ok=True)
-            with open(folder / "evidence.jsonl", "a", encoding="utf-8") as fh:
-                fh.write(json.dumps({"run_id": run_id, "task_id": task_id, "niche": niche, "verdict": v["verdict"],
-                                     "probe": v["probe"], "at": now}, ensure_ascii=False) + "\n")
             if v["verdict"] == "helped":
                 edit = json.loads((folder / "edit.json").read_text()) if (folder / "edit.json").exists() else \
                     {"cause": v["cause"], "op": v["op"], "scope": v["scope"], "params_that_helped": []}
                 edit["params_that_helped"] = (edit["params_that_helped"] + [v["params"]])[-self.kept:]
                 self._write(folder / "edit.json", json.dumps(edit, indent=2, ensure_ascii=False) + "\n")
-            self._experience(row)
+            self._experience_family(row)
             return row
 
-    def add_lesson(self, entry_id: str, cue: str, lesson: str, confidence, run_id: str) -> dict:
-        """Write (or replace) the entry's cue and lesson; its status and counts are kept."""
+    def add_lesson(self, family_id: str, cue: str, lesson: str, confidence, run_id: str, first: dict | None = None,
+                   niche: str = "general", task_id: str = "") -> dict:
+        """A new lesson in the family, `unreviewed`; `first` (the verdict of the round that wrote it) is its first
+        sample. A lesson whose text is already in the family is that lesson (returned unchanged, nothing counted):
+        a lesson's text never changes."""
+        now = _now()
         with self.locked():
-            rows = self._rows()
-            row = rows[entry_id]
-            row.update(cue=cue.strip(), lesson=lesson.strip(), confidence=confidence, lesson_run=run_id,
-                       updated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
-            self._save(rows)
-            self._experience(row)
+            fam = self._rows()[family_id]
+            rows = self._rows(LESSONS)
+            same = next((x for x in rows.values() if x["family"] == family_id and x["lesson"] == lesson.strip()), None)
+            if same is not None:
+                return same
+            k = 1 + max((int(x["id"].rsplit("__L", 1)[1]) for x in rows.values() if x["family"] == family_id),
+                        default=0)
+            row = {"id": f"{family_id}__L{k}", "family": family_id, **{x: fam[x] for x in ("cause", "op", "scope")},
+                   "cue": cue.strip(), "lesson": lesson.strip(), "confidence": confidence, "status": "unreviewed",
+                   "counts": dict.fromkeys(VERDICTS, 0), "by_niche": {}, "task_ids": [], "run_ids": [],
+                   "written_by": run_id, "created_at": now, "updated_at": now}
+            if first is not None:
+                self._use(row, first, niche, task_id, run_id, now, "the round that wrote it")
+            rows[row["id"]] = row
+            self._save(rows, LESSONS)
+            self._experience_lesson(row)
+            self._experience_family(fam)
             return row
 
-    def set_status(self, entry_id: str, status: str) -> dict:
+    def record_use(self, lesson_id: str, v: dict, niche: str, task_id: str, run_id: str) -> dict:
+        """D167: a probe whose edit cited this lesson (`from_lesson`, checked by plain code) counts for it."""
+        now = _now()
+        with self.locked():
+            rows = self._rows(LESSONS)
+            if lesson_id not in rows:
+                raise KeyError(f"no lesson {lesson_id!r} in {self.root}")
+            self._use(rows[lesson_id], v, niche, task_id, run_id, now, "cited by the proposer")
+            self._save(rows, LESSONS)
+            self._experience_lesson(rows[lesson_id])
+            return rows[lesson_id]
+
+    def _use(self, row: dict, v: dict, niche: str, task_id: str, run_id: str, now: str, how: str) -> None:
+        self._count(row, v, niche, task_id, run_id, now)
+        self._append(row["id"], {"run_id": run_id, "task_id": task_id, "niche": niche, "verdict": v["verdict"],
+                                 "probe": v.get("probe") or {}, "how": how, "at": now})
+
+    def set_status(self, lesson_id: str, status: str) -> dict:
+        """A lesson's status (families have none)."""
         if status not in STATUSES:
             raise ValueError(f"status must be one of {STATUSES}")
         with self.locked():
-            rows = self._rows()
-            if entry_id not in rows:
-                raise KeyError(f"no lesson {entry_id!r} in {self.root}")
-            rows[entry_id]["status"] = status
-            rows[entry_id][f"{status}_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            self._save(rows)
-            self._experience(rows[entry_id])
-            return rows[entry_id]
+            rows = self._rows(LESSONS)
+            if lesson_id not in rows:
+                raise KeyError(f"no lesson {lesson_id!r} in {self.root}")
+            rows[lesson_id]["status"] = status
+            rows[lesson_id][f"{status}_at"] = _now()
+            self._save(rows, LESSONS)
+            self._experience_lesson(rows[lesson_id])
+            return rows[lesson_id]
 
-    def _experience(self, row: dict) -> None:
+    def migrate(self) -> list[str]:
+        """D167: a pre-D167 library (one row per key, holding the latest lesson and a status) becomes families; each
+        written lesson moves into its family as one lesson, `unreviewed` (its counts start at 0: the old counts were
+        the family's). Returns the lesson ids made."""
+        made = []
+        with self.locked():
+            fams, rows = self._rows(), self._rows(LESSONS)
+            for f in fams.values():
+                text = (f.get("lesson") or "").strip()
+                if text and not any(x["family"] == f["id"] and x["lesson"] == text for x in rows.values()):
+                    lid = f"{f['id']}__L{1 + sum(x['family'] == f['id'] for x in rows.values())}"
+                    rows[lid] = {"id": lid, "family": f["id"], **{x: f[x] for x in ("cause", "op", "scope")},
+                                 "cue": (f.get("cue") or "").strip(), "lesson": text,
+                                 "confidence": f.get("confidence"), "status": "unreviewed",
+                                 "counts": dict.fromkeys(VERDICTS, 0), "by_niche": {}, "task_ids": [], "run_ids": [],
+                                 "written_by": f.get("lesson_run"), "migrated_from_status": f.get("status"),
+                                 "created_at": f.get("updated_at") or f.get("created_at") or _now(),
+                                 "updated_at": _now()}
+                    made.append(lid)
+                for k in OLD_KEYS:
+                    f.pop(k, None)
+            self._save(fams)
+            self._save(rows, LESSONS)
+            for lid in made:
+                self._experience_lesson(rows[lid])
+            for f in fams.values():
+                self._experience_family(f)
+        return made
+
+    def _experience_family(self, row: dict) -> None:
         c = row["counts"]
         ev = self.evidence(row["id"])[-self.kept:]
-        lines = [f"# {row['op']} ({row['scope']}) for {row['cause']}", "",
-                 f"Status: {row['status']}. Helped {c['helped']}, hurt {c['hurt']}, no effect {c['no_effect']}, "
-                 f"confounded {c['confounded']}; tasks: {len(row['task_ids'])}.", "",
-                 f"**Cue:** {row.get('cue') or '(no lesson written yet)'}", "",
-                 f"**Lesson:** {row.get('lesson') or '(no lesson written yet)'}", "",
+        les = self.lessons(row["id"])
+        lines = [f"# {row['op']} ({row['scope']}) for {row['cause']}: the family", "",
+                 f"Every verdict of this edit, for reports only (a lesson counts only its own uses). Helped "
+                 f"{c['helped']}, hurt {c['hurt']}, no effect {c['no_effect']}, confounded {c['confounded']}; tasks: "
+                 f"{len(row['task_ids'])}.", "", "## Lessons", "",
+                 *([f"- {x['id']} · {x['status']} · helped {x['counts']['helped']} hurt {x['counts']['hurt']} · "
+                    f"{x['lesson']}" for x in les] or ["(no lesson written yet)"]), "",
                  "## Evidence (latest first)", "",
                  *[f"- {e['at']} · {e['verdict']} · run {e['run_id']} · task {e['task_id']} · niche {e['niche']} · "
                    f"cleared {e['probe'].get('cleared')} new {e['probe'].get('new')} status {e['probe'].get('status')}"
                    for e in reversed(ev)]]
         self._write(self.root / row["id"] / "EXPERIENCE.md", "\n".join(lines) + "\n")
+
+    def _experience_lesson(self, row: dict) -> None:
+        c = row["counts"]
+        ev = self.evidence(row["id"])[-self.kept:]
+        lines = [f"# Lesson {row['id']}", "", f"Edit {row['op']} ({row['scope']}) for {row['cause']}.", "",
+                 f"Status: {row['status']}. Helped {c['helped']}, hurt {c['hurt']}, no effect {c['no_effect']}, "
+                 f"confounded {c['confounded']}; tasks: {len(row['task_ids'])}. Counted only when this lesson was "
+                 "used: the round that wrote it, and probes whose edit cited it.", "",
+                 f"**Cue:** {row['cue']}", "", f"**Lesson:** {row['lesson']}", "",
+                 "## Evidence (latest first)", "",
+                 *[f"- {e['at']} · {e['verdict']} · {e.get('how', '')} · run {e['run_id']} · task {e['task_id']} · "
+                   f"niche {e['niche']}" for e in reversed(ev)]]
+        self._write(self.root / row["id"] / "EXPERIENCE.md", "\n".join(lines) + "\n")
+
+
+# box: lessons
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 # ---- the reflector (one LLM call, only when an edit helped) ------------------------------------------------------
@@ -318,6 +426,8 @@ def learn_from_round(r, row: dict) -> dict:
         for v in round_verdicts(row):
             lib.record(v, row["niche"], row["task_id"], run_id)
             out["verdicts"].append({k: v[k] for k in ("id", "op", "scope", "verdict")})
+            if v.get("from_lesson") and lib.lesson(v["from_lesson"]):      # D167: a cited use counts for the lesson
+                lib.record_use(v["from_lesson"], v, row["niche"], row["task_id"], run_id)
         helped = [v for v in round_verdicts(row) if v["verdict"] == "helped"]
         if not helped:
             return out
@@ -345,9 +455,10 @@ def learn_from_round(r, row: dict) -> dict:
             if got is None:
                 return out
             if not problems:
-                lib.add_lesson(pick["id"], got["cue"], got["lesson"], got["confidence"], run_id)
-                out["lesson"] = pick["id"]
-                r.log_event("lesson", {"id": pick["id"], "step": row["step"], "cue": got["cue"],
+                les = lib.add_lesson(pick["id"], got["cue"], got["lesson"], got["confidence"], run_id, first=pick,
+                                     niche=row["niche"], task_id=row["task_id"])                # D167
+                out["lesson"] = les["id"]
+                r.log_event("lesson", {"id": les["id"], "family": pick["id"], "step": row["step"], "cue": got["cue"],
                                        "lesson": got["lesson"]})
                 return out
             refused = problems

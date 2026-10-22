@@ -208,6 +208,7 @@ class ScopedFixReply(BaseModel):
     edit: ScopedFixEdit
     reason: str = Field(max_length=300)
     because: str = Field(max_length=200)
+    from_lesson: str | None = Field(default=None, max_length=200)   # D167: the shown lesson this edit follows
 
 
 # box: proposer

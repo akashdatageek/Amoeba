@@ -885,7 +885,8 @@ class PlanRunner:
         self.rounds: list[dict] = []                      # D162: every Box 4 round, as written to rounds.jsonl
         self.learned: list[dict] = []                     # D163: per round, the verdicts counted and the lesson written
         self.lessons_shown: list[str] = []                # D164: lesson ids shown to Box 4's proposers
-        self.lessons_used: list[dict] = []                # D164: {id, step} of a shown lesson whose fix ended done
+        self.lessons_used: list[dict] = []                # D167: {id, step, status} of a shown lesson a probe cited
+        self.lessons_seen: dict[str, dict] = {}           # D167: lesson id -> {cause, op, scope} shown to Box 4
         self.watch_rules: dict[int, list[dict]] = {}      # D154: step -> reminders plain code adds (add_watch_rule)
         self.scoped_fallbacks: list[dict] = []            # D154: rounds run single because files could not be undone
         self.fault_at_start: dict[int, dict] = {}         # D154: step -> the fault state when its last attempt began
@@ -3496,6 +3497,7 @@ class PlanRunner:
         for e in entries:
             if e["id"] not in self.lessons_shown:
                 self.lessons_shown.append(e["id"])
+            self.lessons_seen[e["id"]] = {k: e[k] for k in ("cause", "op", "scope")}               # D167
         return box4_section(entries)
 
     # box: proposer

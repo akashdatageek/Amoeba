@@ -602,6 +602,18 @@ flags>` never runs during a task. It works in five steps:
 
 Design: `docs/design/D166_promote.md`.
 
+## Fixes to the lessons and the outer loop (D167–D172)
+
+A review of the lesson library and the outer loop (main @ 9f1fb29) found six places where the evidence or the test was weaker than it looked. Each fix is general.
+
+**D167: a lesson's counts are about that lesson (Oct 22).**
+- **Families.** (cause, op, scope) is a *family*. It counts every verdict, for reports only.
+- **Lessons.** Each lesson the reflector writes is its own entry (`<family>__L<k>`) with its own text, status and counts. Its text never changes: new text is a new, unreviewed lesson.
+- **Evidence.** A lesson gains evidence only when it is used: the round that wrote it, then any probe whose proposer was shown it and named it in `from_lesson`. Plain code refuses a citation that was not shown for this cause or whose op or scope differs.
+- **Readers.** Retrieval, promotion and `python -m scripts.lessons approve|reject` work on lessons. An old library is migrated when it is opened.
+
+Design: `docs/design/D167_lesson_identity.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

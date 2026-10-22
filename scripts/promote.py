@@ -63,9 +63,10 @@ def promote_config() -> dict:
 
 # box: promote
 def candidates(lib: LessonLibrary) -> list[dict]:
-    """The plain-code trigger: approved, a lesson, helped >= min_helped on >= min_tasks tasks, hurt 0 in every niche."""
+    """The plain-code trigger: an approved lesson that helped >= min_helped on >= min_tasks tasks and hurt 0 in every
+    niche. D167: a lesson's own counts (its uses), never its family's."""
     c = promote_config()
-    out = [e for e in lib.entries() if e.get("status") == "approved" and (e.get("lesson") or "").strip()
+    out = [e for e in lib.lessons() if e.get("status") == "approved" and (e.get("lesson") or "").strip()
            and e["counts"]["helped"] >= int(c["min_helped"]) and len(e.get("task_ids") or []) >= int(c["min_tasks"])
            and e["counts"]["hurt"] == 0 and not any((v or {}).get("hurt") for v in (e.get("by_niche") or {}).values())]
     return sorted(out, key=lambda e: (-e["counts"]["helped"], e["id"]))

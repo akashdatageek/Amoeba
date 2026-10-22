@@ -1232,6 +1232,8 @@ hurt into one general setting (the order of a cause's edits, a planner rule, or 
 the replay set against today's config with everything else fixed and the judge frozen, and keeps it only when the
 results get better. It writes a report and a patch; the user applies it. Design: docs/design/D166_promote.md.
 
+**D167, a lesson's counts are about that lesson (Oct 22).** (cause, op, scope) is now a family whose counts are for reports. Every lesson the reflector writes is its own entry with fixed text, its own status and its own counts, and it gains evidence only when it is used: the round that wrote it, then probes whose proposer was shown it and cited it. Retrieval and promotion read lessons only. Design: docs/design/D167_lesson_identity.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

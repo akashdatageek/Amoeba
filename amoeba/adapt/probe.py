@@ -211,6 +211,7 @@ def propose(r, n: int, d: dict, scope: str, allowed: list[str]) -> dict:
             if not quote_found(reply.because, r._proposer_shown):
                 problems.append(f"because: the quote {reply.because[:80]!r} is not in the evidence or the last "
                                 "attempt you were shown")
+            problems += lesson_cite_problems(r, reply, scope, d["cause"])                 # D167
             if not problems and reply.edit.op in PLAN_OPS + ("add_helper_role",):
                 problems, change = r._d_live(reply, n)
         except (ValueError, ValidationError) as e:
@@ -226,6 +227,22 @@ def propose(r, n: int, d: dict, scope: str, allowed: list[str]) -> dict:
             break
     return {"scope": scope, "reply": reply, "change": change, "replies": replies,
             "refusals": [p for x in replies for p in x["problems"]]}
+
+
+# box: lessons_read
+def lesson_cite_problems(r, reply, scope: str, cause: str) -> list[str]:
+    """D167: a `from_lesson` must name a lesson shown to this round's proposers for this cause, with the edit's own op
+    and scope; [] when the reply cites none."""
+    lid = getattr(reply, "from_lesson", None)
+    if not lid:
+        return []
+    seen = (getattr(r, "lessons_seen", None) or {}).get(lid)
+    if seen is None or seen["cause"] != cause:
+        return [f"from_lesson: {lid!r} was not shown to you for this cause; cite only a lesson listed above, or none"]
+    if (seen["op"], seen["scope"]) != (reply.edit.op, scope):
+        return [f"from_lesson: {lid!r} is a lesson for {seen['op']} ({seen['scope']}), not for your edit "
+                f"{reply.edit.op} ({scope}); cite it only when your edit is that op in that scope"]
+    return []
 
 
 # box: proposer
@@ -244,7 +261,9 @@ def probe(r, n: int, wave: int, cand: dict, start: Snapshot, s0: list[str]) -> d
                                 "amoeba.params": json.dumps(p, default=str)[:2000]})
     r.run_step(r.steps[n], wave, dependencies(r.cfg.plan)[n],
                fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note, "scope": scope})
-    return measure(r, n, start, s0, t0, scope, op, p, {"because": reply.because, "reason": reply.reason},
+    return measure(r, n, start, s0, t0, scope, op, p, {"because": reply.because, "reason": reply.reason,
+                                                      **({"from_lesson": reply.from_lesson}
+                                                         if getattr(reply, "from_lesson", None) else {})},
                    rec, limited_ops=("work_around",))
 
 
@@ -335,7 +354,9 @@ def compose_probe(r, n: int, wave: int, cands: list[dict], start: Snapshot, s0: 
     from amoeba.interp.plan_runner import dependencies
     start.restore(for_probe=True)
     t0, rec = r.billed_now(), {}
-    parts = [{"scope": c["scope"], "op": c["reply"].edit.op, "params": c["reply"].edit.params} for c in cands]
+    parts = [{"scope": c["scope"], "op": c["reply"].edit.op, "params": c["reply"].edit.params,
+              **({"from_lesson": c["reply"].from_lesson} if getattr(c["reply"], "from_lesson", None) else {})}
+             for c in cands]
     notes = [r.apply_edit(n, c["reply"].edit.op, c["reply"].edit.params, c["change"], rec) for c in cands]
     r.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.cause": cands[0].get("cause"), "amoeba.fix": "compose",
                                 "amoeba.rung": "D", "amoeba.scope": "compose", "amoeba.target": n,
