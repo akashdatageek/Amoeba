@@ -582,6 +582,12 @@ lessons:
 With reading off, the prompts are byte-identical to before. `stage_e` passes both flags to both arms. Design:
 `docs/design/D164_lessons_read.md`.
 
+**D165: compose two complementary edits (Oct 22).** With `adapt.yaml compose.enabled: true` (default false), a
+scoped round whose two probes each cleared a different signal, with neither recovering the step, runs a third probe
+with both edits applied from the same starting state. It is kept when it ends done, or clears more signals than either
+alone and adds none; otherwise today's pick stands. Plan edits are never composed, and the third probe counts toward
+the fix allowance. Design: `docs/design/D165_compose.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

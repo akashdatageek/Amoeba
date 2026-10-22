@@ -1038,6 +1038,18 @@ BOXES: list[dict] = [
          disposes="Plain code picks the lessons and builds the sections.",
          anchors=["amoeba/adapt/retrieval.py::retrieve", "amoeba/adapt/retrieval.py::box4_section"],
          guard_anchors=[]),
+    dict(id="compose", view="adapt", title="Compose two complementary edits (D165)", kind="code", plan=None,
+         sentence="When the two probes of a scoped round each cleared a different signal and neither recovered the "
+                  "step, tries both edits together from the same starting state as a third probe.",
+         what=["It is kept when it ends done, or clears more signals than either probe alone and adds none; otherwise "
+               "today's pick stands. Plan edits are never composed.",
+               "It counts as a probe toward the fix tokens and dollars and runs only when one more probe fits the "
+               "allowance; the lesson library counts it as confounded for both edits.",
+               "Off by default (adapt.yaml compose.enabled)."],
+         proposes="Nothing new: it reuses the two edits the proposers wrote.",
+         disposes="Plain code decides to compose, measures the probe and keeps it or not.",
+         anchors=["amoeba/adapt/probe.py::compose_probe", "amoeba/adapt/probe.py::keep_composed"],
+         guard_anchors=[]),
     dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorer (D161)", kind="code", plan=None,
          sentence="Hashes every file that judges a run at the start of the run, and scores a task with the scorer it "
                   "names, so a later comparison knows both the score and the judge that gave it.",

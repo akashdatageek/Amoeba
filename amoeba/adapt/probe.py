@@ -244,15 +244,24 @@ def probe(r, n: int, wave: int, cand: dict, start: Snapshot, s0: list[str]) -> d
                                 "amoeba.params": json.dumps(p, default=str)[:2000]})
     r.run_step(r.steps[n], wave, dependencies(r.cfg.plan)[n],
                fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note, "scope": scope})
+    return measure(r, n, start, s0, t0, scope, op, p, {"because": reply.because, "reason": reply.reason},
+                   rec, limited_ops=("work_around",))
+
+
+# box: proposer
+def measure(r, n: int, start: Snapshot, s0: list[str], t0: int, scope: str, op: str, p: dict, extra: dict,
+            rec: dict, limited_ops: tuple = ()) -> dict:
+    """After a probe's re-run: what changed (cleared, kept, new), the probed state for a winner, the probe's files
+    kept as step_N.probe-<scope>.*, then everything undone."""
     meta = r.artifacts[n]["meta"]
     s1 = signal_names(meta)
-    limited = op == "work_around" and not meta.get("stuck")
+    limited = op in limited_ops and not meta.get("stuck")
     after = Snapshot.take(r, n)
     now = workspace_files(getattr(r, "local", None))
     files = sorted(k for k in set(now) | set(start.ws) if now.get(k) != start.ws.get(k))
     for path in step_files(r, n):                        # keep the probe's attempt beside the tries
         path.rename(path.with_name(path.name.replace(f"step_{n}.", f"step_{n}.probe-{scope}.")))
-    out = {"scope": scope, "op": op, "params": p, "because": reply.because, "reason": reply.reason,
+    out = {"scope": scope, "op": op, "params": p, **extra,
            "status": meta["status"], "limited": limited, "tokens": r.billed_now() - t0, "turns": meta.get("turns"),
            "cleared": [x for x in s0 if x not in s1], "kept": [x for x in s0 if x in s1],
            "new": [x for x in s1 if x not in s0], "files_changed": files, "samples": 1,
@@ -283,6 +292,60 @@ def round_flags(probes: list[dict]) -> dict:
         if shared and all(x["status"] != "done" and not x["limited"] for x in probes):
             out["shared_failure"] = sorted(shared)[0]
     return out
+
+
+# box: compose
+def compose_config() -> dict:
+    """adapt.yaml `compose` (D165): enabled, default false."""
+    return {"enabled": False, **(adapt_config().get("compose") or {})}
+
+
+# box: compose
+def composable(cands: list[dict]) -> bool:
+    """Two candidates and neither changes the plan graph (split_step and replan_remaining are never composed)."""
+    return len(cands) == 2 and all(c["reply"].edit.op not in PLAN_OPS for c in cands)
+
+
+# box: compose
+def keep_composed(comp: dict, probes: list[dict]) -> bool:
+    """The composed state is kept when it ends done, or clears more signals than either probe alone and adds none."""
+    if comp["status"] == "done":
+        return True
+    return not comp["new"] and len(comp["cleared"]) > max((len(x["cleared"]) for x in probes), default=0)
+
+
+# box: compose
+def third_affordable(r, n: int, lim: dict) -> bool:
+    """One more probe (estimated at one average step attempt, D151) fits the fixes' token allowance and the step's
+    share of a run cap."""
+    avg = r.avg_attempt()
+    if avg <= 0:
+        return True
+    left = [token_cap(lim, avg) - r.adapt_tokens]
+    share = (getattr(r, "step_share", {}) or {}).get(getattr(r, "cur_step", None))
+    if share:
+        left.append(share["share"] - (r.billed_now() - r.step_t0[r.cur_step]))
+    return min(left) >= avg
+
+
+# box: compose
+def compose_probe(r, n: int, wave: int, cands: list[dict], start: Snapshot, s0: list[str]) -> dict:
+    """D165: both edits applied from the same starting state, the step re-run once, measured and undone like a
+    probe. Its record names the edits it combined (composed_of); D163 judges it confounded for both."""
+    from amoeba.interp.plan_runner import dependencies
+    start.restore(for_probe=True)
+    t0, rec = r.billed_now(), {}
+    parts = [{"scope": c["scope"], "op": c["reply"].edit.op, "params": c["reply"].edit.params} for c in cands]
+    notes = [r.apply_edit(n, c["reply"].edit.op, c["reply"].edit.params, c["change"], rec) for c in cands]
+    r.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.cause": cands[0].get("cause"), "amoeba.fix": "compose",
+                                "amoeba.rung": "D", "amoeba.scope": "compose", "amoeba.target": n,
+                                "amoeba.params": json.dumps(parts, default=str)[:2000]})
+    r.run_step(r.steps[n], wave, dependencies(r.cfg.plan)[n],
+               fixing={"kind": "compose", "rung": "D", "target": n, "params": {"edits": parts},
+                       "note": "; ".join(x for x in notes if x), "scope": "compose"})
+    return measure(r, n, start, s0, t0, "compose", "compose", {"edits": parts},
+                   {"composed_of": parts, "because": " | ".join(c["reply"].because for c in cands),
+                    "reason": "the two edits together (D165)"}, rec, limited_ops=())
 
 
 # box: proposer
@@ -370,7 +433,15 @@ def scoped_round(r, n: int, wave: int, d: dict) -> str:
             winner, why = (picked, "picked by the LLM (ablation)") if picked["status"] == "done" or picked["limited"] \
                 else (None, "picked by the LLM (ablation); its checks did not pass")
             base = None if winner else picked
-    rnd.update(round_flags(rnd["probes"]))
+    rnd.update(round_flags(rnd["probes"][:2]))
+    if (winner is None and rnd.get("complementary") and compose_config().get("enabled") and composable(probeable)
+            and third_affordable(r, n, lim)):                                        # D165
+        comp = compose_probe(r, n, wave, probeable, start, s0)
+        rnd["probes"].append(comp)
+        if keep_composed(comp, rnd["probes"][:2]):
+            winner, base = comp, None
+            why = ("the two edits together end done" if comp["status"] == "done" else
+                   "the two edits together clear more signals than either alone and add none")
     if winner is None and plan:                          # a plan edit only if the probes did not recover the step
         c = plan[0] if len(plan) == 1 else next((x for x in plan if x["scope"] == (
             "inv" if d["cause"] in INV_FIRST else "dom")), plan[0])
@@ -402,6 +473,9 @@ def scoped_round(r, n: int, wave: int, d: dict) -> str:
                    result="finished with limitation" if winner["op"] == "work_around" else "recovered")
         if winner["op"] == "work_around":
             r.workarounds.append({"step": n, **winner["params"]})
+        for part in winner.get("composed_of") or []:                              # D165
+            if part["op"] == "work_around":
+                r.workarounds.append({"step": n, **part["params"]})
     else:
         if len(probes := rnd["probes"]) == 1:         # one edit was tried: the fix is of that kind (D150, D124 read it)
             rec.update(kind=probes[0]["op"], params=probes[0]["params"])

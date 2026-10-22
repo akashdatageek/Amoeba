@@ -1222,6 +1222,11 @@ hurt in this niche to Box 4's proposers (for the stuck step's cause) and to the 
 hint: an edit must still quote this run's evidence. Reading and writing are separate switches, a replay task never
 writes, and with reading off the prompts are unchanged. Design: docs/design/D164_lessons_read.md.
 
+**D165, compose two complementary edits (Oct 22).** When each of a round's two edits cleared a different stuck signal
+and neither recovered the step, a third probe tries both together from the same starting state and keeps the result
+only when it ends done or clears more and adds nothing. Plan edits are never composed. Off by default. Design:
+docs/design/D165_compose.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
