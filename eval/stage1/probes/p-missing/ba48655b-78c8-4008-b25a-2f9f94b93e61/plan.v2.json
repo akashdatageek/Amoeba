@@ -1,0 +1,171 @@
+{
+  "version": 2,
+  "diff": {
+    "steps_added": [
+      6
+    ],
+    "steps_rewritten": [
+      1
+    ],
+    "steps_dropped": [],
+    "reassigned": null,
+    "role_added": null,
+    "requests": [],
+    "split_of": 1
+  },
+  "roles": [
+    {
+      "name": "Smart Home Integration Engineer",
+      "tools": [
+        "calc",
+        "web_search",
+        "fetch_url",
+        "local:Bash",
+        "local:Write",
+        "local:Read",
+        "find_tool",
+        "local:Edit"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Measurement Verifier",
+      "tools": [
+        "calc",
+        "web_search",
+        "fetch_url",
+        "local:Bash",
+        "local:Write",
+        "local:Read",
+        "find_tool"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Final Report Writer",
+      "tools": [],
+      "missing_tools": []
+    }
+  ],
+  "steps": [
+    {
+      "number": 1,
+      "roles": [
+        "Smart Home Integration Engineer"
+      ],
+      "text": "[Smart Home Integration Engineer]: Check what access to the Nest exists, without the nonexistent nest_sdm_read tool",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2"
+      ],
+      "depends_on": [],
+      "do": "nest_sdm_read does not exist in this run, so do not request it. With local:Bash and local:Read, check only the NAMES of environment variables and config files for Google SDM access (project id, OAuth token, refresh token). Never print secret values. State which items exist and which are missing.",
+      "output": "list: credential item, found or missing",
+      "done_when": "Every credential item is marked found or missing, and no secret values are shown.",
+      "status": "not run"
+    },
+    {
+      "number": 2,
+      "roles": [
+        "Smart Home Integration Engineer"
+      ],
+      "text": "[Smart Home Integration Engineer]: Write user-side steps for getting the reading",
+      "kind": "work",
+      "covers": [
+        "R4"
+      ],
+      "depends_on": [
+        1,
+        6
+      ],
+      "do": "1) If status is NOT READ, write numbered steps: the SDM devices.get call with an OAuth bearer token and which trait to read, or the thermostat display / Google Home app, and how to paste the value back for conversion. 2) If status is READ, write 'not needed'.",
+      "output": "list: numbered user-side steps, or 'not needed'",
+      "done_when": "A NOT READ run has at least three numbered steps including how to send the value back. A READ run says 'not needed'.",
+      "status": "not run"
+    },
+    {
+      "number": 3,
+      "roles": [
+        "Smart Home Integration Engineer"
+      ],
+      "text": "[Smart Home Integration Engineer]: Convert to Fahrenheit",
+      "kind": "work",
+      "covers": [
+        "R3"
+      ],
+      "depends_on": [
+        1,
+        6
+      ],
+      "do": "1) If READ, compute F = C*9/5 + 32 with calc and show the expression and result, rounded to 0.1 F. 2) If NOT READ, compute a reference table for 18-26 C in 1 C steps with calc, labelled 'reference only, not your reading'.",
+      "output": "table: raw Celsius | expression | Fahrenheit",
+      "done_when": "Every Fahrenheit value comes from a calc result, and the table is labelled as the real reading or as reference only.",
+      "status": "not run"
+    },
+    {
+      "number": 4,
+      "roles": [
+        "Measurement Verifier"
+      ],
+      "text": "[Measurement Verifier]: Verify reading provenance and conversion",
+      "kind": "verify",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5"
+      ],
+      "depends_on": [
+        1,
+        2,
+        3,
+        6
+      ],
+      "do": "1) Recompute the conversion with calc. 2) Check the status, timestamp, source, trait and device selection. 3) Confirm no reference value is presented as the user's reading. 4) Check the plausible indoor range. 5) Check the decision and assumptions are stated. 6) Give the verdict.",
+      "output": "memo: Verdict, Recomputation, Provenance, Required corrections",
+      "done_when": "A verdict (PASS, PASS-WITH-NOTES or FAIL) is stated first, with the recomputed values and provenance findings.",
+      "status": "not run"
+    },
+    {
+      "number": 5,
+      "roles": [
+        "Final Report Writer"
+      ],
+      "text": "[Final Report Writer]: Assemble the final answer",
+      "kind": "work",
+      "covers": [
+        "R4",
+        "R5"
+      ],
+      "depends_on": [
+        4,
+        6
+      ],
+      "do": "Write the answer: first line the Fahrenheit reading, or a plain statement that it could not be read live. Then source and timestamp, the conversion, the verifier's verdict, an 'Assumptions and risks' section, and user next steps if not read. State that nothing was sent or changed.",
+      "output": "memo: answer, source and time, conversion, assumptions and risks, caveats and next steps",
+      "done_when": "The first line answers the question honestly. Source, timestamp or NOT READ reason, verifier verdict and an assumptions-and-risks section are included. No number appears that was not in steps 1-4.",
+      "status": "not run"
+    },
+    {
+      "number": 6,
+      "roles": [
+        "Smart Home Integration Engineer"
+      ],
+      "text": "[Smart Home Integration Engineer]: Attempt the live read through the SDM REST API if access exists, otherwise record NOT READ",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2"
+      ],
+      "depends_on": [
+        1
+      ],
+      "do": "If the access items are all found, call the SDM devices list endpoint with local:Bash (curl) or fetch_url. Choose the Living Room thermostat. Read Temperature.ambientTemperatureCelsius, not the setpoint. Note the raw value, unit and timestamp. If anything is missing or the call fails, set NOT READ with the concrete reason. Do not use weather data or typical values.",
+      "output": "list: device, room, trait, raw value and unit, timestamp, status (READ / NOT READ), reason",
+      "done_when": "The status is stated as READ or NOT READ. A READ record gives device, room, trait, raw value with unit, and timestamp. A NOT READ record gives the reason.",
+      "status": "not run"
+    }
+  ]
+}

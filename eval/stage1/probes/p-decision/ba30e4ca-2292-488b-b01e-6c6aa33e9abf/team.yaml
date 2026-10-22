@@ -1,0 +1,342 @@
+team_id: 4e38a437-91aa-4be9-b881-be2d98b9393b
+version: 1
+parent_version: null
+name: team-plan-p-decisi
+topology: plan
+agents:
+  11d40a2f-1878-4f5c-8ba5-f07e26f54682:
+    agent_id: 11d40a2f-1878-4f5c-8ba5-f07e26f54682
+    name: Database Recommendation Analyst
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: A senior engineer with long experience shipping embedded and server
+      databases in desktop and small-business software. They make the pragmatic call
+      for a tiny single-user deployment and identify the real risks of that choice.
+    role_prompt: 'You are a principal engineer advising a one-person consultancy.
+      Context (settled, do not re-interpret): they build and deliver a small desktop
+      invoicing app that a customer uses on their own laptop. Decide between SQLite
+      and PostgreSQL. Method: (1) Consider concurrency (1 user), deployment (no server,
+      no installer burden), customer admin skill (none), backup and restore, durability,
+      and the future path if the app grows. (2) Pick one database; the expected answer
+      is SQLite, but justify it from the facts and name the condition that would change
+      your mind (e.g. multi-user or networked access). (3) Write a recommendation
+      of at most 120 words. (4) Write a markdown table with header Risk | Likelihood
+      | Mitigation and exactly three data rows about the chosen database, covering
+      data loss or corruption, backup failure, and migration or scaling limits (merge
+      or choose wisely to stay at three). Likelihood must be Low, Medium or High with
+      a few words of reasoning. Mitigations must be concrete (e.g. enable WAL and
+      synchronous=FULL, atomic backup via the SQLite backup API or VACUUM INTO on
+      exit, schema versioning with a migration table, repository-pattern data layer,
+      CSV/JSON export). (5) Check you did not invent numbers or claim unverified benchmarks.
+      Output only the recommendation paragraph and the table. Do not write the opening
+      interpretation line; the summariser adds it.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Produce a defensible SQLite-vs-PostgreSQL recommendation and a three-row
+      risk table (risk, likelihood, mitigation) for the stated context.
+    skills:
+    - embedded database engineering
+    - desktop app deployment
+    - risk assessment
+    - SQLite operational behaviour (WAL, backups, file corruption modes)
+    - schema migration planning
+    outputs:
+    - artifact: Recommendation draft
+      format: 'memo: recommendation paragraph (max ~120 words) plus markdown table
+        Risk | Likelihood | Mitigation with exactly 3 data rows'
+    success_criteria:
+    - Recommends one database unambiguously.
+    - Reasons tie to one user, one laptop and a client-delivered app.
+    - The table has exactly 3 rows and each likelihood is a clear rating.
+    - Every mitigation is an action the consultancy can implement.
+    - Risks cover data loss/corruption, backup failure and migration/scaling limits,
+      or fold them sensibly into three rows.
+    - No re-interpretation of the app; no invented numbers.
+    constraints:
+    - Recommendation text must stay short.
+    - Exactly three table rows.
+    - Do not re-interpret the task's reading of the app.
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  4b07a59f-0eda-496b-ac79-7117f4bde78b:
+    agent_id: 4b07a59f-0eda-496b-ac79-7117f4bde78b
+    name: Technical Reviewer
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: An independent senior engineer who checks technical claims and requirement
+      compliance in short advisory documents. They did not write the draft, so they
+      judge it fresh.
+    role_prompt: 'You are a senior reviewer who did not write the draft. Read the
+      recommendation and risk table. Check: (a) it names exactly one database and
+      gives reasons that fit one user on one laptop with a client-delivered app; (b)
+      technical claims are correct (SQLite WAL mode, backup API, VACUUM INTO, PostgreSQL
+      needing a server process and admin); (c) the table has columns Risk, Likelihood,
+      Mitigation and exactly three data rows with Low/Medium/High likelihood; (d)
+      mitigations are concrete; (e) length is short (recommendation about 120 words
+      or fewer); (f) the draft stays inside the working interpretation (client-delivered
+      app, risks of the chosen database) and does not re-interpret it. Output a list
+      beginning with ''Verdict: PASS'' or ''Verdict: FIX'', then one bullet per check
+      with the result, then specific corrections if FIX. Be brief.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Confirm the draft is technically correct, internally consistent and meets
+      every stated format requirement, or list exact fixes.
+    skills:
+    - SQLite internals
+    - PostgreSQL operations
+    - technical review
+    - requirements traceability
+    outputs:
+    - artifact: Review verdict
+      format: 'list: verdict line (PASS or FIX) followed by a bullet per check and
+        any required corrections'
+    success_criteria:
+    - Every claim is verified or flagged.
+    - The verdict is explicit.
+    - Each fix is specific and actionable.
+    constraints:
+    - Do not rewrite the whole draft; list only corrections.
+    - Do not change the working interpretation.
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  77726570-bda3-49b2-ae27-dab592c57459:
+    agent_id: 77726570-bda3-49b2-ae27-dab592c57459
+    name: Final Answer Assembler
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: An editor who assembles the final deliverable from the specialists'
+      vetted outputs without adding new analysis.
+    role_prompt: 'Assemble the final answer. Begin with this exact line, unchanged:
+      I read "small desktop invoicing app" as A client-facing app the consultancy
+      builds and delivers to a customer who uses it on their own laptop; if you meant
+      An internal tool for the consultancy''s own invoicing, with the consultant as
+      the sole user, the answer below may not apply. Then give the heading ''Recommendation''
+      and the reviewed recommendation paragraph, applying any fixes from the reviewer.
+      Then give the markdown table with columns Risk | Likelihood | Mitigation and
+      exactly three data rows. Add nothing else: no extra analysis, no extra rows,
+      no preamble. Do not alter the interpretation.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver the final short answer starting with the required interpretation
+      line, followed by the recommendation and the three-row risk table.
+    skills:
+    - technical editing
+    - concision
+    outputs:
+    - artifact: Final answer
+      format: 'memo: required opening line, Recommendation heading with paragraph,
+        3-row risk table'
+    success_criteria:
+    - The first line matches the required text exactly.
+    - The table has exactly 3 rows.
+    - No new analysis is added beyond the reviewed content.
+    - The working interpretation is kept unchanged.
+    constraints:
+    - No new analysis.
+    - Keep the answer short.
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 11d40a2f-1878-4f5c-8ba5-f07e26f54682
+  dst: 4b07a59f-0eda-496b-ac79-7117f4bde78b
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 11d40a2f-1878-4f5c-8ba5-f07e26f54682
+  dst: 77726570-bda3-49b2-ae27-dab592c57459
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 4b07a59f-0eda-496b-ac79-7117f4bde78b
+  dst: 77726570-bda3-49b2-ae27-dab592c57459
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 11d40a2f-1878-4f5c-8ba5-f07e26f54682
+exit: 77726570-bda3-49b2-ae27-dab592c57459
+plan:
+- index: 0
+  agent_ids:
+  - 11d40a2f-1878-4f5c-8ba5-f07e26f54682
+  text: '[Database Recommendation Analyst]: Draft recommendation and risk table'
+  kind: work
+  covers:
+  - R2
+  - R3
+  - R4
+  - R5
+  depends_on: []
+  do: 1) Weigh SQLite against PostgreSQL for one user on one laptop with a client-delivered
+    app, staying on the working interpretation. 2) Choose one database and write a
+    recommendation of at most 120 words, naming the condition that would change the
+    choice. 3) Write the risk table with columns Risk, Likelihood, Mitigation and
+    exactly three data rows.
+  output: 'memo: recommendation paragraph plus table: Risk | Likelihood | Mitigation
+    (3 rows)'
+  done_when: The draft names one database, is about 120 words or fewer, and has a
+    markdown table with exactly 3 data rows and the three named columns.
+  checks:
+  - name: output_has_table
+    params:
+      min_rows: 3
+    covers:
+    - R3
+  - name: output_mentions
+    params:
+      terms:
+      - SQLite
+      - PostgreSQL
+      - Likelihood
+      - Mitigation
+    covers:
+    - R2
+    - R3
+    - R5
+- index: 1
+  agent_ids:
+  - 4b07a59f-0eda-496b-ac79-7117f4bde78b
+  text: '[Technical Reviewer]: Verify draft for correctness and format'
+  kind: verify
+  covers:
+  - R2
+  - R3
+  - R4
+  - R5
+  depends_on:
+  - 1
+  do: 1) Check the technical claims. 2) Check the table shape (3 rows, 3 columns)
+    and the likelihood ratings. 3) Check length and fit to the context and the unchanged
+    working interpretation. 4) Give a PASS or FIX verdict with specific corrections.
+  output: 'list: verdict (PASS/FIX) plus per-check bullets and corrections'
+  done_when: An explicit verdict is stated and every check (a to f) has a result bullet.
+  checks:
+  - name: verdict_present
+    params: {}
+    covers:
+    - R2
+    - R3
+    - R4
+    - R5
+  - name: output_has_list
+    params:
+      min_items: 4
+    covers:
+    - R4
+- index: 2
+  agent_ids:
+  - 77726570-bda3-49b2-ae27-dab592c57459
+  text: '[Final Answer Assembler]: Assemble final answer'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  depends_on:
+  - 1
+  - 2
+  do: 1) Start with the exact required interpretation line. 2) Add the reviewed recommendation,
+    applying fixes. 3) Add the 3-row risk table. 4) Add nothing else.
+  output: 'memo: opening line, Recommendation heading with paragraph, and a table:
+    Risk | Likelihood | Mitigation (3 rows)'
+  done_when: The first line equals the required text, one database is recommended,
+    and the table has exactly 3 data rows with the three columns.
+  checks:
+  - name: output_mentions
+    params:
+      terms:
+      - I read "small desktop invoicing app" as A client-facing app the consultancy
+        builds and delivers to a customer who uses it on their own laptop
+      - Recommendation
+      - Likelihood
+      - Mitigation
+    covers:
+    - R1
+    - R2
+    - R3
+    - R5
+  - name: output_has_table
+    params:
+      min_rows: 3
+    covers:
+    - R3
+    - R4
+requirements:
+  R1: 'Open the final answer with the exact required line: I read "small desktop invoicing
+    app" as A client-facing app the consultancy builds and delivers to a customer
+    who uses it on their own laptop; if you meant An internal tool for the consultancy''s
+    own invoicing, with the consultant as the sole user, the answer below may not
+    apply.'
+  R2: Choose between SQLite and PostgreSQL and give a clear, short recommendation
+    for a one-user, one-laptop desktop invoicing app.
+  R3: Include a risk table with exactly three rows and columns risk, likelihood, mitigation,
+    covering risks of the chosen database (such as data loss, migration or scaling
+    limits, backup failure).
+  R4: Keep the whole answer short, with the recommendation justified by the single-user,
+    single-laptop, client-delivered context.
+  R5: Plan on the working interpretation settled before planning (client-facing app
+    delivered to a customer's own laptop; risks of the chosen database) and do not
+    re-interpret it or guess another reading.
+max_inner_turns: 3
+meta:
+  task_id: p-decision
+  draft_rounds: 2
+  consensus: true
+  dependency_relinked: []
+  capability_requests: []

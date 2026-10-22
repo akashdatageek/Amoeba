@@ -1,0 +1,66 @@
+Source: S2
+URL: https://www.unlatched.io/post/google-nest-api
+Title: Google Nest API · Unlatched.io
+
+[Unlatched.io](/) 
+
+January 17, 2024
+
+# Google Nest API
+
+Can I use google Nest for some simple home automation use cases?
+
+![](/images/GoogleNest.jpg)
+
+*Climate is what on an average we may expect, weather is what we actually get*  
+ ~Andrew John Herbertson (Outlines of Physiography)
+
+We recently experienced extremely low temperatures for Western Washington this last weekend. According to NOAA weather almanac data we actually hit a low of 14 degF on January 14, 2024. To put this in perspective, the typical average high and low temperatures for January are 47 degF and 39 degF, respectively. Luckily, I had just invested in a new heat pump for this winter which has drastically improved my efficiency over my 25 year old unit it replaced in November. Unfortunately, it is a heat pump, so it did struggle a bit to keep temperature setpoint in the house at colder temperatures. In fact, according to my Google Nest, the max temperature it could keep was 64 degF downstairs at the thermostat. We also have a remote Google Nest temperature sensor installed upstairs, which was consistently reading 3-4 degF less than downstairs. During my new heat pump install, I had elected to pass on the optional auxiliary resistance heating coils (emergency heating) which I might rethink now depending on my analysis of the data. Besides this being an extreme event, the new heat pump has not had any issues over a normal winter and I have been fairly happy with it. Granted, this is an extreme use case and it is not like 64 degF is unbearable, it is just something that I need to consider for future proof temperature swings and prolonged cold snaps. This and past experiences makes me wonder about some use cases I have been contemplating for home automation…
+
+`Use Case #1:`  
+ Our previous 25 year old heat pump had the auxiliary heating coils installed, and based on the age of the heat pump, were actually used quite often below 30 degF for supplemental heating. In fact, during one month of operation our breaker for our heat pump had actually tripped and all of our heating was provided by the heating coils. This was 60 amps of continuous operation for two weeks until I caught the issue. Luckily, this was a shoulder part of the season, but still added over $200 to our monthly energy bill nonetheless. Thinking about this use case, I would like to monitor our heating state and send a notification (preferred text message) if the heating system goes into Auxiliary mode for any reason. This would give me the opportunity to correct the breaker (as in the issue above) or actually adjust the setpoint to a lower temperature to allow the heat pump to meet demand without auxiliary heat.
+
+`Use Case #2:`  
+ I was also considering wanting to change the temperature setpoint or which sensor the Nest uses for control. Currently, in order to change the sensor used for control, you have to go into the faceplate of the Nest controller itself (cannot do this through App). During the recent cold event I would have liked to change control to the upstairs sensor when we are all upstairs and vice versa when we were back downstairs. Also, it makes more sense for long term to control the downstairs temperature during the day (when we are hanging out there) and then change to the upstairs temperature during the night, while we are sleeping. Of course, we could lower the setpoint at night since we are in bed!
+
+With these two use cases in mind, I wanted to deep dive the Google Nest API documentation and conduct a small POC to see what was available via Google API docs. Here goes:
+
+Setting up the API was pretty straight forward. All you need to do is follow these steps outlined here in the [google device access](https://developers.google.com/nest/device-access/get-started). All of the links you need are in this step-by-step.
+
+The basic steps are as follows:
+
+> * Register for Device Access - You will have to pay a one time $5 developer fee
+> * Create a project in Device Access (I skipped the Oath Client ID - After step 3 come back)
+> * Setup google cloud platform and enable the API (Download the Oath Client ID and secret)
+> * Go back to your Device Access project and enter the Oath Client ID. Make sure you record the project ID UUID (it is a long string)
+> * Authorize the Account - Enter your Project ID and Oauth Client ID from above  
+>    https: //nestservices.google.com/partnerconnections/**project-id**/auth?redirect\_uri=https://www.google.com&access\_type=offline&prompt=consent&client\_id=**oauth2-client-id**&response\_type=code&scope=https://www.googleapis.com/auth/sdm.service
+> * You will be redirected to a page with a code in the URL (make sure you accept in the browser). Copy the URL code (in this format):  
+>    https: //www.google.com?code=**authorization-code**&scope=https://www.googleapis.com/auth/sdm.service
+> * Once you have this information you can run some python code or use CURL to get the access and refresh tokens
+
+I ran a bit of python code to get my access tokens that I then used to query some of the nest API
+
+```
+import requests project_id = UUID_Project_ID client_id = OATH_Client_ID client_secret = OATH_Client_Secret redirect_uri = 'https://www.google.com' code = Auth_Code tokensite = 'https://oauth2.googleapis.com/token' params = ( ('client_id', client_id), ('client_secret', client_secret), ('code', code), ('grant_type', 'authorization_code'), ('redirect_uri', redirect_uri), ) response = requests.post(tokensite, params=params) response_json = response.json() access_token = response_json['token_type'] + ' ' + str(response_json['access_token']) print('Access token: ' + access_token) refresh_token = response_json['refresh_token'] print('Refresh token: ' + refresh_token) 
+```
+
+Make sure you copy the refresh token as this can be used to get the bearer token in your code. Once I have this I run some basic API calls to start exploring what data is available and if it will satisfy my use cases.
+
+```
+import requests project_id = UUID_Project_ID client_id = OATH_Client_ID client_secret = OATH_Client_Secret redirect_uri = 'https://www.google.com' code = Auth_Code tokensite = 'https://oauth2.googleapis.com/token' refresh_token= token_from_previous_step params = ( ('client_id', client_id), ('client_secret', client_secret), ('refresh_token', refresh_token), ('grant_type', 'refresh_token'), ) response = requests.post(tokensite, params=params) response_json = response.json() access_token = response_json['token_type'] + ' ' + response_json['access_token'] get_enterprise_api_url = 'https://smartdevicemanagement.googleapis.com/v1/enterprises/' + project_id + '/devices' headers = { 'Content-Type': 'application/json', 'Authorization': access_token, } response = requests.get(get_enterprise_api_url, headers=headers) response_json = response.json() device_name = response_json['devices'][0]['name'] get_device_api_url = 'https://smartdevicemanagement.googleapis.com/v1/' + device_0_name headers = { 'Content-Type': 'application/json', 'Authorization': access_token, } response = requests.get(get_device_api_url, headers=headers) response_json = response.json() print(response_json) 
+```
+
+The output from these calls gives the device trait information shown in the response:
+
+```
+{'devices': [{'name': 'enterprises/EnterpriseNumber/devices/DeviceNumber', 'type': 'sdm.devices.types.THERMOSTAT', 'assignee': 'enterprises/EnterpriseNumber/structures/StructureNumber/rooms/RoomNumber', 'traits': {'sdm.devices.traits.Info': {'customName': ''}, 'sdm.devices.traits.Humidity': {'ambientHumidityPercent': 31}, 'sdm.devices.traits.Connectivity': {'status': 'ONLINE'}, 'sdm.devices.traits.Fan': {'timerMode': 'OFF'}, 'sdm.devices.traits.ThermostatMode': {'mode': 'HEAT', 'availableModes': ['HEAT', 'COOL', 'HEATCOOL', 'OFF']}, 'sdm.devices.traits.ThermostatEco': {'availableModes': ['OFF', 'MANUAL_ECO'], 'mode': 'OFF', 'heatCelsius': 4.4444427, 'coolCelsius': 24.444443}, 'sdm.devices.traits.ThermostatHvac': {'status': 'HEATING'}, 'sdm.devices.traits.Settings': {'temperatureScale': 'FAHRENHEIT'}, 'sdm.devices.traits.ThermostatTemperatureSetpoint': {'heatCelsius': 21.521088}, 'sdm.devices.traits.Temperature': {'ambientTemperatureCelsius': 20.09999}}, 'parentRelations': 
+```
+
+From the response above I can read the Thermostat Mode which shows me whether I’m in one of the following states: ‘HEAT’, ‘COOL’, ‘HEATCOOL’, ‘OFF’; however, I do not see where I’m in dual fuel or emergency mode for Auxiliary Heating. This does not appear to be available via the API call. I can see the setpoint which is good but I don’t see the upstairs temperature, and if I change the temperature to control via the upstairs sensor, this does not appear in the API information. So far, my two use cases are not satisfied using a Google Nest but I want to dive a bit deeper into the API documentation to make sure there is something I have not missed. Starting with the [thermostat device](https://developers.google.com/nest/device-access/api/thermostat) I wanted to explore all of the available traits. The only commands available in the documentation is ‘Set Mode’ for one of the 4 states above but does not include an option to either set or read the Aux state. In addition, via the documentation, the [sdm.devices.traits.Temperature](https://developers.google.com/nest/device-access/traits/device/temperature#response) trait only has the one device temperature attached to the thermostat and does not provide additional sensors. It appears the Google Nest API is pretty restrictive and only gives very high level capability to interact and interrogate. Doing some research on replacement options for Nest I’m finding positive information on [Ecobee](https://www.ecobee.com/en-ca/smart-thermostats/) smart thermostats and on first glance the [API](https://www.ecobee.com/home/developer/api/documentation/v1/objects/Thermostat.shtml) appears much more open. This will be my next project….
+
+[comments powered by Disqus](https://disqus.com)
+
+* © Unlatched.io
+* Design: [HTML5 UP](https://html5up.net)
+* Hugo Port: [curtiscode](https://curtiscode.dev)
