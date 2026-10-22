@@ -8,7 +8,8 @@ features, data class, the steps it checks) and `ModelRouter.route(spec)` picks t
   b. hard filters, never relaxed: context window ≥ prompt + reply; the needed features (json, tools, vision);
      sensitive data → privacy local only; estimated USD ≤ what is left of the run USD cap; verifier independence
      (`required` keeps only models of another family than the one that produced the checked work);
-  c. choice: a preference for the role (begin_run's role_prefs; nothing sets it since D117) if still a candidate;
+  c. choice: a preference for the role (base_prefs, kept for every run: D146's profile verifier for verify steps
+     and the plan observer, "*" the team's model for the rest; begin_run's role_prefs on top) if still a candidate;
      else the role's default from the profile;
      else the cheapest candidate in the role's size tier (tie → the lowest current load); under verifier
      independence `preferred` a different family wins when one is left, else the same family is used and the
@@ -198,14 +199,16 @@ class ModelRouter(LLMClient):
                  mode: str = "routed", allowed: list[str] | None = None, profile_allowed: list[str] | None = None,
                  usd_cap: float | None = None, env=None, rate_dir: str | Path | None = None,
                  role_prefs: dict | None = None, fixed_model: str | None = None, clock=time.time, sleep=time.sleep,
-                 failing_after: int = 3):
+                 failing_after: int = 3, base_prefs: dict | None = None):
         if mode not in ("fixed", "routed"):
             raise ValueError("ModelRouter modes: fixed | routed (role mode is the D54 RoleRouter)")
         self.registry, self.policy, self.make, self.mode = registry, policy, make, mode
         self.allowed, self.profile_allowed = allowed, profile_allowed
         self.usd_cap, self.env = usd_cap, os.environ if env is None else env
         self.rate_dir = Path(rate_dir or os.environ.get("AMOEBA_RATE_DIR") or Path.home() / ".cache" / "amoeba" / "rate")
-        self.role_prefs = dict(role_prefs or {})
+        self.base_prefs = dict(base_prefs or {})       # D146: the profile's verifier, kept for every run
+        self.role_prefs = {**self.base_prefs, **(role_prefs or {})}
+        self.verifier: str | None = None
         self.clock, self.sleep, self.failing_after = clock, sleep, failing_after
         self.fixed = fixed_model or policy.get("default_model") or next(iter(registry), None)
         self._clients: dict[str, LLMClient] = {}
@@ -222,7 +225,7 @@ class ModelRouter(LLMClient):
                   usd_cap: float | None = None) -> None:
         """A fresh account for one run (the router object is shared by the runs of one command)."""
         self.data_class = data_class
-        self.role_prefs = dict(role_prefs or {})
+        self.role_prefs = {**self.base_prefs, **(role_prefs or {})}
         if usd_cap is not None:
             self.usd_cap = usd_cap
         self.usage, self.decisions, self.step_family = {}, [], {}
@@ -304,7 +307,7 @@ class ModelRouter(LLMClient):
                                                                               dec["filtered"].items()) or "registry empty")
         # c. choice
         chosen, how = None, ""
-        pref = self.role_prefs.get(spec.role)
+        pref = self.role_prefs.get(spec.role, self.role_prefs.get("*"))   # "*": every other role (D146 team model)
         if self.mode == "fixed":
             chosen, how = left[0], "fixed"
         elif pref in left:

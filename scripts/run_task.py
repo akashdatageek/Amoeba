@@ -808,6 +808,7 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
     niche = getattr(args, "niche_profile", None)       # D102: the niche profile's models and verifier setting
     profile_models = getattr(args, "profile_models", None)
     niche_models = niche.allowed_models if niche is not None else None
+    prefs = None
     if niche_models is None and profile_models is None and not args.model:
         # the profile (--profile, else the default) names the run's model: the router calls that registry entry only,
         # so a second entry (claude-sonnet-5-5) never takes a Gemma run's verify steps, and --profile claude-sonnet
@@ -820,6 +821,10 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
             raise SystemExit(f"--profile {args.profile}: no registry entry in amoeba/config/models.yaml has model "
                              f"{prof.model!r}; the plan runner's router (D97) calls registry models only")
         profile_models = [entry] if entry else None
+        verify = routed_verifier(prof, registry, entry)                # D146 under the router: verify on another model
+        if verify:
+            profile_models.append(verify)
+            prefs = {"verifier": verify, "plan_observer": verify, "*": entry}
     usd_cap = getattr(args, "max_usd_per_run", None)
     if niche is not None:
         if niche.models.get("verifier_independence"):
@@ -827,9 +832,30 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
         if usd_cap is None:
             usd_cap = niche.safety.max_usd_per_run
     router = ModelRouter(registry, policy, make, mode=mode, allowed=allowed, usd_cap=usd_cap, fixed_model=fixed,
-                         profile_allowed=niche_models if niche_models is not None else profile_models)
+                         profile_allowed=niche_models if niche_models is not None else profile_models,
+                         base_prefs=prefs)
     router.profile = f"router:{mode}"
+    if prefs:
+        router.verifier = prof.verifier
+        print(f"verifier: {prof.verifier}: verify steps and the plan observer use {prefs['verifier']}")
     return router
+
+
+# box: router
+def routed_verifier(prof, registry: dict, team_entry: str | None) -> str | None:
+    """D146 under --routing routed: the registry entry of the profile's verifier profile (its model and route), when
+    that profile is named, differs from the team's entry and its key is set; None otherwise (the run says so)."""
+    if not prof.verifier or team_entry is None:
+        return None
+    vp = get_profile(prof.verifier)
+    name = next((n for n, e in registry.items() if e.model == vp.model
+                 and is_anthropic(e.provider) == is_anthropic(vp.provider)), None)
+    if name is None or name == team_entry:
+        return None
+    if not os.environ.get(registry[name].api_key_env or ""):
+        print(f"verifier: {vp.name}: key {registry[name].api_key_env} not set; verify steps use {team_entry}")
+        return None
+    return name
 
 
 # box: client
