@@ -1227,6 +1227,11 @@ and neither recovered the step, a third probe tries both together from the same 
 only when it ends done or clears more and adds nothing. Plan edits are never composed. Off by default. Design:
 docs/design/D165_compose.md.
 
+**D166, the outer loop (Oct 22).** Run by hand, it turns an approved lesson that helped on several tasks and never
+hurt into one general setting (the order of a cause's edits, a planner rule, or a tool's guidance line), tests it on
+the replay set against today's config with everything else fixed and the judge frozen, and keeps it only when the
+results get better. It writes a report and a patch; the user applies it. Design: docs/design/D166_promote.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

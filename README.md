@@ -588,6 +588,20 @@ with both edits applied from the same starting state. It is kept when it ends do
 alone and adds none; otherwise today's pick stands. Plan edits are never composed, and the third probe counts toward
 the fix allowance. Design: `docs/design/D165_compose.md`.
 
+**D166: the outer loop, general and run by hand (Oct 22).** `python -m scripts.promote --replay <tasks> -- <run_task
+flags>` never runs during a task. It works in five steps:
+1. **Trigger.** Plain code takes an approved lesson that helped at least 3 times on at least 2 tasks and never hurt.
+2. **Proposal.** One AI call proposes one general setting in `adapt.yaml`: the order of the cause's allowed edits, a
+   rule for the Planner (`promoted.planner_rules`), or one tool's guidance line (`promoted.tool_guidance`). Changes to
+   code, prompts or the frozen judge are refused before any run.
+3. **Test.** It runs only the `replay` tasks, through `stage_e --arms config`: today's config against a temporary
+   copy, with the same drafts, picks and seeds and lesson writing off.
+4. **Accept.** Plain code accepts the change only if the mean score rises, no task drops more than 0.05, and the
+   step-contract pass rate does not fall.
+5. **Report.** It writes a report and a patch to `promotions/`. Nothing is applied until you run `--apply <report>`.
+
+Design: `docs/design/D166_promote.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

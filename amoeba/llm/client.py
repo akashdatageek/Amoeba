@@ -369,6 +369,7 @@ class MockLLMClient(LLMClient):
         "fix_proposer_dom": "SCOPE: WHAT AN EXPERT WOULD KNOW",                                       # D154
         "fix_picker": "You compare two attempts at one step of a team plan",                          # D154
         "reflector": "You write one lesson from a Box 4 round of a team plan",                        # D163
+        "promoter": "You turn one proven lesson into one general setting",                            # D166
         "fix_proposer": "You propose one fix for a stuck step of a team plan",                         # D117 D
         "tool_writer": "You write one small Python tool. A team is carrying out the task",               # D125
         "plan_searcher": "You decide, before a team is planned for a task, whether the planner needs",  # D120

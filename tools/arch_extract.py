@@ -1050,6 +1050,22 @@ BOXES: list[dict] = [
          disposes="Plain code decides to compose, measures the probe and keeps it or not.",
          anchors=["amoeba/adapt/probe.py::compose_probe", "amoeba/adapt/probe.py::keep_composed"],
          guard_anchors=[]),
+    dict(id="promote", view="adapt", title="Outer loop: a proven lesson becomes a general setting (D166)", kind="ai",
+         plan=None,
+         sentence="Run by hand: an approved lesson that helped on several tasks and never hurt is turned into one "
+                  "general setting, tested on the replay set against today's config, and kept only by plain code's "
+                  "rule; the user applies it.",
+         what=["Trigger: approved, helped at least 3 times on at least 2 tasks, hurt 0 in every niche. One AI call "
+               "proposes one change of adapt.yaml: the order of the cause's allowed edits, a planner rule, or one "
+               "tool's guidance line. Code, prompts and the frozen judge are refused before any run.",
+               "The test runs only the replay set through stage_e's config arms: today's adapt.yaml against a "
+               "temporary copy, same drafts, picks and seeds, lesson writing off, one judge hash for every run.",
+               "Accepted only if the mean score rises, no task drops more than the margin and the step-contract pass "
+               "rate does not fall. A report and a patch are written; nothing is applied until --apply."],
+         proposes="The promoter proposes one general setting from one lesson.",
+         disposes="Plain code checks the change, runs the arms, applies the accept rule and never applies it itself.",
+         anchors=["scripts/promote.py::promote", "scripts/promote.py::accept", "scripts/promote.py::change_problems"],
+         guard_anchors=[]),
     dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorer (D161)", kind="code", plan=None,
          sentence="Hashes every file that judges a run at the start of the run, and scores a task with the scorer it "
                   "names, so a later comparison knows both the score and the judge that gave it.",

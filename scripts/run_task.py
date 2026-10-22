@@ -203,6 +203,12 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         from dataclasses import replace as _replace
         from amoeba.interp.plan_runner import PlanOptions
         plan_options = _replace(plan_options or PlanOptions(), final_check="on")
+    rules = ((adapt_config().get("promoted") or {}).get("planner_rules") or []) if topology == "plan" else []
+    if rules and saved_draft is None:                                   # D166: rules the user applied from a promotion
+        lessons = dict(lessons)
+        text = "\n\n# Rules learned from earlier tasks\n" + "\n".join(f"- {x}" for x in rules)
+        for who in ("planner", "agent_observer", "plan_observer"):
+            lessons[who] = lessons.get(who, "") + text
     lessons_rec = None                                                  # D164: what the library gave this run
     if topology == "plan" and plan_options is not None and (plan_options.lessons == "on"
                                                             or plan_options.lessons_write == "on"):
