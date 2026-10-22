@@ -630,6 +630,14 @@ Design: `docs/design/D168_control_probe.md`.
 
 Design: `docs/design/D169_planner_rule_arms.md`.
 
+**D170: the accept rule needs more than "average went up" (Oct 22).** Runs are compared in pairs (the same task and seed in both arms). A change is accepted only if all of these hold:
+- the mean delta is at least `promote.min_delta` (default 0.05);
+- the changed arm wins more than twice as many pairs as it loses;
+- no task drops more than 0.05;
+- the step-contract pass rate does not fall.
+
+The report lists every pair, with the wins, losses, ties and the mean delta. Design: `docs/design/D170_paired_accept.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

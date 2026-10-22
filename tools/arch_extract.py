@@ -1081,8 +1081,10 @@ BOXES: list[dict] = [
                "temporary copy, same picks and seeds, lesson writing off, one judge hash for every run. D169: a "
                "planner rule runs both arms with fresh plans on promote.planner_seeds seeds (it acts while the "
                "Planner drafts); the other kinds share one draft. The report names the mode.",
-               "Accepted only if the mean score rises, no task drops more than the margin and the step-contract pass "
-               "rate does not fall. A report and a patch are written; nothing is applied until --apply."],
+               "D170: runs are compared in pairs (same task, same seed). Accepted only if the mean delta reaches "
+               "promote.min_delta, the changed arm wins more than twice as many pairs as it loses, no task drops more "
+               "than the margin and the step-contract pass rate does not fall. A report (every pair) and a patch are "
+               "written; nothing is applied until --apply."],
          proposes="The promoter proposes one general setting from one lesson.",
          disposes="Plain code checks the change, runs the arms, applies the accept rule and never applies it itself.",
          anchors=["scripts/promote.py::promote", "scripts/promote.py::accept", "scripts/promote.py::change_problems",

@@ -21,8 +21,9 @@ change, tested first on the replay set, and applied only by the user.
      both arms planning fresh on `promote.planner_seeds` seeds (default 5), so the changed arm's Planner sees the
      rule; the other kinds share the current arm's draft on `promote.seeds` seeds. The report says which, and why.
    - Every run must carry the same judge hash.
-4. **Accept (plain code)** only if:
-   - the mean sim-score delta (changed - current) is above 0;
+4. **Accept (plain code)** on paired runs (the same task and seed in both arms, D170) only if:
+   - the mean sim-score delta (changed - current) is at least `promote.min_delta` (0.05);
+   - the changed arm wins more than twice as many pairs as it loses (ties count for neither);
    - no task's mean score drops by more than `promote.max_task_drop`;
    - the step-contract pass rate does not fall.
 5. **Output.**
@@ -53,13 +54,14 @@ from amoeba.eval.judge import JudgeMismatch, frozen_paths, judge_hash, same_judg
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_REL = "amoeba/config/adapt.yaml"
+TIE = 1e-9                                  # D170: a pair whose scores differ by no more than this is a tie
 KINDS = {"reorder_allowed_edits": {"kind", "cause", "order", "file"}, "planner_rule": {"kind", "text", "file"},
          "tool_guidance": {"kind", "tool", "text", "file"}}
 
 
 # box: promote
 def promote_config() -> dict:
-    return {"min_helped": 3, "min_tasks": 2, "seeds": 3, "planner_seeds": 5, "max_task_drop": 0.05, "max_text_chars": 300,
+    return {"min_helped": 3, "min_tasks": 2, "seeds": 3, "planner_seeds": 5, "min_delta": 0.05, "max_task_drop": 0.05, "max_text_chars": 300,
             "proposal_max_tokens": 1024, "dir": "promotions", **(adapt_config().get("promote") or {})}
 
 
@@ -237,26 +239,39 @@ def summarise(rows: list[dict]) -> dict:
         b = [v["changed"]["score"] for k, v in full.items() if k[0] == t]
         per_task.append({"task": t, "seeds": len(a), "current": sum(a) / len(a), "changed": sum(b) / len(b),
                          "drop": sum(a) / len(a) - sum(b) / len(b)})
-    deltas = [v["changed"]["score"] - v["current"]["score"] for v in full.values()]
+    pair_rows = [{"task": k[0], "seed": k[1], "current": v["current"]["score"], "changed": v["changed"]["score"],
+                  "delta": v["changed"]["score"] - v["current"]["score"]} for k, v in sorted(full.items())]
+    deltas = [x["delta"] for x in pair_rows]
     rate = lambda arm: [v[arm]["contract"] for v in full.values() if v[arm]["contract"] is not None]
     mean = lambda xs: sum(xs) / len(xs) if xs else None
     return {"judge_hash": judge, "pairs": len(full), "mean_delta": mean(deltas), "per_task": per_task,
+            "pair_rows": pair_rows, "wins": sum(d > TIE for d in deltas), "losses": sum(d < -TIE for d in deltas),
+            "ties": sum(abs(d) <= TIE for d in deltas),                                        # D170
             "contract_current": mean(rate("current")), "contract_changed": mean(rate("changed"))}
 
 
 # box: promote
 def accept(summary: dict, cfg: dict) -> tuple[bool, str]:
-    """The plain-code accept rule."""
-    if summary["mean_delta"] is None or summary["mean_delta"] <= 0:
-        return False, f"the mean score delta is {summary['mean_delta']:+.4f}, not above 0"
+    """The plain-code accept rule (D170: on paired runs, same task and seed). All must hold: the mean delta reaches
+    promote.min_delta; the changed arm wins more than twice as many pairs as it loses; no task's mean drops by more
+    than promote.max_task_drop; the step-contract pass rate does not fall."""
+    md = float(cfg.get("min_delta", 0.05))
+    if summary["mean_delta"] is None:
+        return False, "no pair has a score"
+    if summary["mean_delta"] < md:
+        return False, f"the mean score delta is {summary['mean_delta']:+.4f}, below promote.min_delta {md}"
     worst = max(summary["per_task"], key=lambda t: t["drop"])
     if worst["drop"] > float(cfg["max_task_drop"]):
         return False, f"task {worst['task']} drops by {worst['drop']:.4f} > {cfg['max_task_drop']}"
+    w, l = summary["wins"], summary["losses"]
+    if not w > 2 * l:
+        return False, f"the changed arm wins {w} pairs and loses {l}: it must win more than twice as many as it loses"
     a, b = summary["contract_current"], summary["contract_changed"]
     if a is not None and (b is None or b < a):
         return False, f"the step-contract pass rate falls ({a:.3f} → {b if b is None else round(b, 3)})"
-    return True, (f"the mean score rises by {summary['mean_delta']:+.4f}, no task drops more than "
-                  f"{cfg['max_task_drop']}, and the step-contract pass rate does not fall")
+    return True, (f"the mean score rises by {summary['mean_delta']:+.4f} (at least {md}), the changed arm wins {w} "
+                  f"pairs and loses {l}, no task drops more than {cfg['max_task_drop']}, and the step-contract pass "
+                  "rate does not fall")
 
 
 # box: promote
@@ -396,8 +411,13 @@ def report_text(rec: dict, entry: dict | None) -> str:
                   "| task | seeds | current | changed | drop |", "|---|---|---|---|---|",
                   *[f"| {t['task']} | {t['seeds']} | {t['current']:.4f} | {t['changed']:.4f} | {t['drop']:+.4f} |"
                     for t in a["per_task"]], "",
-                  f"Mean delta {a['mean_delta']:+.4f} over {a['pairs']} pairs; step-contract pass rate "
-                  f"{a['contract_current']} → {a['contract_changed']}.", ""]
+                  "**Every pair** (same task, same seed):", "",
+                  "| task | seed | current | changed | delta |", "|---|---|---|---|---|",
+                  *[f"| {x['task']} | {x['seed']} | {x['current']:.4f} | {x['changed']:.4f} | {x['delta']:+.4f} |"
+                    for x in a.get("pair_rows") or []], "",
+                  f"{a.get('wins', 0)} wins, {a.get('losses', 0)} losses, {a.get('ties', 0)} "
+                  f"{'tie' if a.get('ties') == 1 else 'ties'}. Mean delta {a['mean_delta']:+.4f} over {a['pairs']} "
+                  f"pairs; step-contract pass rate {a['contract_current']} → {a['contract_changed']}.", ""]
     if rec["decision"] == "accepted":
         lines += ["**Nothing has been applied.** To apply it, run:", "",
                   f"    python -m scripts.promote --apply {rec['report']}", "",

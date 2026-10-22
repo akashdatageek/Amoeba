@@ -1238,6 +1238,8 @@ results get better. It writes a report and a patch; the user applies it. Design:
 
 **D169, planner-rule changes are tested with real planning (Oct 22).** A planner rule acts while the Planner drafts, so its test runs both arms with fresh plans on five seeds each instead of sharing the current arm's plan, which had hidden the rule. Other kinds keep the shared draft. The report says which mode ran and why. Design: docs/design/D169_planner_rule_arms.md.
 
+**D170, a stricter accept rule (Oct 22).** The outer loop compares the two arms pair by pair (same task, same seed). A change is kept only when the mean gain is at least 0.05 and it wins more than twice as many pairs as it loses, on top of the per-task drop and contract rules. The report shows every pair. Design: docs/design/D170_paired_accept.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
