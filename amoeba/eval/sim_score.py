@@ -38,7 +38,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 NUMBER = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
-SKIP_DIRS = ("sources", "skills", "made_tools")       # not the team's delivered work (the local-tools workspace)
+SKIP_DIRS = ("sources", "skills", "made_tools", "inputs")   # not the team's delivered work (inputs/: D157's copies of the task's files)
 
 
 # box: frozen_judge
@@ -243,7 +243,7 @@ def parse_mark(text: str | None) -> float:
 
 # box: frozen_judge
 def delivered(run_dir: Path) -> dict[str, Path]:
-    """The team's delivered files (the workspace without sources/, skills/, made_tools/), by relative path."""
+    """The team's delivered files (the workspace without sources/, skills/, made_tools/, inputs/), by relative path."""
     ws = Path(run_dir) / "workspace"
     if not ws.is_dir():
         return {}

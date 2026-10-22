@@ -136,3 +136,12 @@ def test_a_task_may_not_be_given_its_own_key_or_hidden_tests(tmp_path):
              sim={"scorers": [{"name": "answer_key"}], "judge_set": k})
     with pytest.raises(ValueError, match="key"):
         S.check_no_leak(t)
+
+
+def test_the_tasks_own_input_files_are_not_delivered_work(tmp_path):
+    """Part 2 Step 2: D157 copies a task's input files to workspace/inputs/; a files check must not pass on them."""
+    from amoeba.eval.sim_score import delivered, file_check
+    (tmp_path / "workspace" / "inputs").mkdir(parents=True)
+    (tmp_path / "workspace" / "inputs" / "red.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 16)
+    files = delivered(tmp_path)
+    assert files == {} and not file_check({"check": "image", "path": "*.png"}, files)

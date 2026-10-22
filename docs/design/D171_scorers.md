@@ -13,7 +13,7 @@ Four scorers join `SCORERS` (amoeba/eval/sim_score.py):
 | scorer | reads | score |
 |---|---|---|
 | `answer_key` | `<judge_set>_keys/<task>.json`: `numbers` (`value`, absolute `tol` and/or `rel_tol`, `name`) and exact `strings` | the share found in the answer (a number counts when any number in the answer is within the tolerance; a string must appear exactly) |
-| `hidden_tests` | `<judge_set>_hidden/<task>/`: a pytest folder | the share of tests passed. The run's workspace (without `sources/`, `skills/`, `made_tools/`) is copied to a temporary folder, the tests are copied next to it as `_hidden_tests/` and run there with `PYTHONPATH` on the copy. The workspace is never touched, and the tests are never in the task's files or the workspace. A run over 300 s, or no report, scores 0 |
+| `hidden_tests` | `<judge_set>_hidden/<task>/`: a pytest folder | the share of tests passed. The run's workspace (without `sources/`, `skills/`, `made_tools/` and `inputs/`, the copies of the task's own files) is copied to a temporary folder, the tests are copied next to it as `_hidden_tests/` and run there with `PYTHONPATH` on the copy. The workspace is never touched, and the tests are never in the task's files or the workspace. A run over 300 s, or no report, scores 0 |
 | `files` | the key's `files` list: `{check, path (a glob), min, max}`, where check is `exists`, `rows` (csv data rows), `formulas_live` (xlsx cells holding a formula, at least `min`, default 1), `pages` (pdf) or `image` (png / jpg header) | the share of checks passed; an unreadable file fails its check |
 | `rubric` | the key's `rubric` text; the fixed grader of `amoeba/eval/judge.yaml` | the **median** of 3 grader calls |
 
