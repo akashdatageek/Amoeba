@@ -1,4 +1,5 @@
-"""D161 — the frozen judge's hash. `amoeba/config/frozen.yaml` lists the judge files; `judge_hash()` hashes them the
+"""D161 — the frozen judge's hash. `amoeba/config/frozen.yaml` lists the judge files (D171: a path may hold `*`, and
+every match is hashed with its own path); `judge_hash()` hashes them the
 way the evidence log hashes a folder (amoeba/adapt/evidence.py: manifest_entries, sha256_text), so one digest names
 exactly the judge a run was scored by. `same_judge()` refuses to compare runs whose hashes differ or are unknown."""
 from __future__ import annotations
@@ -31,10 +32,11 @@ def judge_hash(root: Path | str | None = None) -> dict:
     root = Path(root) if root is not None else ROOT
     parts = []
     for rel in frozen_paths(root):
-        p = root / rel
-        entries = [e for e in manifest_entries(p) if "__pycache__" not in e[0]] if p.exists() else []
+        found = sorted(root.glob(rel)) if "*" in rel else ([root / rel] if (root / rel).exists() else [])   # D171
+        entries = [([p.relative_to(root).as_posix()] if "*" in rel else []) + e for p in found
+                   for e in manifest_entries(p) if "__pycache__" not in e[0]]
         parts.append({"path": rel, "sha256": sha256_text(json.dumps(entries, separators=(",", ":")))
-                      if p.exists() else "missing", "files": len(entries)})
+                      if found else "missing", "files": len(entries)})
     return {"sha256": sha256_text(json.dumps(parts, separators=(",", ":"), sort_keys=True)), "paths": parts}
 
 

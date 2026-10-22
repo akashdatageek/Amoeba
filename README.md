@@ -638,6 +638,14 @@ Design: `docs/design/D169_planner_rule_arms.md`.
 
 The report lists every pair, with the wins, losses, ties and the mean delta. Design: `docs/design/D170_paired_accept.md`.
 
+**D171: real scorers (Oct 22).** A task's `sim.scorers` (with weights) may name:
+- **`answer_key`**: numbers with a tolerance and exact strings, from `<judge_set>_keys/<task>.json`;
+- **`hidden_tests`**: a pytest folder in `<judge_set>_hidden/<task>/`, never given to the team, run next to a copy of the delivered code; the score is the share passed;
+- **`files`**: plain-code checks on the delivered files: exists, csv rows, live xlsx formulas, pdf pages, an image;
+- **`rubric`**: a fixed grader prompt and model (`amoeba/eval/judge.yaml`: gemma-4-31b, temperature 0, never the team's client); the score is the median of 3 calls.
+
+The keys, the hidden tests, the grader prompt and `judge.yaml` are all in the judge hash. A task whose files include its own key is refused. Design: `docs/design/D171_scorers.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

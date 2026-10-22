@@ -438,7 +438,11 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
     if task.sim:                                     # D161: the task's scorer, after the answer is on disk
-        result.sim_score = score_run(run_dir, task, seed if sim_seed is None else sim_seed, judge)
+        try:
+            result.sim_score = score_run(run_dir, task, seed if sim_seed is None else sim_seed, judge)
+        except Exception as e:                       # D171: a scorer that cannot score leaves no score, never a crash
+            result.sim_score = {"score": None, "error": f"{type(e).__name__}: {e}"[:400], "judge_hash": judge}
+            (run_dir / "sim_score.json").write_text(json.dumps(result.sim_score, indent=2) + "\n", encoding="utf-8")
         exclude.discard("sim_score")
         (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None),
                                              encoding="utf-8")
@@ -1236,6 +1240,13 @@ def main(argv: list[str] | None = None) -> int:
         tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding="utf-8").splitlines() if l.strip()]
     else:
         tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt, files=args.file)]
+    from amoeba.eval.sim_score import check_no_leak
+    for t in tasks:                                   # D171: a task is never given its own key or hidden tests
+        try:
+            check_no_leak(t)
+        except ValueError as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
     saved = load_saved_drafts(args.drafts_from) if args.drafts_from else None
     pool = PoolSetup(cache_dir=args.pool_dir, allow_remote_exec=getattr(args, "allow_remote_exec", False)) \
         if args.pool else None                                                   # D56; D137

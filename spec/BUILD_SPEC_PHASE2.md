@@ -1240,6 +1240,8 @@ results get better. It writes a report and a patch; the user applies it. Design:
 
 **D170, a stricter accept rule (Oct 22).** The outer loop compares the two arms pair by pair (same task, same seed). A change is kept only when the mean gain is at least 0.05 and it wins more than twice as many pairs as it loses, on top of the per-task drop and contract rules. The report shows every pair. Design: docs/design/D170_paired_accept.md.
 
+**D171, real scorers (Oct 22).** A task can now be scored by an answer key (numbers with a tolerance, exact strings), by hidden tests run against a copy of the delivered code, by plain-code checks on the delivered files, or by a fixed rubric grader (a fixed prompt, a fixed model and temperature, the median of three calls), alone or weighted together. The keys, the hidden tests and the grader are part of the frozen judge. Design: docs/design/D171_scorers.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

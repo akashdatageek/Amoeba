@@ -1090,17 +1090,24 @@ BOXES: list[dict] = [
          anchors=["scripts/promote.py::promote", "scripts/promote.py::accept", "scripts/promote.py::change_problems",
                   "scripts/promote.py::arm_mode"],
          guard_anchors=[]),
-    dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorer (D161)", kind="code", plan=None,
+    dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorers (D161, D171)", kind="ai", plan=None,
          sentence="Hashes every file that judges a run at the start of the run, and scores a task with the scorer it "
                   "names, so a later comparison knows both the score and the judge that gave it.",
          what=["config/frozen.yaml lists the judge: the domain checks, Box 2's plan checks, the answer score, the "
                "scorers and the baseline results. The digest goes to result.json and sim_score.json.",
                "Runs whose judge hashes differ, or are unknown, are refused for comparison (same_judge).",
-               "A task may name a scorer in its sim field; only a deterministic stand-in exists (the answer's first "
-               "number against an expected value). A real simulator becomes one more scorer."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code hashes the files, scores the run and refuses mixed comparisons.",
-         anchors=["amoeba/eval/judge.py::judge_hash", "amoeba/eval/sim_score.py::score_run"], guard_anchors=[]),
+               "A task names its scorers (with weights) in its sim field. D171: answer_key (numbers with a "
+               "tolerance, exact strings), hidden_tests (a pytest folder run next to a copy of the delivered code), "
+               "files (plain-code checks on delivered files) and rubric (a fixed grader prompt and model, the median "
+               "of its calls), besides D161's stand-in.",
+               "The keys, hidden tests, grader prompt and grader settings are in the judge hash; a task given its own "
+               "key is refused, and a scorer that cannot score leaves no score rather than a crash."],
+         proposes="The rubric grader (a fixed model, never the team's) proposes a mark per call.",
+         disposes="Plain code hashes the files, runs every other scorer, takes the grader's median, weights the parts "
+                  "and refuses mixed comparisons.",
+         anchors=["amoeba/eval/judge.py::judge_hash", "amoeba/eval/sim_score.py::score_run",
+                  "amoeba/eval/sim_score.py::score_task", "amoeba/eval/sim_score.py::RubricScorer"],
+         guard_anchors=[]),
     dict(id="faults", view="adapt", title="Fault injection (D119, test-only)", kind="code", plan=None,
          sentence="Puts one known fault into one step, so the stuck watch's diagnosis and the fixes can be checked "
                   "against a ground truth; refused unless AMOEBA_TEST_FAULTS=1.",
