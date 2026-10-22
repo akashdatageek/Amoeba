@@ -32,7 +32,7 @@ VIEWS = {
     "run": {"h": 1320, "label": "3 · Team runs the task", "heading": "INSIDE BOX 3 · TEAM RUNS THE TASK",
             "note": "Three runners, chosen when the run starts: flat and boss + reviewers are the AutoAgents / AgentVerse "
                     "baselines; plan runs the step graph (ours, D31–D36). All write the same log and result record."},
-    "adapt": {"h": 1110, "label": "4 · Adapt within the task", "heading": "INSIDE BOX 4 · ADAPT WITHIN THE TASK (D117)",
+    "adapt": {"h": 1275, "label": "4 · Adapt within the task", "heading": "INSIDE BOX 4 · ADAPT WITHIN THE TASK (D117)",
               "note": "D117 removed the offline learning loop. Stage B watches each step for stuck signals and names one cause; Stage C tries code fixes, cheapest first; Stage D asks the fix proposer for one checked edit; the task stops with a report when nothing works."},
     "around": {"h": 210, "label": "Around every box", "heading": "AROUND EVERY BOX",
                "note": "The model router picks the model for every AI call; the niche profile sets what every run may use."},
@@ -48,6 +48,7 @@ L = {  # id: (x, y, w, h)
     "stage_e": (30, 630, 700, 100), "faults": (770, 630, 390, 100),
     "rounds": (30, 800, 360, 120), "lessons": (420, 800, 360, 120), "lessons_read": (810, 800, 350, 120),
     "compose": (30, 965, 360, 120), "promote": (420, 965, 360, 120), "frozen_judge": (810, 965, 350, 120),
+    "control": (30, 1130, 360, 120),
     "router": (30, 70, 550, 110), "niche": (610, 70, 550, 110),
     "toy_source": (30, 60, 240, 130), "free_text": (30, 210, 240, 100), "task_record": (370, 105, 230, 120),
     "handoff": (670, 115, 210, 100), "scoring": (930, 95, 230, 140),
@@ -68,7 +69,7 @@ L = {  # id: (x, y, w, h)
 DECOR = {  # static enclosures, captions and loop arrows (text filled from data where it states a fact)
     "overview": [("hd", 30, 398, "BOX 4 · ADAPT WITHIN ONE TASK (D117 · AMOEBA'S PLAN RUNNER ONLY)"),
                  ("hd", 30, 608, "AROUND EVERY BOX")],
-    "adapt": [("hd", 30, 785, "ACROSS TASKS · ROUND RECORDS, ONE LESSON LIBRARY AND THE OUTER LOOP (D161–D166)")],
+    "adapt": [("hd", 30, 785, "ACROSS TASKS · ROUND RECORDS, ONE LESSON LIBRARY AND THE OUTER LOOP (D161–D172)")],
     "plan": [("group", 30, 56, 770, 320), ("lbl", 44, 76, "loop_plan"),
              ("loop", "M645 306 V338 H157 V236", "loop_plan_cap", 400, 358)],
     "run": [("group", 490, 60, 670, 270), ("hd", 505, 82, "STEP BY STEP (flat) · AutoAgents Group"),
@@ -96,6 +97,7 @@ EDGES = [  # (view, from, to, path, label, data key, label x, label y)
     ("adapt", "lessons", "lessons_read", "M780 860 H810", "approved", "Episode", 0, 0),
     ("adapt", "lessons", "promote", "M600 920 V965", "candidates", "Episode", 606, 945),
     ("adapt", "compose", "rounds", "M210 965 V920", "third probe", "Episode", 216, 945),
+    ("adapt", "control", "compose", "M210 1130 V1085", "no-edit re-run", "Episode", 216, 1110),
     ("adapt", "frozen_judge", "promote", "M810 1025 H780", "judge hash", "Episode", 0, 0),
     ("task", "toy_source", "task_record", "M270 125 H320 V150 H370", "has an answer", "Task", 276, 117),
     ("task", "free_text", "task_record", "M270 260 H320 V185 H370", "no answer", "FreeTask", 276, 280),

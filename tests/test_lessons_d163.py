@@ -48,9 +48,15 @@ def test_a_lesson_with_task_facts_denied_wording_or_too_long_is_refused():
         parse_reflection("I think the lesson is to try harder.")
 
 
-def row(*probes, cause="tool_error", niche="general", task_id=TASK_ID):
+# D168: the round's control (no edit, re-run once) stayed stuck and cleared nothing
+CONTROL = {"scope": "control", "op": "none", "status": "incomplete", "cleared": [], "kept": ["x"], "new": [],
+           "limited": False, "tokens": 10, "samples": 1}
+
+
+def row(*probes, cause="tool_error", niche="general", task_id=TASK_ID, control=CONTROL):
     return {"kind": "round", "task_id": task_id, "niche": niche, "step": 1, "cause": cause, "signals": ["x"],
-            "edits": [], "probes": list(probes), "pick": "inv", "pick_reason": "", "step_status": "done"}
+            "edits": [], "probes": list(probes), "pick": "inv", "pick_reason": "", "step_status": "done",
+            "control": control}
 
 
 def test_the_library_counts_every_verdict_and_a_repeat_updates_the_same_entry(tmp_path):

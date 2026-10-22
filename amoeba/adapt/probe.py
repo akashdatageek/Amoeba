@@ -179,6 +179,60 @@ def signal_names(meta: dict | None) -> list[str]:
 
 
 # box: proposer
+def probe_room(r, n: int, lim: dict) -> int:
+    """D168: how many probes (each estimated at one average step attempt, D151) the fixes' token allowance and the
+    step's share of a run cap still hold (99 before any attempt has a cost)."""
+    avg = r.avg_attempt()
+    if avg <= 0:
+        return 99
+    left = [token_cap(lim, avg) - r.adapt_tokens]
+    share = (getattr(r, "step_share", {}) or {}).get(getattr(r, "cur_step", None))
+    if share:
+        left.append(share["share"] - (r.billed_now() - r.step_t0[r.cur_step]))
+    return max(0, int(min(left) // avg))
+
+
+# box: control
+def control_config() -> dict:
+    """adapt.yaml `probe` (D168): control auto | always | sampled | off, control_rate for sampled."""
+    return {"control": "auto", "control_rate": 0.5, **(adapt_config().get("probe") or {})}
+
+
+# box: control
+def control_wanted(r, n: int, k: int, cfg: dict | None = None) -> str | None:
+    """None when this round runs a control probe, else why not. auto (the default): always when lesson writing is on,
+    off otherwise; sampled: a seeded draw per (task, step, try) below control_rate."""
+    cfg = cfg or control_config()
+    mode = str(cfg.get("control", "auto"))
+    if mode == "off":
+        return "probe.control off"
+    if mode == "auto":
+        return None if getattr(r.opt, "lessons_write", "off") == "on" else "probe.control auto: lesson writing is off"
+    if mode == "sampled":
+        import random
+        draw = random.Random(f"{r.ep.seed}:{r.task.id}:{n}:{k}").random()
+        rate = float(cfg.get("control_rate", 0.5))
+        return None if draw < rate else f"probe.control sampled: draw {draw:.3f} >= rate {rate}"
+    return None                                                   # always
+
+
+# box: control
+def control_probe(r, n: int, wave: int, start: "Snapshot", s0: list[str]) -> dict:
+    """D168: the same starting state, no edit, the step re-run once, measured and undone like any probe (its files
+    kept as step_N.probe-control.*). It is never picked; the verdicts compare each edit with it."""
+    from amoeba.interp.plan_runner import dependencies
+    start.restore(for_probe=True)
+    t0 = r.billed_now()
+    r.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.fix": "control", "amoeba.rung": "D",
+                                "amoeba.scope": "control", "amoeba.target": n, "amoeba.params": "{}"})
+    r.run_step(r.steps[n], wave, dependencies(r.cfg.plan)[n],
+               fixing={"kind": "control", "rung": "D", "target": n, "params": {}, "note": "", "scope": "control"})
+    out = measure(r, n, start, s0, t0, "control", "none", {}, {"reason": "the control: no edit (D168)"}, {})
+    out.pop("_after", None)
+    return out
+
+
+# box: proposer
 def probes_affordable(r, n: int, lim: dict) -> int:
     """How many probes the remaining allowance holds (2 or 1): each probe is estimated at one average step attempt
     (D151); the fixes' token allowance and the step's share of a run cap must hold that many."""
@@ -416,6 +470,10 @@ def scoped_round(r, n: int, wave: int, d: dict) -> str:
     if len(scopes) == 2 and probes_affordable(r, n, lim) < 2:
         keep = "inv" if d["cause"] in INV_FIRST else "dom"
         scopes = {keep: scopes[keep]}
+    no_control = control_wanted(r, n, len(r.step_fixes(n)) + 1)
+    room = probe_room(r, n, lim)                         # D168: the control counts as a probe; the edits come first
+    if no_control is None and room < len(scopes) + 1:
+        no_control = f"the allowance holds only {room} probes: the edits come first"
     s0 = signal_names(r.artifacts[n]["meta"]) or list(d.get("signals") or [])
     cands = [dict(propose(r, n, d, s, ops), cause=d["cause"]) for s, ops in scopes.items()]
     valid = [c for c in cands if c["reply"] is not None]
@@ -423,7 +481,8 @@ def scoped_round(r, n: int, wave: int, d: dict) -> str:
            "candidates": [{"scope": c["scope"], "op": c["reply"].edit.op if c["reply"] else None,
                            "params": c["reply"].edit.params if c["reply"] else {},
                            "because": c["reply"].because if c["reply"] else "", "refusals": c["refusals"]}
-                          for c in cands], "probes": [], "pick": None, "pick_reason": "", "samples": 1}
+                          for c in cands], "probes": [], "pick": None, "pick_reason": "", "samples": 1,
+           "control": None, "control_skipped": no_control}
     rec = {"step": n, "try": len(r.step_fixes(n)) + 1, "cause": d["cause"], "kind": "scoped_round", "rung": "D",
            "target": n, "params": {}, "evidence": d["evidence"][:4], "round": rnd,
            "proposer": [x for c in cands for x in c["replies"]]}
@@ -439,6 +498,10 @@ def scoped_round(r, n: int, wave: int, d: dict) -> str:
     plan = [c for c in valid if c["reply"].edit.op in PLAN_OPS]
     probeable = [c for c in valid if c["reply"].edit.op not in PLAN_OPS]
     start = Snapshot.take(r, n)
+    if probeable and no_control is None:                 # D168: no edit, same start; never picked
+        rnd["control"] = control_probe(r, n, wave, start, s0)
+    elif not probeable:
+        rnd["control_skipped"] = "no edit to compare"
     for c in probeable:
         rnd["probes"].append(probe(r, n, wave, c, start, s0))
         if cfg.get("stop_on_first_done") and rnd["probes"][-1]["status"] == "done":

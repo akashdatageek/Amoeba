@@ -1054,6 +1054,21 @@ BOXES: list[dict] = [
          disposes="Plain code decides to compose, measures the probe and keeps it or not.",
          anchors=["amoeba/adapt/probe.py::compose_probe", "amoeba/adapt/probe.py::keep_composed"],
          guard_anchors=[]),
+    dict(id="control", view="adapt", title="Control probe: helped means better than a re-run (D168)", kind="code",
+         plan=None,
+         sentence="Re-runs a stuck step once with no edit from the same starting state, so an edit counts as helped "
+                  "only when it did better than doing nothing.",
+         what=["Helped: the edit ends done and the control did not, or it cleared a signal the control did not clear "
+               "and added none the control did not add. As well as the control: no effect. The control finished and "
+               "the edit did not: hurt. Without a control the verdict is uncontrolled, which promotion ignores.",
+               "The control is measured and undone like a probe, kept as step_N.probe-control.*, never picked, and "
+               "counts as a probe for the allowance; the edits come first when the allowance is short.",
+               "adapt.yaml probe.control: auto (always with --lessons-write on, else off), always, sampled "
+               "(control_rate), off."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code runs the control, undoes it and gives the controlled verdicts.",
+         anchors=["amoeba/adapt/probe.py::control_probe", "amoeba/adapt/lessons.py::controlled_verdict"],
+         guard_anchors=[]),
     dict(id="promote", view="adapt", title="Outer loop: a proven lesson becomes a general setting (D166)", kind="ai",
          plan=None,
          sentence="Run by hand: an approved lesson that helped on several tasks and never hurt is turned into one "

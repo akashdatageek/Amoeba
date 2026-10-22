@@ -1234,6 +1234,8 @@ results get better. It writes a report and a patch; the user applies it. Design:
 
 **D167, a lesson's counts are about that lesson (Oct 22).** (cause, op, scope) is now a family whose counts are for reports. Every lesson the reflector writes is its own entry with fixed text, its own status and its own counts, and it gains evidence only when it is used: the round that wrote it, then probes whose proposer was shown it and cited it. Retrieval and promotion read lessons only. Design: docs/design/D167_lesson_identity.md.
 
+**D168, helped is measured against a control (Oct 22).** A scoped round re-runs the stuck step once more with no edit from the same start. An edit helped only when it did better than that control; doing as well is no effect, and a verdict without a control is recorded as uncontrolled and never promoted. The control is never picked and counts toward the fix allowance. Design: docs/design/D168_control_probe.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

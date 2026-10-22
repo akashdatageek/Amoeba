@@ -32,6 +32,9 @@ def round_row(r, n: int, rnd: dict, mode: str, outcome: str) -> dict:
             "edits": [{"scope": c["scope"], "op": c["op"], "params": c.get("params") or {},
                        "because": c.get("because") or ""} for c in rnd.get("candidates") or [] if c.get("op")],
             "probes": [{k: p[k] for k in PROBE_KEYS if k in p} for p in rnd.get("probes") or []],
+            "control": {k: v for k, v in rnd["control"].items() if k in PROBE_KEYS} if rnd.get("control") else None,
+            "control_skipped": rnd.get("control_skipped") or (                     # D168
+                "the single rung runs no control" if mode == "single" and not rnd.get("control") else None),
             "pick": rnd.get("pick"), "pick_reason": rnd.get("pick_reason") or "", "base": rnd.get("base"),
             "flags": {k: rnd[k] for k in ("complementary", "shared_failure") if k in rnd},
             "step_status": status, "outcome": outcome}

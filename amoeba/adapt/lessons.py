@@ -37,7 +37,7 @@ from pathlib import Path
 from amoeba.adapt.config import adapt_config
 
 ROOT = Path(__file__).resolve().parents[2]
-VERDICTS = ("helped", "hurt", "no_effect", "confounded")
+VERDICTS = ("helped", "hurt", "no_effect", "confounded")    # D168: a verdict without a control is "uncontrolled"
 STATUSES = ("unreviewed", "approved", "rejected", "promoted", "promotion_failed")
 LESSONS = "lessons.jsonl"                                       # D167: one row per lesson
 OLD_KEYS = ("status", "cue", "lesson", "confidence", "lesson_run")   # D167: what a pre-D167 index row held
@@ -69,6 +69,25 @@ def verdict(probe: dict) -> str:
     return "no_effect"
 
 
+# box: control
+def controlled_verdict(probe: dict, control: dict) -> str:
+    """D168: the verdict of an edit against the control (the same start, no edit, re-run once): helped only when it did
+    better than doing nothing; as well as the control is no_effect."""
+    if probe.get("composed_of"):
+        return "confounded"
+    done = probe.get("status") == "done" or bool(probe.get("limited"))
+    c_done = control.get("status") == "done"
+    if done:
+        return "no_effect" if c_done else "helped"
+    if c_done:                                    # doing nothing finished the step; the edit did not
+        return "hurt"
+    more = set(probe.get("cleared") or []) - set(control.get("cleared") or [])
+    worse = set(probe.get("new") or []) - set(control.get("new") or [])
+    if more and worse:
+        return "confounded"
+    return "helped" if more else "hurt" if worse else "no_effect"
+
+
 # box: lessons
 def key_of(cause: str, op: str, scope: str) -> str:
     """The entry id of (cause, op, scope)."""
@@ -77,16 +96,20 @@ def key_of(cause: str, op: str, scope: str) -> str:
 
 # box: lessons
 def round_verdicts(row: dict) -> list[dict]:
-    """[{id, cause, op, scope, verdict, probe}] for every probe of a D162 round row; a composed probe gives a
-    confounded verdict to each edit it combined."""
+    """[{id, cause, op, scope, verdict, raw, controlled, probe}] for every probe of a D162 round row; a composed probe
+    gives a confounded verdict to each edit it combined. D168: with the round's control, `verdict` is the controlled
+    verdict; without one it is `uncontrolled` (`raw`: the rule without a control, kept for the family's counts)."""
     out = []
+    control = row.get("control")
     for p in row.get("probes") or []:
         parts = p.get("composed_of") or [{"scope": p["scope"], "op": p["op"], "params": p.get("params") or {},
                                           "from_lesson": p.get("from_lesson")}]
-        v = verdict(p)
+        raw = verdict(p)
+        v = controlled_verdict(p, control) if control else "uncontrolled"
         for part in parts:
             out.append({"id": key_of(row["cause"], part["op"], part["scope"]), "cause": row["cause"],
                         "op": part["op"], "scope": part["scope"], "params": part.get("params") or {}, "verdict": v,
+                        "raw": raw, "controlled": bool(control),
                         "from_lesson": part.get("from_lesson"),
                         "probe": {k: p.get(k) for k in ("status", "cleared", "kept", "new", "tokens", "samples")}})
     return out
@@ -184,9 +207,24 @@ class LessonLibrary:
             fh.write(json.dumps(line, ensure_ascii=False) + "\n")
 
     @staticmethod
-    def _count(row: dict, v: dict, niche: str, task_id: str, run_id: str, now: str) -> None:
-        row["counts"][v["verdict"]] += 1
-        row["by_niche"].setdefault(niche, dict.fromkeys(VERDICTS, 0))[v["verdict"]] += 1
+    def _count(row: dict, v: dict, niche: str, task_id: str, run_id: str, now: str, lesson: bool = False) -> None:
+        """D168: a family counts every verdict by the rule without a control (`raw`, today's counts) and keeps the
+        controlled ones apart (`controlled`) and how many had no control (`uncontrolled`); a lesson's `counts` hold
+        only controlled verdicts, its `uncontrolled` the raw verdicts of uses without a control."""
+        raw, controlled = v.get("raw", v["verdict"]), v.get("controlled", v["verdict"] != "uncontrolled")
+        if lesson:
+            if controlled:
+                row["counts"][v["verdict"]] += 1
+                row["by_niche"].setdefault(niche, dict.fromkeys(VERDICTS, 0))[v["verdict"]] += 1
+            else:
+                row.setdefault("uncontrolled", dict.fromkeys(VERDICTS, 0))[raw] += 1
+        else:
+            row["counts"][raw] += 1
+            row["by_niche"].setdefault(niche, dict.fromkeys(VERDICTS, 0))[raw] += 1
+            if controlled:
+                row.setdefault("controlled", dict.fromkeys(VERDICTS, 0))[v["verdict"]] += 1
+            else:
+                row["uncontrolled"] = row.get("uncontrolled", 0) + 1
         for k, x in (("task_ids", task_id), ("run_ids", run_id)):
             if x and x not in row[k]:
                 row[k].append(x)
@@ -225,10 +263,10 @@ class LessonLibrary:
             rows[v["id"]] = row
             self._save(rows)
             self._append(v["id"], {"run_id": run_id, "task_id": task_id, "niche": niche, "verdict": v["verdict"],
-                                   "probe": v["probe"], **({"from_lesson": v["from_lesson"]}
+                                   "raw": v.get("raw", v["verdict"]), "probe": v["probe"], **({"from_lesson": v["from_lesson"]}
                                                            if v.get("from_lesson") else {}), "at": now})
             folder = self.root / v["id"]
-            if v["verdict"] == "helped":
+            if v.get("raw", v["verdict"]) == "helped":
                 edit = json.loads((folder / "edit.json").read_text()) if (folder / "edit.json").exists() else \
                     {"cause": v["cause"], "op": v["op"], "scope": v["scope"], "params_that_helped": []}
                 edit["params_that_helped"] = (edit["params_that_helped"] + [v["params"]])[-self.kept:]
@@ -252,8 +290,8 @@ class LessonLibrary:
                         default=0)
             row = {"id": f"{family_id}__L{k}", "family": family_id, **{x: fam[x] for x in ("cause", "op", "scope")},
                    "cue": cue.strip(), "lesson": lesson.strip(), "confidence": confidence, "status": "unreviewed",
-                   "counts": dict.fromkeys(VERDICTS, 0), "by_niche": {}, "task_ids": [], "run_ids": [],
-                   "written_by": run_id, "created_at": now, "updated_at": now}
+                   "counts": dict.fromkeys(VERDICTS, 0), "uncontrolled": dict.fromkeys(VERDICTS, 0), "by_niche": {},
+                   "task_ids": [], "run_ids": [], "written_by": run_id, "created_at": now, "updated_at": now}
             if first is not None:
                 self._use(row, first, niche, task_id, run_id, now, "the round that wrote it")
             rows[row["id"]] = row
@@ -275,9 +313,10 @@ class LessonLibrary:
             return rows[lesson_id]
 
     def _use(self, row: dict, v: dict, niche: str, task_id: str, run_id: str, now: str, how: str) -> None:
-        self._count(row, v, niche, task_id, run_id, now)
+        self._count(row, v, niche, task_id, run_id, now, lesson=True)
         self._append(row["id"], {"run_id": run_id, "task_id": task_id, "niche": niche, "verdict": v["verdict"],
-                                 "probe": v.get("probe") or {}, "how": how, "at": now})
+                                 "raw": v.get("raw", v["verdict"]), "probe": v.get("probe") or {}, "how": how,
+                                 "at": now})
 
     def set_status(self, lesson_id: str, status: str) -> dict:
         """A lesson's status (families have none)."""
@@ -307,7 +346,8 @@ class LessonLibrary:
                     rows[lid] = {"id": lid, "family": f["id"], **{x: f[x] for x in ("cause", "op", "scope")},
                                  "cue": (f.get("cue") or "").strip(), "lesson": text,
                                  "confidence": f.get("confidence"), "status": "unreviewed",
-                                 "counts": dict.fromkeys(VERDICTS, 0), "by_niche": {}, "task_ids": [], "run_ids": [],
+                                 "counts": dict.fromkeys(VERDICTS, 0), "uncontrolled": dict.fromkeys(VERDICTS, 0),
+                                 "by_niche": {}, "task_ids": [], "run_ids": [],
                                  "written_by": f.get("lesson_run"), "migrated_from_status": f.get("status"),
                                  "created_at": f.get("updated_at") or f.get("created_at") or _now(),
                                  "updated_at": _now()}
@@ -343,8 +383,9 @@ class LessonLibrary:
         ev = self.evidence(row["id"])[-self.kept:]
         lines = [f"# Lesson {row['id']}", "", f"Edit {row['op']} ({row['scope']}) for {row['cause']}.", "",
                  f"Status: {row['status']}. Helped {c['helped']}, hurt {c['hurt']}, no effect {c['no_effect']}, "
-                 f"confounded {c['confounded']}; tasks: {len(row['task_ids'])}. Counted only when this lesson was "
-                 "used: the round that wrote it, and probes whose edit cited it.", "",
+                 f"confounded {c['confounded']} (against a control); without a control: "
+                 f"{json.dumps(row.get('uncontrolled') or {})}; tasks: {len(row['task_ids'])}. Counted only when this "
+                 "lesson was used: the round that wrote it, and probes whose edit cited it.", "",
                  f"**Cue:** {row['cue']}", "", f"**Lesson:** {row['lesson']}", "",
                  "## Evidence (latest first)", "",
                  *[f"- {e['at']} · {e['verdict']} · {e.get('how', '')} · run {e['run_id']} · task {e['task_id']} · "
@@ -428,7 +469,8 @@ def learn_from_round(r, row: dict) -> dict:
             out["verdicts"].append({k: v[k] for k in ("id", "op", "scope", "verdict")})
             if v.get("from_lesson") and lib.lesson(v["from_lesson"]):      # D167: a cited use counts for the lesson
                 lib.record_use(v["from_lesson"], v, row["niche"], row["task_id"], run_id)
-        helped = [v for v in round_verdicts(row) if v["verdict"] == "helped"]
+        helped = [v for v in round_verdicts(row) if v["verdict"] == "helped" or       # D168: against the control,
+                  (v["verdict"] == "uncontrolled" and v["raw"] == "helped")]           # or by the rule without one
         if not helped:
             return out
         pick = next((v for v in helped if v["scope"] == row.get("pick")), helped[0])

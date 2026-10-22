@@ -28,7 +28,6 @@ def seed(root, op="add_role_rule", scope="inv", text="add_role_rule (inv): tell 
          status="approved"):
     lib = LessonLibrary(root)
     [v] = round_verdicts(row(dict(p("done"), op=op, scope=scope)))
-    v["controlled"] = True
     lib.record(v, "general", "t0", "r0")
     les = lib.add_lesson(v["id"], "A step keeps calling one tool and never ends.", text, "medium", "r0",
                          first=v, niche="general", task_id="t0")

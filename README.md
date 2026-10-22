@@ -614,6 +614,14 @@ A review of the lesson library and the outer loop (main @ 9f1fb29) found six pla
 
 Design: `docs/design/D167_lesson_identity.md`.
 
+**D168: "helped" is measured against a control (Oct 22).**
+- **The control.** A scoped round adds a control probe: the same starting state, no edit, the step re-run once, measured and undone. It is never picked and counts as a probe for the allowance; when the allowance is short the edits come first.
+- **Helped.** An edit helped only when it ends done and the control did not, or it cleared a signal the control did not clear and added none the control did not add. Doing as well as the control is no effect.
+- **No control.** Without a control the verdict is `uncontrolled`: a lesson keeps it apart, and promotion ignores it.
+- **The setting.** `adapt.yaml probe.control`: `auto` (always with `--lessons-write on`, the default, else off), `always`, `sampled` (with `control_rate`) or `off`.
+
+Design: `docs/design/D168_control_probe.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault
