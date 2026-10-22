@@ -884,6 +884,8 @@ class PlanRunner:
         self.tool_guidance: dict[int, dict[str, str]] = {}  # D154: step -> tool -> one guidance line (add_tool_guidance)
         self.rounds: list[dict] = []                      # D162: every Box 4 round, as written to rounds.jsonl
         self.learned: list[dict] = []                     # D163: per round, the verdicts counted and the lesson written
+        self.lessons_shown: list[str] = []                # D164: lesson ids shown to Box 4's proposers
+        self.lessons_used: list[dict] = []                # D164: {id, step} of a shown lesson whose fix ended done
         self.watch_rules: dict[int, list[dict]] = {}      # D154: step -> reminders plain code adds (add_watch_rule)
         self.scoped_fallbacks: list[dict] = []            # D154: rounds run single because files could not be undone
         self.fault_at_start: dict[int, dict] = {}         # D154: step -> the fault state when its last attempt began
@@ -3001,6 +3003,7 @@ class PlanRunner:
                 "token_allowance": self.token_allowance, "step_shares": self.step_share,      # D151
                 "proposer": self.opt.proposer, "scoped_fallbacks": self.scoped_fallbacks,     # D154
                 "lessons_learned": self.learned,                                               # D163
+                "lessons": {"shown": self.lessons_shown, "used": self.lessons_used},             # D164
                 "make_tool_unavailable": sorted({w for _, w in self.fix_notes if "local tools are off" in w}),   # D145
                 "workarounds": self.workarounds, "tools_made": self.tools_made,
                 "left_on_old_output": self.left_on_old_output()}
@@ -3451,7 +3454,8 @@ class PlanRunner:
         user = render(template, task=self.task.prompt[:1500], step=str(n), card=card, cause=d["cause"],
                       evidence=evidence, attempt=attempt, team=team,
                       tools=f"tools: {tools}\nskills: {', '.join(skills) or 'none'}",
-                      allowed=proposer_allowed(allowed, self.max_num + 1), tried=tried)
+                      allowed=proposer_allowed(allowed, self.max_num + 1), tried=tried,
+                      lessons=self.box4_lessons(d["cause"]))                                # D164: "" when off
         if refused:
             user += ("\n\n# Your previous reply was refused by plain code\n" + "\n".join(f"- {x}" for x in refused)
                      + "\nReply again with one valid edit.")
@@ -3468,6 +3472,24 @@ class PlanRunner:
         self.ep.total_tokens += resp.input_tokens + resp.output_tokens
         self.ep.n_llm_calls += 1
         return resp.content or ""
+
+    # box: lessons_read
+    def box4_lessons(self, cause: str) -> str:
+        """D164: with --lessons on, the approved lessons for this cause ("" otherwise); the ids shown are kept."""
+        if getattr(self.opt, "lessons", "off") != "on":
+            return ""
+        from amoeba.adapt.lessons import LessonLibrary
+        from amoeba.adapt.retrieval import box4_section, retrieve
+        from amoeba.adapt.rounds import niche_of
+        try:
+            entries = retrieve(LessonLibrary(self.opt.lessons_dir), niche_of(self), cause=cause)
+        except Exception as e:                       # an unreadable library never stops a fix
+            self.i.trace.event("lessons_unreadable", {"amoeba.box": "lessons_read", "amoeba.why": str(e)[:200]})
+            return ""
+        for e in entries:
+            if e["id"] not in self.lessons_shown:
+                self.lessons_shown.append(e["id"])
+        return box4_section(entries)
 
     # box: proposer
     def left_on_old_output(self) -> list[dict]:

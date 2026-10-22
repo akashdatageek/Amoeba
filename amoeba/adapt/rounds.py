@@ -47,7 +47,12 @@ def write_round(r, row: dict) -> dict:
             fh.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
         r.log_event("round", row)
     r.rounds.append(row)
-    from amoeba.adapt.lessons import learn_from_round
+    from amoeba.adapt.lessons import key_of, learn_from_round
+    for p in row["probes"]:                              # D164: a shown lesson's edit that ended done
+        k = key_of(row["cause"], p["op"], p["scope"])
+        if p.get("status") == "done" and k in getattr(r, "lessons_shown", []) and \
+                not any(u["id"] == k and u["step"] == row["step"] for u in r.lessons_used):
+            r.lessons_used.append({"id": k, "step": row["step"]})
     out = learn_from_round(r, row)                       # D163: off unless --lessons-write on
     if out["verdicts"] or out["skipped"]:
         r.learned.append({"step": row["step"], **out})

@@ -1217,6 +1217,11 @@ no effect, confounded) and counts it in one library shared by every task, keyed 
 each count is only recorded. When an edit helped, one AI call writes a general lesson, which plain code checks for task
 facts, denied wording and length. Entries wait for the user's approval. Design: docs/design/D163_lessons.md.
 
+**D164, Box 2 and Box 4 read the library (Oct 22).** With --lessons on, plain code shows approved lessons that never
+hurt in this niche to Box 4's proposers (for the stuck step's cause) and to the Planner and observers. A lesson is a
+hint: an edit must still quote this run's evidence. Reading and writing are separate switches, a replay task never
+writes, and with reading off the prompts are unchanged. Design: docs/design/D164_lessons_read.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

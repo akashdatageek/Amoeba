@@ -567,6 +567,21 @@ Design: `docs/design/D162_rounds.md`.
 
 Design: `docs/design/D163_lessons.md`.
 
+**D164: Box 2 and Box 4 read the library (Oct 22).** With `--lessons on` (default off), plain code picks approved
+lessons:
+- **Which.** A lesson is shown when it helped more often than it hurt and never hurt in this run's niche; for Box 4
+  it must also match the stuck step's cause. Same-niche lessons come first, then the most-helped, at most 5 lessons and
+  1,500 characters.
+- **Box 4.** The proposers get them in a "What helped before for this cause" section. An edit must still quote this
+  run's evidence.
+- **Box 2.** The Planner and both observers get them through the drafting prompts' `{lessons}` slot.
+- **Writing.** `--lessons-write on|off` is a separate switch (default on with `--adapt on`). A task with
+  `set: replay` never writes.
+- **Record.** `result.json` lists the lessons shown and each shown lesson whose fix ended done.
+
+With reading off, the prompts are byte-identical to before. `stage_e` passes both flags to both arms. Design:
+`docs/design/D164_lessons_read.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

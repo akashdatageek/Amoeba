@@ -63,7 +63,7 @@ LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_a
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
                  "plan_search", "provider_blocked", "reasoning_refusals", "protocol",
                  "planning_tier", "published_round", "reading_revised", "verifier_independence",
-                 "input_files", "local_step_shares", "resumed_from", "sim_score"}   # D157, D159, D160, D161   # left out of result.json when None (Phase 1 records unchanged)
+                 "input_files", "local_step_shares", "resumed_from", "sim_score", "lessons"}   # D157, D159, D160, D161, D164   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -203,6 +203,25 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         from dataclasses import replace as _replace
         from amoeba.interp.plan_runner import PlanOptions
         plan_options = _replace(plan_options or PlanOptions(), final_check="on")
+    lessons_rec = None                                                  # D164: what the library gave this run
+    if topology == "plan" and plan_options is not None and (plan_options.lessons == "on"
+                                                            or plan_options.lessons_write == "on"):
+        from dataclasses import replace as _replace
+        lessons_rec = {"read": plan_options.lessons, "write": plan_options.lessons_write, "shown": [], "used": []}
+        if task.task_set == "replay" and plan_options.lessons_write == "on":    # the replay set is never learned from
+            plan_options = _replace(plan_options, lessons_write="off")
+            lessons_rec["write"] = "off (replay task)"
+        if plan_options.lessons == "on" and saved_draft is None:
+            from amoeba.adapt.lessons import LessonLibrary
+            from amoeba.adapt.retrieval import box2_section, retrieve
+            shown = retrieve(LessonLibrary(plan_options.lessons_dir), prof.name if prof is not None else "general")
+            text = box2_section(shown)
+            if text:
+                lessons = dict(lessons)
+                for who in ("planner", "agent_observer", "plan_observer"):
+                    lessons[who] = lessons.get(who, "") + text
+                lessons_rec["shown"] = [e["id"] for e in shown]
+                trace.event("lessons_shown", {"amoeba.box": "lessons_read", "amoeba.lessons": lessons_rec["shown"]})
     max_turns = max_turns or default_max_turns          # --max-turns, else a harness default (--option-defaults)
     draft = ep = failed = clarification = None
     answer = error = None
@@ -405,6 +424,11 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
     result.judge_hash = judge
+    if lessons_rec is not None:                                    # D164: the lessons shown (Box 2 and Box 4) and used
+        box4 = ((ep.adaptation or {}).get("lessons") or {}) if ep else {}
+        lessons_rec["shown"] = list(dict.fromkeys(lessons_rec["shown"] + box4.get("shown", [])))
+        lessons_rec["used"] = box4.get("used", [])
+        result.lessons = lessons_rec
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
     if task.sim:                                     # D161: the task's scorer, after the answer is on disk
@@ -665,7 +689,11 @@ def cli_plan_options(args: argparse.Namespace):
                        protocol=getattr(args, "protocol", "auto"),                         # D136, D153 auto
                        planning_tier=getattr(args, "planning_tier", "auto"),                       # D143
                        proposer=getattr(args, "proposer", None) or default_proposer(),               # D154
-                       fix_pick=getattr(args, "fix_pick", "code"), **extra)
+                       fix_pick=getattr(args, "fix_pick", "code"),
+                       lessons=getattr(args, "lessons", "off"),                                        # D164
+                       lessons_write=getattr(args, "lessons_write", None) or
+                       ("on" if getattr(args, "adapt", "off") == "on" else "off"),                      # D163/D164
+                       lessons_dir=getattr(args, "lessons_dir", None), **extra)
 
 
 # box: runresult
@@ -946,6 +974,14 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "arguments and the step ends with a typed Final_Output (D136); without native tool calling the "
                         "steps fall back to legacy and the summary says so; auto (default) = v2 when the run's model "
                         "has supports.tools in models.yaml, legacy otherwise (D153)")
+    p.add_argument("--lessons", choices=["on", "off"], default="off",
+                   help="D164: show approved lessons from the library to Box 2 (Planner and observers) and to Box 4's "
+                        "proposers for the stuck step's cause (default off)")
+    p.add_argument("--lessons-write", choices=["on", "off"], default=None,
+                   help="D163/D164: count every Box 4 verdict in the library and ask the reflector for a lesson when "
+                        "an edit helped (default: on with --adapt on); a task with set: replay never writes")
+    p.add_argument("--lessons-dir", default=None, metavar="DIR",
+                   help="D163: the lesson library folder (default: adapt.yaml lessons.library)")
     p.add_argument("--proposer", choices=["scoped", "single"], default=None,
                    help="plan, --adapt on: Box 4's last rung. scoped = two scoped fix proposers (how the team works / "
                         "what an expert would know), each edit tried from the same starting state, plain code picks; "

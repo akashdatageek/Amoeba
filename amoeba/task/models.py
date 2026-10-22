@@ -356,6 +356,7 @@ class RunResult(BaseModel):
     resumed_from: str | None = None                      # D160: the run this one resumed (--resume)
     judge_hash: str | None = None                        # D161: the frozen judge's hash at run start (eval/judge.py)
     sim_score: dict | None = None                        # D161: the task scorer's result (sim_score.json)
+    lessons: dict | None = None                          # D164: {read, write, shown: [ids], used: [{id, step}]}
     run_id: str
     task_id: str
     draft_source: str | None = None   # D45: the saved draft reused (eval_draft file stem or run id); None = drafted

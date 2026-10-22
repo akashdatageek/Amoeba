@@ -1023,6 +1023,21 @@ BOXES: list[dict] = [
          disposes="Plain code gives the verdicts, counts them, checks the lesson and keeps it unreviewed.",
          anchors=["amoeba/adapt/lessons.py::verdict", "amoeba/adapt/lessons.py::learn_from_round",
                   "amoeba/adapt/lessons.py::LessonLibrary"], guard_anchors=[]),
+    dict(id="lessons_read", view="adapt", title="Box 2 and Box 4 read the library (D164)", kind="code", plan=None,
+         sentence="With --lessons on, shows approved lessons to Box 4's proposers for the stuck step's cause and to the "
+                  "Planner and both observers, picked by plain code.",
+         what=["An entry is shown when it is approved, has a lesson, helped more often than it hurt and never hurt in "
+               "this run's niche (and, for Box 4, has the stuck step's cause). Same-niche entries come first, then "
+               "the most-helped, within a count and a character cap.",
+               "Box 4: a 'What helped before for this cause' section in the proposer prompts; an edit must still "
+               "quote this run's evidence. Box 2: the drafting prompts' existing {lessons} slot.",
+               "--lessons-write (default on with --adapt on) is a separate switch; a replay task never writes. "
+               "result.json lists the lessons shown and each shown lesson whose fix ended done.",
+               "With --lessons off the prompts are byte-identical to before."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code picks the lessons and builds the sections.",
+         anchors=["amoeba/adapt/retrieval.py::retrieve", "amoeba/adapt/retrieval.py::box4_section"],
+         guard_anchors=[]),
     dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorer (D161)", kind="code", plan=None,
          sentence="Hashes every file that judges a run at the start of the run, and scores a task with the scorer it "
                   "names, so a later comparison knows both the score and the judge that gave it.",

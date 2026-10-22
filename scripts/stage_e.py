@@ -53,7 +53,8 @@ def run_dir_of(runs: Path) -> Path | None:
 # box: stage_e
 def arm_command(arm: str, task_file: Path, seed: int, runs: Path, picks: Path, off_run: Path | None,
                 passthrough: list[str], python: str = sys.executable, faults: list[str] | None = None,
-                draft_from: Path | None = None) -> list[str]:
+                draft_from: Path | None = None, lessons: str | None = None,
+                lessons_write: str | None = None) -> list[str]:
     adapt = ["--adapt", "on", "--proposer", arm] if arm in PROPOSER_ARMS else ["--adapt", arm]       # D154
     cmd = [python, "-m", "scripts.run_task", "--tasks", str(task_file), "--seed", str(seed), *adapt,
            "--runs-dir", str(runs), "--picks-file", str(picks), *passthrough]
@@ -63,6 +64,10 @@ def arm_command(arm: str, task_file: Path, seed: int, runs: Path, picks: Path, o
         cmd += ["--drafts-from", str(off_run)]
     for f in faults or []:
         cmd += ["--inject-fault", f]
+    if lessons:                                   # D164: the same reading and writing in both arms
+        cmd += ["--lessons", lessons]
+    if lessons_write:
+        cmd += ["--lessons-write", lessons_write]
     return cmd
 
 
@@ -91,7 +96,8 @@ def arm_env(faults: list[str] | None) -> dict | None:
 
 # box: stage_e
 def run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthrough: list[str],
-              python: str = sys.executable, faults: list[str] | None = None, arms: tuple = ARMS) -> list[dict]:
+              python: str = sys.executable, faults: list[str] | None = None, arms: tuple = ARMS,
+              lessons: str | None = None, lessons_write: str | None = None) -> list[dict]:
     out.mkdir(parents=True, exist_ok=True)
     log, rows = out / "pairs.jsonl", []
     picks = out / "picks.json"
@@ -121,7 +127,8 @@ def run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthro
                 print(f"== start {task_id} seed {seed} {arm} {start}", flush=True)
                 t0 = time.monotonic()
                 rc = subprocess.call(arm_command(arm, task_file, seed, runs, picks, off_run, passthrough, python,
-                                                 faults=faults, draft_from=clean), env=arm_env(faults))
+                                                 faults=faults, draft_from=clean, lessons=lessons,
+                                                 lessons_write=lessons_write), env=arm_env(faults))
                 run = run_dir_of(runs)
                 row = {"task": task_id, "seed": seed, "arm": arm, "run": str(run.resolve()) if run else None, "rc": rc,
                        "start": start, "end": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -153,8 +160,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--arms", choices=["adapt", "proposer"], default="adapt",
                    help="adapt: --adapt off vs on (D117); proposer: --proposer single vs scoped, both adapt on, the "
                         "scoped arm reusing the single arm's draft (D154)")
+    p.add_argument("--lessons", choices=["on", "off"], default=None,
+                   help="D164: --lessons for both arms (the same reading in both)")
+    p.add_argument("--lessons-write", choices=["on", "off"], default=None,
+                   help="D164: --lessons-write for both arms (off keeps a comparison from changing the library)")
     a = p.parse_args(own)
-    for flag in ("--adapt", "--drafts-from", "--runs-dir", "--seed", "--tasks", "--picks-file", "--inject-fault",
+    for flag in ("--lessons", "--lessons-write", "--adapt", "--drafts-from", "--runs-dir", "--seed", "--tasks", "--picks-file", "--inject-fault",
                  *(("--proposer",) if a.arms == "proposer" else ())):
         if flag in passthrough:
             raise SystemExit(f"{flag} is set by the pair runner; leave it out of the pass-through flags")
@@ -166,7 +177,8 @@ def main(argv: list[str] | None = None) -> None:
             except ValueError as e:
                 raise SystemExit(str(e))
     run_pairs(Path(a.tasks), a.ids.split(","), [int(s) for s in a.seeds.split(",")], Path(a.out), passthrough,
-              faults=a.inject_fault, arms=PROPOSER_ARMS if a.arms == "proposer" else ARMS)
+              faults=a.inject_fault, arms=PROPOSER_ARMS if a.arms == "proposer" else ARMS,
+              lessons=a.lessons, lessons_write=a.lessons_write)
 
 
 if __name__ == "__main__":
