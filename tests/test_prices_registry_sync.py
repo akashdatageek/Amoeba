@@ -24,3 +24,10 @@ def test_a_sonnet_and_gemma_run_has_a_cost():
              {"gen_ai.request.model": "gemma-4-31b-it", "gen_ai.usage.input_tokens": 500_000,
               "gen_ai.usage.output_tokens": 10_000}]
     assert estimate(spans, "claude-sonnet-5-5")["cost_usd"] == 3.0
+
+
+def test_a_refused_call_with_no_tokens_does_not_unprice_the_run():
+    spans = [{"gen_ai.request.model": "claude-sonnet-5-5", "gen_ai.usage.input_tokens": 1_000_000,
+              "gen_ai.usage.output_tokens": 0},
+             {"gen_ai.request.model": "some-unpriced-label"}]     # NoModelAvailable: the call never ran
+    assert estimate(spans, "claude-sonnet-5-5")["cost_usd"] == 2.0
