@@ -32,6 +32,8 @@ from pathlib import Path
 
 import yaml
 
+from amoeba.llm.ask import Unreadable, ask, protocol_of                # D141
+from amoeba.task.schemas import FamilyOut, PlanSearchOut, ReadingOut, to_legacy   # D141
 from amoeba.adapt.evidence import KEY_SHAPES
 from amoeba.config.prompts import PROMPT, render
 from amoeba.llm.cache import CacheMiss
@@ -196,9 +198,19 @@ def search_before_planning(task_text: str, interp: dict | None, llm, provider, t
     while d is None and calls < 2:
         if used >= cfg["max_tokens"]:
             break
-        resp = llm.chat_messages([{"role": "user", "content": user}], seed=seed + calls,
-                                 max_tokens=cfg["proposer_max_tokens"], agent_name="plan_searcher", role="planner")
-        calls, used, raw = calls + 1, used + _tokens(resp), resp.content
+        if protocol_of(trace) == "v2":               # D141: a typed reply (ask makes its own repair call)
+            before = trace.total_tokens
+            try:
+                raw = to_legacy("plan_search", ask(llm, "plan_search", [{"role": "user", "content": user}],
+                                                   PlanSearchOut, max_tokens=cfg["proposer_max_tokens"],
+                                                   seed=seed + calls, agent_name="plan_searcher", role="planner"))
+            except Unreadable as e:
+                raw = e.raw
+            calls, used = 2, used + trace.total_tokens - before
+        else:
+            resp = llm.chat_messages([{"role": "user", "content": user}], seed=seed + calls,
+                                     max_tokens=cfg["proposer_max_tokens"], agent_name="plan_searcher", role="planner")
+            calls, used, raw = calls + 1, used + _tokens(resp), resp.content
         d = parse_decision(raw)
     if used > cfg["max_tokens"]:
         rec = {"status": "token_cap", "why": f"planning search used {used} tokens, over its cap of {cfg['max_tokens']}"}

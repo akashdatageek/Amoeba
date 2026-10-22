@@ -14,12 +14,17 @@ limits:                       # checks the fix proposer's edit must pass (amoeba
              "unverified is fine"]
   # The values a code fix may set a step's run option to (amoeba/adapt/fixes.py, rung 1)
   run_options:
-    max_turns: {min: 3, max: 8}
+    max_turns: {min: 3, max: 12}                       # D145 (was max 8): two "more turns" fixes fit per step
     check_retry_turns: {min: 1, max: 3}
     max_input_chars: {min: 3000, max: 20000}           # characters of one input a step is shown (default 6000)
 
 proposer:                     # D129: the fix proposer's reply room (models that think first need more; a reply cut
   max_tokens: 8192            # off is asked once more with twice the room, D27)
+  # D154: two scoped proposers (HOW THE TEAM WORKS / WHAT AN EXPERT WOULD KNOW), each edit probed from the same
+  # starting state, plain code picks; false = one proposer, one edit (D117 D). The CLI's --proposer overrides it.
+  scoped: true
+  # D154: true = after a probe ends done, the other is not run (half the cost of an easy round, no comparison)
+  stop_on_first_done: false
 
 diagnoser:                    # the stuck causes and the edits each allows (amoeba/adapt/stuck.py)
   # tie order when two causes are found at once: missing_input first (a mixed step is fixed for it, then re-checked)
@@ -27,28 +32,33 @@ diagnoser:                    # the stuck causes and the edits each allows (amoe
   # D128: provider_blocked first: while the service refuses the replies, no other fix can be judged
   causes: [provider_blocked, missing_input, capability, missing_data, format, tool_error, checks, max_turns,
            claimed_file_missing]
+  # D154: add_tool_guidance and add_watch_rule are offered only to the scoped proposers (--proposer scoped)
   # Only edits something can apply: code fixes (add_dependency, rerun_upstream, "set_run_option:<name>" for that one
   # option, grant_tool from the pool, make_tool: D125, a written tool or an approved one from the library) and the fix proposer's edits (add_role_rule, add_helper_role, grant_tool,
   # split_step, replan_remaining, work_around). Code fixes come first, the proposer only after them.
   allowed_edits:
-    # D128: the refusals come and go, so the step gets more turns once; then the task stops and says the service
-    # refused the calls (an edit of the team cannot help, and a proposer call could be refused too). In routed mode a
-    # blocked reply already went to another candidate model (amoeba/llm/router.py)
-    provider_blocked: ["set_run_option:max_turns"]
+    # D145 (was D128's "more turns"): (a) the compact prompt variant for the step, (b) another candidate model when
+    # the profile or the allowed models offer one, (c) the task stops with a report naming the refusal categories (an
+    # edit of the team cannot help, and a proposer call could be refused too). In routed mode a blocked reply already
+    # went to another candidate model (amoeba/llm/router.py)
+    provider_blocked: [compact_prompt, switch_model]
     missing_input: [add_dependency, rerun_upstream, "set_run_option:max_input_chars", add_role_rule, split_step,
                     replan_remaining]
-    capability: [grant_tool, make_tool, add_helper_role, work_around, split_step, replan_remaining]
+    capability: [grant_tool, make_tool, add_tool_guidance, add_helper_role, work_around, split_step, replan_remaining]
     # D127: web tools when the step's helpers lack them, more turns, then the proposer (a narrower done_when with the
     # gap stated is a work_around)
-    missing_data: [grant_tool, "set_run_option:max_turns", add_role_rule, work_around, split_step, replan_remaining]
-    tool_error: [add_role_rule, grant_tool, "set_run_option:max_turns", add_helper_role, replan_remaining]
+    missing_data: [grant_tool, "set_run_option:max_turns", add_role_rule, add_tool_guidance, work_around, split_step,
+                   replan_remaining]
+    tool_error: [add_role_rule, grant_tool, add_tool_guidance, "set_run_option:max_turns", add_helper_role,
+                 replan_remaining]
     # D129: replan_remaining is the proposer's last edit for every cause but provider_blocked
-    checks: ["set_run_option:check_retry_turns", "set_run_option:max_input_chars", add_role_rule, split_step,
-             add_helper_role, replan_remaining]
-    max_turns: ["set_run_option:max_turns", split_step, add_role_rule, replan_remaining]
+    checks: ["set_run_option:check_retry_turns", "set_run_option:max_input_chars", add_role_rule, add_watch_rule,
+             split_step, add_helper_role, replan_remaining]
+    max_turns: ["set_run_option:max_turns", split_step, add_role_rule, add_watch_rule, replan_remaining]
     # D123: a reply plain code could not read (a section heading missing even after the unglue and the repair call)
-    format: ["set_run_option:max_turns", add_role_rule, split_step, replan_remaining]
-    claimed_file_missing: [add_role_rule, grant_tool, split_step, replan_remaining]
+    format: ["set_run_option:max_turns", add_role_rule, add_watch_rule, split_step, replan_remaining]
+    claimed_file_missing: [add_role_rule, grant_tool, add_tool_guidance, add_watch_rule, split_step,
+                           replan_remaining]
   max_evidence: 8             # evidence lines kept per diagnosis
   # D128: a lacked line that names the helper's own turns is running out of turns (signal max_turns), not a tool
   out_of_turns_phrases: [turn budget, turns budget, turn limit, turns limit, out of turns, ran out of turns,
@@ -69,22 +79,68 @@ tool_writer:                  # D125: Box 4 writes a missing tool (amoeba/adapt/
     csv: []
     json: []
 
+# D165: compose — when the two probes of a scoped round were complementary (each cleared a different signal) and
+# neither recovered the step, a third probe applies both edits from the same starting state; it is kept when it ends
+# done, or clears more signals than either probe alone and adds none. Plan edits are never composed. It counts as a
+# probe toward the fix tokens and dollars, and runs only when one more probe fits the allowance.
+compose:
+  enabled: false
+
+# D163: the lesson library (amoeba/adapt/lessons.py). One library for every task: an entry is (cause, op, scope) and
+# the niche of each count is recorded, never used to split. Box 4 counts every verdict of every round (helped, hurt,
+# no_effect, confounded) with --lessons-write on, and asks the reflector for a lesson only when an edit helped.
+lessons:
+  library: "data/lessons"     # index.jsonl + one folder per entry; entries start "unreviewed" (scripts/lessons.py)
+  max_chars: 300              # a cue or a lesson the reflector writes
+  reflector_max_tokens: 1024  # the reflector's reply room
+  lock_timeout_s: 30          # how long a writer waits for the library's file lock
+  evidence_kept: 20           # evidence lines shown in EXPERIENCE.md (all are kept in evidence.jsonl)
+  max_entries: 5              # D164: lessons shown to one prompt
+  max_section_chars: 1500     # D164: characters of the lessons section in one prompt
+
+# D166: general settings the outer loop (scripts/promote.py) may change, after testing on the replay set and only
+# when the user applies its report. Empty = today's behaviour. planner_rules go to the Planner and both observers
+# ("Rules learned from earlier tasks"); tool_guidance (tool -> one line) to every helper that holds the tool.
+promoted:
+  planner_rules: []
+  tool_guidance: {}
+
+# D166: the outer loop (scripts/promote.py), run by hand, never during a task. All decisions are plain code.
+promote:
+  min_helped: 3               # an approved entry is a candidate after helping this often ...
+  min_tasks: 2                # ... on at least this many different tasks, and with hurt 0 in every niche
+  seeds: 3                    # sim seeds per replay task, in both arms
+  max_task_drop: 0.05         # no replay task's mean score may drop by more than this
+  max_text_chars: 300         # a planner rule or a tool-guidance line the proposal writes
+  proposal_max_tokens: 1024   # the proposal call's reply room
+  dir: "promotions"           # reports, patches, the temporary configs and the arms' runs
+
 run_guard:                    # D122: limits that must not throw away nearly finished work (amoeba/llm/limits.py)
   stall_calls: 60             # stop a plan run after this many model calls with no progress (0 = off; calls, never tokens)
   finish_share: 0.85          # with a hard cap (--max-tokens-per-run / --max-calls-per-run): finish mode after this share
+  # D151: with --max-tokens-per-run, each step may spend (attempts, fixes, rework) this times its fair share of what
+  # is left when it starts: (cap - used) / steps not yet run. A step that reaches it stops retrying (kept_going, with
+  # the reason) and the rest of the cap stays for the steps not yet run. 1.5 lets a hard step borrow half a share.
+  step_share: 1.5
 
 adapt:                        # D117 Stage C: in-task code fixes (--adapt on); all limits are enforced by plain code
   max_fixes_per_step: 3       # fixes tried for one stuck step (a re-run of its upstream step counts as one)
   max_fixes_per_task: 8       # fixes tried in one task
-  max_tokens_per_task: 200000 # tokens all fix attempts of one task may use (checked before each fix)
+  # D151 (was max_tokens_per_task: 200000, a fixed number): the tokens all fix attempts of one task may use are this
+  # many times the run's average step-attempt cost so far (checked before each fix). A fix re-runs the step, and a
+  # re-run with more turns or a longer input costs about 1.5-2 first attempts, plus a proposer call: 6 attempts' worth
+  # is room for about three fixes, the per-step limit, on any model.
+  fix_tokens_per_attempt: 6
   max_usd_per_task: 1.0       # the same in dollars, when the model has a price (amoeba/config/prices.yaml)
   more_turns: 3               # rung 1: turns added by a "more turns" fix (capped by limits.run_options.max_turns)
   more_retry_turns: 1         # rung 1: retry turns added (capped by check_retry_turns)
   input_factor: 2             # rung 1: a shortened input's limit is multiplied by this (capped by max_input_chars)
   max_added_helpers: 2        # D117 D (user): helpers the fix proposer may add (add_helper_role) in one task
   max_fixes_per_substep: 2    # D129: a step made by a split or a re-plan starts its own count (it used to inherit)
-  tokens_share_of_run_cap: 0.25   # D129: with --max-tokens-per-run, the fixes may use this share of it if larger
-  stop_when_exhausted: true   # D117 D: the code fixes, then the fix proposer; none recovers the step → the task stops with a report
+  # D117 D: the code fixes, then the fix proposer; none recovers the step → the task stops with a report. D145: this
+  # applies only with --failed-step run; under D133 (dependents, the default) the step is reported as kept_going and
+  # only its dependents are skipped. false means "never stop" in both modes. A provider_blocked step always stops.
+  stop_when_exhausted: true
 
 # D95, kept by D117: where the hash-chained event log is copied off the container. The log itself is each run's
 # events.jsonl, written by the stuck watch, the fixes and the stops (amoeba/interp/plan_runner.py; checked by

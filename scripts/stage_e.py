@@ -27,6 +27,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ARMS = ("off", "on")
+PROPOSER_ARMS = ("single", "scoped")    # D154: --arms proposer: both --adapt on, Box 4's last rung differs
+CONFIG_ARMS = ("current", "changed")    # D166: --arms config: today's adapt.yaml vs a temporary copy (--config-b)
 
 
 # box: stage_e
@@ -52,16 +54,35 @@ def run_dir_of(runs: Path) -> Path | None:
 # box: stage_e
 def arm_command(arm: str, task_file: Path, seed: int, runs: Path, picks: Path, off_run: Path | None,
                 passthrough: list[str], python: str = sys.executable, faults: list[str] | None = None,
-                draft_from: Path | None = None) -> list[str]:
-    cmd = [python, "-m", "scripts.run_task", "--tasks", str(task_file), "--seed", str(seed), "--adapt", arm,
+                draft_from: Path | None = None, lessons: str | None = None,
+                lessons_write: str | None = None) -> list[str]:
+    adapt = ["--adapt", "on", "--proposer", arm] if arm in PROPOSER_ARMS else \
+        [] if arm in CONFIG_ARMS else ["--adapt", arm]                                         # D154, D166
+    cmd = [python, "-m", "scripts.run_task", "--tasks", str(task_file), "--seed", str(seed), *adapt,
            "--runs-dir", str(runs), "--picks-file", str(picks), *passthrough]
     if draft_from is not None:                    # D119: an injected pair reuses the clean off run's draft
         cmd += ["--drafts-from", str(draft_from)]
-    elif arm == "on":
+    elif arm in ("on", PROPOSER_ARMS[1], CONFIG_ARMS[1]):   # the second arm reuses the first arm's draft
         cmd += ["--drafts-from", str(off_run)]
     for f in faults or []:
         cmd += ["--inject-fault", f]
+    if lessons:                                   # D164: the same reading and writing in both arms
+        cmd += ["--lessons", lessons]
+    if lessons_write:
+        cmd += ["--lessons-write", lessons_write]
     return cmd
+
+
+# box: stage_e
+def arm_record(run: Path | None, passthrough: list[str]) -> dict:
+    """D154: what the report counts per arm: the local-tools mode both arms share (from the pass-through flags) and
+    the Box 4 rounds that fell back to single because files could not be undone."""
+    mode = passthrough[passthrough.index("--local-tools-mode") + 1] if "--local-tools-mode" in passthrough else None
+    fb = None
+    if run is not None and (run / "result.json").exists():
+        a = json.loads((run / "result.json").read_text(encoding="utf-8")).get("adaptation") or {}
+        fb = len(a.get("scoped_fallbacks") or [])
+    return {"local_tools_mode": mode, "scoped_fallbacks": fb}
 
 
 # box: stage_e
@@ -70,14 +91,19 @@ def fault_label(faults: list[str]) -> str:
 
 
 # box: stage_e
-def arm_env(faults: list[str] | None) -> dict | None:
-    """The environment of an injected arm: this process's, plus AMOEBA_TEST_FAULTS=1 (None: inherit unchanged)."""
-    return {**os.environ, "AMOEBA_TEST_FAULTS": "1"} if faults else None
+def arm_env(faults: list[str] | None, config_b: str | None = None, arm: str | None = None) -> dict | None:
+    """The environment of an arm: this process's, plus AMOEBA_TEST_FAULTS=1 for an injected arm and, D166, the
+    temporary adapt.yaml for the "changed" config arm (None: inherit unchanged)."""
+    extra = {**({"AMOEBA_TEST_FAULTS": "1"} if faults else {}),
+             **({"AMOEBA_ADAPT_CONFIG": str(config_b)} if config_b and arm == CONFIG_ARMS[1] else {})}
+    return {**os.environ, **extra} if extra else None
 
 
 # box: stage_e
 def run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthrough: list[str],
-              python: str = sys.executable, faults: list[str] | None = None) -> list[dict]:
+              python: str = sys.executable, faults: list[str] | None = None, arms: tuple = ARMS,
+              lessons: str | None = None, lessons_write: str | None = None,
+              config_b: str | None = None) -> list[dict]:
     out.mkdir(parents=True, exist_ok=True)
     log, rows = out / "pairs.jsonl", []
     picks = out / "picks.json"
@@ -87,38 +113,41 @@ def run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthro
         for seed in seeds:
             off_run, clean = None, None
             if faults:
-                clean = run_dir_of(out / "off" / f"{task_id}.s{seed}")
+                clean = run_dir_of(out / arms[0] / f"{task_id}.s{seed}")
                 if clean is None:
                     print(f"== skip {task_id} seed {seed} {label}: no clean off run to reuse; run the clean pair "
                           f"first", flush=True)
                     continue
-            for arm in ARMS:
+            for arm in arms:
                 runs = out / arm / (f"{task_id}.s{seed}" + (f".{label}" if label else ""))
                 done = run_dir_of(runs)
                 if done is not None:
-                    off_run = done if arm == "off" else off_run
+                    off_run = done if arm == arms[0] else off_run
                     print(f"== skip {task_id} seed {seed} {arm}: {done.name} exists", flush=True)
                     continue
-                if arm == "on" and off_run is None and not faults:
-                    print(f"== skip {task_id} seed {seed} on: the off arm left no run to reuse", flush=True)
+                if arm == arms[1] and off_run is None and not faults:
+                    print(f"== skip {task_id} seed {seed} {arm}: the {arms[0]} arm left no run to reuse", flush=True)
                     continue
                 runs.mkdir(parents=True, exist_ok=True)
                 start = datetime.now(timezone.utc).isoformat(timespec="seconds")
                 print(f"== start {task_id} seed {seed} {arm} {start}", flush=True)
                 t0 = time.monotonic()
                 rc = subprocess.call(arm_command(arm, task_file, seed, runs, picks, off_run, passthrough, python,
-                                                 faults=faults, draft_from=clean), env=arm_env(faults))
+                                                 faults=faults, draft_from=clean, lessons=lessons,
+                                                 lessons_write=lessons_write),
+                                     env=arm_env(faults, config_b=config_b, arm=arm))
                 run = run_dir_of(runs)
                 row = {"task": task_id, "seed": seed, "arm": arm, "run": str(run.resolve()) if run else None, "rc": rc,
                        "start": start, "end": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                        "wall_s": round(time.monotonic() - t0, 1)}
                 if faults:
                     row.update(fault=label, faults=list(faults), draft_from=str(clean.resolve()))
+                row.update(arm_record(run, passthrough))                                             # D154
                 rows.append(row)
                 with open(log, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps(row) + "\n")
                 print(f"== done {task_id} seed {seed} {arm} rc={rc} {row['wall_s']}s", flush=True)
-                if arm == "off":
+                if arm == arms[0]:
                     off_run = run
     return rows
 
@@ -135,8 +164,18 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--inject-fault", action="append", default=[], metavar="CAUSE:STEP[:N]",
                    help="D119 (test-only): run injected pairs with this fault (repeatable); both arms reuse the clean "
                         "off run's draft from --out")
+    p.add_argument("--config-b", default=None, metavar="YAML",
+                   help="D166, with --arms config: the changed arm's adapt.yaml (a temporary copy)")
+    p.add_argument("--arms", choices=["adapt", "proposer", "config"], default="adapt",
+                   help="adapt: --adapt off vs on (D117); proposer: --proposer single vs scoped, both adapt on, the "
+                        "scoped arm reusing the single arm's draft (D154)")
+    p.add_argument("--lessons", choices=["on", "off"], default=None,
+                   help="D164: --lessons for both arms (the same reading in both)")
+    p.add_argument("--lessons-write", choices=["on", "off"], default=None,
+                   help="D164: --lessons-write for both arms (off keeps a comparison from changing the library)")
     a = p.parse_args(own)
-    for flag in ("--adapt", "--drafts-from", "--runs-dir", "--seed", "--tasks", "--picks-file", "--inject-fault"):
+    for flag in ("--lessons", "--lessons-write", "--adapt", "--drafts-from", "--runs-dir", "--seed", "--tasks", "--picks-file", "--inject-fault",
+                 *(("--proposer",) if a.arms == "proposer" else ())):
         if flag in passthrough:
             raise SystemExit(f"{flag} is set by the pair runner; leave it out of the pass-through flags")
     if a.inject_fault:
@@ -147,7 +186,8 @@ def main(argv: list[str] | None = None) -> None:
             except ValueError as e:
                 raise SystemExit(str(e))
     run_pairs(Path(a.tasks), a.ids.split(","), [int(s) for s in a.seeds.split(",")], Path(a.out), passthrough,
-              faults=a.inject_fault)
+              faults=a.inject_fault, arms={"proposer": PROPOSER_ARMS, "config": CONFIG_ARMS}.get(a.arms, ARMS),
+              lessons=a.lessons, lessons_write=a.lessons_write, config_b=a.config_b)
 
 
 if __name__ == "__main__":

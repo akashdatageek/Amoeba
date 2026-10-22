@@ -22,13 +22,15 @@ from amoeba.config.io import dump_yaml
 from amoeba.config.schema import Limits
 from amoeba.interp.runtime import Interpreter
 from amoeba.interp.trace import TraceWriter
-from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, describe_api_error
+from amoeba.llm.client import LLMClient, OpenAICompatibleClient, api_error, describe_api_error, quota_exhausted
+from amoeba.llm.anthropic_client import AnthropicClient, is_anthropic, make_client
 from amoeba.llm.toy_mock import toy_mock_client
 from amoeba.safety.envelope import Envelope
 from amoeba.task.draft import DraftError, draft_team, toolbox_text
 from amoeba.task.plan_search import add_findings, search_before_planning, with_used_in, without_plan_ids
 from amoeba.task.interpret import (NeedsClarification, apply_clarify, ask_all, ask_one, classify_family,
-                                   enforce_opening, open_questions, opening_line, read_task, with_note)
+                                   enforce_opening, open_questions, opening_line, read_task, task_note,
+                                   with_note)
 from amoeba.config.niche import add_done_clauses, environment_text, load_profile
 from amoeba.memory.context import load_context, standards_slots
 from amoeba.interp.trace import TracedLLM
@@ -41,19 +43,27 @@ from amoeba.tools.registry import ToolRegistry, default_registry
 from amoeba.interp.provenance import total as total_provenance
 from amoeba.task.saved_drafts import load_saved_drafts, pick
 from amoeba.llm.cache import CachedLLM, CachedProvider, CacheMiss
+from amoeba.task.inputs import copy_inputs, inputs_text
+from amoeba.eval.judge import judge_hash
+from amoeba.adapt.rounds import close_rounds
+from amoeba.eval.sim_score import score_run
 from amoeba.llm.limits import RunLimitReached, RunLimits, describe, estimate
-from amoeba.llm.profiles import ROLE_GROUPS, build_router, get_profile
+from amoeba.llm.profiles import ROLE_GROUPS, attach_verifier, build_router, get_profile
+from amoeba.interp.plan_runner import verifier_independence   # D146
 from amoeba.tools.web import TavilyProvider, web_registry
-from amoeba.pool.stock import PoolSetup, SharedPicks, stock_toolbox
+from amoeba.pool.stock import split_by_role, PoolSetup, SharedPicks, stock_toolbox
 from amoeba.localtools.gate import SandboxRequired, require_sandbox
 from amoeba.localtools.toolbox import LocalSetup, LocalToolbox
 from amoeba.adapt.faults import check_flag
 from amoeba.adapt.config import adapt_config
+from datetime import date
 
 
-LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached"}
+LOCAL_FIELDS = {"files_created", "local_tool_calls", "local_refusals", "skills_attached", "local_step_shares"}
 PHASE2_FIELDS = {"disabled_tools", "routing", "deliverables", "requirement_status", "stuck", "adaptation", "faults", "run_guard",
-                 "plan_search", "provider_blocked"}   # left out of result.json when None (Phase 1 records unchanged)
+                 "plan_search", "provider_blocked", "reasoning_refusals", "protocol",
+                 "planning_tier", "published_round", "reading_revised", "verifier_independence",
+                 "input_files", "local_step_shares", "resumed_from", "sim_score", "lessons"}   # D157, D159, D160, D161, D164   # left out of result.json when None (Phase 1 records unchanged)
 
 
 
@@ -73,9 +83,35 @@ def planned_model(llm) -> str | None:
     if isinstance(llm, ModelRouter):
         names = [n for n in (llm.profile_allowed or llm.allowed or []) if n in llm.registry]
         return llm.registry[names[0]].model if len(names) == 1 else None
-    if isinstance(llm, (OpenAICompatibleClient, CachedLLM)):
+    if isinstance(llm, (OpenAICompatibleClient, AnthropicClient, CachedLLM)):
         return getattr(llm, "model", None) or None
     return None
+
+
+# box: runresult
+def used_models(trace) -> dict[str, list[str]]:
+    """D153: per helper (gen_ai.agent.id), the models its live calls were answered by, most-used first (the response
+    model, else the requested one)."""
+    from collections import Counter
+    by: dict[str, Counter] = {}
+    for s in trace.spans("chat"):
+        aid, m = s.get("gen_ai.agent.id"), s.get("gen_ai.response.model") or s.get("gen_ai.request.model")
+        if aid and m:
+            by.setdefault(aid, Counter())[m] += 1
+    return {a: [m for m, _ in c.most_common()] for a, c in by.items()}
+
+
+# box: runresult
+def relabel_team(cfg, trace) -> bool:
+    """D153: after the run, each helper's team.yaml `model` names the model(s) its calls actually used (a routed run,
+    per-role models, a fallback or a switch_model fix can differ from the planned label); a helper with no calls keeps
+    the planned label. True when a label changed."""
+    used, changed = used_models(trace), False
+    for aid, a in cfg.agents.items():
+        label = ", ".join(used.get(aid) or [])
+        if label and label != a.model:
+            a.model, changed = label, True
+    return changed
 
 
 # box: ov_leave, capreq, runresult
@@ -85,7 +121,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             saved_draft=None, limits: RunLimits | None = None, ask=None, pool: PoolSetup | None = None,
             local: LocalSetup | None = None, equal_tools: bool = False, picks_file: str | None = None,
             picks_only: bool = False, timezone: str | None = None, interpret: bool = False,
-            context=None, disabled_tools=(),
+            context=None, disabled_tools=(), today=None, resumed_from: str | None = None,
+            sim_seed: int | None = None,
             cli_explicit: frozenset = frozenset(), max_turns: int | None = None,
             default_max_turns: int | None = None, family_classify: bool = False,
             niche=None, deliverable_check: bool = False,
@@ -121,6 +158,14 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     trace = TraceWriter(run_dir / "trace.jsonl", episode_id=run_id, log_content=log_content,
                         stamp={"amoeba.profile": getattr(llm, "profile", None)})   # D54: on every line
     trace.limits = limits          # D47: checked before every LLM call when set
+    inputs = copy_inputs(task.files, run_dir / "workspace") if task.files else []    # D157: before any call
+    judge = judge_hash()["sha256"]                                                   # D161: the frozen judge
+    trace.event("judge_hash", {"amoeba.box": "frozen_judge", "amoeba.judge_hash": judge})
+    if inputs:
+        trace.event("input_files", {"amoeba.box": "interpret", "amoeba.files": inputs})
+    if topology == "plan":
+        plan_options = resolve_protocol(plan_options, llm, trace)          # D153: auto → v2 when the model has tools
+    trace.protocol = getattr(plan_options, "protocol", "legacy") if topology == "plan" else "legacy"   # D141
     if hasattr(llm, "begin_run"):  # D97: the router's account for this run (data class)
         llm.begin_run(data_class="sensitive" if "sensitive" in (task.tags or []) else "normal", role_prefs=None)
     t0 = time.perf_counter()
@@ -158,6 +203,31 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         from dataclasses import replace as _replace
         from amoeba.interp.plan_runner import PlanOptions
         plan_options = _replace(plan_options or PlanOptions(), final_check="on")
+    rules = ((adapt_config().get("promoted") or {}).get("planner_rules") or []) if topology == "plan" else []
+    if rules and saved_draft is None:                                   # D166: rules the user applied from a promotion
+        lessons = dict(lessons)
+        text = "\n\n# Rules learned from earlier tasks\n" + "\n".join(f"- {x}" for x in rules)
+        for who in ("planner", "agent_observer", "plan_observer"):
+            lessons[who] = lessons.get(who, "") + text
+    lessons_rec = None                                                  # D164: what the library gave this run
+    if topology == "plan" and plan_options is not None and (plan_options.lessons == "on"
+                                                            or plan_options.lessons_write == "on"):
+        from dataclasses import replace as _replace
+        lessons_rec = {"read": plan_options.lessons, "write": plan_options.lessons_write, "shown": [], "used": []}
+        if task.task_set == "replay" and plan_options.lessons_write == "on":    # the replay set is never learned from
+            plan_options = _replace(plan_options, lessons_write="off")
+            lessons_rec["write"] = "off (replay task)"
+        if plan_options.lessons == "on" and saved_draft is None:
+            from amoeba.adapt.lessons import LessonLibrary
+            from amoeba.adapt.retrieval import box2_section, retrieve
+            shown = retrieve(LessonLibrary(plan_options.lessons_dir), prof.name if prof is not None else "general")
+            text = box2_section(shown)
+            if text:
+                lessons = dict(lessons)
+                for who in ("planner", "agent_observer", "plan_observer"):
+                    lessons[who] = lessons.get(who, "") + text
+                lessons_rec["shown"] = [e["id"] for e in shown]
+                trace.event("lessons_shown", {"amoeba.box": "lessons_read", "amoeba.lessons": lessons_rec["shown"]})
     max_turns = max_turns or default_max_turns          # --max-turns, else a harness default (--option-defaults)
     draft = ep = failed = clarification = None
     answer = error = None
@@ -170,6 +240,7 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     search_rec = None             # D120: the search before planning (None: --plan-search off)
     cfg = None
     stated: dict = {}
+    protocol = None                                   # D136: set once the plan options are resolved
     try:
         if saved_draft is not None:   # D45: reuse a saved Box 2 draft; no drafting call is made
             draft = saved_draft.draft
@@ -179,7 +250,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             toolbox = toolbox_text(envelope, web="web_search" in tools, local=local is not None, pool=pool is not None,
                                    disabled=disabled_tools, turns=max_turns or Limits().max_turns)   # D130
             if interpret:             # D77: what the task is about is settled before the Planner drafts
-                interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed, environment=env_text)
+                interp = read_task(task.prompt, TracedLLM(llm, trace), context, seed,
+                                   environment=env_text + inputs_text(inputs))                     # D157
                 if interp["ambiguous"] and clarify:              # D116: answers given with --clarify
                     interp = apply_clarify(interp, clarify)
                     if interp.get("clarified"):
@@ -209,9 +281,14 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                                                     web.provider if web is not None else None, trace, seed)
                 lessons = add_findings(lessons, search_rec)
             task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})
+            tier = getattr(plan_options, "planning_tier", "auto") if topology == "plan" else "auto"   # D143
             draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                quality_gate=quality_gate, toolbox=toolbox, interpretation=interp,   # D68, D77
-                               lessons=lessons)                                                       # D82
+                               lessons=lessons, planning_tier=tier, inputs=inputs)                   # D82, D157
+            if (draft.reading_revision or {}).get("accepted"):    # D143: the planner's reading, accepted by code
+                old = task_note(interp)
+                interp = draft.interpretation
+                task = task.model_copy(update={"prompt": task.prompt.replace(old, task_note(interp))})
             draft.plan_search = with_used_in(search_rec, draft)                                        # D120
             if ask is not None:       # D53: the user reads the draft's intake before Box 3 runs
                 print(intake_text(draft))
@@ -222,7 +299,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
                     task = task.model_copy(update={"prompt": f"{task.prompt}\n\nUser clarification: {clarification}"})
                     draft = draft_team(task, llm, envelope, trace, seed, prompts=draft_prompts, max_tokens=max_tokens,
                                        quality_gate=quality_gate, max_rounds=1, history=draft.raw_draft,
-                                       toolbox=toolbox, interpretation=interp, lessons=lessons)
+                                       toolbox=toolbox, interpretation=interp, lessons=lessons, planning_tier=tier,
+                                       inputs=inputs)
                     draft.plan_search = with_used_in(search_rec, draft)                                # D120
         task = task.model_copy(update={"prompt": with_note(task.prompt, interp)})    # D77: Box 3 reads it too
         if prof is not None and prof.done_when:           # D102: what "done" means here, on the answer step(s)
@@ -234,13 +312,17 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             for a in cfg.agents.values():
                 a.limits.max_turns = max_turns
         team_id = cfg.team_id
+        if inputs:                                        # D157: every helper's role card lists the given files
+            for a in cfg.agents.values():
+                a.pool.append({"kind": "inputs", "id": "inputs", "name": "input files", "text": inputs_text(inputs)})
         requests = [q.model_copy(deep=True) for q in work.capability_requests]
         picks = SharedPicks(picks_file, task.id) if picks_file else None           # D70
         if pool is not None or box is not None:   # D56: Box 3 starts by stocking the toolbox, before the runner
             tools, pool_summary = stock_toolbox(requests, cfg, tools, llm, trace, pool, seed, local=box, picks=picks)
         # D61: what became of each request, for the step contract (an unfilled one is a capability the helper lacks)
-        cfg.meta["capability_requests"] = [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical,
-                                            "status": q.status, "reason": q.reason} for q in requests]
+        cfg.meta["capability_requests"] = split_by_role(                          # D153: one row per role named
+            [{"name": q.name, "for_role": q.for_role, "canonical": q.canonical, "status": q.status, "reason": q.reason}
+             for q in requests], [a.name for a in cfg.agents.values()])
         label = planned_model(llm)                        # D131: the model the calls will go to, not the default
         if label:
             for a in cfg.agents.values():
@@ -255,9 +337,14 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
             web = getattr(tools, "web", None)
             if workspace_sources and box is not None and web is not None and topology == "plan":   # D107
                 web.on_data = lambda rec, _b=box, _w=web: _b.save_source(rec, _w)
+            plan_options = resolve_native(plan_options, llm, trace)                   # D132
+            protocol = protocol_used(plan_options)                                     # D136
             ep = Interpreter(llm, tools, trace, run_dir=run_dir, plan_options=plan_options, equal_tools=equal_tools,
-                             stock=restock, max_agents=envelope.max_agents, timezone=timezone).run(cfg, task, seed)
+                             stock=restock, max_agents=envelope.max_agents, timezone=timezone,
+                             today=today).run(cfg, task, seed)                       # D160: a resumed run's date
             answer, error = ep.answer, ep.error
+            if relabel_team(cfg, trace):                         # D153: the models the helpers' calls really used
+                dump_yaml(cfg, run_dir / "team.yaml")
             answer, stated = enforce_opening(answer, interp)     # D77: an assumed subject is stated, by plain code
             if stated:
                 trace.event("assumption_stated", {"amoeba.line": opening_line(interp), **{
@@ -275,8 +362,8 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     except Exception as e:            # D57: the model service failed after its retries (drafting or the pool pick)
         if not api_error(e):
             raise
-        error = f"api: {describe_api_error(e)}"
-        trace.event("api_error", {"error.type": error[:300]})
+        error = ("quota_exhausted: " if quota_exhausted(e) else "api: ") + describe_api_error(e)   # D160
+        trace.event("quota_exhausted" if quota_exhausted(e) else "api_error", {"error.type": error[:300]})
     finally:
         # a failed draft is kept too: the error and every round up to it
         saved = draft.model_dump(mode="json") if draft else \
@@ -331,11 +418,31 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
         faults=(ep.faults or None) if ep and topology == "plan" else None,              # D119
         run_guard=(ep.run_guard or None) if ep and topology == "plan" else None,        # D122
         provider_blocked=getattr(trace, "provider_blocked", 0) or None,                # D128
+        reasoning_refusals=getattr(trace, "reasoning_refusals", None) or None,         # D134
+        protocol=protocol,                                                             # D136
+        input_files=inputs or None,                                                    # D157
+        resumed_from=resumed_from,                                                     # D160
         plan_search=(draft.plan_search if draft else search_rec),                       # D120
+        planning_tier=draft.planning_tier if draft and topology == "plan" else None,     # D143
+        verifier_independence=(verifier_independence(ep.steps) or None) if ep and topology == "plan" else None,  # D146
+        published_round=draft.published_round if draft else None,
+        reading_revised=draft.reading_revision if draft else None,
         **local_out)
     # D59: the local-tools fields exist only when --local-tools is on; off, result.json is as before
+    result.judge_hash = judge
+    if lessons_rec is not None:                                    # D164: the lessons shown (Box 2 and Box 4) and used
+        box4 = ((ep.adaptation or {}).get("lessons") or {}) if ep else {}
+        lessons_rec["shown"] = list(dict.fromkeys(lessons_rec["shown"] + box4.get("shown", [])))
+        lessons_rec["used"] = box4.get("used", [])
+        result.lessons = lessons_rec
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
+    if task.sim:                                     # D161: the task's scorer, after the answer is on disk
+        result.sim_score = score_run(run_dir, task, seed if sim_seed is None else sim_seed, judge)
+        exclude.discard("sim_score")
+        (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None),
+                                             encoding="utf-8")
+    close_rounds(run_dir, task.id, result.sim_score, judge, result.status)          # D162: when Box 4 ran a round
     return result
 
 
@@ -348,6 +455,66 @@ def models_of(llm, trace) -> dict:
             requested = {"all": asked[0]} if len(asked) == 1 else {"calls": asked}
     returned = sorted({s["gen_ai.response.model"] for s in trace.spans("chat") if s.get("gen_ai.response.model")})
     return {"requested": requested, "returned": returned}
+
+
+# box: runresult
+def protocol_used(plan_options) -> dict | None:
+    """D136: the step protocol asked for and the one used (v2 needs native tool calling); None for legacy. D153: under
+    --protocol auto, `asked` is "auto" and `why` says what the model's registry entry decided."""
+    asked = getattr(plan_options, "protocol", "legacy") if plan_options is not None else "legacy"
+    auto = getattr(plan_options, "protocol_from", "") == "auto"
+    if asked != "v2":
+        return {"asked": "auto", "used": "legacy", "why": "the model has no native tool calling (supports.tools)"} \
+            if auto else None
+    native = getattr(plan_options, "native_tools", "off") == "on"
+    return {"asked": "auto" if auto else "v2", "used": "v2" if native else "legacy",
+            "why": "native tool calling" if native else "no native tool calling on this run's models"}
+
+
+# box: runresult
+def model_has_tools(llm) -> bool:
+    """D153: whether every model this run may use supports native tool calling (models.yaml `supports.tools`): the
+    router answers for itself; a plain client is looked up in the registry by its model name; a mock has none."""
+    inner = getattr(llm, "llm", llm)
+    inner = getattr(inner, "inner", inner)                 # a response cache around the router or client
+    if getattr(inner, "can_use", None):
+        return bool(inner.can_use("tools"))
+    if not isinstance(inner, (OpenAICompatibleClient, AnthropicClient)):
+        return False
+    from amoeba.llm.router import load_registry
+    entries = [e for e in load_registry()[0].values() if e.model == getattr(inner, "model", None)]
+    return bool(entries) and all((e.supports or {}).get("tools") for e in entries)
+
+
+# box: runresult
+def resolve_protocol(plan_options, llm, trace):
+    """D153: --protocol auto (the CLI default) becomes v2 when the run's model supports native tool calling, legacy
+    otherwise; legacy and v2 stay explicit overrides. Decided before drafting, so planning (D141/D143), the steps and
+    Box 4 all follow the same choice. The choice is a trace event."""
+    if plan_options is None or getattr(plan_options, "protocol", "legacy") != "auto":
+        return plan_options
+    from dataclasses import replace as _replace
+    tools = model_has_tools(llm)
+    trace.event("protocol_auto", {"amoeba.box": "client", "amoeba.protocol": "v2" if tools else "legacy",
+                                  "amoeba.why": "the model supports native tool calling" if tools else
+                                  "the model has no native tool calling (supports.tools)"})
+    return _replace(plan_options, protocol="v2" if tools else "legacy", protocol_from="auto")
+
+
+# box: runresult
+def reasoning_refusal_lines(refusals: list[dict] | None) -> list[str]:
+    """D134: the run summary's loud lines for calls the model refused because a prompt asks for its reasoning."""
+    if not refusals:
+        return []
+    out = [f"    !! {len(refusals)} call(s) REFUSED because the prompt asks for the model's reasoning "
+           f"(reasoning_extraction) — those turns were unreadable; fix the prompt or use --protocol v2"]
+    seen = set()
+    for x in refusals:
+        k = (x.get("agent"), tuple(x.get("prompt_files") or ()))
+        if k not in seen:
+            seen.add(k)
+            out.append(f"       {x.get('agent') or '?'}: {', '.join(x.get('prompt_files') or []) or 'prompt file not found'}")
+    return out
 
 
 CONTINUE = "continue"
@@ -487,7 +654,7 @@ def disable_tools(names, tools: ToolRegistry, pool: PoolSetup | None = None, loc
         return tools, pool, local
     if pool is not None:
         pool = PoolSetup(config=pool.config, cache_dir=pool.cache_dir, connector=pool.connector, env=pool.env,
-                         disabled=frozenset(names))
+                         disabled=frozenset(names), allow_remote_exec=pool.allow_remote_exec)
     return tools.without(names), pool, (local.without(names) if local is not None else None)
 
 
@@ -502,6 +669,13 @@ def explicit_flags(argv: list[str]) -> frozenset:
     return frozenset(a.split("=", 1)[0] for a in argv if a.startswith("--"))
 
 
+# box: runresult
+def default_proposer() -> str:
+    """D154: adapt.yaml proposer.scoped → "scoped" (the default), else "single"."""
+    from amoeba.adapt.probe import scope_config
+    return "scoped" if scope_config().get("scoped", True) else "single"
+
+
 def cli_plan_options(args: argparse.Namespace):
     """The plan runner's settings from the command line (D39+)."""
     from amoeba.interp.plan_runner import PlanOptions
@@ -514,7 +688,47 @@ def cli_plan_options(args: argparse.Namespace):
                        cite_arithmetic=getattr(args, "cite_arithmetic", "off"),
                        final_check=getattr(args, "deliverable_check", "off"),
                        xlsx_formulas=getattr(args, "xlsx_formulas", "off"), adapt=getattr(args, "adapt", "off"),
-                       faults=tuple(getattr(args, "inject_fault", ()) or ()), **extra)
+                       faults=tuple(getattr(args, "inject_fault", ()) or ()),
+                       native_tools=getattr(args, "native_tools", "off"),
+                       tool_access=getattr(args, "tool_access", "asked"),
+                       failed_step=getattr(args, "failed_step", "run"),
+                       protocol=getattr(args, "protocol", "auto"),                         # D136, D153 auto
+                       planning_tier=getattr(args, "planning_tier", "auto"),                       # D143
+                       proposer=getattr(args, "proposer", None) or default_proposer(),               # D154
+                       fix_pick=getattr(args, "fix_pick", "code"),
+                       lessons=getattr(args, "lessons", "off"),                                        # D164
+                       lessons_write=getattr(args, "lessons_write", None) or
+                       ("on" if getattr(args, "adapt", "off") == "on" else "off"),                      # D163/D164
+                       lessons_dir=getattr(args, "lessons_dir", None), **extra)
+
+
+# box: runresult
+def adapt_summary_lines(adaptation: dict | None) -> list[str]:
+    """D145: what the run summary says of Box 4 beyond the report: a tool it could not make because local tools are
+    off, steps it kept going without, and a USD limit it could not compute."""
+    a = adaptation or {}
+    out = [f"    make_tool not run: {w}" for w in a.get("make_tool_unavailable") or []]
+    out += [f"    kept going without step {k['step']} ({k.get('cause')}); only its dependents were skipped"
+            for k in a.get("kept_going") or []]
+    if a and a.get("usd_limit_enforced") is False:
+        out.append("    adaptation USD limit not enforced: a model has no price (token limit only)")
+    return out
+
+
+# box: runresult
+def resolve_native(plan_options, llm, trace):
+    """D132: --native-tools auto becomes on when every model this run may route a helper call to supports native tool
+    calling (models.yaml `supports.tools`), off otherwise; the choice is a trace event."""
+    if plan_options is None or getattr(plan_options, "native_tools", "off") != "auto":
+        return plan_options
+    from dataclasses import replace as _replace
+    inner = getattr(llm, "llm", llm)
+    inner = getattr(inner, "inner", inner)                 # a response cache around the router
+    on = bool(getattr(inner, "can_use", None) and inner.can_use("tools"))
+    trace.event("native_tools", {"amoeba.box": "client", "amoeba.native_tools": "on" if on else "off",
+                                 "amoeba.why": "every model supports tools" if on else
+                                 "a model the run may use has no native tool calling"})
+    return _replace(plan_options, native_tools="on" if on else "off")
 
 
 def cli_token_limits(args: argparse.Namespace) -> dict:
@@ -575,11 +789,11 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
 
     def make(e):
         key = args.api_key or os.environ.get(e.api_key_env or "", "")
-        client = OpenAICompatibleClient(base_url=e.base_url, api_key=key, model=e.model, max_tokens=2048,
-                                        max_rate_retries=args.max_rate_retries, min_seconds_between_calls=0.0,
-                                        merge_system=e.merge_system if args.merge_system is None else args.merge_system,
-                                        reasoning_effort=effort or e.reasoning_effort, temperature=e.temperature,
-                                        request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
+        client = make_client(e.provider, base_url=e.base_url, api_key=key, model=e.model, max_tokens=2048,  # D134
+                             max_rate_retries=args.max_rate_retries, min_seconds_between_calls=0.0,
+                             merge_system=e.merge_system if args.merge_system is None else args.merge_system,
+                             reasoning_effort=effort or e.reasoning_effort, temperature=e.temperature,
+                             request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
         return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
             else client
     allowed_arg = getattr(args, "allowed_models", None)
@@ -595,7 +809,9 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
         # so a second entry (claude-sonnet-5-5) never takes a Gemma run's verify steps, and --profile claude-sonnet
         # runs on Claude
         prof = get_profile(getattr(args, "profile", None))
-        entry = next((n for n, e in registry.items() if e.model == prof.model), None)
+        # D134: the entry with the profile's model AND its route (the Messages API or the OpenAI-compatible one)
+        entry = next((n for n, e in registry.items() if e.model == prof.model
+                      and is_anthropic(e.provider) == is_anthropic(prof.provider)), None)
         if entry is None and getattr(args, "profile", None):
             raise SystemExit(f"--profile {args.profile}: no registry entry in amoeba/config/models.yaml has model "
                              f"{prof.model!r}; the plan runner's router (D97) calls registry models only")
@@ -629,11 +845,11 @@ def build_llm(args: argparse.Namespace) -> LLMClient:
     effort = None if args.reasoning_effort == "unset" else args.reasoning_effort or profile.reasoning_effort
 
     def make(m: str) -> LLMClient:
-        client = OpenAICompatibleClient(base_url=base_url, api_key=api_key, model=m,
-                                        max_tokens=profile.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
-                                        min_seconds_between_calls=args.min_seconds_between_calls,
-                                        merge_system=merge, reasoning_effort=effort, temperature=profile.temperature,
-                                        request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
+        client = make_client(profile.provider, base_url=base_url, api_key=api_key, model=m,   # D134
+                             max_tokens=profile.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
+                             min_seconds_between_calls=args.min_seconds_between_calls,
+                             merge_system=merge, reasoning_effort=effort, temperature=profile.temperature,
+                             request_timeout_s=getattr(args, "request_timeout_s", None))   # D131
         return CachedLLM(client, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache \
             else client
     # a reply limit given on the command line wins over the profile's for that group (D27 flags)
@@ -643,7 +859,21 @@ def build_llm(args: argparse.Namespace) -> LLMClient:
         from dataclasses import replace
         profile = replace(profile, roles={g: {k: v for k, v in r.items() if k != "model"}
                                           for g, r in profile.roles.items()})
-    return build_router(profile, make, model, keep)
+    router = build_router(profile, make, model, keep)
+    if profile.verifier and mode != "fixed":                     # D146: verify steps on another model family
+
+        def make_for(vp):
+            key = os.environ.get(vp.api_key_env or "", "")
+            if not key:
+                return None
+            c = make_client(vp.provider, base_url=vp.base_url, api_key=key, model=vp.model,
+                            max_tokens=vp.max_tokens or 2048, max_rate_retries=args.max_rate_retries,
+                            min_seconds_between_calls=args.min_seconds_between_calls, merge_system=vp.merge_system,
+                            reasoning_effort=vp.reasoning_effort, temperature=vp.temperature,
+                            request_timeout_s=getattr(args, "request_timeout_s", None))
+            return CachedLLM(c, args.llm_cache, args.llm_cache_mode, args.llm_cache_namespace) if args.llm_cache else c
+        print(f"verifier: {attach_verifier(router, profile, make_for)}")
+    return router
 
 
 def build_box3_tools(args: argparse.Namespace, tools: ToolRegistry) -> ToolRegistry:
@@ -662,6 +892,16 @@ def build_box3_tools(args: argparse.Namespace, tools: ToolRegistry) -> ToolRegis
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("prompt", nargs="?", help="a free-text task (cannot be scored)")
+    p.add_argument("--resume", default=None, metavar="RUN_ID",
+                   help="D160: continue a run stopped by the model's daily quota (status quota_exhausted): the same "
+                        "flags, task, date and response cache, so finished calls replay and are not paid again")
+    p.add_argument("--sim-seed", type=int, default=None, metavar="N",
+                   help="D161: the seed the task's scorer (its `sim` field) is run with (default: --seed)")
+    p.add_argument("--run-date", default=None, metavar="YYYY-MM-DD",
+                   help="D160: the date the run's helpers are told (default: today where the run is, --timezone)")
+    p.add_argument("--file", action="append", default=[], metavar="PATH",
+                   help="D157: an input file for the free-text task (repeat for more); copied read-only to the run's "
+                        "workspace/inputs/. In --tasks files a task names its own (\"files\": [...])")
     p.add_argument("--toy", action="store_true", help="run generated toy tasks with known answers")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--n", type=int, default=20, help="number of toy tasks")
@@ -731,6 +971,41 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="plan, with --local-tools on: after a step that made an .xlsx file, plain code checks that "
                         "totals and derived cells are formulas, not typed numbers; a typed one fails the check with the "
                         "cell names and earns the retry turn (D113)")
+    p.add_argument("--native-tools", choices=["auto", "on", "off"], default="auto",
+                   help="plan: helpers call their tools through the model's native tool calling, not the text "
+                        "sections ## Action / ## ActionInput; auto = on when every model the run may use has "
+                        "supports.tools in models.yaml (D132)")
+    p.add_argument("--protocol", choices=["auto", "legacy", "v2"], default="auto",
+                   help="plan: v2 = in native tool-calling mode the step prompts have no text sections, tools take typed "
+                        "arguments and the step ends with a typed Final_Output (D136); without native tool calling the "
+                        "steps fall back to legacy and the summary says so; auto (default) = v2 when the run's model "
+                        "has supports.tools in models.yaml, legacy otherwise (D153)")
+    p.add_argument("--lessons", choices=["on", "off"], default="off",
+                   help="D164: show approved lessons from the library to Box 2 (Planner and observers) and to Box 4's "
+                        "proposers for the stuck step's cause (default off)")
+    p.add_argument("--lessons-write", choices=["on", "off"], default=None,
+                   help="D163/D164: count every Box 4 verdict in the library and ask the reflector for a lesson when "
+                        "an edit helped (default: on with --adapt on); a task with set: replay never writes")
+    p.add_argument("--lessons-dir", default=None, metavar="DIR",
+                   help="D163: the lesson library folder (default: adapt.yaml lessons.library)")
+    p.add_argument("--proposer", choices=["scoped", "single"], default=None,
+                   help="plan, --adapt on: Box 4's last rung. scoped = two scoped fix proposers (how the team works / "
+                        "what an expert would know), each edit tried from the same starting state, plain code picks; "
+                        "single = one proposer, one edit (D117). Default: adapt.yaml proposer.scoped (D154)")
+    p.add_argument("--fix-pick", choices=["code", "llm"], default="code",
+                   help="plan, --proposer scoped: who picks between the two probes; llm is an ablation arm for "
+                        "experiments only (one call picks; the checks still run and both are recorded) (D154)")
+    p.add_argument("--planning-tier", choices=["auto", "light", "standard", "full"], default="auto",
+                   help="plan: how much planning Box 2 does — light: 1 round, no observers; standard: up to 2 rounds, "
+                        "the plan observer; full: up to 3 rounds, both observers; auto: decided by code from the task "
+                        "under --protocol v2, full under legacy (D143)")
+    p.add_argument("--tool-access", choices=["core", "asked"], default="core",
+                   help="plan: core = every helper holds the core tools (web, calc, local Bash/Write/Read) and "
+                        "find_tool, with no 'unavailable' lines and no use-or-declare demand; asked = only what Box 2 "
+                        "asked for and the toolbox step attached (D132)")
+    p.add_argument("--failed-step", choices=["dependents", "run"], default="dependents",
+                   help="plan: dependents = a step with no output blocks only the steps that need it, the others still "
+                        "run (a stuck step no fix recovered no longer stops the task); run = the earlier behaviour (D133)")
     p.add_argument("--cite-arithmetic", choices=["on", "off"], default="on",
                    help="plan: the citation check (D74) leaves out a number the line shows as a calculation's result "
                         "(after = or ≈), a power's base and exponent, and the years of a range; the operands are "
@@ -774,6 +1049,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="after Box 2, print the requirements, assumptions and open questions and wait for 'continue' "
                         "or an edited assumption (appended to the task as 'User clarification: ...', then one "
                         "re-draft round) (D53). Never in eval scripts")
+    p.add_argument("--allow-remote-exec", action="store_true",
+                   help="allow pool servers that run code for the caller (execute, interpreter, sandbox, shell …); "
+                        "off by default: code runs only through local:Bash in the run's sandbox (D137)")
     p.add_argument("--pool", action=argparse.BooleanOptionalAction, default=True,
                    help="Box 3 first fills capability requests from the cached tool/skill pool (MCP Registry servers, "
                         "anthropics/skills): keyword match, one AI pick per request, plain-code vetting (D56). Build "
@@ -853,8 +1131,8 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--no-log-content", action="store_true",
                    help="leave prompts and replies out of trace.jsonl (they are logged by default)")
     args = p.parse_args(argv)
-    if not args.toy and not args.prompt and not args.tasks:
-        p.error("give a prompt, --toy or --tasks")
+    if not args.toy and not args.prompt and not args.tasks and not args.resume:   # D160: --resume brings its own
+        p.error("give a prompt, --toy, --tasks or --resume")
     if args.interactive and args.drafts_from:
         p.error("--interactive reviews a fresh draft; it cannot be combined with --drafts-from")
     args.explicit = explicit_flags(argv if argv is not None else sys.argv[1:])
@@ -903,18 +1181,64 @@ def family_classify_on(flag: str, topology: str) -> bool:
 
 
 # box: free_text
+def run_date(tz: str | None = None):
+    """D160: the run's date, fixed once per invocation (a run that crosses midnight keeps one date)."""
+    from amoeba.interp.clock import run_clock
+    return run_clock(tz)["date"]
+
+
+# box: runresult
+def default_cache(args: argparse.Namespace) -> None:
+    """D160: a live run without --llm-cache records its responses under <runs-dir>/llm_cache, in a namespace of its
+    own, so a run stopped by the daily quota can resume without paying again (D73's replay). The mock is unchanged."""
+    if args.llm != "mock" and not args.llm_cache and args.llm_cache_mode != "off":
+        args.llm_cache = str(Path(args.runs_dir) / "llm_cache")
+        args.llm_cache_namespace = args.llm_cache_namespace or f"run-{uuid4().hex[:10]}"
+
+
+# box: runresult
+def save_resume(args: argparse.Namespace, argv: list[str], task: Task, r: RunResult, day) -> Path:
+    """D160: what --resume needs: the flags, the task, the cache and the date the run was told."""
+    path = Path(args.runs_dir) / r.run_id / "resume.json"
+    path.write_text(json.dumps({"run_id": r.run_id, "argv": argv, "task": task.model_dump(mode="json"),
+                                "llm_cache": args.llm_cache, "namespace": args.llm_cache_namespace,
+                                "run_date": day.isoformat(), "timezone": args.timezone, "error": r.error},
+                               indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+# box: free_text
 def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
+    raw = list(sys.argv[1:] if argv is None else argv)
+    args = parse_args(raw)
+    resumed = None
+    if args.resume:                                   # D160: the stopped run's own flags, task, date and cache
+        saved = Path(args.runs_dir) / args.resume / "resume.json"
+        if not saved.is_file():
+            print(f"--resume: no {saved} (only a run stopped by the daily quota can be resumed)")
+            return 2
+        resumed = json.loads(saved.read_text(encoding="utf-8"))
+        raw = [*resumed["argv"], "--runs-dir", args.runs_dir, "--run-date", resumed["run_date"],
+               *(["--llm-cache", resumed["llm_cache"], "--llm-cache-namespace", resumed["namespace"] or ""]
+                 if resumed.get("llm_cache") else [])]
+        args = parse_args(raw)
+        print(f"== resuming {resumed['run_id']} (stopped: {str(resumed.get('error'))[:120]}); finished calls replay "
+              f"from {resumed.get('llm_cache')}")
+    default_cache(args)                               # D160
+    day = date.fromisoformat(args.run_date) if args.run_date else run_date(args.timezone)
     llm = build_llm(args)
     disabled = [n.strip() for n in args.disable_tools.split(",") if n.strip()]          # D80
     tools, _, _ = disable_tools(disabled, default_registry())
     envelope = Envelope.from_registry(tools, model=llm.model)
-    if args.tasks:
+    if resumed is not None:                           # D160: only the stopped task
+        tasks = [Task.model_validate(resumed["task"])]
+    elif args.tasks:
         tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding="utf-8").splitlines() if l.strip()]
     else:
-        tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt)]
+        tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt, files=args.file)]
     saved = load_saved_drafts(args.drafts_from) if args.drafts_from else None
-    pool = PoolSetup(cache_dir=args.pool_dir) if args.pool else None   # D56
+    pool = PoolSetup(cache_dir=args.pool_dir, allow_remote_exec=getattr(args, "allow_remote_exec", False)) \
+        if args.pool else None                                                   # D56; D137
     local = LocalSetup(pool_dir=pool.dir if pool else PoolSetup(cache_dir=args.pool_dir).dir,
                        mode=args.local_tools_mode) if args.local_tools == "on" else None   # D59, D96a
     _, pool, local = disable_tools(disabled, tools, pool, local)        # D80
@@ -955,12 +1279,25 @@ def main(argv: list[str] | None = None) -> int:
                     deliverable_check=args.deliverable_check == "on" and args.topology == "plan",   # D105
                     workspace_sources=args.workspace_sources == "on" and args.topology == "plan",   # D107
                     ask_assumed=args.ask_assumed, clarify=parse_clarify(args.clarify),                  # D116
-                    plan_search=args.plan_search == "on")                                             # D120
+                    plan_search=args.plan_search == "on",                                             # D120
+                    today=day, resumed_from=resumed["run_id"] if resumed else None,                     # D160
+                    sim_seed=args.sim_seed)                                                             # D161
         results.append(r)
         shown = (r.answer or "").replace("\n", " ")[:60]
         print(f"[{r.topology}] {task.id} score={r.score} tokens={r.total_tokens} calls={r.n_llm_calls} "
               f"rounds={r.draft_rounds} consensus={r.consensus} status={r.status} error={r.error} answer={shown!r}")
         print(f"    {describe(r.usage)}")                                                    # D47
+        for line in reasoning_refusal_lines(r.reasoning_refusals):                         # D134: loud
+            print(line)
+        for line in adapt_summary_lines(r.adaptation):                                     # D145
+            print(line)
+        if r.protocol and r.protocol["used"] != r.protocol["asked"]:                      # D136
+            print(f"    protocol {r.protocol['asked']} asked; steps used {r.protocol['used']} ({r.protocol['why']})")
+        if r.status == "quota_exhausted":                                                  # D160
+            save_resume(args, [x for x in raw if x != "--resume"], task, r, day)
+            print(f"    the model's daily quota is spent; the run stopped cleanly. Resume another day with:\n"
+                  f"    python -m scripts.run_task --resume {r.run_id} --runs-dir {args.runs_dir}")
+            break                                                                          # later tasks would stop too
         if r.status == "needs_clarification":                                              # D116
             q = (r.interpretation or {}).get("pending") or []
             for x in q:

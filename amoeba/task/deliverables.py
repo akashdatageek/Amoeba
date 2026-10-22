@@ -112,11 +112,18 @@ def _has_term(term: str, answer_words: set[str], answer: str) -> bool:
 
 
 # box: runresult
-def requirement_check(rid: str, text: str, answer: str, files_made: list[str] | None) -> dict:
-    """One requirement against the final answer (and the workspace, for a file it asks for)."""
+def requirement_check(rid: str, text: str, answer: str, files_made: list[str] | None,
+                      checks: list[dict] | None = None) -> dict:
+    """One requirement against the final answer (and the workspace, for a file it asks for). D142: `met` also needs
+    every step check that covers it to have passed, and its key terms in the answer body above the Limitations
+    section; terms found only under Limitations make it `reported_missing`. `status_legacy` keeps the old measure."""
+    from amoeba.task.contract import split_limitations
     terms = requirement_terms(text)
     words = {w[:5] for w in re.findall(r"[a-z][a-z-]{3,}", (answer or "").lower())}
     have = [t for t in terms if _has_term(t, words, answer or "")]
+    body = split_limitations(answer or "")[0]
+    body_words = {w[:5] for w in re.findall(r"[a-z][a-z-]{3,}", body.lower())}
+    in_body = [t for t in terms if _has_term(t, body_words, body)]
     blocked = [ln.strip()[:160] for ln in (answer or "").splitlines() if "BLOCKED" in ln
                and sum(_has_term(t, {w[:5] for w in re.findall(r"[a-z][a-z-]{3,}", ln.lower())}, ln) for t in terms) >= 2]
     files = promised_files({rid: text}) if files_made is not None else []
@@ -125,19 +132,29 @@ def requirement_check(rid: str, text: str, answer: str, files_made: list[str] | 
     missing_files = [f["name"] or f"a {f['kind']} file" for f in files
                      if not ((f["name"] and f["name"].lower() in made_names) or f["kind"] in made_kinds)]
     covered = (len(have) / len(terms)) if terms else 1.0
-    status = "blocked" if blocked else "missing" if missing_files or covered < 0.5 else "met"
-    return {"id": rid, "text": text, "status": status, "coverage": round(covered, 2),
-            "terms_missing": [t for t in terms if t not in have][:10], "files_missing": missing_files,
-            "blocked": blocked[:3]}
+    legacy = "blocked" if blocked else "missing" if missing_files or covered < 0.5 else "met"
+    mine = [c for c in checks or [] if rid in (c.get("covers") or [])]
+    failed = [c["check"] for c in mine if not c.get("pass")]
+    body_cov = (len(in_body) / len(terms)) if terms else 1.0
+    status = legacy
+    if legacy == "met" and failed:
+        status = "missing"
+    elif legacy == "met" and body_cov < 0.5:
+        status = "reported_missing"                  # named, but only under Limitations
+    return {"id": rid, "text": text, "status": status, "status_legacy": legacy, "coverage": round(covered, 2),
+            "body_coverage": round(body_cov, 2), "checks": [{"check": c["check"], "pass": c.get("pass")} for c in mine],
+            "checks_failed": failed, "terms_missing": [t for t in terms if t not in have][:10],
+            "files_missing": missing_files, "blocked": blocked[:3]}
 
 
 # box: runresult
 def final_check(answer: str | None, requirements: dict[str, str], plan_texts: dict[str, str],
-                files_made: list[str] | None, undated: list[dict] | None = None, check_requirements: bool = True) -> dict:
+                files_made: list[str] | None, undated: list[dict] | None = None, check_requirements: bool = True,
+                checks: list[dict] | None = None) -> dict:
     """The final-answer requirement check: requirements, promised files, answer content and undated web figures;
     `core_missing` names what makes the run no_deliverable."""
     chars = answer_content(answer)
-    reqs = {r: requirement_check(r, t, answer or "", files_made) for r, t in (requirements or {}).items()} \
+    reqs = {r: requirement_check(r, t, answer or "", files_made, checks) for r, t in (requirements or {}).items()} \
         if check_requirements else {}
     files = check_deliverables(answer, plan_texts, [{"path": n} for n in files_made] if files_made is not None else None) \
         if check_requirements else {"missing": [], "promised": []}
@@ -145,26 +162,34 @@ def final_check(answer: str | None, requirements: dict[str, str], plan_texts: di
     never_made = list(dict.fromkeys(files["missing"] + [f for x in reqs.values() for f in x["files_missing"]]))
     core = (["no answer content"] if check_requirements and chars < MIN_ANSWER_CHARS else []) + \
         ([f"promised but not made: {', '.join(never_made)}"] if never_made else []) + \
-        ([f"requirements not met: {', '.join(unmet)}"] if reqs and len(unmet) * 2 > len(reqs) else [])
+        ([f"requirements not met: {', '.join(lost)}"] if reqs and len(lost := [r for r in unmet if
+                                                                               reqs[r]["status"] != "reported_missing"]) * 2 > len(reqs) else [])
     return {"answer_chars": chars, "requirements": reqs, "unmet": unmet, "promised": files["promised"],
+            "met_legacy": [r for r, x in reqs.items() if x["status_legacy"] == "met"],                  # D142
+            "reported_missing": [r for r, x in reqs.items() if x["status"] == "reported_missing"],
             "files_missing": files["missing"], "files_made": files_made, "checked_files": files_made is not None,
             "undated": undated or [], "core_missing": core, "ok": not core and not unmet and not (undated or [])}
 
 
 # box: runresult
-def final_findings(fc: dict) -> list[str]:
-    """What the answer step's refine turn is told: each unmet requirement, missing file and undated figure."""
+def final_findings(fc: dict, can_make_files: bool = True) -> list[str]:
+    """What the answer step's refine turn is told: each unmet requirement, missing file and undated figure. D138
+    (B5): a step that holds no file-writing tool is not told to make the missing files, only to list them."""
     out = []
     for r in fc["unmet"]:
         x = fc["requirements"][r]
+        if x["status"] == "reported_missing":        # D142: already said under Limitations; nothing to ask for
+            continue
         why = (f"it is marked BLOCKED ({x['blocked'][0]})" if x["status"] == "blocked" else
+               f"its step check(s) failed: {', '.join(x['checks_failed'])}" if x.get("checks_failed") else
                f"the file is not in the workspace: {', '.join(x['files_missing'])}" if x["files_missing"] else
                f"the answer does not cover: {', '.join(x['terms_missing'][:6])}")
         out.append(f"requirement {r} ({x['text'][:160]}) is not met in the final answer — {why}. Cover it in the "
                    f"answer from the steps' work, or say plainly under Limitations why it could not be done.")
     if fc["files_missing"]:
         out.append(f"the plan promised these files and the workspace does not have them: {', '.join(fc['files_missing'])}. "
-                   f"Make them if the work allows, or say under Limitations that they were not made.")
+                   + ("Make them if the work allows, or say under Limitations that they were not made."
+                      if can_make_files else "List each missing file under Limitations as not made."))
     if fc["undated"]:
         from amoeba.interp.dates import dated_finding
         out.append(dated_finding(fc["undated"]))

@@ -32,7 +32,10 @@ from amoeba.adapt.config import adapt_config
 SIGNAL_CAUSE = {"missing_input": "missing_input", "capability_unfilled": "capability", "repeated_error": "tool_error",
                 "max_turns": "max_turns", "checks_after_retry": "checks", "no_file_change": "claimed_file_missing",
                 "unreadable_reply": "format", "missing_data": "missing_data",
-                "provider_blocked": "provider_blocked"}
+                "provider_blocked": "provider_blocked", "held_tool_failed": "tool_error",
+                "repeated_refusal": "tool_error"}                                       # D149
+REFUSED = re.compile(r"^refused:\s*(local:\w+)\s*[—-]\s*(\w+)")
+REPEATED_REFUSALS = 2           # D149: a held tool refused this often in one step for one reason decides the cause
 # D117 Stage C: a lacked item is a missing input (data an earlier step should have given) unless it names a tool
 TOOL_WORDS = re.compile(r"tool|\bapi\b|_api|reader|interpreter|executor|calculator|\bcalc|access|generator|analy[sz]er|"
                         r"\bengine\b|_engine|service|search|network|browser|capability|skill|\blocal\b|local:|script|"
@@ -150,7 +153,8 @@ def classify_lacked(item: str, n: int | None, plan: dict | None, deps: list[int]
 
 # box: stuck
 def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] | None = None,
-                 files_unchanged: bool | None = None, plan: dict | None = None) -> list[dict]:
+                 files_unchanged: bool | None = None, plan: dict | None = None,
+                 held: dict[str, str] | None = None) -> list[dict]:
     """The stuck signals of one step attempt. `previous`: the meta of the attempt before (a reworked or re-run step);
     `unfilled`: capability requests with status unfilled ({name, for_role}); `files_unchanged`: the live watch's own
     comparison of the step's files across its refine turn (None: not known); `plan`: step number → {"output",
@@ -166,13 +170,23 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
         how = "after the retry turn" if meta.get("retried") or meta.get("refine") else "and no retry turn was possible"
         sig.append({"signal": "checks_after_retry",
                     "evidence": [f"check {c['name']} still fails {how}: {c.get('detail', '')[:140]}" for c in failed]})
+    refs = meta.get("refusals") or {}
+    if isinstance(refs, list):               # as saved in a step's meta (JSON): [{tool, reason, n}]
+        refs = {(r["tool"], r["reason"]): r["n"] for r in refs}
+    rep_ref = {k: n for k, n in refs.items() if n >= REPEATED_REFUSALS}
+    if rep_ref:                              # D149: the gate keeps refusing a held tool → tool_error, whatever else
+        sig.append({"signal": "repeated_refusal", "decides": True,
+                    "evidence": [f"{tool} refused {n} times in this step for {reason}: rewrite the call (the refusal "
+                                 f"says how)" for (tool, reason), n in rep_ref.items()]})
     turns = meta.get("unreadable_turns") or []
-    blocked = [b for b in turns if b.get("blocked")]
+    blocked = [*(meta.get("blocked_turns") or []), *(b for b in turns if b.get("blocked"))]   # D153 (old runs: flag)
     bad = [b for b in turns if not b.get("blocked")]
     if blocked and not meta.get("finished", False):   # D128: the service refused the replies; not a format slip
-        sig.append({"signal": "provider_blocked",
+        cats = [b.get("category") for b in blocked]
+        why = f"refusal categories: {', '.join(sorted(set(cats)))}" if all(cats) else "content filter, no category given"
+        sig.append({"signal": "provider_blocked", "categories": sorted({c for c in cats if c}),     # D134
                     "evidence": [f"{len(blocked)} of {meta.get('turns') or '?'} turns: the model service blocked the "
-                                 f"reply (content filter), each after one retry"]
+                                 f"reply ({why})"]
                     + [f"{b.get('agent', '?')}, turn {b.get('turn')}: blocked" for b in blocked][:4]})
     if bad and not meta.get("finished", False):    # D123: replies plain code could not read cost the step its end
         sig.append({"signal": "unreadable_reply",
@@ -201,6 +215,15 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
         sig.append({"signal": "missing_data", "items": data,
                     "evidence": [f"missing data: {x[:140]}" for x in data]})
     lacked = [k["item"] for k in kinds if k["kind"] == "capability"]
+    held = held or {}                    # D145: a lacked item the helper holds is never a capability: the tool failed
+    held_items = [x for x in lacked if x in held]
+    lacked = [x for x in lacked if x not in held]
+    if held_items:
+        tools = {held[x] for x in held_items}
+        errs = [c for c in meta.get("tool_calls") or [] if not c.get("ok") and c.get("tool") in tools]
+        last = (errs[-1].get("result") or "") if errs else "no failed call recorded"
+        sig.append({"signal": "held_tool_failed", "items": held_items,
+                    "evidence": [f"tool held but failed: {held[x]} — {last[:140]}" for x in held_items]})
     roles = set(meta.get("roles") or [])
     asked = [q for q in unfilled or [] if q.get("for_role") in roles]
     if lacked or asked:
@@ -223,7 +246,19 @@ def step_signals(meta: dict, previous: dict | None = None, unfilled: list[dict] 
 
 
 # box: stuck
-def open_requests(requests: list | None, holds: dict[str, set] | None = None) -> list[dict]:
+def refusal_counts(attempts: list[dict]) -> dict[tuple[str, str], int]:
+    """D149: how often each local tool was refused for each reason across a step's attempts (their tool_calls)."""
+    out: dict[tuple[str, str], int] = {}
+    for m in attempts:
+        for c in m.get("tool_calls") or []:
+            r = REFUSED.match(str(c.get("result") or ""))
+            if r:
+                out[(r.group(1), r.group(2))] = out.get((r.group(1), r.group(2)), 0) + 1
+    return out
+
+
+# box: stuck
+def open_requests(requests: list | None, holds: dict[str, set] | None = None, held_fn=None) -> list[dict]:
     """The capability requests that are really open: status unfilled, and not covered by a tool the run already has.
     "registered_tool" means the toolbox step found the tool in the run's registry (web_search and fetch_url, granted by
     D32), so the pool had nothing to add; it is not a missing capability. `holds` (the live watch): role name → the
@@ -235,8 +270,13 @@ def open_requests(requests: list | None, holds: dict[str, set] | None = None) ->
         have = (holds or {}).get(q.get("for_role")) or set()
         if (q.get("kind") or "tool") == "tool" and {q.get("name"), q.get("canonical")} & set(have):
             continue
+        if held_fn is not None and held_fn(q.get("for_role"), q.get("name")):   # D145: D132's held_tool rule too
+            continue
         out.append(q)
     return out
+
+
+CITATION_CHECK = re.compile(r"cites_every_figure|figures_dated|citation", re.I)   # D155: never waived
 
 
 # box: stuck
@@ -261,7 +301,8 @@ def waived_view(meta: dict, unfilled: list[dict], waived: set[str] | None, files
         view["output_spec"] = drop.sub("", meta.get("output_spec") or "")
         view["claimed_files_missing"] = [f for f in meta.get("claimed_files_missing") or []
                                          if not drop.search(f)]
-        view["checks"] = [c for c in meta.get("checks") or [] if not drop.search(c.get("name", ""))]
+        view["checks"] = [c for c in meta.get("checks") or [] if not drop.search(c.get("name", ""))
+                          or CITATION_CHECK.search(c.get("name", ""))]          # D155: citation checks stay
     keep = [q for q in unfilled or [] if not ({str(q.get("name") or "").lower(),
                                                str(q.get("canonical") or "").lower()} & names)]
     return view, keep
@@ -280,7 +321,8 @@ def diagnose(signals: list[dict], config: dict | None = None) -> dict:
     d = (config or adapt_config()).get("diagnoser") or {}
     order = list(d.get("causes") or [])
     named = [s["cause"] for s in signals]
-    cause = next((c for c in order if c in named), named[0] if named else None)
+    cause = next((s["cause"] for s in signals if s.get("decides")), None) or \
+        next((c for c in order if c in named), named[0] if named else None)        # D149: a deciding signal wins
     evidence = [e for s in signals for e in s["evidence"]][:int(d.get("max_evidence", MAX_EVIDENCE))]
     allowed = list((d.get("allowed_edits") or {}).get(cause, [])) if cause else []
     out = {"cause": cause, "signals": [s["signal"] for s in signals], "allowed_edits": allowed, "evidence": evidence,

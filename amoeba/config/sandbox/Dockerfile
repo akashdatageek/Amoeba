@@ -1,11 +1,15 @@
 # D96: the image every agent sandbox boots (OpenShell docker driver, default_image amoeba-sandbox:local).
-# Python with the office and data libraries the local tools use, Node and the same Claude Code version as the host
+# Python with the libraries in libs.txt (D158: one list, also used for in-process mode), LibreOffice Calc and Writer
+# (headless: formulas recalculated, documents converted; D71, D158), Node and the same Claude Code version as the host
 # (its `claude mcp serve` is the local-tool server, run inside the sandbox). No keys, no git config, no network at
 # run time (the workload container runs with network=none). Build: docker build -t amoeba-sandbox:local .
-FROM node:22-slim AS node
-FROM python:3.11-slim
+# (the base images can come from a mirror when Docker Hub refuses: BASE_REGISTRY=mirror.gcr.io/library build.sh)
+ARG BASE_REGISTRY=docker.io/library
+FROM ${BASE_REGISTRY}/node:22-slim AS node
+FROM ${BASE_REGISTRY}/python:3.11-slim
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY libs.txt /tmp/libs.txt
 # (behind a TLS-inspecting build proxy, pass its CA as a build secret: --secret id=ca,src=<ca.crt>; it is used for the
 # installs only and never stored in the image)
 RUN --mount=type=secret,id=ca,required=false \
@@ -13,7 +17,10 @@ RUN --mount=type=secret,id=ca,required=false \
     [ -s /run/secrets/ca ] || unset NODE_EXTRA_CA_CERTS PIP_CERT; \
     ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && npm install -g --no-fund --no-audit @anthropic-ai/claude-code@2.1.289 \
- && pip install --no-cache-dir openpyxl python-docx python-pptx matplotlib numpy pandas pypdf \
+ && apt="apt-get ${PIP_CERT:+-o Acquire::https::CAInfo=$PIP_CERT}" \
+ && $apt update -qq && $apt install -y --no-install-recommends libreoffice-calc libreoffice-writer \
+ && rm -rf /var/lib/apt/lists/* \
+ && pip install --no-cache-dir -r /tmp/libs.txt && rm /tmp/libs.txt \
  && useradd -m -u 1000 -s /bin/bash sandbox \
  && rm -rf /root/.npm /root/.cache
 # skills (the pool's clone, staged by build.sh) and Claude Code's managed settings (all hooks off) are root-owned and

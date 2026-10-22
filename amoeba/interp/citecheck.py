@@ -31,6 +31,9 @@ TAG = re.compile(r"\[(S\d+(?:\s*,\s*S\d+)*)\]", re.I)
 QUOTE = re.compile(r"[\"“]([^\"”\n]{3,200})[\"”]")
 TIME = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?)(?![a-z])|\b(\d{1,2}):(\d{2})\b", re.I)
 URL = re.compile(r"https?://\S+")
+# D152: Amoeba's own cut note in a shortened result ("… [971 characters cut; the whole page is in sources/S4_….txt;
+# open it with local:Read] …", D144/D147), also when a step quotes it: never text cited from a source
+CUT_NOTE = re.compile(r"…?\s*\[?\s*\d[\d,]*\s+characters?\s+cut\b(?:[^\[\]\n\"”]|\[[^\]\n]*\])*\]?\s*…?", re.I)
 # D78: identifiers, taken out before the number scan and matched as whole tokens
 PHONE = re.compile(r"(?<![\d-])(?:\+?1[-.\s]?)?(?:\(\d{3}\)\s?|\d{3}[-.\s])\d{3}[-.]\d{4}(?![\d-])")
 ZIP = re.compile(r"(?:(?<=\b[A-Z]{2} )|(?<=\b[A-Z]{2}, ))\d{5}(?:-?\d{4})?(?!\d)|"
@@ -136,7 +139,7 @@ def derived_tokens(body: str) -> set[str]:
 
 def claims(segment: str, exempt: set[str], exact: list[float], arithmetic: bool = False) -> list[tuple[str, str]]:
     """(kind, claim) pairs a code check can test in the words an [S#] tag backs."""
-    body = URL.sub(" ", LIST_MARKER.sub("", segment))
+    body = URL.sub(" ", LIST_MARKER.sub("", CUT_NOTE.sub(" ", segment)))     # D152: the cut note is not a claim
     out = [("quote", q.strip()) for q in QUOTE.findall(body) if len(q.split()) >= 3 or len(q.strip()) >= 12]
     ids, body = identifiers(QUOTE.sub(lambda m: " " * len(m.group(0)), body))
     out += [(kind, d) for kind, d in ids if d not in exempt]

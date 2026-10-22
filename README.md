@@ -472,10 +472,135 @@ answer and `adapt_report.md` say what was stuck, the cause, each fix tried and w
 each step that used an upstream output from before that step was re-run.
 `result.json` `adaptation` lists every fix with its result and tokens. `--adapt off` turns the watch and the fixes off.
 
+**D154: two scoped fix proposers, tried side by side (Oct 19).** With `--proposer scoped` (the default from the
+command line; `adapt.yaml proposer.scoped`), Box 4's last rung is a round instead of one proposer call.
+- **Two proposers, each with a scope.**
+  - One looks at *how the team works*: procedure, tool use, reading inputs in full, checking its own output, turns.
+  - The other looks at *what an expert would know*: what the output must contain, domain rules, authoritative
+    sources, what "done" means.
+  - Each is offered only its scope's edits that the cause allows, and must quote the evidence it acts on; plain
+    code refuses an edit whose quote it was never shown.
+- **Each edit is tried from the same starting point.** Plain code saves everything the edit and the re-run can
+  change (the team, the step, its options, the counters, the fault state, the workspace files), applies the edit,
+  re-runs the step, notes which stuck signals it cleared or added, then undoes everything.
+- **Plain code picks:** a candidate that ends done (on a tie, fewer new signals, then fewer tokens); else a
+  work-around that finished with its limitation; else the one that cleared most becomes the base for the next rung.
+- **What is kept:** the winner's probed state is put back, without a third run; the loser stays undone. The two
+  edits are never merged.
+- **Plan edits** (split, re-plan) are not probed: the other scope is tried first, and the plan edit is applied only
+  if that did not recover the step.
+- **Budget:** a round counts as one try toward the fix limits, while its tokens and dollars count per probe.
+- **Two new edits:** `add_tool_guidance` (one line on how to use a tool the step holds) and `add_watch_rule` (a
+  reminder plain code adds once to a tool result after N calls without a file written or a named tool called).
+- **Sandbox:** in sandbox mode a probe's files cannot be undone, so the round falls back to single and says why.
+- `--proposer single` keeps the one-proposer rung exactly.
+- `--fix-pick llm` (experiments only) lets one call pick between the two probe outputs, and records the pick next to
+  the checks' verdict.
+- `python -m scripts.stuck_report` adds a per-scope summary.
+- `python -m scripts.stage_e --arms proposer` compares single and scoped on one draft.
+- Design: `docs/design/D154_scoped_proposers.md`.
+
+```
+ stuck step (its stuck signals)
+        │
+        ▼
+ snapshot: the team, the step, its options, the counters, the fault state, the workspace files
+        │
+   ┌────┴─────────────────────────────┐
+   ▼                                  ▼
+ INV proposer                       DOM proposer
+ how the team works                 what an expert would know
+ (rule, tool, tool guidance,        (rule, helper, work-around,
+  watch rule, split)                 re-plan)
+   │ plain-code checks + quote        │ plain-code checks + quote
+   ▼                                  ▼
+ probe: apply, re-run, diff, undo   probe: apply, re-run, diff, undo
+   └────────────────┬─────────────────┘
+                    ▼
+ plain code picks: done → fewer new signals → fewer tokens
+                   (else a work-around that finished with limitation,
+                    else the probe that cleared most becomes the base)
+                    ▼
+ the winner's probed state is put back; the loser stays undone
+```
+
 **D121 (Oct 11).** Two fixes from the H3 end-to-end run (`eval/manual/h3/REPORT.md`): a capability request the run
 already covers (`unfilled (registered_tool)`, such as web_search) or a helper already holds no longer makes a step
 stuck, and a registry grant marks its request filled; the fix proposer's reply is read from the last JSON object that
 holds an edit, not from the first brace (Gemma's thought often quotes JSON from the prompt).
+
+## Lessons across tasks and the outer loop (D161–D166)
+
+Box 4 used to forget what it learned when a task ended. These decisions keep a record of every fix round, judge each
+edit by plain code, keep the edits that helped in one lesson library shared by every task, let later tasks read it,
+and let a hand-run outer loop turn a lesson that kept helping into a general config change, tested first. Nothing is
+built for one niche. Spec: `spec/BUILD_SPEC_BOX4_RSI.md`.
+
+**D161: the frozen judge and the task scorer (Oct 21).** The files that judge a run are listed in
+`amoeba/config/frozen.yaml` (domain checks, Box 2's plan checks, the answer score, the scorers, baseline results).
+They are hashed at the start of every run, and the hash goes to `result.json`. Runs whose judge hashes differ are never
+compared. A task may name a scorer in its `sim` field; after the run its score, the baseline's score, the delta and the
+seed go to `sim_score.json` (`--sim-seed`, default `--seed`). Only a deterministic stand-in exists; a real simulator
+becomes one more scorer. Tasks may carry `set: stream | replay`. Design: `docs/design/D161_frozen_judge.md`.
+
+**D162: Box 4 saves every round (Oct 22).** After each Box 4 round (scoped, or the single rung with one probe),
+one row goes to `<run>/rounds.jsonl` and, as a `round` event, to the run's hash-chained `events.jsonl`:
+- the task, the niche (recorded only) and the cause;
+- each edit with its scope and `because` quote;
+- each probe's status, its cleared / kept / new signals, tokens and samples;
+- the pick and why;
+- the step's status after the round.
+
+A closing `run_end` row carries the run's task score. No model call is added and nothing about the run changes.
+Design: `docs/design/D162_rounds.md`.
+
+**D163: verdicts, the reflector and one lesson library (Oct 22).**
+- **Verdicts.** Every edit of every Box 4 round gets a plain-code verdict: `helped`, `hurt`, `no_effect` or
+  `confounded`.
+- **The library.** With `--lessons-write on`, each verdict is counted in one library shared by every task
+  (`data/lessons/`, git-ignored). It is keyed by cause, op and scope; the niche of each count is recorded, never used to
+  split.
+- **The reflector.** When an edit helped, one AI call writes a lesson: a cue and an operation, with no task facts.
+  Plain code refuses a lesson with a task's number or name, denied wording, or over 300 characters, asks once more,
+  then drops it. The reflector is skipped and logged when the run cap or the fix allowance would not hold it.
+- **Review.** Entries stay `unreviewed` until you approve them: `python -m scripts.lessons list|show|approve|reject`.
+
+Design: `docs/design/D163_lessons.md`.
+
+**D164: Box 2 and Box 4 read the library (Oct 22).** With `--lessons on` (default off), plain code picks approved
+lessons:
+- **Which.** A lesson is shown when it helped more often than it hurt and never hurt in this run's niche; for Box 4
+  it must also match the stuck step's cause. Same-niche lessons come first, then the most-helped, at most 5 lessons and
+  1,500 characters.
+- **Box 4.** The proposers get them in a "What helped before for this cause" section. An edit must still quote this
+  run's evidence.
+- **Box 2.** The Planner and both observers get them through the drafting prompts' `{lessons}` slot.
+- **Writing.** `--lessons-write on|off` is a separate switch (default on with `--adapt on`). A task with
+  `set: replay` never writes.
+- **Record.** `result.json` lists the lessons shown and each shown lesson whose fix ended done.
+
+With reading off, the prompts are byte-identical to before. `stage_e` passes both flags to both arms. Design:
+`docs/design/D164_lessons_read.md`.
+
+**D165: compose two complementary edits (Oct 22).** With `adapt.yaml compose.enabled: true` (default false), a
+scoped round whose two probes each cleared a different signal, with neither recovering the step, runs a third probe
+with both edits applied from the same starting state. It is kept when it ends done, or clears more signals than either
+alone and adds none; otherwise today's pick stands. Plan edits are never composed, and the third probe counts toward
+the fix allowance. Design: `docs/design/D165_compose.md`.
+
+**D166: the outer loop, general and run by hand (Oct 22).** `python -m scripts.promote --replay <tasks> -- <run_task
+flags>` never runs during a task. It works in five steps:
+1. **Trigger.** Plain code takes an approved lesson that helped at least 3 times on at least 2 tasks and never hurt.
+2. **Proposal.** One AI call proposes one general setting in `adapt.yaml`: the order of the cause's allowed edits, a
+   rule for the Planner (`promoted.planner_rules`), or one tool's guidance line (`promoted.tool_guidance`). Changes to
+   code, prompts or the frozen judge are refused before any run.
+3. **Test.** It runs only the `replay` tasks, through `stage_e --arms config`: today's config against a temporary
+   copy, with the same drafts, picks and seeds and lesson writing off.
+4. **Accept.** Plain code accepts the change only if the mean score rises, no task drops more than 0.05, and the
+   step-contract pass rate does not fall.
+5. **Report.** It writes a report and a patch to `promotions/`. Nothing is applied until you run `--apply <report>`.
+
+Design: `docs/design/D166_promote.md`.
 
 ## Fault injection (D119, test-only)
 

@@ -20,7 +20,7 @@ from tests.conftest import fx, mock
 from tests.test_plan_runner import BODY, step_no, plan_team
 from tests.test_pool import CAP, SEARCH, cache, req, setup  # noqa: F401  (cache is a fixture)
 
-ON = PlanOptions(adapt="on")
+ON = PlanOptions(adapt="on", failed_step="run")  # D138 (B10): the stop-the-task behaviour of failed_step "run"
 NO_RUNNER = "tool writer: no code runner (local tools are off)"   # D125: the next rung, skipped without --local-tools
 
 
@@ -41,11 +41,11 @@ def good(n):
 NO_EDIT = "I cannot see a fix."          # a reply with no JSON edit: the proposer gives no fix (twice: no fix)
 
 
-def run(task, envelope, trace, tools, script, tmp_path=None, stock=None, setup_cfg=None, proposer=(NO_EDIT,)):
+def run(task, envelope, trace, tools, script, tmp_path=None, stock=None, setup_cfg=None, proposer=(NO_EDIT,), opts=None):
     llm, cfg = plan_team(task, envelope, trace, plan_worker=script, fix_proposer=list(proposer))
     if setup_cfg:
         setup_cfg(cfg)
-    ep = Interpreter(llm, tools, trace, run_dir=tmp_path, plan_options=ON, stock=stock).run(cfg, task, seed=0)
+    ep = Interpreter(llm, tools, trace, run_dir=tmp_path, plan_options=opts or ON, stock=stock).run(cfg, task, seed=0)
     return llm, cfg, ep
 
 
@@ -111,7 +111,7 @@ def test_more_turns_recovers_a_step_that_ran_out_of_turns(task, envelope, trace,
     llm, cfg, ep = run(task, envelope, trace, tools, script, tmp_path)
     [f] = ep.adaptation["fixes"]
     assert (f["cause"], f["kind"], f["params"], f["result"]) == ("max_turns", "set_run_option:max_turns",
-                                                                 {"max_turns": 8}, "recovered")
+                                                                 {"max_turns": 9}, "recovered")   # D145: 6 + 3
     assert ep.adaptation["recovered_steps"] == [1] and ep.error is None and f["tokens"] > 0
     assert (tmp_path / "artifacts" / "step_1.try1.json").exists()                 # the attempt it replaced
     assert json.loads((tmp_path / "artifacts" / "step_1.json").read_text())["fix_of"]["kind"] == \
@@ -212,6 +212,9 @@ def test_a_registry_tool_is_granted_without_the_pool_step(task, envelope, trace,
             return reply("Final Output", f"OUT-1\n{BODY}\nBLOCKED: calc — nothing to compute with")
         return good(n)
     def ask_calc(cfg):                   # an open request for the tool the grant gives
+        for a in cfg.agents.values():    # D132: the helper must really lack calc (one that holds it is not missing it)
+            if a.name == "Cost Analyst":
+                a.tools = [t for t in a.tools if t != "calc"]
         cfg.meta.setdefault("capability_requests", []).append(
             {"name": "calc", "kind": "tool", "for_role": "Cost Analyst", "status": "unfilled", "reason": "no_helper"})
     llm, cfg, ep = run(task, envelope, trace, tools, script, stock=fake_stock(calls), setup_cfg=ask_calc)
@@ -241,7 +244,8 @@ def test_with_the_pool_off_the_capability_rung_is_skipped_and_the_task_stops_wit
     def script(messages, seed):
         n = step_no(messages)
         return reply("Final Output", f"OUT-1\n{BODY}\nBLOCKED: currency_api — none") if n == "1" else good(n)
-    llm, cfg, ep = run(task, envelope, trace, tools, script, tmp_path)
+    llm, cfg, ep = run(task, envelope, trace, tools, script, tmp_path,
+                       opts=PlanOptions(adapt="on", failed_step="run", proposer="single"))   # D154: single's protocol
     [d] = ep.adaptation["fixes"]                       # the code rung is skipped; the proposer gives no fix
     assert d["rung"] == "D" and len(llm.calls_of("fix_proposer")) == 2          # one retry on an invalid reply
     assert ep.adaptation["skipped"] == [{"step": 1, "why": POOL_OFF}, {"step": 1, "why": NO_RUNNER}]
@@ -253,7 +257,7 @@ def test_with_the_pool_off_the_capability_rung_is_skipped_and_the_task_stops_wit
 
 
 def test_the_token_cap_stops_further_fixes(task, envelope, trace, tools, monkeypatch):
-    monkeypatch.setattr(pr, "fix_limits", lambda: {**limits(), "max_tokens_per_task": 1})
+    monkeypatch.setattr(pr, "fix_limits", lambda: {**limits(), "fix_tokens_per_attempt": 0.001})
 
     def script(messages, seed):
         n = step_no(messages)

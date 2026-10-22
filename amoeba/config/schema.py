@@ -18,7 +18,7 @@ class Limits(BaseModel):
     """Loop caps only — not cost."""
     # Renamed from the full spec's Budget; Phase 3 adds token/usd fields here (no renames).
 
-    max_turns: int = 5  # inner LLM turns per step (AutoAgents group.py:75 num_steps = 5)
+    max_turns: int = 5  # inner LLM turns per step (AutoAgents group.py:75 num_steps = 5; plan teams get 6, D145)
 
 
 class PromptRef(BaseModel):
@@ -77,6 +77,7 @@ class PlanStep(BaseModel):
     do: str = ""
     output: str = ""
     done_when: str = ""
+    checks: list[dict] = Field(default_factory=list)   # D142: the step's typed checks, run by Box 3 (task/contract.py)
 
 
 # box: teamconfig

@@ -89,8 +89,8 @@ def test_tool_error_is_diagnosed_and_more_turns_recovers_it(task, envelope, trac
 
 def test_the_same_fault_fires_with_adapt_off(task, envelope, trace, tools):
     llm, cfg, ep = run(task, envelope, trace, tools, calc_until_it_works, ["tool_error:1:7"], adapt="off")
-    # four calls fail; on the fifth, last turn the helper asks for calc again and is not run (D76); no fix
-    assert ep.faults[0]["fired"] == 4 and not trace.events("fix_try")
+    # five calls fail (D145: 6 turns); on the sixth, last turn the helper asks for calc again and is not run (D76)
+    assert ep.faults[0]["fired"] == 5 and not trace.events("fix_try")
     assert ep.steps[0]["status"] == "incomplete"
 
 

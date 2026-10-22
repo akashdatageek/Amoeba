@@ -56,7 +56,7 @@ UNSAFE = re.compile(
     r"|\brm\s+(-\w+\s+)*(/|~|\*|\.\.?)(\s|/|$)"
     r"|\bmkfs\b|\bdd\s+if=|:\(\)\s*\{|\b(shutdown|reboot|halt|poweroff)\b|\bkill(all)?\b|\bpkill\b"
     r"|\bchmod\s+(-\w+\s+)*[0-7]*\s*/|\bchown\b|\bcrontab\b|\bsystemctl\b"
-    r"|(^|[\s;&|(])cd\s+(/|~|-(\s|$)|\$)|\.\./|(^|[\s'\"=(])\.\.(\s|$|['\"])|~/|\$HOME\b|\$\{HOME\}"
+    r"|(^|[\s;&|(])cd\s+(/|~|-(\s|$)|\$)|~/|\$HOME\b|\$\{HOME\}"     # D148: no text rule for "..": paths are resolved
     r"|\bln\s+(-\w+\s+)*-?s\b|\beval\b|\bexec\s+\d*[<>]", re.I)
 
 ABS_PATH = re.compile(r"(?:^|(?<=[\s'\"=(<>:,]))(/[A-Za-z0-9_.][^\s'\";|&)<>,]*)")
@@ -76,6 +76,9 @@ def screen_command(command: str, workspace: Path, readonly: dict | None = None) 
     m = UNSAFE.search(command)
     if m:
         return "unsafe_command", m.group(0).strip()
+    out = escaping_path(command, workspace)                  # D148: judged by where the path lands
+    if out:
+        return "unsafe_command", out
     ws = str(workspace.resolve())
     for p in ABS_PATH.findall(command):
         if p in ALLOWED_ABS or p == ws or p.startswith(ws + "/"):
@@ -87,6 +90,37 @@ def screen_command(command: str, workspace: Path, readonly: dict | None = None) 
     return None
 
 
+SEGMENT = re.compile(r"&&|\|\||[;|\n]")
+CD = re.compile(r"^\s*\(?\s*cd\s+(['\"]?)([^\s'\";|&)]+)\1")
+DOTTED = re.compile(r"(?<![\w.~/-])((?:[\w.-]+/)*\.\.(?:/[^\s'\";|&)<>,]*)?)")
+
+
+# box: localtools
+def escaping_path(command: str, workspace: Path) -> str | None:
+    """D148: the first part of a Bash command that would leave the workspace, judged by effect: the command runs from
+    the workspace; each `cd` moves the current folder; every relative path with `..` (in an argument or inside quoted
+    code) is resolved from the current folder. A path that stays inside is fine, however it is written. Returns the
+    exact part (e.g. "cd ..", "../../etc/passwd") or None."""
+    ws = workspace.resolve()
+    cwd = ws
+    for seg in SEGMENT.split(command or ""):
+        m = CD.match(seg)
+        if m:
+            target = m.group(2)
+            if target.startswith(("/", "~", "$")) or target == "-":
+                continue                                  # the UNSAFE rule names these
+            new = (cwd / target).resolve()
+            if new != ws and ws not in new.parents:
+                return f"cd {target}"
+            cwd = new
+            seg = seg[m.end():]
+        for p in DOTTED.findall(seg):
+            real = (cwd / p).resolve()
+            if real != ws and ws not in real.parents:
+                return p
+    return None
+
+
 # box: localtools
 def in_workspace(command: str, workspace: Path) -> str:
     """The command as it is sent: always started from the workspace (the server's shell keeps its last cwd)."""
@@ -95,11 +129,11 @@ def in_workspace(command: str, workspace: Path) -> str:
 
 # ---- D96: protected configs and read-only roots ------------------------------------------------------------------------
 PROTECTED_PARTS = {".claude", ".mcp.json", "CLAUDE.md", "skills", "managed-settings.json", ".git",
-                   "sources"}                         # D107: the read-only input files
+                   "sources", "inputs"}               # D107: the read-only fetched files; D157: the given files
 PROTECTED_COMMAND = re.compile(r"\.claude\b|\.mcp\.json|managed-settings|claude-code/|CLAUDE\.md"
-                               r"|>>?\s*[^\s|;&]*\b(?:skills|sources)/"
-                               r"|\b(mv|rm|tee|sed\s+-i|chmod|chown|ln|touch|truncate)\b[^|;&]*\b(?:skills|sources)/"
-                               r"|\b(cp|install)\b[^|;&]*\s[^\s|;&]*\b(?:skills|sources)/[^\s|;&]*\s*(?:$|[|;&])",   # D107: copying FROM is fine
+                               r"|>>?\s*[^\s|;&]*\b(?:skills|sources|inputs)/"
+                               r"|\b(mv|rm|tee|sed\s+-i|chmod|chown|ln|touch|truncate)\b[^|;&]*\b(?:skills|sources|inputs)/"
+                               r"|\b(cp|install)\b[^|;&]*\s[^\s|;&]*\b(?:skills|sources|inputs)/[^\s|;&]*\s*(?:$|[|;&])",   # D107: copying FROM is fine
                                re.I)
 
 

@@ -6,6 +6,7 @@ Phase 1 only records those counts in the trace; nothing enforces them.
 """
 from __future__ import annotations
 
+import json
 import re
 import time
 from abc import ABC, abstractmethod
@@ -13,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from amoeba.config.proxy import refresh_proxy
+from amoeba.llm.quota import parse_quota
 
 Messages = list[dict[str, str]]
 
@@ -31,6 +33,12 @@ class ChatResponse:
     cached: bool = False               # D46: served from the response cache, not the model
     retries: list = field(default_factory=list)   # D48: [{status, wait_s, attempt, retry_after}] before this reply
     throttle_wait_s: float = 0.0       # D48: time waited for --min-seconds-between-calls
+    tool_calls: list = field(default_factory=list)   # D132: native tool calls, [{"name", "input"}] in reply order
+    parsed: dict | None = None             # D134: a structured (schema) reply, validated by its pydantic model
+    thinking_summary: str | None = None    # D134: Claude's summarized thinking (thinking_display="summarized")
+    refusal_category: str | None = None    # D134: stop_details.category of a refusal (reasoning_extraction, cyber ...)
+    cache_read_tokens: int = 0             # D134: prompt tokens read from the provider's prompt cache
+    cache_write_tokens: int = 0            # D134: prompt tokens written to it
 
 
 # box: client
@@ -44,7 +52,94 @@ class LLMClient(ABC):
 
     @abstractmethod
     def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
-        """max_tokens: this call's reply limit; None = the client's default (D24: the Planner asks for more)."""
+        """max_tokens: this call's reply limit; None = the client's default (D24: the Planner asks for more).
+        D132: a client that can call tools natively also takes `tools=` (OpenAI function specs) and returns the
+        calls in ChatResponse.tool_calls; callers pass it only when they want native tool calling."""
+
+
+# box: client
+def tools_kw(tools: list | None) -> dict:
+    """D132: `tools=` only when there are tools, so a client without native tool calling is called as before."""
+    return {"tools": tools} if tools else {}
+
+
+CALL_OPTIONS = ("schema", "effort", "thinking_display", "cache_prefix")   # D134: per-call options of chat_messages
+
+
+# box: client
+def opts_kw(opts: dict) -> dict:
+    """D134: the per-call options that are set (schema, effort, thinking_display, cache_prefix), so a wrapper passes
+    them on and a call without any is made exactly as before. An unknown option is an error, not ignored."""
+    bad = set(opts) - set(CALL_OPTIONS)
+    if bad:
+        raise TypeError(f"unknown chat_messages option(s) {sorted(bad)}; allowed: {list(CALL_OPTIONS)}")
+    return {k: v for k, v in opts.items() if v is not None}
+
+
+# box: client
+def parse_schema_reply(schema, content: str) -> dict | None:
+    """D134: a reply's JSON validated by the call's pydantic model (a dict), or None when it is not valid JSON for
+    that model. D139: through validate_reply (enum case, nulls for optional fields)."""
+    text = (content or "").strip()
+    m = re.search(r"(?s)```(?:json)?\s*(.*?)```", text)
+    text = m.group(1).strip() if m else text
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    return validate_reply(schema, data)
+
+
+# box: client
+def validate_reply(schema, data) -> dict | None:
+    """D139: a structured reply validated by its pydantic model in code (a bound the provider's schema dropped is
+    still enforced here). Enum values are matched case-insensitively (a model may change their case), and a null
+    the provider required for an optional field (to_claude_schema) falls back to the field's default. Returns the
+    validated dict, or None."""
+    if not hasattr(schema, "model_validate"):
+        return data if isinstance(data, dict) else None
+    from pydantic import ValidationError
+    js = schema.model_json_schema()
+    fixed = _enum_case(data, js, js.get("$defs") or {})
+    for attempt in (fixed, _drop_nulls(fixed)):
+        try:
+            return schema.model_validate(attempt).model_dump(mode="json")
+        except (ValidationError, ValueError, TypeError):
+            continue
+    return None
+
+
+def _enum_case(data, node: dict, defs: dict):
+    """Enum strings matched case-insensitively against the JSON schema's enums."""
+    if isinstance(node, dict) and "$ref" in node:
+        node = defs.get(node["$ref"].split("/")[-1], {})
+    if not isinstance(node, dict):
+        return data
+    if isinstance(data, str):
+        enums = [e for e in node.get("enum") or [] if isinstance(e, str)]
+        for b in node.get("anyOf") or []:
+            b = defs.get(b["$ref"].split("/")[-1], {}) if isinstance(b, dict) and "$ref" in b else b
+            enums += [e for e in (b.get("enum") or []) if isinstance(e, str)] if isinstance(b, dict) else []
+        return next((e for e in enums if e.lower() == data.lower()), data)
+    if isinstance(data, list):
+        items = node.get("items") or next((b.get("items") for b in node.get("anyOf") or []
+                                           if isinstance(b, dict) and b.get("items")), {})
+        return [_enum_case(x, items, defs) for x in data]
+    if isinstance(data, dict):
+        props = node.get("properties") or next((
+            (defs.get(b["$ref"].split("/")[-1], {}) if "$ref" in b else b).get("properties") for b in
+            node.get("anyOf") or [] if isinstance(b, dict)
+            and (defs.get(b.get("$ref", "#/x/").split("/")[-1], {}) if "$ref" in b else b).get("properties")), {})
+        return {k: _enum_case(v, props.get(k, {}), defs) for k, v in data.items()}
+    return data
+
+
+def _drop_nulls(data):
+    if isinstance(data, dict):
+        return {k: _drop_nulls(v) for k, v in data.items() if v is not None}
+    if isinstance(data, list):
+        return [_drop_nulls(x) for x in data]
+    return data
 
 
 def _reasoning_tokens(usage) -> tuple[int, str | None]:
@@ -113,10 +208,20 @@ class OpenAICompatibleClient(LLMClient):
         self._last_call = time.monotonic()
         return max(0.0, wait)
 
-    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
+                      tools: list | None = None, schema=None, **opts) -> ChatResponse:
+        """D134: `schema` is sent as OpenAI's response_format json_schema and the reply validated into `parsed` (an
+        endpoint that ignores it leaves parsed None); effort, thinking_display and cache_prefix do not apply here."""
+        opts_kw(opts)
         t0 = time.perf_counter()
         kw = dict(model=self.model, messages=merge_system(messages) if self.merge_system else messages,
                   max_tokens=max_tokens or self.max_tokens)
+        if tools:                                      # D132: native tool calling
+            kw["tools"] = tools
+        if schema is not None:                         # D134
+            from amoeba.llm.anthropic_client import claude_schema
+            kw["response_format"] = {"type": "json_schema", "json_schema": {
+                "name": getattr(schema, "__name__", "reply"), "schema": claude_schema(schema), "strict": True}}
         if self.temperature is not None:               # None: not sent (Claude's endpoint rejects values below 1)
             kw["temperature"] = self.temperature
         if self.reasoning_effort is not None:          # sent only when set (D49)
@@ -128,11 +233,17 @@ class OpenAICompatibleClient(LLMClient):
                 break
             except Exception as e:
                 status, lost = getattr(e, "status_code", None), dropped(e)   # D57: dropped connections too
+                quota = parse_quota(str(e)) if status == 429 else None         # D160
+                if quota and quota["kind"] == "daily":    # it will not clear today: retrying only wastes the waits
+                    e.amoeba_quota, e.amoeba_retries = quota, retries
+                    raise
                 if (status not in RATE_STATUS and lost is None) or len(retries) >= self.max_rate_retries \
                         or spend_cap(e):
                     e.amoeba_retries = retries   # the trace records the waits even when the call finally fails
                     raise
                 after = retry_after(e)
+                if after is None and quota and quota["retry_s"] is not None:   # D160: the wait the reply asks for
+                    after = min(60.0, quota["retry_s"])
                 wait = after if after is not None else min(60.0, 2.0 * 2 ** len(retries))
                 retries.append({"status": status, "wait_s": wait, "attempt": len(retries) + 1,
                                 "retry_after": after, "error": lost})
@@ -146,8 +257,12 @@ class OpenAICompatibleClient(LLMClient):
                 self._last_call = time.monotonic()
         usage = getattr(resp, "usage", None)
         reasoning, source = _reasoning_tokens(usage)
+        calls = [{"name": t.function.name, "input": t.function.arguments or ""}
+                 for t in (getattr(resp.choices[0].message, "tool_calls", None) or []) if getattr(t, "function", None)]
+        content = resp.choices[0].message.content or ""
         return ChatResponse(
-            content=resp.choices[0].message.content or "",
+            content=content, tool_calls=calls,
+            parsed=parse_schema_reply(schema, content) if schema is not None else None,
             finish_reason=getattr(resp.choices[0], "finish_reason", None),
             reasoning_tokens=reasoning, reasoning_source=source,
             input_tokens=int(getattr(usage, "prompt_tokens", 0) or 0),
@@ -203,6 +318,15 @@ def describe_api_error(e: BaseException) -> str:
     return f"{type(e).__name__}{f' {status}' if status else ''}: {' '.join(str(e).split())[:200]}"
 
 
+# box: client
+def quota_exhausted(e: BaseException) -> bool:
+    """D160: the model service's daily quota is spent (a 429 whose quota is per day); the run stops and resumes later."""
+    q = getattr(e, "amoeba_quota", None)
+    if q is None and getattr(e, "status_code", None) == 429:
+        q = parse_quota(str(e))
+    return bool(q and q.get("kind") == "daily")
+
+
 def spend_cap(e: Exception) -> bool:
     """A 429 that says a spending cap was reached will not clear in seconds: it is not retried."""
     return bool(re.search(r"spend(ing)? cap", str(e), re.I))
@@ -241,6 +365,11 @@ class MockLLMClient(LLMClient):
         "interpreter": "You read a task before any planning",                                            # D77
         "family_classifier": "You sort a task into one of a fixed list of task families",                  # D101
         "replanner": "You are the Action Observer of a team",                                            # D63
+        "fix_proposer_inv": "SCOPE: HOW THE TEAM WORKS",                                              # D154
+        "fix_proposer_dom": "SCOPE: WHAT AN EXPERT WOULD KNOW",                                       # D154
+        "fix_picker": "You compare two attempts at one step of a team plan",                          # D154
+        "reflector": "You write one lesson from a Box 4 round of a team plan",                        # D163
+        "promoter": "You turn one proven lesson into one general setting",                            # D166
         "fix_proposer": "You propose one fix for a stuck step of a team plan",                         # D117 D
         "tool_writer": "You write one small Python tool. A team is carrying out the task",               # D125
         "plan_searcher": "You decide, before a team is planned for a task, whether the planner needs",  # D120
@@ -280,6 +409,8 @@ class MockLLMClient(LLMClient):
 
     def _next(self, kind: str, messages: Messages, seed: int) -> str:
         src = self._script.get(kind)
+        if src is None and kind in ("fix_proposer_inv", "fix_proposer_dom"):   # D154: a test scripting one proposer
+            src = self._script.get("fix_proposer")                               # answers both scoped calls
         if callable(src):
             return src(messages, seed)
         if isinstance(src, list) and src:
@@ -290,14 +421,25 @@ class MockLLMClient(LLMClient):
             return self._responder(messages, seed)
         raise RuntimeError(f"MockLLMClient: no scripted response for kind={kind!r}")
 
-    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
+                      tools: list | None = None, schema=None, **opts) -> ChatResponse:
+        """D134: with `schema`, a scripted dict (or JSON text) is the reply, validated by the model into `parsed`
+        (an invalid one leaves parsed None, as a real endpoint's would). A scripted ChatResponse is returned as it
+        is (refusals and tool calls in tests)."""
+        opts = opts_kw(opts)
         kind = self.classify(messages)
         content = self._next(kind, messages, seed)
         self.calls.append({"kind": kind, "messages": messages, "seed": seed, "response": content,
-                           "max_tokens": max_tokens})
+                           "max_tokens": max_tokens, "tools": tools, "schema": schema, **opts})
+        if isinstance(content, ChatResponse):
+            return content
+        if isinstance(content, dict):
+            content = json.dumps(content)
         n_in = sum(len(m.get("content", "")) for m in messages) // 4
-        return ChatResponse(content=content, input_tokens=n_in, output_tokens=len(content) // 4,
-                            model=self.model, finish_reason="stop")
+        calls = mock_tool_calls(content, tools) if tools else []
+        return ChatResponse(content="" if calls else content, input_tokens=n_in, output_tokens=len(content) // 4,
+                            model=self.model, finish_reason="tool_calls" if calls else "stop", tool_calls=calls,
+                            parsed=parse_schema_reply(schema, content) if schema is not None and not calls else None)
 
     def calls_of(self, kind: str) -> list[dict]:
         return [c for c in self.calls if c["kind"] == kind]
@@ -305,3 +447,49 @@ class MockLLMClient(LLMClient):
     @property
     def n_calls(self) -> int:
         return len(self.calls)
+
+
+# box: toymock
+def mock_tool_calls(content: str, tools: list) -> list[dict]:
+    """D132: the mock answers a native-tools call by turning a scripted text action (## Action / ## ActionInput)
+    into one tool call, so every scripted test can run with native tool calling too. A reply without those
+    sections stays text."""
+    act = re.search(r"(?ms)^##\s*Action\s*\n(.*?)(?=^##\s|\Z)", content)
+    inp = re.search(r"(?ms)^##\s*ActionInput\s*\n(.*)\Z", content)      # the input may hold ## headings
+    if not act:
+        return []
+    fn, text = tool_fn_name(act.group(1).strip()), (inp.group(1).strip() if inp else "")
+    return [{"name": fn, "input": json.dumps(mock_args(fn, text, tools))}]
+
+
+# box: toymock
+def mock_args(fn: str, text: str, tools: list) -> dict:
+    """D136: a scripted ActionInput as the arguments the offered tool takes: `input` for a one-string tool (D132); for
+    a typed tool (v2) a JSON object whose keys it takes (file_path read as path), else the text as its one required
+    argument; Final_Output with plain text keeps `input` (the plan runner's text fallback)."""
+    spec = next(((t.get("function") or t) for t in tools or [] if isinstance(t, dict)
+                 and (t.get("function") or t).get("name") == fn), None)
+    props = ((spec or {}).get("parameters") or {}).get("properties") or {} if spec else {}
+    if not props or "input" in props:
+        return {"input": text}
+    try:
+        obj = json.loads(text)
+    except ValueError:
+        obj = None
+    if isinstance(obj, dict):
+        obj = {("path" if k == "file_path" and "path" in props else k): v for k, v in obj.items()}
+        if set(obj) <= set(props):
+            return obj
+    required = ((spec or {}).get("parameters") or {}).get("required") or list(props)
+    if fn == "Final_Output" and "output" in props:        # D141: a scripted step end as a typed StepFinal
+        return {"status": "done", "output": text}
+    if fn != "Final_Output" and len(required) == 1:
+        return {required[0]: text}
+    return {"input": text}
+
+
+# box: client
+def tool_fn_name(name: str) -> str:
+    """D132: a tool name as a function name the APIs accept (letters, digits, _ and -, at most 64): 'local:Bash' →
+    'local_Bash', 'Final Output' → 'Final_Output'. The plan runner keeps the map back to the real name."""
+    return re.sub(r"[^A-Za-z0-9_-]", "_", name or "")[:64] or "tool"

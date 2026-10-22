@@ -17,14 +17,17 @@ def test_the_profile_and_its_registry_entry():
     assert p.temperature is None and p.reasoning_effort is None and not p.merge_system
     reg, policy = load_registry()
     e = reg["claude-sonnet-5-5"]
-    assert e.temperature is None and e.family == "claude" and e.price == {"input": 2.0, "output": 10.0}
+    assert e.temperature is None and e.family == "claude" and e.price["input"] == 2.0 and e.price["output"] == 10.0
+    assert e.price["cache_read"] == 0.2 and e.provider == "anthropic"                 # D134
+    assert get_profile("claude-sonnet").provider == "anthropic" and get_profile("claude-sonnet-compat").provider is None
     assert policy["default_model"] == "gemma-4-31b"                      # Gemma stays the default
 
 
 def test_every_other_profile_and_entry_keeps_temperature_0_2():
     _, profiles = load_profiles()
-    assert {n: p.temperature for n, p in profiles.items() if n != "claude-sonnet"} == \
-        {n: 0.2 for n in profiles if n != "claude-sonnet"}
+    claude = {"claude-sonnet", "claude-sonnet-compat", "claude-sonnet+gemma-verify"}   # D146
+    assert {n: p.temperature for n, p in profiles.items() if n not in claude} == \
+        {n: 0.2 for n in profiles if n not in claude}
     assert load_registry()[0]["gemma-4-31b"].temperature == 0.2
 
 
@@ -51,6 +54,12 @@ def test_the_profile_limits_the_plan_router_to_its_model(clean_env):
     claude = build_llm(parse_args([*plan, "--profile", "claude-sonnet"]))
     assert claude.profile_allowed == ["claude-sonnet-5-5"]
     assert claude.make(claude.registry["claude-sonnet-5-5"]).temperature is None
+    from amoeba.llm.anthropic_client import AnthropicClient
+    from amoeba.llm.client import OpenAICompatibleClient
+    assert isinstance(claude.make(claude.registry["claude-sonnet-5-5"]), AnthropicClient)           # D134
+    compat = build_llm(parse_args([*plan, "--profile", "claude-sonnet-compat"]))
+    assert compat.profile_allowed == ["claude-sonnet-5-5-compat"]
+    assert isinstance(compat.make(compat.registry["claude-sonnet-5-5-compat"]), OpenAICompatibleClient)
     for argv in ([*plan, "--profile", "gemma-api"], plan):                 # Gemma: never routed to Claude, even
         r = build_llm(parse_args(argv))                                    # with CLAUDE_API_KEY set (verify steps)
         assert r.profile_allowed == ["gemma-4-31b"]

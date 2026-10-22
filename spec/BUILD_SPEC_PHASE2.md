@@ -890,6 +890,46 @@ result shaped the draft; plain code records `used_in` and removes the ids before
 team's `[S#]` sources, D74's citation check or provenance. Design and the differences from it:
 `docs/design/D120_plan_search.md` ("As built"). To be tested after Stage E as its own off-vs-on comparison on Box 2.
 
+**D154, the scoped round (Oct 19).** Box 4's last rung became a round under plain code's control.
+- Two fix proposers are called, each with a scope:
+  - HOW THE TEAM WORKS: procedure, tool use, reading inputs, self-checks, turns;
+  - WHAT AN EXPERT WOULD KNOW: output content, domain rules, authoritative sources, what "done" means.
+- Each must quote the evidence it acts on.
+- Each edit that passes the checks is probed: applied from one saved state, the step re-run, its stuck signals
+  compared with the stuck attempt's, everything undone.
+- Plain code picks the probe that ends done (fewer new signals, then fewer tokens), else a work-around that finished
+  with its limitation, else the probe that cleared most as the base for the next rung.
+- The winner's probed state is kept without a third run. Plan edits are applied only when the probes did not
+  recover the step.
+- A round is one try toward the fix limits; its tokens count per probe.
+- New edits: `add_tool_guidance` and `add_watch_rule`.
+- In sandbox mode the round falls back to single, with the reason logged.
+- Design: docs/design/D154_scoped_proposers.md.
+
+```
+ stuck step (its stuck signals)
+        │
+        ▼
+ snapshot: the team, the step, its options, the counters, the fault state, the workspace files
+        │
+   ┌────┴─────────────────────────────┐
+   ▼                                  ▼
+ INV proposer                       DOM proposer
+ how the team works                 what an expert would know
+ (rule, tool, tool guidance,        (rule, helper, work-around,
+  watch rule, split)                 re-plan)
+   │ plain-code checks + quote        │ plain-code checks + quote
+   ▼                                  ▼
+ probe: apply, re-run, diff, undo   probe: apply, re-run, diff, undo
+   └────────────────┬─────────────────┘
+                    ▼
+ plain code picks: done → fewer new signals → fewer tokens
+                   (else a work-around that finished with limitation,
+                    else the probe that cleared most becomes the base)
+                    ▼
+ the winner's probed state is put back; the loser stays undone
+```
+
 **D121, two Box 4 fixes from the H3 run (Oct 11).** The run (`eval/manual/h3/REPORT.md`) stopped at step 1: the stuck
 watch counted capability requests marked `unfilled (registered_tool)`, which the run already covers (web_search and
 fetch_url, D32), as missing capabilities, and the fix proposer's parser read the reply from its first brace (JSON quoted
@@ -982,3 +1022,219 @@ run's workspace; a model call is ended after `--request-timeout-s` (default 600 
 room; and team.yaml names the model the calls go to (the profile's one entry), not the envelope's default. A partial
 step whose output lacks what its done_when states is now caught by the step checks (D130), so problem 18 needs no
 change of its own.
+
+**D132, helpers choose their tools (Oct 15).** The Box 4 probe (one fuel-surcharge task, eval/manual/probe_box4) found
+two faults in how tools reach a helper. First, Claude refused 57–80% of Sonnet's calls with an empty `content_filter`
+reply; on the stored step-1 prompt the refusal was deterministic and went away only when the tools were declared
+natively and the text protocol was removed — Claude answers a tool-using step with its own tool calls, and Amoeba's
+`## Action / ## ActionInput` sections made the endpoint refuse. Second, the toolbox step granted `local:Bash` but kept
+"Bash" in the helper's missing list, so the prompt said "Tool Bash is unavailable" next to "you may use local:Bash" and
+the helpers wrote BLOCKED: Bash and built no file. Now: with `--native-tools` (auto = on when every model the run may use
+has `supports.tools`, which claude-sonnet now has) each helper turn offers its tools through native tool calling and reads
+the first call back; a wish or a BLOCKED line for a tool the helper holds is never announced as unavailable nor counted as
+lacked (`held_tool`); and with `--tool-access core` (the default) every helper holds the core tools (web, calc, local
+Bash/Write/Read) and `find_tool`, which searches the pool and local tools mid-step and attaches the match, with no
+use-or-declare demand. Code still decides what exists, vets it, runs every call and logs it; the model chooses.
+
+**D133, a failed step blocks only what needs it (Oct 15).** In the same probe a step with no output either let its
+dependents run on empty input (adapt off: about 1M tokens for steps 5–8) or stopped the whole task (adapt on: the
+independent ATRI step never ran). With `--failed-step dependents` (the default) a step whose input step ended with no
+output is skipped (`blocked_upstream`, no call) and its dependents wait in turn; every other step runs; a stuck step no
+fix recovered no longer stops the task; and a skipped answer step gives an answer assembled by plain code from the
+outputs that exist, under a header naming the failed and skipped steps.
+
+**D134, Claude through its own API; refusals by category (Oct 16).** The probe re-run was blocked in planning. The
+reason was not the task: 13 prompt files ask the model for a "## Thought" section, and Sonnet 5.5 refuses to write out
+its reasoning (`reasoning_extraction`). Claude's OpenAI-compatible endpoint hid that: an empty `content_filter`
+reply with no reason, while response_format, strict, reasoning_effort and seed were silently ignored. With
+`provider: anthropic` (profile `claude-sonnet`), Claude's calls now go through its own Messages API: structured
+outputs, effort, a thinking summary, prompt caching, and the refusal category. A blocked reply is no longer retried
+unchanged (D128's retry was blocked every time). A reasoning refusal is named loudly with the prompt file that caused
+it. Other refusals go to the next model in routed mode, and Box 4's report names the categories. The old route stays as
+`claude-sonnet-compat`. Design: docs/design/D134_anthropic_client.md.
+
+**D135, check a model before using it (Oct 16).** `python -m scripts.model_check <profile>` makes one tiny call per
+call type, each through the real prompt builders and stopped after its own call. It then makes one structured call per
+output mode, and records what came back: ok, blocked with its category, or unreadable, with cost. With `--write` it
+sets the registry entry's `supports` flags. A prompt that asks for written-out reasoning fails the check and is
+named. Design: docs/design/D135_model_check.md.
+
+**D136, a clean step protocol in native mode (Oct 16).** With `--protocol v2` and native tool calling, a helper is
+never asked to write text sections. The v2 step prompts (ours) and plain code's notes speak only of tool calls. Each
+tool takes typed arguments that plain code checks before running it, and the step ends with a typed `Final_Output`.
+Plain code turns that into the same BLOCKED / MISSING / Verdict lines as before, so the stuck watch, the verify reader
+and the dispute resolver work unchanged. Without native tool calling the steps fall back to legacy and the run says
+so. The default stays `legacy` for now. Design: docs/design/D136_protocol_v2.md.
+
+**D137, security (Oct 16, audit Phase A).** A pool server that runs code for the caller is now refused when it is
+vetted and again after connecting, unless `--allow-remote-exec` is set; code runs only through local:Bash in the
+sandbox. The harness's own fetches reach only public http(s) addresses, with every redirect checked. Local tools are no
+longer mistaken for outside actions under a niche profile. Design: docs/design/D137_security.md.
+
+**D138, Box 3 correctness (Oct 16, audit Phase B).** Ten fixes in the plan runner, in both protocols:
+- a skipped step no longer crashes the summariser;
+- a rework that gives no new output keeps the earlier one;
+- a step with no Final Output hands on nothing instead of its last message;
+- in native mode, short text without a tool call no longer ends a step;
+- the tool-less summariser is told to list missing files, not make them;
+- a corrected dispute figure marks the steps that used it as stale;
+- an unreadable review counts as REVISE;
+- find_tool does not count as a re-check;
+- a verifier can read the full text of an input it saw cut;
+- `--failed-step dependents` is the default in the library too.
+
+Design: docs/design/D138_box3_bugs.md.
+
+**D139, the model layer finished (Oct 16, audit Phase C).**
+- Structured replies are always validated by plain code. Enum case does not matter, and a provider null falls back
+  to the field's default.
+- Every field is required in the schema sent to Claude, with optional fields made nullable.
+- A step's unchanging head is cached by the provider.
+- A block that is not a reasoning refusal gets one retry with the compact variant of its prompt.
+
+Design: docs/design/D139_model_layer.md.
+
+**D140, the model check completed (Oct 16, audit Phase C).** The check now also probes the plan observer and whether
+the model ends a step with a proper typed Final_Output. Its JSON repair call quotes the exact validation error.
+Design: docs/design/D140_model_check_gaps.md.
+
+**D141, protocol v2 for every call (Oct 16, audit Phase C).** Under `--protocol v2`, every model call asks for a
+typed reply through `ask()`, not only the step turns. The reply models have no thought field, and each typed reply
+is rendered into the text the legacy reader of that call site parses, so the code downstream is unchanged. Protocol
+v2 is a user-approved deviation from the CLAUDE.md rule to copy AutoAgents/AgentVerse prompts word for word (user
+decision, Oct 15 2026). Legacy prompts are kept unchanged under --protocol legacy. Design:
+docs/design/D141_protocol_v2_all_calls.md.
+
+**D142, the plan–execution contract (Oct 16, audit Phase D).** Each plan step can carry typed checks from a fixed
+vocabulary, each naming the requirements it proves. Box 2's gate sends a plan back when a requirement has no check,
+when a check is malformed, or when a step cannot meet its checks. Box 3 runs the checks when the step ends, and a
+failure is treated like any failed check. The final requirement check counts a requirement as met only when its
+checks passed and the answer body (not the Limitations section) covers it. Design:
+docs/design/D142_plan_execution_contract.md.
+
+**D143, planning v2 (Oct 16, audit Phase E).** Under v2, code decides how much planning a task gets: one round
+with no observers, two rounds with the plan observer, or three rounds with both. Only blocking review issues go
+back to the planner. The best round's draft is published, not the last. The planner may propose a change to Box 1's
+reading, which code accepts only when it is one of Box 1's alternatives or rests on a cited planning-search source,
+and the plan observer agreed. Design: docs/design/D143_planning_v2.md.
+
+**D144, context handling in steps (Oct 16, audit Phase F).** A step's transcript no longer grows with every full
+tool result. Long results go to a file the helper can read, file writes are summarised, and turns older than the
+last two are shown as one line each, by plain code. Each step records the characters it sent and saved. Design:
+docs/design/D144_step_context.md.
+
+**D145, the Box 4 ladder (Oct 16, audit Phase F).** A step the model service blocks is retried with the compact
+prompt, then on another candidate model, then the task stops and names the refusal categories. A tool the helper
+already holds is never granted again; its failure is a tool error. A re-plan may drop only the stuck step's
+dependents and must pass Box 2's HARD checks. A stuck upstream re-run gets one fix of its own. A step no fix
+recovered is reported as kept going under D133. Design: docs/design/D145_box4_ladder.md.
+
+**D146, measurement and verifier independence (Oct 16, audit Phase F).** Every stuck episode is recorded with all
+its signals and an empty ground-truth field, and a small command records hand grades next to the run. A profile can
+send verify steps and the plan observer to another model family; result.json says for each verify step whether it
+was independent. The verifier works out its own result without the producers' fetched pages. The evidence hash chain
+is self-consistent only: nothing anchors it outside the run folder. Design: docs/design/D146_measurement_verifier.md.
+
+**D147, every cut says where the full copy is (Oct 16, after run 71d2f910).** When a fetched page or a data file is
+shown only in part, the result now names the saved file in the workspace and says to open it with local:Read. A
+table excerpt also shows its last rows. Design: docs/design/D147_cut_notes.md.
+
+**D148, the gate judges effect, not text (Oct 16, after run 71d2f910).** A Bash command is no longer refused for
+containing "..": the gate follows its `cd`s and resolves each path, and refuses only what would land outside the
+workspace. A refusal names the exact part and says how to rewrite the call. Design: docs/design/D148_gate_effect.md.
+
+**D149, diagnosis fixes (Oct 16, after run 71d2f910).** When the gate refuses a tool the helper holds twice for the
+same reason within one step, Box 4 now diagnoses a tool error first, whatever else is missing. BLOCKED lines written
+in any markdown name their capability. Design: docs/design/D149_diagnosis_fixes.md.
+
+**D150, fixes don't waste their tries (Oct 16, after run 71d2f910).** A fix kind that failed on a step (for example
+more turns) is never tried again on that step, whatever its value. After one failed code fix the next try is the fix
+proposer, which reads the evidence and can change the step; code fixes of untried kinds follow only if the proposer has
+nothing. Design: docs/design/D150_fix_tries.md.
+
+**D151, budgets scale with the model and are shared fairly (Oct 16, after run 71d2f910).** The tokens all fixes of a
+task may use are six times the run's average step-attempt cost so far, not a fixed 200,000. With a run token cap, each
+step may spend 1.5 times its fair part of what is left when it starts; a step that reaches it stops retrying and is
+reported as kept_going with the reason, and the rest of the cap stays for the steps not yet run. Design:
+docs/design/D151_fair_budgets.md.
+
+**D152, two bugs from run 71d2f910 (Oct 16).** Amoeba's own cut note is no longer checked as text cited from a
+source. The reply room of a call follows what its role group has needed in the run: 1.5 times the largest reply so far
+(visible and thinking tokens together), at most twice what the caller asked, so a group that came close to its room is
+not cut and paid for twice. Design: docs/design/D152_two_bugs.md.
+
+**D153, plumbing from the live runs (Oct 19).** `--protocol auto` is the new default: v2 when the run's model supports
+native tool calling, legacy otherwise. Gemma's model check passed the native-tools step and submit_tool, so its entry
+now has tools. A reply the model service refused is never counted as unreadable. A BLOCKED line's name ends at a
+sentence end. A capability request for several roles is stored once per role, and team.yaml names the models the
+helpers' calls really used. Design: docs/design/D153_plumbing.md.
+
+**D155, an edit never drops a check (Oct 19).** A Box 4 edit may change the work, never the bar it is judged by. When a
+step is split, its last sub-step carries the step's checks. When the rest of the plan is re-planned, every check of
+the replaced steps moves to the new step that covers the same requirements, and a re-plan may not write checks of its
+own. A work-around may narrow done_when, but the checks still read the original, and citation checks are never
+waived. Design: docs/design/D155_checks_kept.md.
+
+**D156, preflight (Oct 21).** One command checks, before anything is spent, that every piece a task category needs is
+there, and prints how to fix each missing one: keys and one live call each, the model check, quota, the sandbox,
+libraries, the office suite, the six local tools and the four document skills. The local checks run through the
+run's own toolbox, so what is checked is what a helper gets. Its first live run found a sandbox that would not start
+(mismatched OpenShell images), missing scipy, pytest and LibreOffice, and Glob and Grep never offered.
+Design: docs/design/D156_preflight.md.
+
+**D158, the sandbox holds what the checks need (Oct 21).** One library list (libs.txt) is installed in the sandbox
+image and, for in-process mode, on the host, and LibreOffice Calc and Writer are in both. Glob and Grep, which
+Claude Code's server no longer offers, are served through its Bash by plain code with every argument quoted and the
+same gates. Design: docs/design/D158_sandbox_libs.md.
+
+**D157, task input files (Oct 21).** A task may give files. They are copied read-only into the run's workspace
+(and the sandbox) under inputs/ before any call, listed with sizes for the reader, the planner, both observers and
+every helper, and protected from writes like sources/. A plan in which no step names a given file is sent back by the
+quality gate. Design: docs/design/D157_input_files.md.
+
+**D159, local-tool calls scale with the plan (Oct 21).** The fixed 60 local calls per run became 12 per planned step,
+and each step gets a share of what is left (1.5 x calls left / steps not yet run), like D151's token share. A plan of
+the old size is treated as before; an 11-step plan is no longer stopped halfway. Design:
+docs/design/D159_local_call_share.md.
+
+**D160, quota handling (Oct 21).** A per-minute quota is waited out for as long as the reply asks, then retried. A
+daily quota is not retried: the run stops cleanly with status quota_exhausted, saves what it needs, and
+`run_task --resume <run_id>` continues another day with the same flags, task, cache and date, so finished calls replay
+without being paid again. Design: docs/design/D160_quota.md.
+
+**D161, the frozen judge and the task scorer (Oct 21).** The files that judge a run are listed and hashed at the start
+of every run, and runs judged by different files are never compared. A task may name a scorer, whose result goes to
+sim_score.json; only a deterministic stand-in exists until a simulator is chosen. Tasks may be marked stream (learned
+from) or replay (only the outer loop's test). Design: docs/design/D161_frozen_judge.md.
+
+**D162, Box 4 saves every round (Oct 22).** Each Box 4 round, scoped or single, is written as one row in the run's
+rounds.jsonl and as a round event in its hash-chained event log: the edits and their quotes, what each probe cleared,
+kept or added, the pick and the step's status. A run_end row closes it with the task score. Nothing about the run
+changes. Design: docs/design/D162_rounds.md.
+
+**D163, verdicts and one lesson library (Oct 22).** Plain code judges every edit of every Box 4 round (helped, hurt,
+no effect, confounded) and counts it in one library shared by every task, keyed by cause, op and scope; the niche of
+each count is only recorded. When an edit helped, one AI call writes a general lesson, which plain code checks for task
+facts, denied wording and length. Entries wait for the user's approval. Design: docs/design/D163_lessons.md.
+
+**D164, Box 2 and Box 4 read the library (Oct 22).** With --lessons on, plain code shows approved lessons that never
+hurt in this niche to Box 4's proposers (for the stuck step's cause) and to the Planner and observers. A lesson is a
+hint: an edit must still quote this run's evidence. Reading and writing are separate switches, a replay task never
+writes, and with reading off the prompts are unchanged. Design: docs/design/D164_lessons_read.md.
+
+**D165, compose two complementary edits (Oct 22).** When each of a round's two edits cleared a different stuck signal
+and neither recovered the step, a third probe tries both together from the same starting state and keeps the result
+only when it ends done or clears more and adds nothing. Plan edits are never composed. Off by default. Design:
+docs/design/D165_compose.md.
+
+**D166, the outer loop (Oct 22).** Run by hand, it turns an approved lesson that helped on several tasks and never
+hurt into one general setting (the order of a cause's edits, a planner rule, or a tool's guidance line), tests it on
+the replay set against today's config with everything else fixed and the judge frozen, and keeps it only when the
+results get better. It writes a report and a patch; the user applies it. Design: docs/design/D166_promote.md.
+
+### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
+
+- **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt
+  text is copied verbatim from AutoAgents / AgentVerse. The v2 prompt files are ours (`# source: ours — DEVIATION
+  D136`). The verbatim files and T11 stay untouched, and `--protocol legacy` keeps them in force. Recorded also in
+  BUILD_SPEC_PHASE1.md §11.

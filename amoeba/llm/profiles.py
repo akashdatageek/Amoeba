@@ -13,12 +13,12 @@ from typing import Callable
 
 import yaml
 
-from amoeba.llm.client import ChatResponse, LLMClient, Messages
+from amoeba.llm.client import ChatResponse, LLMClient, Messages, opts_kw, tools_kw
 
 MODELS = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
 ROLE_GROUPS = ("planner", "observers", "workers", "reviewers", "summariser", "pool")   # pool: D56's picker
 PROFILE_KEYS = {"base_url", "model", "api_key_env", "merge_system", "reasoning_effort", "max_tokens", "roles",
-                "temperature"}
+                "temperature", "provider", "verifier"}
 DEFAULT_TEMPERATURE = 0.2
 ROLE_KEYS = {"model", "max_tokens"}
 BOX2_GROUPS = {"planner": "planner", "agent_observer": "observers", "plan_observer": "observers",
@@ -39,6 +39,8 @@ class Profile:
     max_tokens: int | None = None
     roles: dict[str, dict] = field(default_factory=dict)   # group -> {model?, max_tokens?}
     temperature: float | None = DEFAULT_TEMPERATURE        # None: not sent (`temperature: omit`)
+    provider: str | None = None    # D134: `anthropic` → the Messages-API client; else the OpenAI-compatible client
+    verifier: str | None = None    # D146: another profile whose model runs the verify steps and the plan observer
 
 
 def load_profiles(path: str | Path = MODELS) -> tuple[str, dict[str, Profile]]:
@@ -103,17 +105,41 @@ class RoleRouter(LLMClient):
         self.profile, self.default = profile, default
         self.model = default.model
         self.by_group, self.max_tokens = by_group or {}, max_tokens or {}
+        self.by_agent: dict[str, LLMClient] = {}     # D146: a caller by name (the plan observer → the verifier)
+        self.verifier: str | None = None
 
-    def route(self, group: str | None) -> tuple[LLMClient, int | None]:
+    def route(self, group: str | None, agent: str | None = None) -> tuple[LLMClient, int | None]:
+        if agent in self.by_agent:
+            return self.by_agent[agent], self.max_tokens.get(group)
         return self.by_group.get(group, self.default), self.max_tokens.get(group)
 
-    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None) -> ChatResponse:
-        return self.default.chat_messages(messages, seed, max_tokens=max_tokens)
+    def chat_messages(self, messages: Messages, seed: int = 0, max_tokens: int | None = None,
+                      tools: list | None = None, **opts) -> ChatResponse:
+        return self.default.chat_messages(messages, seed, max_tokens=max_tokens, **tools_kw(tools), **opts_kw(opts))
 
     @property
     def models(self) -> dict[str, str]:
         """The model of every role group (for result.json)."""
-        return {g: self.route(g)[0].model for g in ROLE_GROUPS}
+        out = {g: self.route(g)[0].model for g in ROLE_GROUPS}
+        out.update({f"agent:{a}": c.model for a, c in self.by_agent.items()})       # D146
+        return out
+
+
+# box: client
+def attach_verifier(router: RoleRouter, profile: Profile, make_for: Callable[[Profile], LLMClient | None]) -> str:
+    """D146: when the profile names a `verifier` profile, its model runs the verify steps (the reviewers group) and
+    the plan observer. make_for(verifier profile) builds its client, or returns None when its key is not set (the
+    run then keeps one model and says so). Returns what happened, for the trace."""
+    if not profile.verifier:
+        return "none"
+    vp = get_profile(profile.verifier)
+    client = make_for(vp)
+    if client is None:
+        return f"{vp.name}: key {vp.api_key_env} not set; verify steps use {router.model}"
+    router.by_group["reviewers"] = client
+    router.by_agent["plan_observer"] = client
+    router.verifier = vp.name
+    return f"{vp.name}: verify steps and the plan observer use {vp.model}"
 
 
 # box: client
