@@ -169,7 +169,18 @@ def _row(check, ok, detail, fix, needed, warn=False) -> Row:
 
 # box: tools
 def check_keys(w: World) -> list[Row]:
-    need = {"GEMINI_API_KEY": CATEGORIES, "TAVILY_API_KEY": ("research", "decision")}
+    """The keys the profile's team model and its verifier need (D172: e.g. CLAUDE_API_KEY for claude-sonnet), Gemini's
+    and Tavily's. Only whether each is set is shown, never a value."""
+    need = {}
+    try:
+        from amoeba.llm.profiles import get_profile
+        prof = get_profile(w.profile)
+        for p in (prof, *([get_profile(prof.verifier)] if getattr(prof, "verifier", None) else [])):
+            if p.api_key_env:
+                need[p.api_key_env] = CATEGORIES
+    except Exception:                               # an unknown profile is reported by the gemma call row
+        pass
+    need.update({"GEMINI_API_KEY": CATEGORIES, "TAVILY_API_KEY": ("research", "decision")})
     return [_row(k, bool(w.env.get(k)), "set" if w.env.get(k) else "not set", f"{k}: {ENV_FIX}", n)
             for k, n in need.items()]
 

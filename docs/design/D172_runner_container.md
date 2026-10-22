@@ -38,6 +38,17 @@ event, so a learning run in the sandbox learned almost nothing, and nobody was t
    - **Inside it,** the container is the sandbox. In-process local tools are undone file by file, so the scoped round
      runs in full.
 
+## Found on the first preflight inside the container (Oct 22)
+- **The profile's keys.** The preflight checked only `GEMINI_API_KEY` and `TAVILY_API_KEY`. It now also checks the
+  key of the profile's team model and of its verifier. For claude-sonnet+gemma-verify that adds `CLAUDE_API_KEY`.
+- **Behind a TLS-inspecting proxy** (as in a cloud session), the container had no route to the model APIs. `run.sh`
+  has two opt-in settings for this:
+  - `AMOEBA_RUNNER_CA=<ca file>` passes the proxy variables by name and mounts that one CA file read-only as the
+    trust bundle;
+  - `AMOEBA_RUNNER_NETWORK=host` is needed only when the proxy listens on the host's loopback.
+
+  On a VM with direct network access, leave both unset.
+
 ## Tests (tests/test_runner_vm_d172.py, red on 9f1fb29)
 - **`proposer_mode`.** Sandbox gives single with the reason. In-process or local tools off gives scoped. Asking for
   single gives single, and adapt off gives none.

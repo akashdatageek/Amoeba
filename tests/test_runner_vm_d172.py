@@ -51,8 +51,18 @@ def test_the_runner_container_mounts_only_an_output_folder_and_takes_keys_from_t
         assert need in docker, need
     run = (ROOT / "scripts" / "vm" / "run.sh").read_text()
     mounts = re.findall(r"(?:-v|--volume|--mount)\s+(\S+)", run)
-    assert len(mounts) == 1 and mounts[0].strip('"').endswith(":/out")
+    folders = [m for m in mounts if "runner-ca.crt" not in m]               # the optional CA is one read-only file
+    assert len(folders) == 1 and folders[0].strip('"').endswith(":/out")
+    assert all("readonly" in m for m in mounts if "runner-ca.crt" in m)
     for key in ("CLAUDE_API_KEY", "GEMINI_API_KEY", "TAVILY_API_KEY"):
         assert re.search(rf"-e {key}(\s|$)", run), key                   # passed by name: never a value
     assert "--local-tools-mode inprocess" in run and "--rm" in run
     assert not re.search(r"(API_KEY|TOKEN)=\S", run)                     # no key written in the script
+
+
+def test_preflight_checks_the_profile_keys():
+    from scripts.preflight import check_keys
+    w = Fake(mode="inprocess")
+    w.profile = "claude-sonnet+gemma-verify"
+    rows = {r.check: r.status for r in check_keys(w)}
+    assert rows["CLAUDE_API_KEY"] == "missing" and rows["GEMINI_API_KEY"] == "ok"   # the fake sets only those two
