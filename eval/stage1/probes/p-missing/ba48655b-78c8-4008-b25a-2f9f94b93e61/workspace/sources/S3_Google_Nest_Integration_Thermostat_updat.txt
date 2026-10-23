@@ -1,0 +1,245 @@
+Source: S3
+URL: https://community.home-assistant.io/t/google-nest-integration-thermostat-update-frequency-is-very-variable/715700
+Title: Google Nest Integration Thermostat update frequency is very variable - Third party integrations - Home Assistant Community
+
+# [Google Nest Integration Thermostat update frequency is very variable](/t/google-nest-integration-thermostat-update-frequency-is-very-variable/715700)
+
+Using the Google Nest integration and looking at the `states` table for my Nest thermostats, it seems like the update frequency is very variable and random. I have seen it update 2 minutes after the previous meeting and I’ve seen it update more than an hour after the previous reading.
+
+`states`
+
+I would have though that it would poll at some regular interval.
+
+Is this “normal” behavior?  
+Is there a way to get a more regular polling frequency?
+
+Note the same thing happens for my Remote Nest temperature sensors that I integrated using HACS/Nest Protect
+
+Sometimes they provide a reading every few minutes and sometimes no reading for hours.
+
+I do note that a new reading seems to only be provided when the temperature changes but since the temperature is recorded in tenths of a degree, it is hard to believe that the house temperature remains constant within a tenth of a degree for hours.
+
+![](https://community.home-assistant.io/letter_avatar/puterboy/48/5_f40856482fe1e45ac8f1605885140a2d.png)
+
+Is this “normal” behavior?
+
+Possible latency from Google pub/sub would be my thought.
+
+![](https://community.home-assistant.io/letter_avatar/puterboy/48/5_f40856482fe1e45ac8f1605885140a2d.png)
+
+Is there a way to get a more regular polling frequency?
+
+Given it’s a cloud push, I don’t *think* you can override or set the polling interval.
+
+![](https://community.home-assistant.io/letter_avatar/puterboy/48/5_f40856482fe1e45ac8f1605885140a2d.png)
+
+HACS/Nest Protect
+
+Ah, just saw this… Yeah, no clue how that works, but I’m guessing because of this:
+
+`Custom component for Home Assistant to interact with Nest Protect devices via an undocumented and unofficial Nest API.`
+
+Maybe Google is fiddling around on their backend? I’d open a discussion on the integration’s github.
+
+True, but I have the same issue with the standard Google Nest integration with update frequency varying from 3min to 4+ hours.
+
+I would have thought that the standard Google Nest integration would poll the API at a standard frequency…
+
+The Nest integration is a cloud push, not a polling service. So, it’s basically whenever Google’s pub/sub decides to send data is when you will see it update.
+
+So does that mean the temperature “reading” on the Thermostat could be 4-5 hours out of date?  
+If so, the HA thermostat widget becomes almost useless.
+
+I can see if the time can vary by a few minutes but to have no update after 4 or 5 hours seems truly broken. While Google APIs have their faults this seems surprising?
+
+The only (partial) explanation I can think of is if when the thermostat is not calling for heat/cooling, perhaps it only updates after the temperature has changed by at least a degree or two, ignoring smaller temperature fluctuations.
+
+![](https://community.home-assistant.io/letter_avatar/puterboy/48/5_f40856482fe1e45ac8f1605885140a2d.png)
+
+While Google APIs have their faults this seems surprising?
+
+I don’t disagree with you. I’m not fully convinced that it is Google that’s causing it. But, tbh, I’m not 100% sure what exactly to look for in HA really. Maybe turn on debug logging for the Nest integration and the custom one you’re using as well? That’s about the only thing I can think of.
+
+This is an efficiency win, and intentional. Instead of constantly polling it only sends updates when necessary.
+
+My impression from the discussion on github is that this is not what you are expecting as you have different goals.
+
+(Just replying here to close the loop on the discussion so folks reading this understand why it works this way, and that there isn’t a bug here)
+
+I need to do a little more testing, especially in the summer months where the house temperature changes a lot more than the winter since the heating is off and we don’t have central AC. I want to make sure that it truly does capture all the changes so that the long time between updates is correct.
+
+You may want to consider getting additional temp sensors independent of nest or you want super high accuracy.
+
+This is a zigbee temp sensor nearest the woodburner :
+
+[![image](https://community-assets.home-assistant.io/optimized/4X/c/3/1/c31672033cba4b25a3b01fa2359f88d1b74012d1_2_526x500.png)
+
+image576×547 20.8 KB](https://community-assets.home-assistant.io/original/4X/c/3/1/c31672033cba4b25a3b01fa2359f88d1b74012d1.png "image")
+
+![image](https://community-assets.home-assistant.io/optimized/4X/c/3/1/c31672033cba4b25a3b01fa2359f88d1b74012d1_2_526x500.png)
+
+…and this is the Nest which is placed furthest from the woodburner :
+
+[![image](https://community-assets.home-assistant.io/original/4X/4/a/e/4aece08e2ed94fa9415b46638f6ed8a63b9ce934.png)
+
+image578×510 12.4 KB](https://community-assets.home-assistant.io/original/4X/4/a/e/4aece08e2ed94fa9415b46638f6ed8a63b9ce934.png "image")
+
+![image](https://community-assets.home-assistant.io/original/4X/4/a/e/4aece08e2ed94fa9415b46638f6ed8a63b9ce934.png)
+
+You can see an obvious difference but this is because the Nest only reports on changes of 0.5c (in my case) and the Zigbee sensor does every 0.1c
+
+Actually, at least in my case, it seems to report whenever the ‘rounded’ temperature changes – i.e., when the fractional part of the temperature crosses ‘0.5’ though the time between updates can vary from less than a minute to 18 hours. There also seeems to be some occasional oscillation around the ‘0.5’ rounding point, presumably as the temperature naturally varies above and below that number.
+
+The following historgram shows how transtions cluster around the mid-fractional igits (0.4, 0.5, 0.6) as tabulated for the past month across 3 separate Nest sensors.
+
+`for i in {1..9}; do echo -ne "$i:\t"; sqlite3 -header /homeassistant/home-assistant_v2.db "SELECT state_id, metadata_id, state, DATETIME(last_updated_ts, 'unixepoch', 'localtime') FROM states WHERE metadata_id=104 or metadata_id=106 or metadata_id=108" | grep "\.$i" | wc -l; done
+1: 95
+2: 178
+3: 278
+4: 865
+5: 992
+6: 695
+7: 426
+8: 260
+9: 184`
+
+The following graph shows the Nest temperature sensor plotted against a cheap Accuweather 433MHz sensor about 10 feet away. Clearly the pattern is similar though much less granular for the Nest vs. the Accuweather sensor. Note the fluctuations around the mid-fractional digit rounding point. The difference in absolute temperatures probably more reflects an absolute callibration error in one or both sensors than temperature differences in the room.
+
+[![image](https://community-assets.home-assistant.io/optimized/4X/b/d/8/bd81c8e3ffe355ac5079314848a85799227e5a53_2_690x182.png)
+
+image1633×431 29.6 KB](https://community-assets.home-assistant.io/original/4X/b/d/8/bd81c8e3ffe355ac5079314848a85799227e5a53.png "image")
+
+![image](https://community-assets.home-assistant.io/optimized/4X/b/d/8/bd81c8e3ffe355ac5079314848a85799227e5a53_2_690x182.png)
+
+The real test will come over the next few months when heating season ends and there is no AC in hall, so the temperature will vary widely between day and night. I will keep you all updated…
+
+…
+
+![](https://community.home-assistant.io/letter_avatar/puterboy/48/5_f40856482fe1e45ac8f1605885140a2d.png)
+
+I will keep you all updated…
+
+5 months later…any updates? ![:slight_smile:](https://community.home-assistant.io/images/emoji/twitter/slight_smile.png?v=12 ":slight_smile:")
+
+![:slight_smile:](https://community.home-assistant.io/images/emoji/twitter/slight_smile.png?v=12 ":slight_smile:")
+
+Since my Heatlink died (and was unrealiably connecting to the Nest 3rd Gen Thermostat) I’ve decided to just use the Nest as a thermostat sensor, and have wired my boiler up to a shelly-1. It’s all working great, with much more granular control than the simple Nest schedules can give (only set temps in 0.5C increments - really, Google?!).
+
+Anyway, I’ve also noticed the relative sparse updates from the Nest’s temperature sensor into HA, and so am also considering upgrading to a better, more responsive thermostat, even though overall the heating working pretty well (and better, IMHO than with Nest-Heatlink).
+
+I wrote a script using the Google Nest API to regularly poll my 3 Nest thermostats to get the temperature & humidity.
+
+And it turns out that the HA Nest interface is accurately capturing every change in temperature & humidity – it’s just that the temperature is more stable than one might expect (at least to the accuracy of a Nest thermostat.
+
+The precision is good with the difference between two reported temperatures ranging from .01 to about 0.8 degrees – I imagine that has more to do with how often the internal sensor updates.
+
+The accuracy also seems pretty good.
+
+So at this point I feel confident that the interface is working well.
+
+woul dyou mind sharing the script and direction please?
+
+You can try this code.  
+You will need to create a Nest project to get PROJECT\_ID, CLIENT\_ID and CLIENT\_SECRET.  
+You can google to figure out how to do that.  
+Then add those values to the bash script below.  
+The first time through, the script will query you to get an ACCESS\_TOKEN by going to the URL:  
+`https://accounts.google.com/o/oauth2/v2/auth?client_id=$CLIENT_ID&redirect_uri=https://www.google.com&response_type=code&scope=https://www.googleapis.com/auth/sdm.service`
+
+`https://accounts.google.com/o/oauth2/v2/auth?client_id=$CLIENT_ID&redirect_uri=https://www.google.com&response_type=code&scope=https://www.googleapis.com/auth/sdm.service`
+
+Good luck!
+
+`#!/bin/bash
+################################################################################
+### Configuration
+PROJECT_ID="<YOUR NEST PROJECT ID>"
+CLIENT_ID="<YOUR NEST CLIENT ID>"
+CLIENT_SECRET="<YOUR CLIENT SECRET>"
+################################################################################
+REFRESH_TOKEN_FILE="$(dirname $(readlink -f $0))/REFRESH_TOKEN"
+REDIRECT_URI="https://www.google.com"
+NEST_API_URL="https://smartdevicemanagement.googleapis.com/v1/enterprises/$PROJECT_ID/devices"
+#Note: You can get token url manually by going to the following URL in a browser:
+# https://accounts.google.com/o/oauth2/v2/auth?client_id=$CLIENT_ID&redirect_uri=https://www.google.com&response_type=code&scope=https://www.googleapis.com/auth/sdm.service
+# The code will be in the returned URL in the browser
+#Obtain ACCESS and REFRESH tokens
+if ! [ -r "$REFRESH_TOKEN_FILE" ]; then
+echo "Paste the following in your browser and then enter auth code below:"
+echo "https://accounts.google.com/o/oauth2/v2/auth?client_id=$CLIENT_ID&redirect_uri=https://www.google.com&response_type=code&scope=https://www.googleapis.com/auth/sdm.service&prompt=consent&access_type=offline"
+while [ -z "$AUTH_CODE" ]; do
+echo -n "Enter auth code: "
+read AUTH_CODE
+done
+RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+-d "code=$AUTH_CODE" \
+-d "client_id=$CLIENT_ID" \
+-d "client_secret=$CLIENT_SECRET" \
+-d "redirect_uri=$REDIRECT_URI" \
+-d "grant_type=authorization_code"
+)
+# Extract the access token from the response
+ACCESS_TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
+REFRESH_TOKEN=$(echo $RESPONSE | jq -r '.refresh_token')
+if [ -z "$RESPONSE" ] || [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+echo "Failed to obtain access token. Response:"
+echo "$RESPONSE"
+exit 1
+fi
+if [ -z "$REFRESH_TOKEN" ] || [ "$REFRESH_TOKEN" = "null" ]; then
+echo "Failed to obtain refresh token. Response:"
+echo "$RESPONSE"
+exit 2
+fi
+echo "$REFRESH_TOKEN" >| "$REFRESH_TOKEN_FILE"
+else # Request a new access token
+REFRESH_TOKEN="$(cat $REFRESH_TOKEN_FILE)"
+RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+-d "client_id=$CLIENT_ID" \
+-d "client_secret=$CLIENT_SECRET" \
+-d "refresh_token=$REFRESH_TOKEN" \
+-d "grant_type=refresh_token")
+ACCESS_TOKEN=$(echo $RESPONSE | jq -r '.access_token // empty')
+if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+echo "Failed to obtain access token. Response:"
+echo "$RESPONSE"
+exit 1
+fi
+fi
+#date "+%Y-%m-$dT%H:%M:%S"
+# Step 2: Print out device IDs
+if [ -z "$DEV_ID" ]; then #Print out for all devices
+RESPONSE=$(curl -s -X GET "$NEST_API_URL" \
+-H "Authorization: Bearer $ACCESS_TOKEN" \
+-H "Content-Type: application/json")
+echo "$RESPONSE" | jq -r '.devices[] |
+[
+.traits["sdm.devices.traits.Info"].customName,
+((.traits["sdm.devices.traits.Temperature"].ambientTemperatureCelsius * 9/5 + 32)*100 | floor/100),
+(.traits["sdm.devices.traits.Humidity"].ambientHumidityPercent | tostring + "%")
+] | @tsv'
+else #Fetch Data from Nest Thermostat for specific device
+RESPONSE=$(curl -s -X GET "$NEST_API_URL/$DEV_ID" \
+-H "Authorization: Bearer $ACCESS_TOKEN" \
+-H "Content-Type: application/json")
+# Extract relevant data (assuming JSON response structure)
+echo "$RESPONSE" | jq -r '
+[
+.traits["sdm.devices.traits.Info"].customName,
+((.traits["sdm.devices.traits.Temperature"].ambientTemperatureCelsius * 9/5 + 32)*100 | floor/100),
+(.traits["sdm.devices.traits.Humidity"].ambientHumidityPercent | tostring + "%")
+] | @tsv'
+fi`
+
+I got here because my new thermostat integration appears to not be refreshing unless I manually kick off a refresh.
+
+Where did you drop this script in HA? I’m running HAOS if that makes a difference. Looks like a bash script for Linux. Are you using CRON to run this? If so, at what interval?
+
+This script for me has nothing to do with HA.  
+I run it from a Linux machine when I want to query the thermostats independent of existence of HA.
+
+If you want to refresh the Nest integration, you should do that via the REST API that I run independently via CRON from a separate Linux machine – though this really has nothing to do with this topic.
+
+`15 0 * * 6 curl -X POST -H "Authorization: Bearer <YOUR_TOKEN>" -H "Content-Type: application/json" http://homeassistant:8123/api/config/config_entries/entry/<YOUR_INTEGRATION_ID>/reload | mail -s "Reloading Homeassistant Nest integration" $LOGNAME`
+
+Powered by [Discourse](https://www.discourse.org), best viewed with JavaScript enabled

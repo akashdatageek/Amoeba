@@ -1,0 +1,335 @@
+Source: S41
+URL: https://medium.com/google-cloud/benchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0
+Title: Benchmarking AlloyDB with TPC-H: A Deep Dive
+
+[Sitemap](https://medium.com/sitemap/sitemap.xml)
+
+[Open in app](https://play.google.com/store/apps/details?id=com.medium.reader&referrer=utm_source%3DmobileNavBar&source=---top_nav_layout_nav-------------------------------------------)
+
+Sign up
+
+[Sign in](https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2Fgoogle-cloud%2Fbenchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0&source=post_page---top_nav_layout_nav-----------------------global_nav--------------------)
+
+[](https://medium.com/?source=---top_nav_layout_nav-------------------------------------------)
+
+Get app
+
+[Write](https://medium.com/m/signin?operation=register&redirect=https%3A%2F%2Fmedium.com%2Fnew-story&source=---top_nav_layout_nav-----------------------new_post_topnav--------------------)
+
+[Search](https://medium.com/search?source=---top_nav_layout_nav-------------------------------------------)
+
+Sign up
+
+[Sign in](https://medium.com/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2Fgoogle-cloud%2Fbenchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0&source=post_page---top_nav_layout_nav-----------------------global_nav--------------------)
+
+![Image 1: Unknown user](https://miro.medium.com/v2/resize:fill:32:32/1*dmbNkD5D-u45r44go_cf0g.png)
+
+## [Google Cloud - Community](https://medium.com/google-cloud?source=post_page---publication_nav-e52cf94d98af-9d393a0addb0-----------------------------------------)
+
+·
+Follow publication
+
+[![Image 2: Google Cloud - Community](https://miro.medium.com/v2/resize:fill:38:38/1*FUjLiCANvATKeaJEeg20Rw.png)](https://medium.com/google-cloud?source=post_page---post_publication_sidebar-e52cf94d98af-9d393a0addb0-----------------------------------------)
+A collection of technical articles and blogs published or curated by Google Cloud Developer Advocates. The views expressed are those of the authors and don't necessarily reflect those of Google.
+
+Follow publication
+
+[Alloydb](https://medium.com/tag/alloydb?source=post_page---header_tags--9d393a0addb0-----------------------------------------)
+
+[Google Cloud Platform](https://medium.com/tag/google-cloud-platform?source=post_page---header_tags--9d393a0addb0-----------------------------------------)
+
+[Postgresql](https://medium.com/tag/postgresql?source=post_page---header_tags--9d393a0addb0-----------------------------------------)
+
+[Tpc](https://medium.com/tag/tpc?source=post_page---header_tags--9d393a0addb0-----------------------------------------)
+
+[Benchmark](https://medium.com/tag/benchmark?source=post_page---header_tags--9d393a0addb0-----------------------------------------)
+
+# Benchmarking AlloyDB with TPC-H: A Deep Dive
+
+[![Image 3: Suds Kumar](https://miro.medium.com/v2/resize:fill:32:32/1*s9FL1bWTrLsd0_P3oJQF0A.jpeg)](https://medium.com/@sudsk?source=post_page---byline--9d393a0addb0-----------------------------------------)
+
+[Suds Kumar](https://medium.com/@sudsk?source=post_page---byline--9d393a0addb0-----------------------------------------)
+
+Follow
+
+5 min read
+
+·
+
+Dec 11, 2024
+
+[](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Fvote%2Fgoogle-cloud%2F9d393a0addb0&operation=register&redirect=https%3A%2F%2Fmedium.com%2Fgoogle-cloud%2Fbenchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0&user=Suds+Kumar&userId=dbebfddcaeee&source=---header_actions--9d393a0addb0---------------------clap_footer--------------------)
+
+[](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Frepost%2Fp%2F9d393a0addb0&operation=register&redirect=https%3A%2F%2Fmedium.com%2Fgoogle-cloud%2Fbenchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0&user=Suds+Kumar&userId=dbebfddcaeee&source=---header_actions--9d393a0addb0---------------------repost_header--------------------)
+
+[](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Fbookmark%2Fp%2F9d393a0addb0&operation=register&redirect=https%3A%2F%2Fmedium.com%2Fgoogle-cloud%2Fbenchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0&source=---header_actions--9d393a0addb0---------------------bookmark_footer--------------------)
+
+[Listen](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2Fplans%3Fdimension%3Dpost_audio_button%26postId%3D9d393a0addb0&operation=register&redirect=https%3A%2F%2Fmedium.com%2Fgoogle-cloud%2Fbenchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0&source=---header_actions--9d393a0addb0---------------------post_audio_button--------------------)
+
+Share
+
+Google Cloud’s AlloyDB for PostgreSQL offers a compelling combination of performance, scalability, and compatibility. This blog post details a benchmark of AlloyDB using the industry-standard TPC-H benchmark, providing insights into its capabilities for analytical workloads. We’ll cover the setup, data loading process, query execution, results analysis, and a concluding summary.
+
+**Setup:**
+
+For this benchmark, we utilized a standard TPC-H 1 GB dataset. The AlloyDB instance was configured as follows:
+
+*   Machine Type: 16 vCPU, 128 GB
+*   Storage: 1.37 GB was used in total
+*   High Availability: No
+*   Version: PostgreSQL 15 compatible
+*   Read Pools: No
+*   Columnar engine (Enabled): Auto columnarization - Enabled, Memory size -30% (38400 Mb), Set run frequency -EVERY 1 DAYS, Columnar scan -Enabled
+
+**Schema:**
+
+# Create tables  
+# Connect to your Postgresql database.  
+  
+  
+$ psql -h IP_ADDRESS -U USERNAME  
+  
+# Create a schema for testing.  
+  
+postgres=> create schema tpch1g;  
+postgres=> set search_path to tpch1g;  
+  
+# Create empty tables  
+postgres=>  
+-- nation  
+CREATE TABLE IF NOT EXISTS "nation" (  
+ "n_nationkey" INT,  
+ "n_name" CHAR(25),  
+ "n_regionkey" INT,  
+ "n_comment" VARCHAR(152),  
+ PRIMARY KEY ("n_nationkey"));  
+  
+-- region  
+CREATE TABLE IF NOT EXISTS "region" (  
+ "r_regionkey" INT,  
+ "r_name" CHAR(25),  
+ "r_comment" VARCHAR(152),  
+ PRIMARY KEY ("r_regionkey"));  
+  
+-- supplier  
+CREATE TABLE IF NOT EXISTS "supplier" (  
+ "s_suppkey" INT,  
+ "s_name" CHAR(25),  
+ "s_address" VARCHAR(40),  
+ "s_nationkey" INT,  
+ "s_phone" CHAR(15),  
+ "s_acctbal" DECIMAL(15,2),  
+ "s_comment" VARCHAR(101),  
+ PRIMARY KEY ("s_suppkey"));  
+  
+-- customer  
+CREATE TABLE IF NOT EXISTS "customer" (  
+ "c_custkey" INT,  
+ "c_name" VARCHAR(25),  
+ "c_address" VARCHAR(40),  
+ "c_nationkey" INT,  
+ "c_phone" CHAR(15),  
+ "c_acctbal" DECIMAL(15,2),  
+ "c_mktsegment" CHAR(10),  
+ "c_comment" VARCHAR(117),  
+ PRIMARY KEY ("c_custkey"));  
+  
+-- part  
+CREATE TABLE IF NOT EXISTS "part" (  
+ "p_partkey" INT,  
+ "p_name" VARCHAR(55),  
+ "p_mfgr" CHAR(25),  
+ "p_brand" CHAR(10),  
+ "p_type" VARCHAR(25),  
+ "p_size" INT,  
+ "p_container" CHAR(10),  
+ "p_retailprice" DECIMAL(15,2) ,  
+ "p_comment" VARCHAR(23) ,  
+ PRIMARY KEY ("p_partkey"));  
+  
+-- partsupp  
+CREATE TABLE IF NOT EXISTS "partsupp" (  
+ "ps_partkey" INT,  
+ "ps_suppkey" INT,  
+ "ps_availqty" INT,  
+ "ps_supplycost" DECIMAL(15,2),  
+ "ps_comment" VARCHAR(199),  
+ PRIMARY KEY ("ps_partkey", "ps_suppkey"));  
+  
+-- orders  
+CREATE TABLE IF NOT EXISTS "orders" (  
+ "o_orderkey" INT,  
+ "o_custkey" INT,  
+ "o_orderstatus" CHAR(1),  
+ "o_totalprice" DECIMAL(15,2),  
+ "o_orderdate" DATE,  
+ "o_orderpriority" CHAR(15),  
+ "o_clerk" CHAR(15),  
+ "o_shippriority" INT,  
+ "o_comment" VARCHAR(79),  
+ PRIMARY KEY ("o_orderkey"));  
+  
+-- lineitem  
+CREATE TABLE IF NOT EXISTS "lineitem"(  
+ "l_orderkey" INT,  
+ "l_partkey" INT,  
+ "l_suppkey" INT,  
+ "l_linenumber" INT,  
+ "l_quantity" DECIMAL(15,2),  
+ "l_extendedprice" DECIMAL(15,2),  
+ "l_discount" DECIMAL(15,2),  
+ "l_tax" DECIMAL(15,2),  
+ "l_returnflag" CHAR(1),  
+ "l_linestatus" CHAR(1),  
+ "l_shipdate" DATE,  
+ "l_commitdate" DATE,  
+ "l_receiptdate" DATE,  
+ "l_shipinstruct" CHAR(25),  
+ "l_shipmode" CHAR(10),  
+ "l_comment" VARCHAR(44));
+**Database Entities, Relationships, and Characteristics:**
+
+## Get Suds Kumar’s stories in your inbox
+
+Join Medium for free to get updates from this writer.
+
+Subscribe
+
+Subscribe
+
+- [x] 
+
+Remember me for faster sign in
+
+ 
+
+The components of TPC-H consist of eight separate and individual tables (the Base Tables). The relationships between columns in these tables are illustrated in the following ER diagram:
+
+Press enter or click to view image in full size
+
+![Image 4](https://miro.medium.com/v2/resize:fit:700/1*0xVmINFULjEAXVJchEmV-Q.png)
+
+**Data Loading:**
+
+We will download the pre-generated TPC-H 1GB dataset from Kaggle site — [https://www.kaggle.com/datasets/fven7u/tpch-1gb](https://www.kaggle.com/datasets/fven7u/tpch-1gb). Extract data into a folder and load in to AlloyDB tables using the `COPY` command.
+
+postgres=> \copy "region" from 'region.tbl' DELIMITER '|' CSV;  
+postgres=> \copy "nation" from 'nation.tbl' DELIMITER '|' CSV;  
+postgres=> \copy "customer" from 'customer.tbl' DELIMITER '|' CSV;  
+postgres=> \copy "supplier" from 'supplier.tbl' DELIMITER '|' CSV;  
+postgres=> \copy "part" from 'part.tbl' DELIMITER '|' CSV;  
+postgres=> \copy "partsupp" from 'partsupp.tbl' DELIMITER '|' CSV;  
+postgres=> \copy "orders" from 'orders.tbl' DELIMITER '|' CSV;  
+postgres=> \copy "lineitem" from 'lineitem.tbl' DELIMITER '|' CSV;
+**Query Execution:**
+
+The TPC-H benchmark consists of 22 analytical queries designed to test various aspects of a database system’s performance. We executed 20 out of the 22 queries against the loaded dataset. Each query was run twice (cold start and a warm start) to account for potential variations in execution time and obtain more statistically reliable results. We used the `EXPLAIN ANALYZE` command to analyze the query execution plans for potential optimization opportunities. Though Columnar Engine was enabled, we didn’t make use of it.
+
+**Results:**
+
+The following table summarizes the key results, showing the cold and warm query execution time for each query (in milliseconds). Two queries #15 and #20 were not executed.
+
+  
++--------+---------------------------+-----------------+-----------------+  
+| Query# | Description | Cold start (ms) | Warm start (ms) |  
++--------+---------------------------+-----------------+-----------------+  
+| 1 | Pricing Summary Report | 1015 | 992 |  
+| 2 | Minimum Cost Supplier | 201 | 173 |  
+| 3 | Shipping Priority | 257 | 232 |  
+| 4 | Order Priority Checking | 600 | 574 |  
+| 5 | Local Supplier Volume | 756 | 707 |  
+| 6 | Forecast Revenue Change | 116 | 121 |  
+| 7 | Volume Shipping | 278 | 258 |  
+| 8 | National Market Share | 199 | 188 |  
+| 9 | Product Type Profit Meas | 813 | 750 |  
+| 10 | Returned Item Reporting | 461 | 430 |  
+| 11 | Imp Stock Identification | 115 | 101 |  
+| 12 | Ship Modes & Order Prio | 185 | 186 |  
+| 13 | Customer Distribution | 1292 | 1148 |  
+| 14 | Promotion Effect | 229 | 231 |  
+| 16 | Parts/Supplier Rlship | 188 | 158 |  
+| 17 | Small-Qty-Order Revenue | 167 | 143 |  
+| 18 | Large Volume Customer | 2819 | 2575 |  
+| 19 | Discounted Revenue | 173 | 170 |  
+| 21 | Supp Kept Orders Waiting | 2086 | 2040 |  
+| 22 | Global Sales Opportunity | 232 | 194 |  
++--------+---------------------------+-----------------+-----------------+
+**Summary:**
+
+The benchmark results demonstrate that AlloyDB exhibits strong performance for TPC-H queries. Queries (Q1, Q3, Q4, Q10, Q13) showcased good aggregation performance whereas Q18 and Q21 would need further investigation. Queries (Q9) showcased good join performance whereas Q18 would need further investigation. Queries (Q2, Q11, Q17) showcased excellent correlated subquery performance.
+
+**Conclusion:**
+
+This benchmark provides valuable insights into AlloyDB’s performance characteristics for analytical workloads. Its scalability and performance capabilities, as demonstrated by the TPC-H results, make it a strong contender for applications requiring high-throughput data analysis. Further investigation could focus on optimizing specific queries identified as potential bottlenecks and exploring the impact of columnar engine on overall performance. This benchmark showcases AlloyDB’s ability to handle demanding analytical workloads effectively, making it a viable option for data warehousing and business intelligence applications. Remember that these results are specific to our chosen configuration; your results may vary depending on your specific setup and workload.
+
+[Alloydb](https://medium.com/tag/alloydb?source=post_page---footer_tags--9d393a0addb0-----------------------------------------)
+
+[Google Cloud Platform](https://medium.com/tag/google-cloud-platform?source=post_page---footer_tags--9d393a0addb0-----------------------------------------)
+
+[Postgresql](https://medium.com/tag/postgresql?source=post_page---footer_tags--9d393a0addb0-----------------------------------------)
+
+[Tpc](https://medium.com/tag/tpc?source=post_page---footer_tags--9d393a0addb0-----------------------------------------)
+
+[Benchmark](https://medium.com/tag/benchmark?source=post_page---footer_tags--9d393a0addb0-----------------------------------------)
+
+[](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Fvote%2Fgoogle-cloud%2F9d393a0addb0&operation=register&redirect=https%3A%2F%2Fmedium.com%2Fgoogle-cloud%2Fbenchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0&user=Suds+Kumar&userId=dbebfddcaeee&source=---footer_actions--9d393a0addb0---------------------clap_footer--------------------)
+
+[](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Fvote%2Fgoogle-cloud%2F9d393a0addb0&operation=register&redirect=https%3A%2F%2Fmedium.com%2Fgoogle-cloud%2Fbenchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0&user=Suds+Kumar&userId=dbebfddcaeee&source=---footer_actions--9d393a0addb0---------------------clap_footer--------------------)
+
+[](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Frepost%2Fp%2F9d393a0addb0&operation=register&redirect=https%3A%2F%2Fmedium.com%2Fgoogle-cloud%2Fbenchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0&user=Suds+Kumar&userId=dbebfddcaeee&source=---footer_actions--9d393a0addb0---------------------repost_footer--------------------)
+
+[](https://medium.com/m/signin?actionUrl=https%3A%2F%2Fmedium.com%2F_%2Fbookmark%2Fp%2F9d393a0addb0&operation=register&redirect=https%3A%2F%2Fmedium.com%2Fgoogle-cloud%2Fbenchmarking-alloydb-with-tpc-h-a-deep-dive-9d393a0addb0&source=---footer_actions--9d393a0addb0---------------------bookmark_footer--------------------)
+
+[![Image 5: Suds Kumar](https://miro.medium.com/v2/resize:fill:48:48/1*s9FL1bWTrLsd0_P3oJQF0A.jpeg)](https://medium.com/@sudsk?source=post_page---post_author_info--9d393a0addb0-----------------------------------------)
+
+[![Image 6: Suds Kumar](https://miro.medium.com/v2/resize:fill:64:64/1*s9FL1bWTrLsd0_P3oJQF0A.jpeg)](https://medium.com/@sudsk?source=post_page---post_author_info--9d393a0addb0-----------------------------------------)
+
+Follow
+
+## [Written by Suds Kumar](https://medium.com/@sudsk?source=post_page---post_author_info--9d393a0addb0-----------------------------------------)
+
+[45 followers](https://medium.com/@sudsk/followers?source=post_page---post_author_info--9d393a0addb0-----------------------------------------)
+
+·[4 following](https://medium.com/@sudsk/following?source=post_page---post_author_info--9d393a0addb0-----------------------------------------)
+
+Google Cloud enthusiast
+
+Follow
+
+[![Image 7: Google Cloud - Community](https://miro.medium.com/v2/resize:fill:48:48/1*FUjLiCANvATKeaJEeg20Rw.png)](https://medium.com/google-cloud?source=post_page---post_publication_info--9d393a0addb0-----------------------------------------)
+
+[![Image 8: Google Cloud - Community](https://miro.medium.com/v2/resize:fill:64:64/1*FUjLiCANvATKeaJEeg20Rw.png)](https://medium.com/google-cloud?source=post_page---post_publication_info--9d393a0addb0-----------------------------------------)
+
+Follow
+
+## [Published in Google Cloud - Community](https://medium.com/google-cloud?source=post_page---post_publication_info--9d393a0addb0-----------------------------------------)
+
+[78K followers](https://medium.com/google-cloud/followers?source=post_page---post_publication_info--9d393a0addb0-----------------------------------------)
+
+·[Last published 1 day ago](https://medium.com/google-cloud/it-wasnt-the-model-it-was-the-harness-how-i-fixed-my-ai-code-reviewer-86a9457eb431?source=post_page---post_publication_info--9d393a0addb0-----------------------------------------)
+
+A collection of technical articles and blogs published or curated by Google Cloud Developer Advocates. The views expressed are those of the authors and don't necessarily reflect those of Google.
+
+Follow
+
+[Help](https://help.medium.com/hc/en-us?source=post_page-----9d393a0addb0-----------------------------------------)
+
+[Status](https://status.medium.com/?source=post_page-----9d393a0addb0-----------------------------------------)
+
+[About](https://medium.com/about?autoplay=1&source=post_page-----9d393a0addb0-----------------------------------------)
+
+[Careers](https://medium.com/jobs-at-medium/work-at-medium-959d1a85284e?source=post_page-----9d393a0addb0-----------------------------------------)
+
+[Press](mailto:pressinquiries@medium.com)
+
+[Blog](https://blog.medium.com/?source=post_page-----9d393a0addb0-----------------------------------------)
+
+[Store](https://medium.com/store)
+
+[Privacy](https://policy.medium.com/medium-privacy-policy-f03bf92035c9?source=post_page-----9d393a0addb0-----------------------------------------)
+
+[Rules](https://policy.medium.com/medium-rules-30e5502c4eb4?source=post_page-----9d393a0addb0-----------------------------------------)
+
+[Terms](https://policy.medium.com/medium-terms-of-service-9db0094a1e0f?source=post_page-----9d393a0addb0-----------------------------------------)
+
+[Text to speech](https://speechify.com/medium?source=post_page-----9d393a0addb0-----------------------------------------)

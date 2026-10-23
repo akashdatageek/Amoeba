@@ -133,6 +133,8 @@ def estimate(chat_spans: list[dict], model: str, prices: dict | None = None) -> 
     table = load_prices() if prices is None else prices
     by_model: dict[str, list[dict]] = {}
     for s in chat_spans:
+        if not billed([s])["tokens"] and not s.get("amoeba.cache_hit"):   # a call that never ran (no model) costs 0
+            continue
         by_model.setdefault(s.get("gen_ai.request.model") or model, []).append(s)
     cost = 0.0
     for m, spans in (by_model or {model: []}).items():
@@ -149,7 +151,7 @@ def estimate(chat_spans: list[dict], model: str, prices: dict | None = None) -> 
         cost += ((u["input"] - cr - cw) * pin + cr * p_r + cw * p_w + (u["output"] + u["reasoning"]) * pout) / 1e6
     # the label is the model the calls asked for (the most-used one when there are several), not the caller's
     # default: a routed Claude run used to be labelled with the registry's default model (gemma-4-31b)
-    called = max(by_model, key=lambda m: len(by_model[m])) if chat_spans else model
+    called = max(by_model, key=lambda m: len(by_model[m])) if by_model else model
     out = {**use, "model": called, "cost_usd": None if cost is None else round(cost, 6)}
     if len(by_model) > 1:
         out["models"] = sorted(by_model)

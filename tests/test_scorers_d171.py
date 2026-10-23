@@ -136,3 +136,46 @@ def test_a_task_may_not_be_given_its_own_key_or_hidden_tests(tmp_path):
              sim={"scorers": [{"name": "answer_key"}], "judge_set": k})
     with pytest.raises(ValueError, match="key"):
         S.check_no_leak(t)
+
+
+def test_the_tasks_own_input_files_are_not_delivered_work(tmp_path):
+    """Part 2 Step 2: D157 copies a task's input files to workspace/inputs/; a files check must not pass on them."""
+    from amoeba.eval.sim_score import delivered, file_check
+    (tmp_path / "workspace" / "inputs").mkdir(parents=True)
+    (tmp_path / "workspace" / "inputs" / "red.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 16)
+    files = delivered(tmp_path)
+    assert files == {} and not file_check({"check": "image", "path": "*.png"}, files)
+
+
+def test_a_grader_reply_cut_off_by_length_is_asked_again_with_twice_the_room(tmp_path, monkeypatch):
+    """Part 2 Step 4: Gemma's grader reasoning filled the 1,024-token reply room before its SCORE line, so every
+    rubric task scored 0 whatever the answer said. A reply cut off by length (no SCORE line) is asked once more with
+    twice the room; the room itself is large enough for the grader's reasoning."""
+    from amoeba.llm.client import ChatResponse
+
+    class Cut:
+        def __init__(self):
+            self.calls = []
+
+        def chat_messages(self, messages, seed=0, max_tokens=None, **kw):
+            self.calls.append(max_tokens)
+            if len(self.calls) % 2:
+                return ChatResponse(content="<thought>point 1 met, point 2", finish_reason="length")
+            return ChatResponse(content="1. met\nSCORE: 0.5", finish_reason="stop")
+
+    k = keys(tmp_path, "t6", {"rubric": "1 point: names the trade-off."})
+    t = task(tmp_path, "t6", {"scorers": [{"name": "rubric"}], "judge_set": k})
+    g = Cut()
+    monkeypatch.setattr(S, "grader_client", lambda cfg: g)
+    got = score(t, run_dir(tmp_path, "Postgres, because joins."))
+    room = S.judge_config()["rubric"]["max_tokens"]
+    assert got["score"] == 0.5 and g.calls == [room, 2 * room] * 3 and room >= 4096
+    assert got["parts"][0]["detail"]["retried"] == 3
+
+
+def test_the_graders_last_score_line_is_its_verdict():
+    """Part 2 Step 4 (db-choice): the grader's reasoning quoted a SCORE line before its own last line
+    ("SCORE: 0.1428..."), and the first match gave the run 1.0."""
+    from amoeba.eval.sim_score import parse_mark
+    reply = "<thought>The format is SCORE: 1 at the end ...</thought>\n1. met\n2. not met\nSCORE: 0.14285714285714285"
+    assert parse_mark(reply) == 0.142857 or round(parse_mark(reply), 6) == 0.142857

@@ -1,0 +1,774 @@
+team_id: 409a4c47-bf4f-479a-850c-44df1d6dce2a
+version: 1
+parent_version: null
+name: team-plan-wordfreq
+topology: plan
+agents:
+  836fffc4-a016-4657-930d-0e2c08f70b12:
+    agent_id: 836fffc4-a016-4657-930d-0e2c08f70b12
+    name: Python Developer
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    - local:Write
+    - web_search
+    - fetch_url
+    - calc
+    - local:Read
+    - find_tool
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: Senior Python engineer who writes small, dependency-free CLI tools.
+      On the team to produce wordfreq.py exactly to spec.
+    role_prompt: 'You are a senior Python engineer. Write /workspace wordfreq.py (one
+      file, stdlib only) exactly to this spec. Method: (1) Read the edge-case table
+      from step 1. (2) top_words(text, n=10, min_length=1) -> list[tuple[str,int]]:
+      raise ValueError if n < 1; normalise text with unicodedata.normalize(''NFC'');
+      tokenise with re.findall(r"(?:[^\W_]|'')+", text) so letters/digits (any script)
+      and ASCII apostrophes form words and underscore separates; for each token strip("''"),
+      lower(), drop if empty, drop if len < min_length; count with collections.Counter;
+      return sorted(counts.items(), key=lambda kv:(-kv[1], kv[0]))[:n]. (3) CLI with
+      argparse: positional PATH, -n int default 10 (dest n), --min-length int default
+      1. In main(): if n < 1, print an error to stderr and sys.exit(2) BEFORE opening
+      the file. Read the file with open(path, encoding=''utf-8''); on OSError or UnicodeDecodeError
+      print ''wordfreq: error: ...'' to stderr and exit 2. Print each result as f''{word}\t{count}''.
+      An empty file prints nothing and exits 0. Reconfigure stdout to utf-8 if possible
+      (sys.stdout.reconfigure guarded by hasattr). Guard with if __name__ == ''__main__'':
+      main(). (4) Smoke test with Bash: a file containing "The the THE café ''tis
+      rock''n''roll '''' foo_bar", a missing path, -n 0, an empty file; confirm outputs
+      and exit codes ($?). Fix anything wrong. Budget: 5 turns: write, smoke test,
+      fix, re-run, report. If python_interpreter or file writing is unavailable, say
+      so and mark results NOT RUN. Output the final file as a code block plus a 3-line
+      smoke summary.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: A single wordfreq.py that meets every stated rule and passes the independent
+      tests.
+    skills:
+    - Python 3 stdlib (re, argparse, collections, unicodedata, sys)
+    - Unicode-aware tokenising
+    - CLI exit-code conventions
+    outputs:
+    - artifact: wordfreq.py
+      format: single Python file in the workspace, shown as a code block
+    success_criteria:
+    - Every row of the edge-case table gives the expected result
+    - Exit codes are exactly 0 or 2 as specified
+    - Stdlib only; one file
+    constraints:
+    - Single file named wordfreq.py
+    - No third-party packages
+    - Must stay importable without running the CLI (main guard)
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: file writing
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: core
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  5eac88ac-824b-4ce3-840b-1d31900b8af1:
+    agent_id: 5eac88ac-824b-4ce3-840b-1d31900b8af1
+    name: Test Engineer
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    - local:Write
+    - web_search
+    - fetch_url
+    - calc
+    - local:Read
+    - find_tool
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: QA-minded engineer who derives expected results from the spec, not
+      from the code. Writes and runs the test suite and reports the real result.
+    role_prompt: 'You are a senior QA/test engineer. You work in three separate steps.
+
+      Step 1 (table, from the spec only, before seeing any code): write an edge-case
+      table with at least 16 rows: id, input text or file state, CLI args, exact expected
+      stdout lines (TAB shown as \t) or exit code, requirement id. Include: case folding
+      (The/the/THE); café as one word and NFD cafe+U+0301 as one word; digits (abc123,
+      42); underscore as separator; leading/trailing apostrophes stripped (''tis,
+      dogs''); internal apostrophe kept (don''t, rock''n''roll); a lone '''' dropped;
+      min-length 1 vs 3 vs a word shorter only after stripping apostrophes; tie ordering
+      (equal counts alphabetical, including non-ASCII); default n=10 with 12 distinct
+      words yields 10; n larger than distinct words; n=0 and n=-1 exit 2 even with
+      a valid file; missing file exit 2 with stderr message and empty stdout; empty
+      file exit 0 and empty stdout; top_words('''') == []; top_words returns a list
+      of (str,int) tuples; a file with only punctuation. Compute expected results
+      by hand.
+
+      Step 3 (write tests): write /workspace test_wordfreq.py with unittest, importing
+      top_words from wordfreq (locate wordfreq.py relative to the test file, not the
+      cwd) and running the CLI with subprocess.run([sys.executable, path_to_wordfreq,
+      ...]) on tempfile files written as utf-8; one test per table row; check returncode,
+      stdout and stderr. Do not run yet beyond a syntax check.
+
+      Step 4 (run): run python3 -m unittest -v in the workspace. If something fails,
+      decide from the spec whether the test or the code is wrong; fix only tests and
+      report code defects verbatim. Budget 5 turns: run, adjust, re-run, report. If
+      the interpreter is unavailable, mark the run NOT RUN. Final output: the exact
+      final unittest summary line, the test count, and a list of any failures.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: A test suite that independently exercises every rule and an honest run report.
+    skills:
+    - Test-case design / boundary analysis
+    - unittest, subprocess, tempfile
+    - Unicode edge cases
+    outputs:
+    - artifact: edge-case table
+      format: 'markdown table: id x input x args x expected output/exit code x requirement'
+    - artifact: test_wordfreq.py
+      format: code block
+    - artifact: run report
+      format: pasted unittest summary (Ran N tests, OK/FAILED)
+    success_criteria:
+    - Every requirement R3-R10 has at least one test
+    - Tests run green on the final wordfreq.py or failures are reported honestly
+    - Expected values are derived by hand from the spec
+    constraints:
+    - Do not edit wordfreq.py; report defects to the developer
+    - unittest only; tests must not depend on the current directory
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: file writing
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: core
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  d60a93f4-b577-4557-8843-8df851a89cb0:
+    agent_id: d60a93f4-b577-4557-8843-8df851a89cb0
+    name: Independent Verifier
+    role: worker
+    model: gemma-4-31b-it, claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    - local:Write
+    - web_search
+    - fetch_url
+    - calc
+    - local:Read
+    - find_tool
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: Reviewer who did not write the code or tests and checks the delivered
+      result against the spec by running it.
+    role_prompt: 'You are a principal engineer doing independent acceptance. You did
+      not write this code. You work in two steps, each within 5 turns.
+
+      Acceptance step: (1) Run python3 -m unittest -v in the workspace and record
+      the summary line; confirm wordfreq.py imports with no side effects (python3
+      -c ''import wordfreq; print(wordfreq.top_words("a A b"))''). (2) In one Bash
+      script run scenarios and print exit codes plus stdout/stderr (use cat -A or
+      repr to show TABs): a UTF-8 file with "The the THE café cafe ''tis dogs'' rock''n''roll"
+      with -n 2 and with --min-length 4; default n with more than 10 distinct words;
+      ties; missing path; -n 0; -n -3; empty file (stdout empty, exit 0). Compare
+      with hand-derived expectations from the task text. Output the list of scenarios
+      with expected vs actual.
+
+      Review step: (3) Read the code and check each rule R1-R10, especially underscore
+      handling, apostrophe stripping before the length test, sort key, and N validated
+      before file access. (4) Copy wordfreq.py to a temp dir with the tests and apply
+      two mutations (for example ascending count in the sort key; removing the apostrophe
+      strip); run the tests against the copy and confirm they fail. (5) Write the
+      memo with a per-requirement table R1-R12 of PASS/FAIL with evidence and a final
+      line ''Verdict: PASS'' or ''Verdict: FAIL''. If anything could not be run, mark
+      it NOT RUN and do not give PASS.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: A clear PASS/FAIL verdict backed by independent runs.
+    skills:
+    - Code review
+    - Black-box CLI testing
+    - Mutation testing by hand
+    outputs:
+    - artifact: acceptance notes
+      format: list of scenarios with exit codes and outputs
+    - artifact: verification memo
+      format: 'memo with headings: Test re-run, Acceptance runs, Code review, Mutation
+        check, Verdict (PASS/FAIL per requirement R1-R12)'
+    success_criteria:
+    - Every R1-R12 has a PASS/FAIL line with evidence
+    - At least 2 deliberate mutations are caught by the tests
+    - Verdict states clearly whether the deliverable can ship
+    constraints:
+    - Run mutations on a copy, never on the delivered wordfreq.py
+    - Report defects, do not fix them
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: file writing
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: core
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  c42b1bfd-6357-4231-91cb-61523dfe8231:
+    agent_id: c42b1bfd-6357-4231-91cb-61523dfe8231
+    name: Technical Report Writer
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: Editor who assembles the final deliverable from the specialists'
+      outputs without adding analysis.
+    role_prompt: 'You are the final editor. Using only the supplied outputs, write
+      a memo with headings: wordfreq.py (full final code in one code block, copied
+      verbatim), Tests (test_wordfreq.py in a code block), Test result (exact unittest
+      summary line, number of tests, pass/fail, as reported), Verification (the verifier''s
+      verdict and per-requirement summary, including the mutation check), Assumptions
+      (the list of assumptions made). Do not invent results. If anything failed, state
+      it plainly. Keep it concise.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: One final answer containing wordfreq.py, the tests and the honest test-run
+      report.
+    skills:
+    - Technical writing
+    - Editing
+    outputs:
+    - artifact: final deliverable
+      format: 'memo with headings: wordfreq.py (code block), Tests (code block), Test
+        result, Verification, Assumptions'
+    success_criteria:
+    - Includes full wordfreq.py as delivered
+    - Reports the real test counts and verdict, unchanged from the verifier
+    - Lists the assumptions
+    constraints:
+    - Creates no new analysis; does not alter code except to copy it verbatim
+    - If the verdict is FAIL, say so plainly
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 5eac88ac-824b-4ce3-840b-1d31900b8af1
+  dst: 836fffc4-a016-4657-930d-0e2c08f70b12
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 836fffc4-a016-4657-930d-0e2c08f70b12
+  dst: 5eac88ac-824b-4ce3-840b-1d31900b8af1
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 836fffc4-a016-4657-930d-0e2c08f70b12
+  dst: d60a93f4-b577-4557-8843-8df851a89cb0
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 5eac88ac-824b-4ce3-840b-1d31900b8af1
+  dst: d60a93f4-b577-4557-8843-8df851a89cb0
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 836fffc4-a016-4657-930d-0e2c08f70b12
+  dst: c42b1bfd-6357-4231-91cb-61523dfe8231
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 5eac88ac-824b-4ce3-840b-1d31900b8af1
+  dst: c42b1bfd-6357-4231-91cb-61523dfe8231
+  type: sequential
+  schema_id: text
+  condition: null
+- src: d60a93f4-b577-4557-8843-8df851a89cb0
+  dst: c42b1bfd-6357-4231-91cb-61523dfe8231
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 5eac88ac-824b-4ce3-840b-1d31900b8af1
+exit: c42b1bfd-6357-4231-91cb-61523dfe8231
+plan:
+- index: 0
+  agent_ids:
+  - 5eac88ac-824b-4ce3-840b-1d31900b8af1
+  text: '[Test Engineer]: Edge-case table from the spec'
+  kind: work
+  covers:
+  - R3
+  - R4
+  - R5
+  - R6
+  - R7
+  - R8
+  - R9
+  - R10
+  depends_on: []
+  do: From the task text only, derive by hand an edge-case table of at least 16 rows
+    with input, args, exact expected stdout or exit code, and the requirement each
+    row proves. State the assumptions used for underscore, apostrophes, NFC and lowercasing.
+  output: 'table: id x input x args x expected output / exit code x requirement'
+  done_when: The table has at least 16 rows. Each row has a hand-computed expected
+    stdout or exit code. Rows cover word rules, counting and ordering rules, and error
+    paths.
+  checks:
+  - name: output_has_table
+    params:
+      min_rows: 16
+    covers:
+    - R3
+    - R4
+    - R5
+    - R6
+    - R7
+    - R8
+    - R9
+    - R10
+  - name: output_mentions
+    params:
+      terms:
+      - café
+      - apostrophe
+      - exit
+      - tie
+      - lowercase
+    covers:
+    - R4
+    - R5
+    - R9
+    - R3
+    - R6
+- index: 1
+  agent_ids:
+  - 836fffc4-a016-4657-930d-0e2c08f70b12
+  text: '[Python Developer]: Implement wordfreq.py'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  - R6
+  - R7
+  - R8
+  - R9
+  - R10
+  depends_on:
+  - 1
+  do: Write wordfreq.py with top_words and the argparse CLI as briefed. Smoke-test
+    a sample file, a missing file, -n 0 and an empty file. Fix issues and output the
+    final code.
+  output: 'code: complete wordfreq.py plus a short smoke-test summary'
+  done_when: 'wordfreq.py is one file that imports without side effects. The smoke
+    run shows word<TAB>count lines in the right order with lowercase words. Missing
+    file and -n 0 give exit 2 and an empty file gives exit 0 with no output.; it must
+    include: Complete test_wordfreq.py source; Verbatim wordfreq.py'
+  checks:
+  - name: output_mentions
+    params:
+      terms:
+      - def top_words
+      - argparse
+      - sys.exit
+      - utf-8
+    covers:
+    - R1
+    - R2
+    - R7
+    - R8
+    - R9
+  - name: output_mentions
+    params:
+      terms:
+      - strip
+      - lower
+      - Counter
+      - min_length
+    covers:
+    - R3
+    - R4
+    - R5
+    - R6
+    - R10
+- index: 2
+  agent_ids:
+  - 5eac88ac-824b-4ce3-840b-1d31900b8af1
+  text: '[Test Engineer]: Write the tests'
+  kind: work
+  covers:
+  - R11
+  - R3
+  - R4
+  - R5
+  - R6
+  - R7
+  - R8
+  - R9
+  - R10
+  depends_on:
+  - 1
+  do: 'Write test_wordfreq.py (unittest) from the edge-case table only: function tests
+    with top_words and CLI tests through subprocess on temp files, one test per table
+    row. Run only a syntax check.'
+  output: 'code: test_wordfreq.py'
+  done_when: test_wordfreq.py exists with one test per table row. Tests cover top_words
+    and the CLI via subprocess. Tests check returncode and stdout for each error path.
+  checks:
+  - name: output_mentions
+    params:
+      terms:
+      - unittest
+      - subprocess
+      - top_words
+      - returncode
+    covers:
+    - R11
+    - R7
+    - R8
+    - R9
+    - R10
+  - name: output_mentions
+    params:
+      terms:
+      - café
+      - tie
+      - min_length
+    covers:
+    - R3
+    - R4
+    - R5
+    - R6
+- index: 3
+  agent_ids:
+  - 5eac88ac-824b-4ce3-840b-1d31900b8af1
+  text: '[Test Engineer]: Run the tests and report'
+  kind: work
+  covers:
+  - R12
+  - R11
+  depends_on:
+  - 2
+  - 3
+  do: Run python3 -m unittest -v in the workspace. Fix test mistakes only and report
+    any code defects verbatim. Re-run and report the exact summary line.
+  output: 'memo: run report with the exact unittest summary and a list of any failures'
+  done_when: The tests were run (or marked NOT RUN). The report gives the exact 'Ran
+    N tests' line with OK or FAILED. Any failures are listed with their cause.
+  checks:
+  - name: output_mentions
+    params:
+      terms:
+      - Ran
+      - tests
+      - OK
+    covers:
+    - R12
+    - R11
+- index: 4
+  agent_ids:
+  - d60a93f4-b577-4557-8843-8df851a89cb0
+  text: '[Independent Verifier]: Independent acceptance runs'
+  kind: verify
+  covers:
+  - R2
+  - R3
+  - R4
+  - R5
+  - R6
+  - R8
+  - R9
+  - R10
+  depends_on:
+  - 2
+  - 4
+  do: 'Re-run the test suite and check the import has no side effects. Run own acceptance
+    scenarios: -n 2, --min-length 4, default n with more than 10 words, ties, missing
+    path, -n 0, -n -3 and an empty file.'
+  output: 'list: scenarios with expected vs actual output and exit code'
+  done_when: The re-run unittest summary is recorded. Each scenario shows expected
+    vs actual with TABs visible. Missing file, -n 0 and -n -3 give exit 2 and the
+    empty file gives exit 0.
+  checks:
+  - name: output_has_list
+    params:
+      min_items: 8
+    covers:
+    - R2
+    - R3
+    - R4
+    - R5
+    - R6
+    - R8
+    - R9
+    - R10
+  - name: output_mentions
+    params:
+      terms:
+      - exit
+      - Ran
+    covers:
+    - R8
+    - R9
+    - R10
+- index: 5
+  agent_ids:
+  - d60a93f4-b577-4557-8843-8df851a89cb0
+  text: '[Independent Verifier]: Code review, mutation check and verdict'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  - R6
+  - R7
+  - R8
+  - R9
+  - R10
+  - R11
+  - R12
+  depends_on:
+  - 5
+  do: Review the code against R1-R10. Apply two mutations on a copy and run the tests
+    against it. Write the verification memo with a per-requirement verdict. If FAIL,
+    list the defects so steps 2-4 can be re-run.
+  output: 'memo: verification memo with Test re-run, Acceptance runs, Code review,
+    Mutation check, Verdict table'
+  done_when: At least two mutations on a copy are caught by the tests. Every R1-R12
+    has a PASS/FAIL line with evidence. The memo ends with an overall verdict.
+  checks:
+  - name: verdict_present
+    params: {}
+    covers:
+    - R1
+    - R2
+    - R3
+    - R4
+    - R5
+    - R6
+    - R7
+    - R8
+    - R9
+    - R10
+    - R11
+    - R12
+  - name: output_has_table
+    params:
+      min_rows: 12
+    covers:
+    - R1
+    - R2
+    - R3
+    - R4
+    - R5
+    - R6
+    - R7
+    - R8
+    - R9
+    - R10
+    - R11
+    - R12
+  - name: output_mentions
+    params:
+      terms:
+      - mutation
+      - Ran
+    covers:
+    - R11
+    - R12
+- index: 6
+  agent_ids:
+  - c42b1bfd-6357-4231-91cb-61523dfe8231
+  text: '[Technical Report Writer]: Assemble final deliverable'
+  kind: work
+  covers:
+  - R1
+  - R11
+  - R12
+  depends_on:
+  - 2
+  - 3
+  - 4
+  - 6
+  do: Assemble a memo with the verbatim wordfreq.py, the test file, the exact test
+    result, the verifier's verdict and the assumptions. If the verdict was FAIL, say
+    so plainly.
+  output: 'memo: final deliverable with headings wordfreq.py, Tests, Test result,
+    Verification, Assumptions'
+  done_when: The memo contains the complete code and test file. It states the real
+    test count, result and verdict. It lists the assumptions.
+  checks:
+  - name: output_mentions
+    params:
+      terms:
+      - wordfreq.py
+      - test_wordfreq.py
+      - Ran
+      - Verdict
+      - Assumptions
+    covers:
+    - R1
+    - R11
+    - R12
+requirements:
+  R1: Deliver the tool as a single file named wordfreq.py
+  R2: CLI `python wordfreq.py PATH [-n N] [--min-length L]` reads a UTF-8 text file
+  R3: Print the N most frequent words (default 10), one per line as `word<TAB>count`,
+    most frequent first, ties broken alphabetically
+  R4: A word is a maximal run of letters, digits and apostrophes; compared case-insensitively,
+    printed in lowercase; non-ASCII letters count as letters ("café" is one word)
+  R5: Apostrophes at the start or end of a word are stripped; a word left empty is
+    dropped
+  R6: Words shorter than L characters (default 1) are ignored
+  R7: Module exposes top_words(text, n=10, min_length=1) -> list[tuple[str, int]]
+    with the same rules
+  R8: A missing file prints an error to stderr and exits with status 2
+  R9: N < 1 exits with status 2
+  R10: An empty file prints nothing and exits with status 0
+  R11: Write own tests for the tool
+  R12: Run the tests and report the result
+max_inner_turns: 3
+meta:
+  task_id: wordfreq-cli
+  draft_rounds: 3
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: python_interpreter
+    for_role: Python Developer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: file writing
+    for_role: Python Developer
+    canonical: file writing
+    status: filled
+    reason: ''
+  - name: python_interpreter
+    for_role: Test Engineer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: file writing
+    for_role: Test Engineer
+    canonical: file writing
+    status: filled
+    reason: ''
+  - name: python_interpreter
+    for_role: Independent Verifier
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: file writing
+    for_role: Independent Verifier
+    canonical: file writing
+    status: filled
+    reason: ''

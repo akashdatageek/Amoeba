@@ -1,0 +1,462 @@
+Source: S114
+URL: https://amnic.com/blogs/aws-rds-pricing
+Title: AWS RDS Pricing: Full Cost Breakdown + Example - Amnic
+
+# AWS RDS Pricing: A Complete Cost Breakdown (With a Worked Example and Every Region)
+
+12 min read
+
+Amnic
+
+![](https://framerusercontent.com/images/Su0Iv7clARNOaz4DmjnbtP926P8.png?width=1600&height=1000)
+
+## Table of Contents
+
+No headings found on page
+
+Amazon RDS pricing is built from separate charges that stack on one bill: compute (the database instance), storage and IOPS, backups and snapshots, data transfer, optional add-ons and the region you deploy in.
+
+You pay per instance-hour billed in one-second increments with a 10-minute minimum, plus per-GB-month for storage and you can lower the compute portion by up to 69% with a commitment [1][6]. That is the whole model in one paragraph. The rest of this guide breaks each piece down, runs a real monthly example, maps the cost across regions and shows where bills quietly inflate. If you want the wider toolkit first, start with these [AWS cost optimization tools](./aws-cost-optimization-tools).
+
+## **What determines your AWS RDS bill**
+
+Six inputs decide what you pay:
+
+* **Instance class** (vCPU and memory, for example db.t3.medium or db.m5.large)
+* **Database engine** (MySQL, MariaDB, PostgreSQL, Oracle, SQL Server, Db2, or Aurora)
+* **Storage type and size** (gp3, Provisioned IOPS, or magnetic) plus provisioned IOPS
+* **Deployment** (Single-AZ or Multi-AZ)
+* **Pricing model** (On-Demand, Reserved Instances, or Database Savings Plans)
+
+Backups, snapshots, data transfer and add-ons like RDS Proxy then layer on top. Miss any one of these and your estimate will be wrong, which is why so many teams are surprised by the final number.
+
+## **RDS instance (compute) pricing**
+
+Compute is usually the largest line. AWS bills each running instance per hour, down to the second, with a 10-minute minimum [1]. Rates climb with instance size and differ by engine.
+
+**In US East (N. Virginia), Single-AZ On-Demand MySQL runs about [2]:**
+
+| **Instance** | **vCPU / RAM** | **On-Demand (us-east-1)** | **~Monthly (730 hrs)** |
+| --- | --- | --- | --- |
+| db.t3.micro | 2 / 1 GB | ~$0.030/hr | ~$21.90 |
+| db.t3.medium | 2 / 4 GB | ~$0.082/hr | ~$59.86 |
+| db.m5.large | 2 / 8 GB | ~$0.171/hr | ~$124.83 |
+
+Engine choice shifts the rate. MySQL, MariaDB and PostgreSQL sit at the open-source baseline, with PostgreSQL carrying a small premium over MySQL [11]. Oracle and SQL Server with License Included can cost roughly twice the open-source equivalent [4] and Aurora typically runs about 20% above standard RDS for the same class [3]. The same compute mechanics drive [AWS EC2 pricing](./everything-about-aws-ec2-pricing), since RDS instances run on the same underlying families.
+
+## **RDS pricing by region (all regions, not just US)**
+
+Region is the input teams forget. AWS prices the identical instance differently around the world. US regions are the cheapest, EU regions sit slightly higher, Asia Pacific lands in the middle and South America is the most expensive [2].
+
+The table below anchors on the verified us-east-1 rate for db.m5.large MySQL from the section above, then applies a regional uplift to estimate the others. Treat the non-US figures as directional and confirm the exact rate for your region in the AWS Pricing Calculator [10]:
+
+| **Region** | **Approx On-Demand $/hr** | **Approx monthly (730 hrs)** | **vs us-east-1** |
+| --- | --- | --- | --- |
+| US East, N. Virginia (us-east-1) | $0.171 (verified) | $124.83 | baseline |
+| US East, Ohio (us-east-2) | $0.171 (verified) | $124.83 | same |
+| US West, Oregon (us-west-2) | $0.171 (verified) | $124.83 | same |
+| EU, Ireland (eu-west-1) | ~$0.180 | ~$131 | ~+5% |
+| EU, Frankfurt (eu-central-1) | ~$0.190 | ~$139 | ~+11% |
+| EU, London (eu-west-2) | ~$0.190 | ~$139 | ~+11% |
+| Asia Pacific, Mumbai (ap-south-1) | ~$0.190 | ~$139 | ~+11% |
+| Asia Pacific, Tokyo (ap-northeast-1) | ~$0.202 | ~$147 | ~+18% |
+| Asia Pacific, Singapore (ap-southeast-1) | ~$0.202 | ~$147 | ~+18% |
+| Asia Pacific, Sydney (ap-southeast-2) | ~$0.209 | ~$152 | ~+22% |
+| South America, São Paulo (sa-east-1) | ~$0.280 | ~$205 | ~+64% |
+
+The non-US rows are derived by applying a regional uplift to the verified US figure, not pulled per-region from AWS, so the percentage differences are arithmetic on the base rate rather than a published comparison. The takeaway holds even if a specific rate moves: the same database can cost a third to two-thirds more purely because of where it runs.
+
+For latency-tolerant workloads like dev, test and analytics replicas, choosing Ohio or Oregon over São Paulo or Sydney is one of the easiest savings available. The same geographic spread shapes [AWS storage costs](./a-guide-to-navigating-aws-storage-costs), so model region before you commit an architecture.
+
+## **RDS storage and IOPS pricing**
+
+Storage is billed per GB-month for what you provision, not what you fill. Three types exist [5]:
+
+* **General Purpose SSD (gp3):** about $0.115 per GB-month, with a 3,000 IOPS and 125 MiB/s baseline included. gp3 is the default and the right choice for most workloads.
+* **Provisioned IOPS SSD (io1/io2):** about $0.125 per GB-month plus $0.10 per provisioned IOPS-month. Use only when you genuinely need guaranteed high IOPS.
+* **Magnetic:** legacy, about $0.10 per GB-month, not recommended for new workloads.
+
+Two traps live here. First, provisioned IOPS billing means a 500 GB io1 volume at 10,000 IOPS adds $1,000 a month in IOPS charges alone, separate from the storage. Second, storage autoscaling only grows, so a volume that spiked once keeps billing at the higher size until you rebuild it. Migrating older gp2 volumes to gp3 removes provisioned-IOPS surcharges without downtime and is one of the cleanest storage wins.
+
+## **Multi-AZ pricing: the silent doubling**
+
+A Multi-AZ deployment runs a standby replica in a second Availability Zone for automatic failover. You pay full instance and storage rates for both the primary and the standby, so a Multi-AZ database costs roughly twice a Single-AZ one [5]. That is correct for production, but it is wasteful on dev, test and staging databases that do not need failover.
+
+Multi-AZ on non-production workloads is one of the most common reasons an RDS bill is double what a team expected.
+
+## **Backup, snapshot and data transfer costs**
+
+* **Automated backups:** free up to 100% of your provisioned database size per region [9]. Beyond that, overage costs about $0.095 per GB-month [5].
+* **Snapshots:** manual snapshots and snapshot exports bill separately, with exports around $0.010 per GB. Stopped instances still pay for storage, backups and snapshots, so a paused database is not a free one [9].
+* **Data transfer:** EC2-to-RDS traffic in the same Availability Zone is free and Multi-AZ replication is free, but cross-AZ traffic costs about $0.01 per GB in each direction [5]. Cross-region and internet egress cost more. Placing an application and its database in different AZs quietly meters every query. For the full picture, see how [data transfer costs across AWS](./simplifying-data-transfer-costs-across-aws) accumulate.
+
+If you run a NoSQL workload instead, the model is different again and [DynamoDB pricing](./dynamodb-pricing) bills on capacity and requests rather than instance-hours.
+
+## **Add-on costs that hide in the bill**
+
+These line items are easy to miss because they accrue per vCPU-hour:
+
+* **RDS Proxy:** about $0.015 per vCPU-hour, with a 2 vCPU minimum, charged per proxy [7].
+* **Performance Insights and Enhanced Monitoring:** free at the basic tier, billable at extended retention and high-resolution metrics.
+* **Extended Support:** when you stay on a database version past community end-of-life, AWS adds about $0.100 per vCPU-hour in the first two years and $0.200 after that [8]. On a busy instance this can add hundreds of dollars a month and it is the single biggest surprise charge teams report.
+
+## **A worked example: what a real RDS setup costs per month**
+
+Take a production MySQL database in us-east-1 on db.m5.large, deployed Multi-AZ, with 200 GB of gp3 storage, 50 GB of extra manual snapshots beyond the free backup allocation and about 200 GB of cross-AZ traffic to an app tier in another zone.
+
+| **Cost component** | **Calculation** | **Monthly** |
+| --- | --- | --- |
+| Compute, Single-AZ | $0.171/hr × 730 hrs | $124.83 |
+| Multi-AZ standby (doubles compute) | × 2 | $249.66 |
+| Storage, gp3 (both nodes) | 200 GB × $0.115 × 2 | $46.00 |
+| Backup overage | 50 GB × $0.095 | $4.75 |
+| Cross-AZ data transfer | 200 GB × $0.01 | $2.00 |
+| **On-Demand total** | **~$302.41** |
+
+Now apply a commitment. In steady state, a Reserved Instance or Database Savings Plan can cut the compute portion by up to 69% [6]. Taking the Multi-AZ compute from $249.66 toward roughly $77 brings the same database to about **$130 a month**, storage and extras included. The instance never changed. Only the pricing model did, which is why commitment strategy is usually the highest-leverage lever on an RDS bill. The math behind the trade-off is covered in [AWS Savings Plans vs Reserved Instances](./aws-savings-vs-reserved-instances).
+
+## **RDS pricing models: On-Demand vs Reserved Instances vs Savings Plans**
+
+* **On-Demand:** no commitment, highest rate. Right for spiky or short-lived databases.
+* **Reserved Instances:** commit to a specific instance class for one or three years, save up to 69%, choose No Upfront, Partial Upfront, or All Upfront [6].
+* **Database Savings Plans:** AWS now offers a Savings Plan for RDS, a one-year commitment to a steady dollar-per-hour of usage in exchange for a discount [5]. This is newer than most pricing guides reflect and it adds flexibility because the discount follows your usage rather than a fixed instance class.
+
+For predictable production databases, a commitment is almost always worth it. Switching to Graviton-based instances stacks further savings of up to around 50% in price-performance on top and [Graviton4](./what-is-graviton4) extends that gain.
+
+## **The hidden cost drivers that inflate RDS bills**
+
+AWS prices each dimension clearly, but the bill grows in the gaps between them:
+
+* **Multi-AZ on non-production**, doubling cost where no failover is needed
+* **Idle dev and test databases** left running nights and weekends
+* **Over-provisioned instance classes** chosen for a peak that rarely arrives
+* **Storage autoscaling creep**, since provisioned storage never shrinks on its own
+* **Forgotten read replicas**, each billed at full instance price
+* **Snapshot sprawl** and backups on deleted instances
+* **Extended Support** charges on databases nobody upgraded
+
+Most of these come down to visibility, not pricing. You cannot fix waste you cannot see by team, environment, or service. A structured approach to [cloud cost surges in AWS](./how-to-mitigate-cloud-cost-surges-in-aws) starts by attributing every RDS line item and the same discipline helps you [identify wasted resources in cloud](./identify-wasted-resources-in-cloud) before they compound.
+
+## **How to see and control RDS spend**
+
+Reading rate cards is the easy part. Knowing which team, product, or environment owns each RDS dollar is what actually lowers the bill. Amnic ingests your RDS spend straight from the AWS Cost and Usage Report with no agents, then breaks it down by instance, storage, backup and transfer inside the [cloud cost analyzer](../cost-analyzer).
+
+Because native tags rarely cover a shared database cluster, Amnic uses virtual tags and split rules to attribute a single RDS cluster across the teams that use it, which extends standard [AWS tagging](./aws-tagging) past its limits. Custom rules for [cloud cost anomaly detection](../anomaly-detection) then flag a sudden RDS spike, such as a runaway instance-class change or storage autoscaling event, before it lands on the invoice and commitment reports track Reserved Instance coverage and warn you before a reservation expires.
+
+## **Conclusion**
+
+AWS RDS pricing is not one number. It is compute, storage, IOPS, Multi-AZ, backups, snapshots, data transfer, add-ons, region and pricing model stacked together. Estimate every layer, deploy Multi-AZ only where failover matters, right-size before you commit and put steady production databases on a Reserved Instance or Database Savings Plan. Then watch the bill by team and service so waste surfaces early. Do that and RDS stays predictable instead of becoming the line item nobody can explain.
+
+## **FAQs**
+
+### **How is AWS RDS priced?**
+
+AWS RDS charges for several things on one bill: the database instance per hour, storage and provisioned IOPS per GB-month, backups beyond your free allocation, data transfer, optional add-ons and your region. Multi-AZ roughly doubles compute and storage. Reserved Instances or Savings Plans cut the rate [5].
+
+### **How much does an RDS instance cost per month?**
+
+It depends on class and engine. In US East, a db.t3.micro MySQL runs about $22 a month, a db.t3.medium about $60 and a db.m5.large about $125 Single-AZ [2]. Multi-AZ doubles that, before storage, backups and transfer.
+
+### **Is RDS Multi-AZ double the cost?**
+
+Close to it. Multi-AZ runs a standby replica in a second zone and you pay full instance and storage rates for both nodes, so cost is roughly twice Single-AZ [5]. It is worth it for production failover but wasteful on dev and test databases.
+
+### **Does AWS RDS have Savings Plans?**
+
+Yes. AWS now offers Database Savings Plans for RDS, a one-year commitment to a set dollar-per-hour of usage in exchange for a discount [5]. RDS also supports Reserved Instances of up to 69% off. Older guides that say RDS has no Savings Plans are out of date.
+
+### **Which AWS region is cheapest for RDS?**
+
+US regions like N. Virginia, Ohio and Oregon are the cheapest. EU regions sit slightly higher, Asia Pacific is mid-range and São Paulo is the most expensive, at up to about 64% above US rates for the same instance [2].
+
+### **Is the RDS Free Tier still available?**
+
+Yes, in two forms. Older accounts get 750 Single-AZ instance-hours and 20 GB of storage monthly for a year. Newer sign-ups receive AWS credits to apply against RDS and other services instead [5]. The Free Tier never covers Multi-AZ.
+
+### **Why is my RDS bill so high?**
+
+Usually hidden drivers, not the rate card: Multi-AZ on non-production databases, idle dev instances left running, over-provisioned classes, storage autoscaling that never shrinks, forgotten read replicas, snapshot sprawl and Extended Support fees on old versions. Attributing spend by team and service is how you find them.
+
+## **Sources (AWS documentation)**
+
+1. <https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_OnDemandDBInstances.html>
+2. <https://aws.amazon.com/rds/mysql/pricing/>
+3. <https://aws.amazon.com/rds/aurora/pricing/>
+4. <https://aws.amazon.com/rds/sqlserver/pricing/>
+5. <https://aws.amazon.com/rds/pricing/>
+6. <https://aws.amazon.com/rds/reserved-instances/>
+7. <https://aws.amazon.com/rds/proxy/pricing/>
+8. <https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/extended-support.html>
+9. <https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html>
+10. <https://calculator.aws/>
+11. <https://aws.amazon.com/rds/postgresql/pricing/>
+
+Better visibility and management into AI Tokens?
+
+Start with a 30 day trial
+
+Connect leading LLMs
+
+24 hour time to value
+
+Stay ahead of AI Spend
+
+[Request a Demo](../request-a-demo)
+
+![](https://framerusercontent.com/images/FHEMcYDba8Vu7fCaoV0owAYuizY.png?width=933&height=1290)
+
+Make AI spend visible, controllable, and accountable.
+
+Gain insights into your AI token costs at a team, customer, business unit and individual user level to measure and manage AI utilization.
+
+[Try it for Free](../ai-token-management)
+
+### Recommended Articles
+
+[![8 FinOps Tools for Cloud Cost Budgeting and Forecasting](https://framerusercontent.com/images/4RDfYFRDywAXoWhVKQomGFRM.png?width=1600&height=1000)
+
+#### Amazon SageMaker Pricing: What It Costs and How to Cut It
+
+Read More](./sagemaker-pricing)[![8 FinOps Tools for Cloud Cost Budgeting and Forecasting](https://framerusercontent.com/images/miAfmqMlCnqhvwHJpN5IT5kAmcE.png?width=1600&height=1000)
+
+#### DynamoDB Pricing: What You Actually Pay For and How to Control It
+
+Read More](./dynamodb-pricing)[![8 FinOps Tools for Cloud Cost Budgeting and Forecasting](https://framerusercontent.com/images/96OAkEaiIUpwQb7pG6qOurgeik.png?width=1600&height=1000)
+
+#### AWS Lambda Pricing: How It Works and What You Pay
+
+Read More](./aws-lambda-pricing)[![The Ultimate EKS Cost Optimization Guide for 2025](https://framerusercontent.com/images/vcCcrdJzwMP1NNHYQNaPlf2wYSQ.png?width=1600&height=1000)
+
+#### EKS Cost Optimization: Best Practices to Cut Your AWS Kubernetes Bill
+
+Read More](./eks-cost-optimization-guide)[![8 FinOps Tools for Cloud Cost Budgeting and Forecasting](https://framerusercontent.com/images/BQcPbgIgGrLHSJV3SqpHgTMsSY.png?width=1600&height=1000)
+
+#### AWS Fargate vs EC2: Cost, Control & When to Use Each
+
+Read More](./aws-fargate-vs-ec2)[![Simplifying Data Transfer Costs across AWS](https://framerusercontent.com/images/2PK5IRpnYl42oAn9Rd7K6FQdb0.png?width=1600&height=1000)
+
+#### AWS Data Transfer Costs: Pricing, Hidden Charges and How to Reduce Them
+
+Read More](./simplifying-data-transfer-costs-across-aws)
+
+## Can your engineering context keep up with the speed of AI?
+
+Start with a 14-day Runtime Accountability Audit. Read-only access. No commitment.
+
+[Book a Demo](../request-a-demo)
+
+[View Pricing](../pricing)
+
+No credit card · No migration · No agents
+
+# STAY AHEAD
+
+![](https://framerusercontent.com/images/d9IZezlz2zSLw249NfaCRiu7UdU.png?width=360&height=360)
+
+![](https://framerusercontent.com/images/HpApFX4k6wJ7knf94pQOndaWrE.png?width=380&height=392)
+
+![](https://framerusercontent.com/images/hsC4zGqM4akLqG06ywP4zGnZpVE.png?width=374&height=375)
+
+![](https://framerusercontent.com/images/wNsVFvIb2qWWOyCEyyCBJQ27Y.png?width=384&height=356)
+
+![](https://framerusercontent.com/images/AoSkgwAboNMhVEX864jqibD6RRE.png?width=360&height=360)
+
+![](https://framerusercontent.com/images/gaVkyYKvY0E2yQHglsoOckhJ2o.png?width=262&height=228)
+
+![](https://framerusercontent.com/images/UwgY2Vf6aGMesbNlShoshOGWJ4.png?width=644&height=720)
+
+Resources
+
+[Blogs](../blogs)
+
+[Amnic Cast](../amnic-cast)
+
+[Release Notes](../release-notes)
+
+Company
+
+[About us](../about-us)
+
+[In News](../news-and-press-releases)
+
+[Pricing](../pricing)
+
+[Demo Request](../request-a-demo)
+
+[Sign Up](https://app.amnic.com)
+
+[Connect With Us](../connect-with-us)
+
+FinOps Suite
+
+[Cost Attribution](../cost-attribution)
+
+[Cost Views](../cost-views)
+
+[Cost Control](../cost-control)
+
+[FinOps AI Agents](../)
+
+[Cookies Policy](../cookies-policy)
+
+[Privacy Policy](../privacy-policy)
+
+[Terms of Use](../terms-of-use)
+
+© 2026 Amnic Inc. All rights reserved.
+
+![](https://framerusercontent.com/images/AoSkgwAboNMhVEX864jqibD6RRE.png?width=360&height=360)
+
+![](https://framerusercontent.com/images/gaVkyYKvY0E2yQHglsoOckhJ2o.png?width=262&height=228)
+
+![](https://framerusercontent.com/images/d9IZezlz2zSLw249NfaCRiu7UdU.png?width=360&height=360)
+
+![](https://framerusercontent.com/images/HpApFX4k6wJ7knf94pQOndaWrE.png?width=380&height=392)
+
+![](https://framerusercontent.com/images/hsC4zGqM4akLqG06ywP4zGnZpVE.png?width=374&height=375)
+
+![](https://framerusercontent.com/images/wNsVFvIb2qWWOyCEyyCBJQ27Y.png?width=384&height=356)
+
+![](https://framerusercontent.com/images/UwgY2Vf6aGMesbNlShoshOGWJ4.png?width=644&height=720)
+
+FinOps Suite
+
+[Cost Attribution](../cost-attribution)
+
+[Cost Views](../cost-views)
+
+[Cost Control](../cost-control)
+
+[Utilization](../utilization)
+
+[FinOps AI Agents](../)
+
+Resources
+
+[Blogs](../blogs)
+
+[Amnic Cast](../amnic-cast)
+
+[Events](../events)
+
+[Release Notes](../release-notes)
+
+[Docs](https://docs.amnic.com)
+
+Company
+
+[About Us](../about-us)
+
+[In News](../news-and-press-releases)
+
+[Pricing](../pricing)
+
+[Customers](../customers)
+
+Connect
+
+[Demo Request](../request-a-demo)
+
+[Sign Up](https://app.amnic.com)
+
+[Connect With Us](../connect-with-us)
+
+[Cookies Policy](../cookies-policy)
+
+[Privacy Policy](../privacy-policy)
+
+[Security](../security)
+
+[Terms of Use](../terms-of-use)
+
+© 2026 Amnic Inc. All rights reserved.
+
+## Can your engineering context keep up with the speed of AI?
+
+Start with a 14-day Runtime Accountability Audit. Read-only access. No commitment.
+
+No credit card · No migration · No agents
+
+# STAY AHEAD
+
+[Book a Demo](../request-a-demo)
+
+[View Pricing](../pricing)
+
+![](https://framerusercontent.com/images/d9IZezlz2zSLw249NfaCRiu7UdU.png?width=360&height=360)
+
+![](https://framerusercontent.com/images/HpApFX4k6wJ7knf94pQOndaWrE.png?width=380&height=392)
+
+![](https://framerusercontent.com/images/hsC4zGqM4akLqG06ywP4zGnZpVE.png?width=374&height=375)
+
+![](https://framerusercontent.com/images/wNsVFvIb2qWWOyCEyyCBJQ27Y.png?width=384&height=356)
+
+![](https://framerusercontent.com/images/AoSkgwAboNMhVEX864jqibD6RRE.png?width=360&height=360)
+
+![](https://framerusercontent.com/images/gaVkyYKvY0E2yQHglsoOckhJ2o.png?width=262&height=228)
+
+![](https://framerusercontent.com/images/UwgY2Vf6aGMesbNlShoshOGWJ4.png?width=644&height=720)
+
+FinOps Suite
+
+[Cost Attribution](../cost-attribution)
+
+[Cost Views](../cost-views)
+
+[Cost Control](../cost-control)
+
+[Utilization](../utilization)
+
+[FinOps AI Agents](../)
+
+Resources
+
+[Blogs](../blogs)
+
+[Amnic Cast](../amnic-cast)
+
+[Events](../events)
+
+[Release Notes](../release-notes)
+
+[Docs](https://docs.amnic.com)
+
+Company
+
+[About Us](../about-us)
+
+[In News](../news-and-press-releases)
+
+[Pricing](../pricing)
+
+[Customers](../customers)
+
+Connect
+
+[Demo Request](../request-a-demo)
+
+[Sign Up](https://app.amnic.com)
+
+[Connect With Us](../connect-with-us)
+
+[Cookies Policy](../cookies-policy)
+
+[Privacy Policy](../privacy-policy)
+
+[Security](../security)
+
+[Terms of Use](../terms-of-use)
+
+© 2026 Amnic Inc. All rights reserved.
+
+## Can your engineering context keep up with the speed of AI?
+
+Start with a 14-day Runtime Accountability Audit. Read-only access. No commitment.
+
+No credit card · No migration · No agents
+
+# STAY AHEAD
+
+[Book a Demo](../request-a-demo)
+
+[View Pricing](../pricing)

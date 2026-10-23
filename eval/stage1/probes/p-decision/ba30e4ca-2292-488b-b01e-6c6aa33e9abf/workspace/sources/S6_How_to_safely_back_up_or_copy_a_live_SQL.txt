@@ -1,0 +1,93 @@
+Source: S6
+URL: https://www.mysqlui.com/blog/68-how-to-safely-back-up-or-copy-a-live-sqlite-database
+Title: How to safely back up or copy a live SQLite database
+
+# How to safely back up or copy a live SQLite database
+
+Posted by [Kyle Hankinson](https://www.linkedin.com/in/kylehankinson)
+
+---
+
+The obvious way to back up an SQLite database is to copy the file. `cp app.db backup.db`, duplicate it in Finder, done. Most of the time the copy even opens fine, which is exactly what makes the habit dangerous: the two ways it fails are both silent.
+
+The first failure is the torn copy. A database being written while you copy it can land in your backup half-updated, a state that never existed and that SQLite's crash recovery cannot repair, because from the copy's point of view there was no crash. The official [How To Corrupt An SQLite Database File](https://www.sqlite.org/howtocorrupt.html) page lists backing up or restoring while a transaction is active among the reliable ways to manufacture corruption.
+
+The second failure is quieter and easier to demonstrate, so let's do that.
+
+## Watching cp lose 500 rows
+
+Here is a small experiment run on SQLite 3.50.6. Build a database in WAL mode (the write-ahead-logging journal mode available since SQLite 3.7.0, and a common default in frameworks and apps because of its concurrency benefits), give it 1,000 rows, and arrange for the most recent 500 to still be in the write-ahead log rather than the main file. On disk it looks like this:
+
+```
+$ ls -la app.db* -rw------- 45056 app.db -rw------- 45352 app.db-wal
+```
+
+That `-wal` file is not scratch space. It contains committed transactions that have not yet been checkpointed into the main database file. Now take the "backup" the way most people do:
+
+```
+$ cp app.db backup_cp.db $ sqlite3 backup_cp.db "SELECT count(*) FROM notes;" 500
+```
+
+The source database reports 1,000 rows. The copy reports 500. No error, no warning: `PRAGMA integrity_check` on the copy even says `ok`, because structurally it is a perfectly valid database. It is simply the database as it stood at the last checkpoint, missing every commit that lived in the WAL. A backup made this way can quietly trail the real data by hours.
+
+## The two right ways
+
+SQLite ships two tools that produce a consistent copy of a live database, and both captured all 1,000 rows in the same experiment.
+
+The first is the `.backup` command in the sqlite3 shell:
+
+```
+$ sqlite3 app.db ".backup backup_api.db" $ sqlite3 backup_api.db "SELECT count(*) FROM notes;" 1000
+```
+
+`.backup` drives the [Online Backup API](https://www.sqlite.org/backup.html), which copies the database page by page through SQLite itself, WAL content included. It is safe to run against a database that other connections are using, and if another connection writes to the source mid-copy, the backup restarts so the result is always a consistent snapshot. The same API is callable from application code, which is how you schedule backups from inside an app.
+
+The second is `VACUUM INTO`, available since SQLite 3.27.0 (2019):
+
+```
+VACUUM INTO 'backup_vacuum.db';
+```
+
+This writes a transactionally consistent snapshot of the database into a brand new file, and rebuilds it while doing so: tables and indexes are written out packed, and free pages are dropped rather than copied. The [VACUUM documentation](https://www.sqlite.org/lang_vacuum.html#vacuuminto) notes the output is a snapshot taken as of the statement's own transaction, so a live source is fine here too.
+
+The rebuild is not a small detail. Take a table of 50,000 log rows, delete 45,000 of them (SQLite keeps the freed pages in the file for reuse rather than shrinking it), and back the database up both ways:
+
+| Copy method | Rows | File size |
+| --- | --- | --- |
+| Source file | 5,000 | 3,866,624 |
+| `.backup` | 5,000 | 3,866,624 |
+| `VACUUM INTO` | 5,000 | 397,312 |
+
+`.backup` is byte-faithful and reproduces the dead space; `VACUUM INTO` produced a copy roughly a tenth the size holding exactly the same rows. So the choice comes down to intent: `.backup` for routine, incremental-friendly backups where you want the file as it is, `VACUUM INTO` when you are archiving a snapshot, shipping a database to someone, or want the compaction anyway.
+
+Whichever you use, verify the result. Open the copy and run:
+
+```
+PRAGMA integrity_check;
+```
+
+Both copies above return `ok`, and a quick `SELECT count(*)` against your important tables confirms the copy is current, which is the check that catches the WAL trap since, as we saw, a stale copy passes integrity\_check happily.
+
+## If you must copy files
+
+Sometimes a file-level copy is the only tool available, for example pulling a database out of an iOS simulator or an app's container. The rules that make it safe:
+
+* Only copy while no process has the database open. A closed database has no transaction in flight and (after a clean close of the last connection) no leftover WAL content.
+* If companion files exist, copy the whole family together: `app.db`, `app.db-wal`, and `app.db-shm`. Copying the main file and the WAL together preserved all 1,000 rows in the experiment above; copying the main file alone lost 500.
+* Never delete a `-wal` or `-journal` file to tidy up. The WAL holds committed data; the journal holds what is needed to roll back an interrupted write. Deleting either can corrupt the database or throw away commits.
+
+The same torn-copy logic applies to anything that reads files behind your back. A live database sitting in a Dropbox or iCloud Drive folder gets synced file by file at arbitrary moments, and Time Machine walking the disk mid-write has the same problem. Keep live databases out of synced folders, or write snapshots into them with `VACUUM INTO` instead of syncing the working file.
+
+This is also the clean workflow when you want to poke around inside an app's database: snapshot it with `.backup` or `VACUUM INTO` and open the copy in [SQLPro for SQLite](https://www.sqlitepro.com/) to browse, query, and export, with no risk of the app and your inspection stepping on each other. And if WAL mode is new to you, it is worth knowing for more than backup semantics: it is also one of the larger wins in [how to improve SQLite insert performance](/blog/50-how-to-improve-sqlite-insert-performance).
+
+One last habit worth stealing from the ops world: a backup you have never restored is a hope, not a backup. Once in a while, open a real backup file, run `integrity_check`, and count rows in the tables you care about. On SQLite that whole drill takes under a minute, which removes any excuse to skip it.
+
+---
+
+Tags: [SQLite](/blog/tag/7-sqlite)
+
+**About the author** - [Kyle Hankinson](https://www.linkedin.com/in/kylehankinson) is the founder and sole developer of SQLPro for MySQL and the Hankinsoft Development suite of database tools. He has been building native macOS and iOS applications since 2010, and now ships SQLPro on Windows and Android as well.
+
+**Try SQLPro for MySQL** - A native MySQL and MariaDB client for macOS, iOS, and Android. No Java required.
+
+[Download Free Trial](/download) [View Pricing](/store) [Compare](/compare/)

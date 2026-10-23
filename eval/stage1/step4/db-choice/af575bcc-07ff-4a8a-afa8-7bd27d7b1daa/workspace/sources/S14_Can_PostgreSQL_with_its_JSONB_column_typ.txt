@@ -1,0 +1,367 @@
+Source: S14
+URL: https://medium.com/@yurexus/can-postgresql-with-its-jsonb-column-type-replace-mongodb-30dc7feffaf3
+Title: Can PostgreSQL with its JSONB column type replace MongoDB? | by Yuriy Ivon | Medium
+
+[Sitemap](/sitemap/sitemap.xml)
+
+[Open in app](https://play.google.com/store/apps/details?id=com.medium.reader&referrer=utm_source%3DmobileNavBar&source=---top_nav_layout_nav-------------------------------------------)
+
+[Sign in](/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2F%40yurexus%2Fcan-postgresql-with-its-jsonb-column-type-replace-mongodb-30dc7feffaf3&source=post_page---top_nav_layout_nav-----------------------global_nav--------------------)
+
+[Sign in](/m/signin?operation=login&redirect=https%3A%2F%2Fmedium.com%2F%40yurexus%2Fcan-postgresql-with-its-jsonb-column-type-replace-mongodb-30dc7feffaf3&source=post_page---top_nav_layout_nav-----------------------global_nav--------------------)
+
+[Postgresql](/tag/postgresql?source=post_page---header_tags--30dc7feffaf3-----------------------------------------)
+
+[Mongodb](/tag/mongodb?source=post_page---header_tags--30dc7feffaf3-----------------------------------------)
+
+[Database](/tag/database?source=post_page---header_tags--30dc7feffaf3-----------------------------------------)
+
+[Benchmark](/tag/benchmark?source=post_page---header_tags--30dc7feffaf3-----------------------------------------)
+
+# Can PostgreSQL with its JSONB column type replace MongoDB?
+
+[![Yuriy Ivon](https://miro.medium.com/v2/resize:fill:32:32/0*qgSCd7wYcSSj550G.jpg)](/@yurexus?source=post_page---byline--30dc7feffaf3-----------------------------------------)
+
+[Yuriy Ivon](/@yurexus?source=post_page---byline--30dc7feffaf3-----------------------------------------)
+
+18 min read
+
+·
+
+Aug 2, 2023
+
+![](https://miro.medium.com/v2/resize:fit:700/1*hUCBpb8yZg0ZlSMCL-r1gA.png)
+
+PostgreSQL is an excellent database engine, which is extremely popular these days. In my opinion, this popularity is well-deserved, as it not only delivers exceptional performance and reliability but also provides tons of unique features not found in other relational databases: JSONB type, inverted index, arrays, and many others.
+
+A few times I heard the question: “If PostgreSQL supports JSONB and allows building indexes on individual JSON document fields, what’s the point in using document databases such as MongoDB?” This question may sound weird and unprofessional because it lacks many important factors, but if developers ask this, let’s give an answer.
+
+First, we need to define what JSONB is. In simple terms, it is a binary-serialized JSON — it gets a JSON text as input but stores it in a decomposed binary format that makes it slightly slower to input due to added conversion overhead but significantly faster to process since no reparsing is needed. This makes it similar to BSON, which originates from MongoDB.
+
+Let’s see what we can do with a JSONB column in PostgreSQL.
+
+```
+CREATE TABLE sample_jsonb (  id serial NOT NULL PRIMARY KEY,  data jsonb);INSERT INTO sample_jsonb (data) VALUES ('{"name": "First", "count": 12, "orderDate": "2022-03-03T12:14:01", "extra": "some text"}');INSERT INTO sample_jsonb (data) VALUES('{"name": "Second", "count": 23, "orderDate": "2022-04-03T15:17:01"}');SELECT data->>'name', data->>'orderDate'FROM sample_jsonbWHERE (data->'count')::int > 12 CREATE TABLE NOT NULL PRIMARY KEY INSERT INTO VALUES'{"name": "First", "count": 12, "orderDate": "2022-03-03T12:14:01", "extra": "some text"}' INSERT INTO VALUES'{"name": "Second", "count": 23, "orderDate": "2022-04-03T15:17:01"}' SELECT ->> 'name' ->> 'orderDate' FROM WHERE -> 'count' int> 12
+```
+
+We got a table with a JSONB column, inserted a couple of JSON documents there, and queried the table accessing their individual fields. Here we can see the first inconvenience — non-string fields must be explicitly cast to the target type to be compared with the corresponding values. There are only two operators that extract individual fields from JSONB: `->` and `->>` returning JSONB and text representation respectively. Thus, you must cast the value to get a number.
+
+The first important question that may arise here is: “How can these fields be indexed?” The good news is that the field access expressions used in the query above can also participate in index definitions (the JSONB field expression must be put in parenthesis in this case):
+
+```
+CREATE INDEX sample_jsonb_count_idx ON sample_jsonb (((data->'count')::int)); CREATE ON -> 'count' int
+```
+
+Further executions of the original query will be able to leverage this index.
+
+Thus, PostgreSQL allows us to store objects of dynamic structure and index their fields or combinations of fields. It may already sound like a document-oriented database, but it is too early to make conclusions — we have a few more things to explore.
+
+Talking about JSONB, I can’t omit the Generalized Inverted Index (GIN), which can address some scenarios that usually present a challenge for general-purpose databases:
+
+* Full-text search
+* Querying rows by arbitrary combinations of multiple fields
+
+On a high level, you can think of an inverted index as a dictionary that provides a list of document references for every distinct combination of a field path and the corresponding field value. If we index all fields from a JSONB document and then run a query having some of them in the condition, the engine can quickly locate document references for all field-value pairs and then calculate their intersection. On a low level, there are many optimizations, which result in the high efficiency of inverted indexes in handling arbitrary combinations of query predicates.
+
+A set of GIN-specific operators that can be used in a query depends on the [operator class](https://www.postgresql.org/docs/current/gin-builtin-opclasses.html) specified at index creation. For JSONB, supported classes are:
+
+* `jsonb_ops` — the default operator class, which provides two categories of operators: checking the existence of keys and checking the existence of values based on JSONPath expressions or key-value pairs.
+* `jsonb_path_ops` — provides only the latter category and offers better performance for these operators.
+
+Let’s look at some examples to understand the idea better.
+
+```
+CREATE INDEX sample_jsonb_path_ops_idxON sample_jsonb USING GIN (data jsonb_path_ops);SELECT * FROM sample_jsonb WHERE data @> '{"name":"First"}'::jsonbSELECT * FROM sample_jsonb WHERE data @@ '$.count > 15' CREATE ON USING SELECT* FROM WHERE>'{"name":"First"}' SELECT* FROM WHERE'$.count > 15'
+```
+
+The first select query from above matches all rows where the `name` property is equal to `"First"` and the second query — all rows where `count` is greater than `15`. Thus, if you need to check on equality, the operator `@>` is enough, for all other condition types, you will need JSONPath expressions together with `@@` operator.
+
+This syntax may look tricky, but it does the job and extends database engine capabilities beyond what is usually expected from a relational database.
+
+The overview from above may give the impression that PostgreSQL provides enough “document-oriented” capabilities and is even more flexible from the querying perspective than MongoDB despite some trickiness of the query language. However, it is not apparent how fast queries on JSONB fields are. To cover this gap, let’s run a few benchmarks to compare MongoDB and PostgreSQL performance when data structures and queries are equivalent in both databases. I will be using my [**Database Benchmark tool**](https://github.com/YuriyIvon/DatabaseBenchmark) for this purpose, which gives a very flexible framework for database query benchmarks.
+
+Those who don’t have enough time to go through all the benchmark details can jump to the [conclusions section](#05e8) right away.
+
+## Benchmark conditions
+
+I will be using a statistical dataset from EUROSTAT for the Balance Of Payments of EU institutions, which was downloaded in SDMX-CSV format from here — <https://ec.europa.eu/eurostat/databrowser/view/bop_euins6_m/default/table>. At the time I am running the benchmark, this dataset has about 11 million rows (one statistical observation per row). Observations in statistical datasets usually have many attributes, so it is easy to demonstrate how different combinations of query predicates affect performance.
+
+The indexes and storage models to be compared are:
+
+* MongoDB — a composite index on Partner Country and Time Period.
+* MongoDB — two separate indexes on Partner Country and Time Period — to check if separate indexes can help in scenarios when creating composite indexes for all possible predicate combinations is impractical.
+* PostgreSQL — all attributes stored as regular columns with a composite index on Partner Country and Time Period.
+* PostgreSQL — all attributes stored as regular columns with two separate indexes on Partner Country and Time Period.
+* PostgreSQL — all attributes stored as a single JSONB column with a composite index on Partner Country and Time Period — to see how well a regular composite index works with a JSONB column.
+* PostgreSQL — all attributes stored as a single JSONB column with a GIN index of jsonb\_path\_ops operator class on it.
+
+Other important aspects of the benchmark are:
+
+* Query parameters are randomized for each execution.
+* There are two possible benchmark runs for each query — 1 thread and 10 parallel threads. The latter is used only if the average duration for most database engines and indexes doesn’t exceed a second in a single-threaded run. There is no sense in testing concurrency if a query performs poorly.
+* Each query is executed 1000 times on each thread if a single run takes less than a second or 100 times otherwise.
+* All resources participating in the benchmarks belong to the same Azure region (East US).
+* The database engine and the benchmark tool run on separate virtual machines.
+* The virtual machines are of D4s v3 shape (4 vCPU, 16 GB RAM), with the only exception for the insert benchmark, where I had to host the tool on D8s v3 (8 vCPU, 32 GB RAM) to avoid a bottleneck on the client side.
+* The virtual machine hosting the databases has a 128 GB Premium SSD with 500 IOPS and 100 MBps throughput.
+* PostgreSQL 14.6 and MongoDB 6.0.3 were used. The tests were run at the beginning of 2023, when these were the latest versions.
+* The [benchmark tool](https://github.com/YuriyIvon/DatabaseBenchmark) uses the most up-to-date .NET clients for the database engines being investigated. No tweaks are made to the client libraries’ default settings.
+* All source files for the benchmarks can be found [here](https://github.com/YuriyIvon/DatabaseBenchmark/tree/main/samples/Eurostat).
+
+## Benchmark results
+
+### Inserts
+
+The chart and table below summarize insert benchmark results for different databases and indexes. The test was writing about 11 million rows in 100 parallel threads.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*huLwUfwO_znjIxRAZo2Kuw.png)
+
+The data size is very different for different storage approaches.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*yfPhdJpR7EiwKmVqWYTHlg.png)
+
+More details on the results can be found in the table below.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*x3dottWcDrubk3kmHKbsmA.png)
+
+* MongoDB is substantially faster than PostgreSQL on inserts.
+* MongoDB requires much less storage space than PostgreSQL to store the same data.
+* PostgreSQL JSONB appears to be very inefficient in terms of storage space. One of the reasons for such a big difference is that JSONB stores field names in each row — it is effectively a binary-serialized JSON document. While MongoDB uses a similar serialization approach for its documents, it also adds compression on top, providing a more space-efficient mechanism. Due to the nature of the document storage model, using short property names would be a reasonable optimization technique with either of the database engines.
+* Although storing data in JSONB requires three times more storage space and exhibits notably higher peak insert durations, the average and median insert times for JSONB are slightly better than for the same data stored in regular columns. This result is consistently reproducible, and I have no plausible explanation for it.
+
+It is worth noting that write performance in MongoDB depends on the [write concern](https://www.mongodb.com/docs/manual/reference/write-concern) — you may get even better write performance by relaxing the acknowledgment requirement. By default, the engine responds to a write operation once the data is committed to the on-disk journal. This behavior can be changed to respond when the data is simply saved in memory, but it is not an option if ensuring data durability is a must.
+
+### Queries
+
+***1. Find all observations for a specific Partner Country, Indicator, and Time Period***
+
+We will start with a simple query that matches database entries by exact values of multiple attributes.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*jgD40A5R1qIie0dxZY1sgQ.png)
+
+Average and median duration (logarithmic scale)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*-lkPKAdTQyA8gcOmvbVKXQ.png)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*X5koo9p0YgYHyEWi1y6DRw.png)
+
+* The GIN index performs best, maintaining its efficiency without any degradation, even when executed on ten parallel threads.
+* MongoDB has the second-best result in this test.
+* With PostgreSQL composite index, there is not much difference between regular columns and JSONB — the latter is only slightly worse.
+* Separate indexes don’t help a lot when you filter a large dataset by multiple fields, but PostgreSQL is much faster with separate indexes than MongoDB. It can be explained by its [ability to combine the results of multiple index scans in one query](https://www.postgresql.org/docs/current/indexes-bitmap-scans.html), which is absent in MongoDB.
+
+***2. Find all observations for a specific Partner Country and Time Period***
+
+Let’s remove one predicate from the previous query to see how decreased selectivity impacts the results.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*IdqAozPsYRAe40wbnG_vqQ.png)
+
+Average and median duration (logarithmic scale)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*OXnigzsFkYyNsOP8fc1FWQ.png)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*EVA0mtuSgIrTz8faO541Kw.png)
+
+* PostgreSQL composite indexes win this benchmark. What is weird is that under a single-thread scenario, the table with regular columns exhibits a significantly higher average duration than the one with JSONB, despite having an almost equal median duration. This outcome is consistently reproducible, and I have no explanation for it.
+* PostgreSQL GIN index results are pretty close to those of MongoDB this time.
+* The observations for separate indexes are the same as with the previous query.
+
+***3. Find the first 100 observations for a specific Partner Country and Time Period range ordered by descending Time Period***
+
+## Get Yuriy Ivon’s stories in your inbox
+
+Join Medium for free to get updates from this writer.
+
+To cover as many real-life scenarios as possible, let’s add range queries and ordering to the query. In many data browsing scenarios, only a page of records is retrieved from the server, and paging always implies a specific order.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*n6k2utxJDudkcg3OJgejCw.png)
+
+Average and median duration (logarithmic scale)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*3SoAWDVA2uUpTZWA62IZDw.png)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*oY-ZR-H0CsaqIkcoyGCOvg.png)
+
+* Composite indexes win this benchmark because they fully cover both the filter criteria and the order.
+* MongoDB performs twice as badly as PostgreSQL with a similar composite index.
+* The GIN index is far from the leaders primarily due to its inability to help with ordering — the database engine has to traverse all the matching rows and sort them. It is a crucial aspect to take into consideration when choosing it. In this test, up to a few thousand rows match the query criteria, which is not that big compared to the entire dataset. However, the result is already significantly worse than that of a dedicated composite index.
+* Surprisingly, PostgreSQL separate indexes perform much worse than MongoDB separate indexes despite the bitmap index scan optimization mentioned earlier. MongoDB uses the TimePeriod index to scan through all relevant records, which are already in the correct order, and subsequently filters each scanned row by country until enough results for the page are found. Conversely, PostgreSQL combines the results of two index scans using the bitmap approach and explicitly sorts the resulting dataset. The second approach appears to be more expensive. Of course, this behavior can be altered, and we can make PostgreSQL behave the same way as MongoDB in this scenario, but the idea was to test the default behavior.
+* The average query duration for PostgreSQL separate indexes is higher than the median by an order of magnitude. Such a big difference and an unusually high standard deviation indicate a very broad distribution of results, where a small fraction of queries takes an exceptionally long time to complete. Such behavior is highly undesirable and must be avoided if possible.
+
+***4. Find the first 100 observations for a specific Indicator and Time Period range ordered by descending Time Period***
+
+Now let’s see how filtering by a non-indexed field would affect the results.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*oNeGSf0MoF7NjuyGRKXFXA.png)
+
+Average and median duration (logarithmic scale)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*YQtGr3c_TEvJoX3MmxVOyQ.png)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*DzwKothK-6XwfIXLrfP3Hw.png)
+
+* The GIN index wins in the test because it has all fields indexed. Although the engine must sort the entire set of matching records, the number of rows it needs to traverse is significantly fewer compared to other indexing options.
+* Obviously, the composite index used in the benchmarks can’t help with this query, so we can compare the full scan performance based on the results for the composite index. The regular PostgreSQL table performs the best with a full scan, the JSONB table is the second, and MongoDB comes last. However, the difference between the last two is not that big.
+* Once again, MongoDB outperforms PostgreSQL when using separate indexes.
+* I would expect the same performance for MongoDB separate indexes as in the previous test, but different distribution of indicators and partner countries significantly affects the result. The average number of records with the same indicator is about three times higher than those sharing the same partner country.
+* Here we observe an unusually high difference between the average and the median for both “separate index” scenarios. As stated earlier, such behavior is highly undesirable and must be avoided if possible.
+
+***5. Find the first 100 observations ordered by descending Time Period***
+
+To finalize the paging scenarios, we need to check how ordering works on the entire dataset.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*Rm6ozVefAGMdWM9YqOhsxQ.png)
+
+Average and median duration (logarithmic scale)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*ZBHuieQRjnoiADFMEXg7qg.png)
+
+* Separate indexes win, but it was expected.
+* Once again we confirm that a full scan in a regular PostgreSQL table is much faster than in MongoDB. At the same time, a full scan over JSONB data got slightly worse compared to a full scan in MongoDB.
+* There is no difference between GIN and a composite index on JSONB data because this query can’t leverage either of them.
+
+***6. Get the maximum value for each country among observations filtered by a Time Period range***
+
+Aggregations are very important for many projects, so it makes sense to test at least a simple grouping with an aggregate function.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*Prh-WSunsZcr3cFaigl8xA.png)
+
+Average and median duration (linear scale)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*gr5dOQKySb3eiGyGdmr6dg.png)
+
+* Regular PostgreSQL tables win this time. In both cases, the engine ran a full table scan to fulfill the query. Since the execution plan is identical in both cases, their average durations are pretty similar, with nearly equal median and maximum durations.
+* MongoDB chose a different query plan in each case. It opted for a full scan for the collection with the composite index. In contrast, for the collection with separate indexes, it decided to match all relevant documents via the TimePeriod index and apply the aggregation afterward. Despite using an index, the “separate indexes” scenario gave the worst result.
+* As for the JSONB field — PostgreSQL could not leverage the GIN index. However, the resulting performance of a full scan was noticeably better than in the “composite index” scenario, where the query execution relied on this index.
+
+***7. Get all distinct partner countries***
+
+“Distinct” queries are frequently used to get a list of available values in various data filtering screens, so they are worth checking either.
+
+Since my Database Benchmark tool executes all MongoDB queries via its “aggregate” command, I had to substitute the built-in “distinct” command with an equivalent grouping expression. This modification might affect the resulting execution plan, but I don’t expect a difference for such a simple query.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*zJJL3De_Yob_i_89v9pOMw.png)
+
+Average and median duration (logarithmic scale)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*NNzpXuURMihroHvX0QhBVw.png)
+
+* Though both databases use index scans except for the case with GIN, MongoDB appears to be dramatically faster with a simple distinct query. There are not many details about MongoDB’s “distinct scan” index access method on the Internet, so I can only presume that it doesn’t scan duplicate values and can quickly jump between distinct values in an index, while PostgreSQL traverses key values for each row in the dataset.
+* GIN index can’t be used to execute a distinct query, so we have a full scan followed by a sort operation since PostgreSQL can collect distinct values only from a sorted list. That is why there is a substantial difference between JSONB with a composite index and JSONB with a GIN index.
+* We can also observe how index size affects index scan operations — at least for PostgreSQL the difference between composite and separate indexes is evident.
+
+***8. Find all observations for a specific Time Period and a list of Partner Countries and Indicators***
+
+Right before publishing the article, I realized that one important use case was missing — a query that matches data by a list of values for an attribute (the `IN` operator in SQL terms). For this benchmark, I generated 10-element lists of possible values for the Partner Country and Indicator attributes.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*29Bchl478BTYIMvpGT-u3g.png)
+
+Average and median duration (logarithmic scale)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*7Fo87ouyQ1jjueKjjtrq2w.png)
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*nKmQSYIVu99yLhmWN4vZHA.png)
+
+* The addition of 10-element lists of possible attribute values slowed down the query utilizing the GIN index significantly. Although a similar query with only a single value for Partner Country and Indicator initially won the benchmark, it now falls behind all other index options. Behind the scenes, PostgreSQL decided not to use predicates for Partner Country and Indicator when doing an index scan. Instead, it used the index to find everything that matches the TimePeriod predicate only and applied an extra filter afterward. It is worth noting that there is no equivalent for `IN` among operators supported by the GIN index. Hence, the benchmark tool generates a set of equality predicates (operator `@>`) combined via`OR`.
+* MongoDB shows better performance this time, especially under concurrent load.
+* A composite index on regular PostgreSQL columns is slightly faster than a composite index on a JSONB column.
+
+## Conclusions
+
+Apparently, a benchmark like this is not enough to formulate ultimate recommendations on the choice between PostgreSQL and MongoDB. There are some major differences between these engines that must be taken into account.
+
+* Though JSONB columns in PostgreSQL allow storing MongoDB-like documents, we are still dealing with a strict-schema relational database, albeit very feature-rich. On the one hand, it requires maintaining two levels of schema: strict database schema that, at minimum, introduces a table with a plain primary key column and a JSONB column, and application-level schema of the JSONB document. On the other hand, it gives more flexibility in modeling — you can combine fixed columns with JSONB documents in the same table and use joins between tables.
+* **Data updates in PostgreSQL might not be as efficient as in MongoDB**. Due to PostgreSQL’s usage of the MVCC (Multi-Version Concurrency Control) model, when a row is updated, the engine creates its new version rather than modifying the existing row. Conversely, MongoDB can do partial updates to its documents, which might be a good advantage in write-heavy scenarios, especially with large documents. Unfortunately, **my benchmark tool doesn’t support update benchmarks yet**, so I had to skip this kind of test in the article.
+* **MongoDB provides control over when writes are acknowledged**, with the earliest option being when the data is saved in memory. It can be leveraged to improve write performance in some scenarios where durability guarantees are not mission-critical. This feature is not available in PostgreSQL.
+* **Support for transactions is more mature in PostgreSQL** as it is an inherent feature of relational databases. Nevertheless, MongoDB did a lot in this area starting from version 4.0.
+* Some name sharding and built-in full-text search as advantages of MongoDB over traditional relational databases. However, PostgreSQL is very feature-rich and provides these capabilities too. For instance, [full-text](https://www.postgresql.org/docs/current/textsearch.html) search is available right out of the box, and sharding can be implemented using the [Citus](https://www.citusdata.com/) extension. There might be differences in the level of flexibility each implementation provides, but from a feature standpoint, I can’t name something MongoDB can do that PostgreSQL can’t.
+
+The table below summarizes the average durations for 1-thread query benchmarks along with the 100-thread insert benchmark. I won’t add the same table for median durations, as the comparative “color map” remains pretty similar in both cases. Obviously, there is no silver bullet, so the choice of a specific technology and modeling approach should hinge on the characteristics of the queries and data involved, along with associated non-functional requirements.
+
+Press enter or click to view image in full size
+
+![](https://miro.medium.com/v2/resize:fit:700/1*InjbWXSEIe2J0cm5C5bmjg.png)
+
+Here we can see that except for Query 7, the results for the same indexes on a MongoDB collection and PostgreSQL JSONB column are very similar, which drives us to the conclusion that **PostgreSQL JSONB columns can be considered as an alternative to MongoDB collections**. At the same time, it is also important to take into account the other factors and caveats outlined in this section.
+
+* As previously mentioned, these **benchmarks do not include update scenarios**, which may be a crucial factor for many systems. Therefore, if your system expects a high rate of concurrent updates, further research will be necessary in any case.
+* These **benchmarks only checked the case when the data being queried can be fully accommodated within the database server’s RAM**. If the variety of data being frequently queried in your system takes much more space than the database servers have in RAM, MongoDB may start getting a noticeable advantage over PostgreSQL due to the more efficient disk I/O.
+* **These benchmarks only evaluated queries on small-sized database entries.** However, it’s important to note that entry size and the size of indexed values could significantly influence the results.
+* Although **PostgreSQL JSONB queries show performance comparable with MongoDB**, I would use regular columns whenever possible, falling back to the JSONB documents only when absolutely necessary. Regular columns provide better performance and more compact storage. Thus, you can have some tables combining a few plain columns for fixed attributes with an extra JSONB column holding the remaining data in document form.
+* **The applicability of the GIN index for JSONB columns in PostgreSQL is quite limited** because it doesn’t speed up ordering and performs poorly with queries having `IN` operator semantics. Thus, it looks like that GIN truly excels in one particular case — when queries don’t need to check multiple values for the same attribute and yield only a small number of rows. Based on the benchmarks, I can say that up to a few hundred should be okay for systems with high concurrency. However, when retrieving thousands of matching rows — especially when they need to be sorted before returning to the client — the query performance noticeably degrades. For systems with only a few concurrent users hitting the same database collection, a GIN index might still be beneficial even with a larger number of rows, as demonstrated by Query 4. The fact that you can cover all possible combinations of query predicates with a single index is compelling. But again, queries matching hundreds of thousands of rows or more will suffer anyway.
+* **The GIN index doesn’t directly support** `IN` **and** `LIKE` **operators**. While it is possible to substitute `IN` with a set of equality predicates combined with `OR`, there is no equivalent for `LIKE` that can leverage the GIN index even though the “starts with” semantics could be implemented.
+* **There is no sense in putting long textual or binary properties into JSONB documents indexed with GIN.** Since GIN effectively indexes all values in a document, it would be a waste of resources.
+* **MongoDB is much more space-efficient** due to the compression used by its WiredTiger engine. It would be fair to say that PostgreSQL also uses compression, but only for data stored as [TOAST](https://www.postgresql.org/docs/current/storage-toast.html) — large column values exceeding a special threshold (usually 2 KB).
+* **PostgreSQL has a much quicker full scan,** especially if regular columns are used.
+* **MongoDB is much faster at “distinct” queries that can utilize an index.**
+* Regardless of the database engine, **separate indexes on individual attributes don’t help a lot if you need to query a large dataset by arbitrary combinations of attributes**. However, you may find a combination of simple and composite indexes that covers all your major querying scenarios.
+* Though any benchmarks like this one give some ideas on what to expect and what to pay attention to, **I strongly recommend running benchmarks for typical queries specific to your project** before making a technology decision. My [**Database Benchmark tool**](https://github.com/YuriyIvon/DatabaseBenchmark)makes it much easier than writing a benchmark utility from scratch.
+
+[Postgresql](/tag/postgresql?source=post_page---footer_tags--30dc7feffaf3-----------------------------------------)
+
+[Mongodb](/tag/mongodb?source=post_page---footer_tags--30dc7feffaf3-----------------------------------------)
+
+[Database](/tag/database?source=post_page---footer_tags--30dc7feffaf3-----------------------------------------)
+
+[Benchmark](/tag/benchmark?source=post_page---footer_tags--30dc7feffaf3-----------------------------------------)
+
+[![Yuriy Ivon](https://miro.medium.com/v2/resize:fill:48:48/0*qgSCd7wYcSSj550G.jpg)](/@yurexus?source=post_page---post_author_info--30dc7feffaf3-----------------------------------------)
+
+[![Yuriy Ivon](https://miro.medium.com/v2/resize:fill:64:64/0*qgSCd7wYcSSj550G.jpg)](/@yurexus?source=post_page---post_author_info--30dc7feffaf3-----------------------------------------)
+
+[## Written by Yuriy Ivon](/@yurexus?source=post_page---post_author_info--30dc7feffaf3-----------------------------------------)
+
+[181 followers](/@yurexus/followers?source=post_page---post_author_info--30dc7feffaf3-----------------------------------------)
+
+·
+[6 following](/@yurexus/following?source=post_page---post_author_info--30dc7feffaf3-----------------------------------------)
+
+[Text to speech](https://speechify.com/medium?source=post_page-----30dc7feffaf3-----------------------------------------)

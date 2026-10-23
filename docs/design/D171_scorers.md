@@ -13,7 +13,7 @@ Four scorers join `SCORERS` (amoeba/eval/sim_score.py):
 | scorer | reads | score |
 |---|---|---|
 | `answer_key` | `<judge_set>_keys/<task>.json`: `numbers` (`value`, absolute `tol` and/or `rel_tol`, `name`) and exact `strings` | the share found in the answer (a number counts when any number in the answer is within the tolerance; a string must appear exactly) |
-| `hidden_tests` | `<judge_set>_hidden/<task>/`: a pytest folder | the share of tests passed. The run's workspace (without `sources/`, `skills/`, `made_tools/`) is copied to a temporary folder, the tests are copied next to it as `_hidden_tests/` and run there with `PYTHONPATH` on the copy. The workspace is never touched, and the tests are never in the task's files or the workspace. A run over 300 s, or no report, scores 0 |
+| `hidden_tests` | `<judge_set>_hidden/<task>/`: a pytest folder | the share of tests passed. The run's workspace (without `sources/`, `skills/`, `made_tools/` and `inputs/`, the copies of the task's own files) is copied to a temporary folder, the tests are copied next to it as `_hidden_tests/` and run there with `PYTHONPATH` on the copy. The workspace is never touched, and the tests are never in the task's files or the workspace. A run over 300 s, or no report, scores 0 |
 | `files` | the key's `files` list: `{check, path (a glob), min, max}`, where check is `exists`, `rows` (csv data rows), `formulas_live` (xlsx cells holding a formula, at least `min`, default 1), `pages` (pdf) or `image` (png / jpg header) | the share of checks passed; an unreadable file fails its check |
 | `rubric` | the key's `rubric` text; the fixed grader of `amoeba/eval/judge.yaml` | the **median** of 3 grader calls |
 
@@ -22,7 +22,7 @@ Four scorers join `SCORERS` (amoeba/eval/sim_score.py):
 - **Rules it applies.** It credits only what the answer states. An invented value fails the point it touches, or the
   whole answer when the rubric says so. An honest "could not find" meets a point that rewards it.
 - **Reply.** One line per point, then `SCORE: <0..1>`. An unreadable reply scores 0.
-- **Model.** It is the registry entry `gemma-4-31b`, at temperature 0.0, with 1,024 tokens of reply room and 3 calls
+- **Model.** It is the registry entry `gemma-4-31b`, at temperature 0.0, with 8,192 tokens of reply room (a reply cut off before its SCORE line is asked once more with twice that) and 3 calls
   per score. It is built by `grader_client` from `models.yaml`, never from the team's client. Its key is read from
   the environment only.
 - **When the team also uses Gemma.** In the profile claude-sonnet+gemma-verify the team uses Gemma as its verifier.

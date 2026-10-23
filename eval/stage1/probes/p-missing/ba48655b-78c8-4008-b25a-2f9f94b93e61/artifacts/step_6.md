@@ -1,0 +1,1 @@
+BLOCKED: no_model — no model for worker: gemma-4-31b: not in the niche profile's models; claude-sonnet-5-5-compat: not in the niche profile's models; claude-sonnet-5-5: over the run USD cap ($1.0000)

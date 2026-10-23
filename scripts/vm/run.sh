@@ -21,11 +21,13 @@ case "$cmd" in
       echo "run.sh: inside the runner, local tools run with --local-tools-mode inprocess" >&2; exit 2; } ;;
 esac
 # Behind a TLS-inspecting proxy (a cloud session), set AMOEBA_RUNNER_CA to its CA file: the proxy variables are passed
-# by name and that one file is mounted read-only (a file, not a folder) as the container's trust bundle.
+# by name and that one file is mounted read-only (a file, not a folder) as the container's trust bundle (Python, git,
+# curl and Node read it: `pool refresh` clones the skills repository with git).
 proxy=()
 if [[ -n "${AMOEBA_RUNNER_CA:-}" ]]; then
   proxy=(-e HTTPS_PROXY -e HTTP_PROXY -e NO_PROXY -e https_proxy -e http_proxy -e no_proxy
          -e SSL_CERT_FILE=/etc/runner-ca.crt -e REQUESTS_CA_BUNDLE=/etc/runner-ca.crt
+         -e GIT_SSL_CAINFO=/etc/runner-ca.crt -e CURL_CA_BUNDLE=/etc/runner-ca.crt -e NODE_EXTRA_CA_CERTS=/etc/runner-ca.crt
          --mount "type=bind,src=$AMOEBA_RUNNER_CA,dst=/etc/runner-ca.crt,readonly")
 fi
 # A proxy on the host's loopback (127.0.0.1) is reachable only with AMOEBA_RUNNER_NETWORK=host (opt-in: it also lets the

@@ -62,3 +62,13 @@ event, so a learning run in the sandbox learned almost nothing, and nobody was t
   with `--rm`.
 
 On 9f1fb29, the same flags were accepted with `lessons_write = on` (red evidence in the PR).
+
+## Found in Part 2, Step 1 (Oct 22, second session)
+- **git behind the proxy.** `pool refresh` clones `anthropics/skills` with git, which does not read `SSL_CERT_FILE`,
+  so the clone failed and the pool had no skills (preflight: `skill xlsx … missing`). With `AMOEBA_RUNNER_CA`,
+  `run.sh` now also sets `GIT_SSL_CAINFO`, `CURL_CA_BUNDLE` and `NODE_EXTRA_CA_CERTS` to the same file.
+- **The pool cache lives in the output folder.** The image holds no `data/pool`; build it once with
+  `run.sh <out> "python -m amoeba pool refresh --dir /out/pool"` and pass `--pool-dir /out/pool` to preflight and
+  run_task. `--only skill` rewrites the index with skills only, so refresh both kinds together.
+- **Image build behind the proxy:** `docker build --network host --secret id=ca,src=<ca.crt>
+  --build-arg BASE_REGISTRY=mirror.gcr.io/library` (Docker Hub answered 429 to anonymous pulls).
