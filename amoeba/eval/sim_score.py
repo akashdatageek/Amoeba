@@ -156,7 +156,8 @@ class FilesScorer:
 # box: frozen_judge
 class RubricScorer:
     """D171: the fixed grader (judge.yaml rubric: model, temperature, calls) scores the answer against the key's
-    rubric `calls` times; score = the median. The grader sees the task, the rubric and the answer only."""
+    rubric `calls` times; score = the median. The grader sees the task, the rubric and the answer only. A reply cut
+    off by length before its SCORE line is asked once more with twice the room (counted in detail.retried)."""
 
     name = "rubric"
 
@@ -169,13 +170,17 @@ class RubricScorer:
         user = (prompt.replace("${task}", task.prompt).replace("${rubric}", rubric)
                 .replace("${answer}", answer_of(run_dir)[:12000]))
         llm = grader_client(cfg)
-        marks, raw = [], []
+        marks, raw, retried = [], [], 0
         for k in range(int(cfg["calls"])):
-            resp = llm.chat_messages([{"role": "user", "content": user}], seed=int(seed) + k,
-                                     max_tokens=int(cfg["max_tokens"]))
-            raw.append((resp.content or "")[:400])
+            ask = lambda room: llm.chat_messages([{"role": "user", "content": user}], seed=int(seed) + k,
+                                                 max_tokens=room)
+            resp = ask(int(cfg["max_tokens"]))
+            if resp.finish_reason == "length" and not SCORE_LINE.search(resp.content or ""):
+                resp, retried = ask(2 * int(cfg["max_tokens"])), retried + 1   # cut off before its SCORE line
+            raw.append((resp.content or "")[-400:])
             marks.append(parse_mark(resp.content))
-        return {"score": round(statistics.median(marks), 6), "detail": {"marks": marks, "replies": raw},
+        return {"score": round(statistics.median(marks), 6),
+                "detail": {"marks": marks, "replies": raw, "retried": retried},
                 "grader": {"model": cfg["model"], "temperature": cfg["temperature"], "calls": len(marks)}}
 
 
@@ -234,10 +239,13 @@ def grader_client(cfg: dict):
                        temperature=float(cfg["temperature"]))
 
 
+SCORE_LINE = re.compile(r"SCORE:\s*([01](?:\.\d+)?|\.\d+)", re.I)
+
+
 # box: frozen_judge
 def parse_mark(text: str | None) -> float:
     """The grader's `SCORE: <0..1>` line; an unreadable reply scores 0."""
-    m = re.search(r"SCORE:\s*([01](?:\.\d+)?|\.\d+)", text or "", re.I)
+    m = SCORE_LINE.search(text or "")
     return min(1.0, max(0.0, float(m.group(1)))) if m else 0.0
 
 

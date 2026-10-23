@@ -22,7 +22,7 @@ Four scorers join `SCORERS` (amoeba/eval/sim_score.py):
 - **Rules it applies.** It credits only what the answer states. An invented value fails the point it touches, or the
   whole answer when the rubric says so. An honest "could not find" meets a point that rewards it.
 - **Reply.** One line per point, then `SCORE: <0..1>`. An unreadable reply scores 0.
-- **Model.** It is the registry entry `gemma-4-31b`, at temperature 0.0, with 1,024 tokens of reply room and 3 calls
+- **Model.** It is the registry entry `gemma-4-31b`, at temperature 0.0, with 8,192 tokens of reply room (a reply cut off before its SCORE line is asked once more with twice that) and 3 calls
   per score. It is built by `grader_client` from `models.yaml`, never from the team's client. Its key is read from
   the environment only.
 - **When the team also uses Gemma.** In the profile claude-sonnet+gemma-verify the team uses Gemma as its verifier.
