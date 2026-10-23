@@ -4334,9 +4334,11 @@
   },
   "facts_hash": "d94db82c24061a22",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "f1fac79e03b885f1",
   "seed_hash": "3f976bc355982025",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand (model: still true)",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
    "Waits out rate limits (HTTP 429/503: up to five retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message, set the reasoning effort and count hidden reasoning tokens.",
@@ -5791,7 +5793,7 @@
   ]
  },
  "fixes": {
-  "checked_at": "ac8daa8",
+  "checked_at": "c1948d6",
   "facts": {
    "anchors": [
     {
@@ -5822,14 +5824,13 @@
       "amoeba/adapt/fixes.py::token_cap",
       "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner._adapt_once",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_usd",
-      "amoeba/interp/plan_runner.py::PlanRunner.apply_fix",
       "amoeba/interp/plan_runner.py::PlanRunner.avg_attempt",
       "amoeba/interp/plan_runner.py::PlanRunner.fix_ctx",
       "amoeba/interp/plan_runner.py::PlanRunner.log_event",
       "amoeba/interp/plan_runner.py::PlanRunner.over_share",
-      "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
       "amoeba/interp/plan_runner.py::PlanRunner.step_fixes",
       "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -5949,6 +5950,15 @@
      "doc": "D151: the tokens all fixes of one task may use: `fix_tokens_per_attempt` times the run's average step-attempt",
      "key": "amoeba/adapt/fixes.py::token_cap",
      "signature": "token_cap(lim: dict, avg_attempt: float) -> int"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.apply_fix",
+      "amoeba/interp/plan_runner.py::PlanRunner.propose_fix"
+     ],
+     "doc": "One rung of the loop above: the fix proposer (Stage D) when no code fix is picked, else that code fix.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._adapt_once",
+     "signature": "_adapt_once(self, n: int, wave: int, d: dict, fix: dict | None) -> str | None"
     },
     {
      "callees": [
@@ -6175,7 +6185,7 @@
    "prompts": {},
    "title": "Code fixes for a stuck step (D117 Stage C)"
   },
-  "facts_hash": "1fd395b7ecd66a71",
+  "facts_hash": "87532bf09e91deb6",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "b071561e87fd6ece",
   "sentence": "Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
@@ -6798,9 +6808,11 @@
    "title": "Frozen judge and task scorers (D161, D171)"
   },
   "facts_hash": "a56832812609f60c",
+  "rejected_hash": "9aff2cb785c5cd12",
   "seed_hash": "dc69c3f9f76ff30f",
   "sentence": "Hashes every file that judges a run at the start of the run, and scores a task with the scorer it names, so a later comparison knows both the score and the judge that gave it.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "config/frozen.yaml lists the judge: the domain checks, Box 2's plan checks, the answer score, the scorers and the baseline results. The digest goes to result.json and sim_score.json.",
    "Runs whose judge hashes differ, or are unknown, are refused for comparison (same_judge).",
@@ -10790,7 +10802,7 @@
   ]
  },
  "ov_around": {
-  "checked_at": "c5f9e93",
+  "checked_at": "c1948d6",
   "facts": {
    "anchors": [
     {
@@ -10799,7 +10811,7 @@
      "fields": [],
      "key": "amoeba/llm/router.py::ModelRouter",
      "methods": [
-      "__init__(self, registry: dict[str, ModelEntry], policy: dict, make: Callable[[ModelEntry], LLMClient], mode: str='routed', allowed: list[str] | None=None, profile_allowed: list[str] | None=None, usd_cap: float | None=None, env=None, rate_dir: str | Path | None=None, role_prefs: dict | None=None, fixed_model: str | None=None, clock=time.time, sleep=time.sleep, failing_after: int=3)",
+      "__init__(self, registry: dict[str, ModelEntry], policy: dict, make: Callable[[ModelEntry], LLMClient], mode: str='routed', allowed: list[str] | None=None, profile_allowed: list[str] | None=None, usd_cap: float | None=None, env=None, rate_dir: str | Path | None=None, role_prefs: dict | None=None, fixed_model: str | None=None, clock=time.time, sleep=time.sleep, failing_after: int=3, base_prefs: dict | None=None)",
       "begin_run(self, data_class: str='normal', role_prefs: dict | None=None, usd_cap: float | None=None) -> None",
       "client(self, name: str) -> LLMClient",
       "bucket(self, name: str) -> SharedBucket",
@@ -10837,7 +10849,7 @@
    "prompts": {},
    "title": "Around every box"
   },
-  "facts_hash": "0f061f4bbe36bca3",
+  "facts_hash": "465a5e54b235a42d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "ac6fefe917436cc9",
   "sentence": "The model router behind every AI call and the niche profile every run obeys.",
@@ -18019,7 +18031,7 @@
   },
   "facts_hash": "ff7ce559e226b1f2",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "fc57b716d434bca9",
+  "rejected_hash": "2cf4b0077a7f31c2",
   "seed_hash": "98554a3d1a5efb46",
   "sentence": "Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters that are never relaxed, then a preference for the role (none is set since D117), the role's default or the cheapest of the right size.",
   "source": "model: kept",
