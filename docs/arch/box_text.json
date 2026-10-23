@@ -1012,7 +1012,7 @@
   ]
  },
  "capreq": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -1122,6 +1122,10 @@
       "amoeba/config/niche.py::environment_text",
       "amoeba/config/schema.py::Limits",
       "amoeba/eval/judge.py::judge_hash",
+      "amoeba/eval/sim_score.py::AnswerKeyScorer.score",
+      "amoeba/eval/sim_score.py::FilesScorer.score",
+      "amoeba/eval/sim_score.py::HiddenTestsScorer.score",
+      "amoeba/eval/sim_score.py::RubricScorer.score",
       "amoeba/eval/sim_score.py::SimScorer.score",
       "amoeba/eval/sim_score.py::StandInScorer.score",
       "amoeba/eval/sim_score.py::score_run",
@@ -1219,7 +1223,7 @@
    "prompts": {},
    "title": "Capability requests"
   },
-  "facts_hash": "3a6254f703cbb042",
+  "facts_hash": "e7398d1ca3892e62",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "c4836e9635c071f8",
   "sentence": "Every tool or skill the team asked for and did not get, saved as capability_requests.json.",
@@ -4330,9 +4334,11 @@
   },
   "facts_hash": "d94db82c24061a22",
   "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "f1fac79e03b885f1",
   "seed_hash": "3f976bc355982025",
   "sentence": "The connection to any AI service that speaks the OpenAI format; it reports what each reply cost in tokens.",
   "source": "hand (model: still true)",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Sends the messages to the AI service and returns the reply with its token counts.",
    "Waits out rate limits (HTTP 429/503: up to five retries, Retry-After honoured, each wait logged), dropped connections and timeouts too; an error still there after that ends the run with error 'api: …' and its records are still written. It can space calls out, fold the system message into the user message, set the reasoning effort and count hidden reasoning tokens.",
@@ -4434,6 +4440,82 @@
    "It is kept when it ends done, or clears more signals than either probe alone and adds none; otherwise today's pick stands. Plan edits are never composed.",
    "It counts as a probe toward the fix tokens and dollars and runs only when one more probe fits the allowance; the lesson library counts it as confounded for both edits.",
    "Off by default (adapt.yaml compose.enabled)."
+  ]
+ },
+ "control": {
+  "checked_at": "a19993e",
+  "facts": {
+   "anchors": [
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.restore",
+      "amoeba/adapt/probe.py::Snapshot.restore",
+      "amoeba/adapt/probe.py::measure",
+      "amoeba/interp/plan_runner.py::PlanRunner.billed_now",
+      "amoeba/interp/plan_runner.py::PlanRunner.run_step",
+      "amoeba/interp/plan_runner.py::dependencies",
+      "amoeba/interp/trace.py::TraceWriter.event"
+     ],
+     "doc": "D168: the same starting state, no edit, the step re-run once, measured and undone like any probe (its files",
+     "key": "amoeba/adapt/probe.py::control_probe",
+     "signature": "control_probe(r, n: int, wave: int, start: 'Snapshot', s0: list[str]) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D168: the verdict of an edit against the control (the same start, no edit, re-run once): helped only when it did",
+     "key": "amoeba/adapt/lessons.py::controlled_verdict",
+     "signature": "controlled_verdict(probe: dict, control: dict) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/config.py::adapt_config",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "adapt.yaml `probe` (D168): control auto | always | sampled | off, control_rate for sampled.",
+     "key": "amoeba/adapt/probe.py::control_config",
+     "signature": "control_config() -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/probe.py::control_config",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "None when this round runs a control probe, else why not. auto (the default): always when lesson writing is on,",
+     "key": "amoeba/adapt/probe.py::control_wanted",
+     "signature": "control_wanted(r, n: int, k: int, cfg: dict | None=None) -> str | None"
+    }
+   ],
+   "checks": [],
+   "guards": [],
+   "kind": "code",
+   "numbers": [
+    "Episode.seed"
+   ],
+   "prompts": {},
+   "title": "Control probe: helped means better than a re-run (D168)"
+  },
+  "facts_hash": "d81545bacf2c87a7",
+  "seed_hash": "5254fc7d70e84dd9",
+  "sentence": "Re-runs a stuck step once with no edit from the same starting state, so an edit counts as helped only when it did better than doing nothing.",
+  "source": "hand",
+  "what": [
+   "Helped: the edit ends done and the control did not, or it cleared a signal the control did not clear and added none the control did not add. As well as the control: no effect. The control finished and the edit did not: hurt. Without a control the verdict is uncontrolled, which promotion ignores.",
+   "The control is measured and undone like a probe, kept as step_N.probe-control.*, never picked, and counts as a probe for the allowance; the edits come first when the allowance is short.",
+   "adapt.yaml probe.control: auto (always with --lessons-write on, else off), always, sampled (control_rate), off."
   ]
  },
  "critics": {
@@ -4589,13 +4671,14 @@
   ]
  },
  "disagree": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._llm_messages",
       "amoeba/interp/runtime.py::Interpreter._tool_loop",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.broadcast",
@@ -4662,7 +4745,7 @@
    "prompts": {},
    "title": "Anyone disagree?"
   },
-  "facts_hash": "50a22c5dfa709b8c",
+  "facts_hash": "b88baa2daf8bab84",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "5cd085c314ad94ee",
   "sentence": "Counts the objections: none ends the run; otherwise everyone sees them and the writer revises, up to {TeamConfig.max_inner_turns} rounds, or stops if the plan is empty.",
@@ -4675,7 +4758,7 @@
   ]
  },
  "each_step": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -4683,6 +4766,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._dispatch",
       "amoeba/interp/runtime.py::Interpreter._llm_sections",
       "amoeba/interp/runtime.py::full_action_input",
@@ -4706,6 +4790,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._dispatch",
       "amoeba/interp/runtime.py::Interpreter._llm_sections",
       "amoeba/interp/runtime.py::full_action_input",
@@ -4745,7 +4830,7 @@
    "prompts": {},
    "title": "For each step"
   },
-  "facts_hash": "72b7c7f61d34de6d",
+  "facts_hash": "30c172d7a56174e5",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "1ddbd3b677e803eb",
   "sentence": "Walks through the plan's steps in order, giving each step everything the earlier steps produced.",
@@ -4816,7 +4901,7 @@
   ]
  },
  "evidence": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -4922,6 +5007,7 @@
       "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -4933,7 +5019,8 @@
      "callees": [
       "amoeba/adapt/evidence.py::manifest_entries",
       "amoeba/adapt/evidence.py::sha256_text",
-      "amoeba/config/prompts/__init__.py::resolve"
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve"
      ],
      "doc": "{\"path\": target relative to root, \"files\": n, \"sha256\": hash of the canonical entry list}; with write, the",
      "key": "amoeba/adapt/evidence.py::manifest",
@@ -4984,6 +5071,7 @@
       "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
@@ -5548,11 +5636,11 @@
    "prompts": {},
    "title": "Event log and evidence branch (kept from D95)"
   },
-  "facts_hash": "8874593b6618f353",
+  "facts_hash": "e0c96fcca7d8ac6c",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "e6ea739109093295",
   "sentence": "An append-only, hash-chained log written only by the harness, with a fingerprint of every run folder it names, and an off-container copy on the repository's evidence branch.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "Each row stores the SHA-256 of the row before it and the SHA-256 manifest of each run folder it names; scripts/verify_evidence.py re-checks the chain and every manifest and names the first break.",
    "Finished runs that pass the key scan are shipped as fast-forward commits to the orphan `evidence` branch, at most one commit per 10 minutes plus a final one; each commit message carries the chain head. Shipping runs in the harness only; agents never get git credentials or cloud credentials.",
@@ -5705,7 +5793,7 @@
   ]
  },
  "fixes": {
-  "checked_at": "ac8daa8",
+  "checked_at": "c1948d6",
   "facts": {
    "anchors": [
     {
@@ -5736,14 +5824,13 @@
       "amoeba/adapt/fixes.py::token_cap",
       "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner._adapt_once",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_summary",
       "amoeba/interp/plan_runner.py::PlanRunner.adapt_usd",
-      "amoeba/interp/plan_runner.py::PlanRunner.apply_fix",
       "amoeba/interp/plan_runner.py::PlanRunner.avg_attempt",
       "amoeba/interp/plan_runner.py::PlanRunner.fix_ctx",
       "amoeba/interp/plan_runner.py::PlanRunner.log_event",
       "amoeba/interp/plan_runner.py::PlanRunner.over_share",
-      "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
       "amoeba/interp/plan_runner.py::PlanRunner.step_fixes",
       "amoeba/interp/plan_runner.py::_Work.add",
       "amoeba/interp/trace.py::TraceWriter.event",
@@ -5863,6 +5950,15 @@
      "doc": "D151: the tokens all fixes of one task may use: `fix_tokens_per_attempt` times the run's average step-attempt",
      "key": "amoeba/adapt/fixes.py::token_cap",
      "signature": "token_cap(lim: dict, avg_attempt: float) -> int"
+    },
+    {
+     "callees": [
+      "amoeba/interp/plan_runner.py::PlanRunner.apply_fix",
+      "amoeba/interp/plan_runner.py::PlanRunner.propose_fix"
+     ],
+     "doc": "One rung of the loop above: the fix proposer (Stage D) when no code fix is picked, else that code fix.",
+     "key": "amoeba/interp/plan_runner.py::PlanRunner._adapt_once",
+     "signature": "_adapt_once(self, n: int, wave: int, d: dict, fix: dict | None) -> str | None"
     },
     {
      "callees": [
@@ -6089,7 +6185,7 @@
    "prompts": {},
    "title": "Code fixes for a stuck step (D117 Stage C)"
   },
-  "facts_hash": "1fd395b7ecd66a71",
+  "facts_hash": "87532bf09e91deb6",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "b071561e87fd6ece",
   "sentence": "Plain code tries the cheapest allowed fix for the stuck step's cause, re-runs only that step and re-checks it; no AI.",
@@ -6107,7 +6203,7 @@
   ]
  },
  "free_text": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -6119,6 +6215,8 @@
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/niche.py::NicheProfile.is_neutral",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::check_no_leak",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/llm/limits.py::RunLimits",
       "amoeba/llm/limits.py::describe",
@@ -6165,6 +6263,7 @@
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/faults.py::check_flag",
       "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/probe.py::proposer_mode",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/niche.py::NicheProfile.is_neutral",
       "amoeba/config/niche.py::load_profile",
@@ -6175,6 +6274,7 @@
       "amoeba/task/plan_search.py::without_plan_ids.strip",
       "scripts/eval_draft.py::parse_args",
       "scripts/run_task.py::add_client_args",
+      "scripts/run_task.py::default_proposer",
       "scripts/run_task.py::explicit_flags",
       "scripts/run_task.py::guard_config",
       "scripts/run_task.py::parse_args"
@@ -6211,6 +6311,11 @@
     ],
     [
      "decide",
+     "if args.topology == 'plan' and (not getattr(args, 'allow_single_learning', False))",
+     "set write = args.lessons_write or ('on' if args.adapt == 'on' else 'off')"
+    ],
+    [
+     "decide",
      "if disabled",
      "set box3_tools = box3_tools.without(disabled)"
     ],
@@ -6238,6 +6343,11 @@
      "decide",
      "if saved is not None",
      "set chosen = pick(saved, task.id, args.draft_pick)"
+    ],
+    [
+     "fallback",
+     "'on' if args.adapt == 'on' else 'off'",
+     "choose value"
     ],
     [
      "fallback",
@@ -6288,6 +6398,11 @@
      "fallback",
      "except ValueError",
      "p.error(str(e))"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "return 2"
     ],
     [
      "fallback",
@@ -6382,7 +6497,7 @@
    "prompts": {},
    "title": "Free-text task"
   },
-  "facts_hash": "2ad9e830bddc7633",
+  "facts_hash": "e2e11f28b695eaa3",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "bc08817c92af9cff",
   "sentence": "A job you type yourself; it runs normally but has no known answer, so it gets no score.",
@@ -6394,7 +6509,7 @@
   ]
  },
  "frozen_judge": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -6410,9 +6525,22 @@
     },
     {
      "callees": [
+      "amoeba/eval/sim_score.py::score_task"
+     ],
+     "doc": "Score one finished run with its task's scorers and write sim_score.json; None when the task names none.",
+     "key": "amoeba/eval/sim_score.py::score_run",
+     "signature": "score_run(run_dir: str | Path, task, seed: int, judge: str) -> dict | None"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/eval/sim_score.py::AnswerKeyScorer.score",
+      "amoeba/eval/sim_score.py::FilesScorer.score",
+      "amoeba/eval/sim_score.py::HiddenTestsScorer.score",
+      "amoeba/eval/sim_score.py::RubricScorer.score",
       "amoeba/eval/sim_score.py::SimScorer.score",
       "amoeba/eval/sim_score.py::StandInScorer.score",
       "amoeba/eval/sim_score.py::spec",
@@ -6421,9 +6549,19 @@
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/evaluate.py::score"
      ],
-     "doc": "Score one finished run with its task's scorer and write sim_score.json; None when the task names none.",
-     "key": "amoeba/eval/sim_score.py::score_run",
-     "signature": "score_run(run_dir: str | Path, task, seed: int, judge: str) -> dict | None"
+     "doc": "The task's score: the weighted mean of its scorers' scores, each part kept.",
+     "key": "amoeba/eval/sim_score.py::score_task",
+     "signature": "score_task(run_dir: str | Path, task, seed: int) -> dict"
+    },
+    {
+     "callees": [],
+     "doc": "D171: the fixed grader (judge.yaml rubric: model, temperature, calls) scores the answer against the key's",
+     "fields": [],
+     "key": "amoeba/eval/sim_score.py::RubricScorer",
+     "methods": [
+      "score(self, run_dir: Path, sim, seed: int, task=None) -> dict"
+     ],
+     "signature": null
     },
     {
      "callees": [],
@@ -6460,6 +6598,36 @@
     },
     {
      "callees": [],
+     "doc": "D171: the key's numbers (within tol / rel_tol) and exact strings, each found anywhere in the answer.",
+     "fields": [],
+     "key": "amoeba/eval/sim_score.py::AnswerKeyScorer",
+     "methods": [
+      "score(self, run_dir: Path, sim, seed: int, task=None) -> dict"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "D171: plain-code checks on the delivered files, from the key's `files` list; score = the share passed.",
+     "fields": [],
+     "key": "amoeba/eval/sim_score.py::FilesScorer",
+     "methods": [
+      "score(self, run_dir: Path, sim, seed: int, task=None) -> dict"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "D171: the hidden pytest folder runs against a copy of the delivered code in a temporary folder (the workspace is",
+     "fields": [],
+     "key": "amoeba/eval/sim_score.py::HiddenTestsScorer",
+     "methods": [
+      "score(self, run_dir: Path, sim, seed: int, task=None) -> dict"
+     ],
+     "signature": null
+    },
+    {
+     "callees": [],
      "doc": "",
      "fields": [
       [
@@ -6469,7 +6637,7 @@
      ],
      "key": "amoeba/eval/sim_score.py::SimScorer",
      "methods": [
-      "score(self, run_dir: Path, sim, seed: int) -> dict"
+      "score(self, run_dir: Path, sim, seed: int, task=None) -> dict"
      ],
      "signature": null
     },
@@ -6479,9 +6647,98 @@
      "fields": [],
      "key": "amoeba/eval/sim_score.py::StandInScorer",
      "methods": [
-      "score(self, run_dir: Path, sim, seed: int) -> dict"
+      "score(self, run_dir: Path, sim, seed: int, task=None) -> dict"
      ],
      "signature": null
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "",
+     "key": "amoeba/eval/sim_score.py::answer_of",
+     "signature": "answer_of(run_dir: Path) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
+      "amoeba/eval/sim_score.py::spec",
+      "amoeba/localtools/sandbox.py::OpenShellBox.spec",
+      "amoeba/task/models.py::SimSpec.folder"
+     ],
+     "doc": "D171: a task's input files may not include its answer key or hidden tests (nor any tasks/*_keys or",
+     "key": "amoeba/eval/sim_score.py::check_no_leak",
+     "signature": "check_no_leak(task) -> None"
+    },
+    {
+     "callees": [],
+     "doc": "The team's delivered files (the workspace without sources/, skills/, made_tools/), by relative path.",
+     "key": "amoeba/eval/sim_score.py::delivered",
+     "signature": "delivered(run_dir: Path) -> dict[str, Path]"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "One files check: {check, path (a glob), min, max}.",
+     "key": "amoeba/eval/sim_score.py::file_check",
+     "signature": "file_check(c: dict, files: dict[str, Path]) -> bool"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/anthropic_client.py::make_client",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The fixed grader: the models.yaml registry entry judge.yaml names, at its fixed temperature, built here and",
+     "key": "amoeba/eval/sim_score.py::grader_client",
+     "signature": "grader_client(cfg: dict)"
+    },
+    {
+     "callees": [],
+     "doc": "amoeba/eval/judge.yaml: the rubric grader's fixed prompt, model, temperature, calls and reply room.",
+     "key": "amoeba/eval/sim_score.py::judge_config",
+     "signature": "judge_config() -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
+      "amoeba/eval/sim_score.py::spec",
+      "amoeba/localtools/sandbox.py::OpenShellBox.spec",
+      "amoeba/task/models.py::SimSpec.folder"
+     ],
+     "doc": "",
+     "key": "amoeba/eval/sim_score.py::load_key",
+     "signature": "load_key(sim, task) -> dict"
+    },
+    {
+     "callees": [
+      "amoeba/llm/cache.py::CachedProvider.search",
+      "amoeba/tools/web.py::SearchProvider.search",
+      "amoeba/tools/web.py::TavilyProvider.search"
+     ],
+     "doc": "The grader's `SCORE: <0..1>` line; an unreadable reply scores 0.",
+     "key": "amoeba/eval/sim_score.py::parse_mark",
+     "signature": "parse_mark(text: str | None) -> float"
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/eval/sim_score.py::resolve",
+     "signature": "resolve(path: str) -> Path"
     },
     {
      "callees": [],
@@ -6491,11 +6748,28 @@
     },
     {
      "callees": [],
-     "doc": "D161: which scorer scores a task, and its settings. Typed (no free-form object), so a Task stays a schema a",
+     "doc": "D171: one scorer of a task and its weight in the task's score.",
      "fields": [
       [
-       "scorer",
+       "name",
        "str"
+      ],
+      [
+       "weight",
+       "float"
+      ]
+     ],
+     "key": "amoeba/task/models.py::ScorerRef",
+     "methods": [],
+     "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "D161: which scorers score a task, and their settings. Typed (no free-form object), so a Task stays a schema a",
+     "fields": [
+      [
+       "scorers",
+       "list[ScorerRef]"
       ],
       [
        "expected",
@@ -6506,33 +6780,44 @@
        "float"
       ],
       [
-       "config",
+       "judge_set",
        "str | None"
       ]
      ],
      "key": "amoeba/task/models.py::SimSpec",
-     "methods": [],
+     "methods": [
+      "folder(self, kind: str) -> str | None"
+     ],
      "signature": null
     }
    ],
    "checks": [],
    "guards": [],
-   "kind": "code",
+   "kind": "ai",
    "numbers": [
+    "AgentSpec.max_tokens",
+    "AgentSpec.temperature",
     "Episode.seed",
-    "SimSpec.baseline"
+    "ModelEntry.temperature",
+    "PoolLimits.timeout_s",
+    "ScorerRef.weight",
+    "SimSpec.baseline",
+    "WebLimits.timeout_s"
    ],
    "prompts": {},
-   "title": "Frozen judge and task scorer (D161)"
+   "title": "Frozen judge and task scorers (D161, D171)"
   },
-  "facts_hash": "20124faf9e1f4e35",
-  "seed_hash": "8023cdad46f7ddde",
+  "facts_hash": "a56832812609f60c",
+  "rejected_hash": "6406e8493b95f301",
+  "seed_hash": "dc69c3f9f76ff30f",
   "sentence": "Hashes every file that judges a run at the start of the run, and scores a task with the scorer it names, so a later comparison knows both the score and the judge that gave it.",
   "source": "hand",
+  "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "config/frozen.yaml lists the judge: the domain checks, Box 2's plan checks, the answer score, the scorers and the baseline results. The digest goes to result.json and sim_score.json.",
    "Runs whose judge hashes differ, or are unknown, are refused for comparison (same_judge).",
-   "A task may name a scorer in its sim field; only a deterministic stand-in exists (the answer's first number against an expected value). A real simulator becomes one more scorer."
+   "A task names its scorers (with weights) in its sim field. D171: answer_key (numbers with a tolerance, exact strings), hidden_tests (a pytest folder run next to a copy of the delivered code), files (plain-code checks on delivered files) and rubric (a fixed grader prompt and model, the median of its calls), besides D161's stand-in.",
+   "The keys, hidden tests, grader prompt and grader settings are in the judge hash; a task given its own key is refused, and a scorer that cannot score leaves no score rather than a crash."
   ]
  },
  "handoff": {
@@ -6626,7 +6911,7 @@
   ]
  },
  "helper": {
-  "checked_at": "ef1f0bf",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -6634,6 +6919,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._dispatch",
       "amoeba/interp/runtime.py::Interpreter._llm_sections",
       "amoeba/interp/runtime.py::full_action_input",
@@ -6687,7 +6973,7 @@
    },
    "title": "Helper(s) named in the step"
   },
-  "facts_hash": "5185b6f10c9cd189",
+  "facts_hash": "a9fa789f9758ae2b",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "2abe057f94628663",
   "sentence": "The AI helper for a step reads the step, the earlier results and a shared scratchpad, then picks one action.",
@@ -8346,7 +8632,7 @@
   ]
  },
  "lessons": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -8369,7 +8655,9 @@
       "amoeba/adapt/lessons.py::LessonLibrary",
       "amoeba/adapt/lessons.py::LessonLibrary.add_lesson",
       "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.lesson",
       "amoeba/adapt/lessons.py::LessonLibrary.record",
+      "amoeba/adapt/lessons.py::LessonLibrary.record_use",
       "amoeba/adapt/lessons.py::lesson_problems",
       "amoeba/adapt/lessons.py::lessons_config",
       "amoeba/adapt/lessons.py::parse_reflection",
@@ -8389,20 +8677,30 @@
     },
     {
      "callees": [],
-     "doc": "data/lessons/: index.jsonl (one row per (cause, op, scope)) and one folder per entry. Safe for several",
+     "doc": "data/lessons/ (D167): `index.jsonl` holds one row per family (cause, op, scope) with every verdict counted, for",
      "fields": [],
      "key": "amoeba/adapt/lessons.py::LessonLibrary",
      "methods": [
       "__init__(self, root: str | Path | None=None)",
       "locked(self)",
       "entries(self) -> list[dict]",
+      "lessons(self, family: str | None=None) -> list[dict]",
+      "lesson(self, lesson_id: str) -> dict | None",
       "get(self, entry_id: str) -> dict | None",
       "evidence(self, entry_id: str) -> list[dict]",
       "record(self, v: dict, niche: str, task_id: str, run_id: str) -> dict",
-      "add_lesson(self, entry_id: str, cue: str, lesson: str, confidence, run_id: str) -> dict",
-      "set_status(self, entry_id: str, status: str) -> dict"
+      "add_lesson(self, family_id: str, cue: str, lesson: str, confidence, run_id: str, first: dict | None=None, niche: str='general', task_id: str='') -> dict",
+      "record_use(self, lesson_id: str, v: dict, niche: str, task_id: str, run_id: str) -> dict",
+      "set_status(self, lesson_id: str, status: str) -> dict",
+      "migrate(self) -> list[str]"
      ],
      "signature": null
+    },
+    {
+     "callees": [],
+     "doc": "",
+     "key": "amoeba/adapt/lessons.py::_now",
+     "signature": "_now() -> str"
     },
     {
      "callees": [
@@ -8510,13 +8808,14 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/lessons.py::controlled_verdict",
       "amoeba/adapt/lessons.py::key_of",
       "amoeba/adapt/lessons.py::verdict",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
-     "doc": "[{id, cause, op, scope, verdict, probe}] for every probe of a D162 round row; a composed probe gives a",
+     "doc": "[{id, cause, op, scope, verdict, raw, controlled, probe}] for every probe of a D162 round row; a composed probe",
      "key": "amoeba/adapt/lessons.py::round_verdicts",
      "signature": "round_verdicts(row: dict) -> list[dict]"
     },
@@ -8532,6 +8831,8 @@
       "amoeba/adapt/lessons.py::LessonLibrary",
       "amoeba/adapt/lessons.py::LessonLibrary.entries",
       "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.lesson",
+      "amoeba/adapt/lessons.py::LessonLibrary.lessons",
       "amoeba/adapt/lessons.py::LessonLibrary.set_status",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.set_status",
@@ -8562,30 +8863,29 @@
    "prompts": {},
    "title": "Verdicts, reflector and lesson library (D163)"
   },
-  "facts_hash": "d1c139f5ac45b404",
-  "seed_hash": "0154a038001d9def",
+  "facts_hash": "d7208f73fb8034a2",
+  "seed_hash": "3995f2f3fd3dc4c2",
   "sentence": "Judges every edit of every Box 4 round by plain code, counts the verdict in one library shared by every task, and asks one AI call for a general lesson when an edit helped.",
   "source": "hand",
   "what": [
    "Verdicts: done or finished with limitation, or cleared a signal and added none = helped; added a signal and cleared none = hurt; nothing cleared or new = no effect; both, or tried only together with another edit = confounded.",
-   "The library (data/lessons/) is keyed by cause, op and scope; the niche of each count is recorded, never used to split. A repeat updates the counts. New entries are unreviewed until the user approves them (scripts/lessons.py).",
+   "The library (data/lessons/) has families, keyed by cause, op and scope, that count every verdict for reports; the niche of each count is recorded, never used to split. D167: each written lesson is its own entry with fixed text, its own status and counts, unreviewed until the user approves it (scripts/lessons.py); it gains evidence only from its writing round and from probes that cite it.",
    "The reflector sees the round and the step card, never a score, and returns a cue and a lesson or NO_ENTRY; plain code refuses one with a task fact, denied wording or over the cap, asks once more, then drops it. It is skipped, and the skip logged, when the allowance would not hold it.",
    "Writes take a file lock and replace files atomically, so several runs may write at once."
   ]
  },
  "lessons_read": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
-      "amoeba/adapt/lessons.py::LessonLibrary.entries",
       "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.lessons",
       "amoeba/adapt/lessons.py::lessons_config",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
-      "amoeba/localtools/toolbox.py::LocalToolbox.entries",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
@@ -8601,6 +8901,18 @@
      "doc": "The proposers' section (\"\" with nothing to show, so the prompt is unchanged).",
      "key": "amoeba/adapt/retrieval.py::box4_section",
      "signature": "box4_section(entries: list[dict], max_chars: int | None=None) -> str"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "D167: a `from_lesson` must name a lesson shown to this round's proposers for this cause, with the edit's own op",
+     "key": "amoeba/adapt/probe.py::lesson_cite_problems",
+     "signature": "lesson_cite_problems(r, reply, scope: str, cause: str) -> list[str]"
     },
     {
      "callees": [
@@ -8640,19 +8952,20 @@
    "prompts": {},
    "title": "Box 2 and Box 4 read the library (D164)"
   },
-  "facts_hash": "83a5a6ad4d8dda03",
-  "seed_hash": "2dc8f38c79a6fe0d",
+  "facts_hash": "189a8571c9c4eb37",
+  "seed_hash": "86121fefb77ebf9c",
   "sentence": "With --lessons on, shows approved lessons to Box 4's proposers for the stuck step's cause and to the Planner and both observers, picked by plain code.",
   "source": "hand",
   "what": [
-   "An entry is shown when it is approved, has a lesson, helped more often than it hurt and never hurt in this run's niche (and, for Box 4, has the stuck step's cause). Same-niche entries come first, then the most-helped, within a count and a character cap.",
+   "A lesson is shown when it is approved, helped more often than it hurt (its own uses, D167) and never hurt in this run's niche (and, for Box 4, has the stuck step's cause). Same-niche lessons come first, then the most-helped, within a count and a character cap.",
+   "D167: Box 4 sees each lesson's id; a proposer whose edit follows one names it in from_lesson, and plain code refuses a citation not shown for this cause or of another op or scope.",
    "Box 4: a 'What helped before for this cause' section in the proposer prompts; an edit must still quote this run's evidence. Box 2: the drafting prompts' existing {lessons} slot.",
-   "--lessons-write (default on with --adapt on) is a separate switch; a replay task never writes. result.json lists the lessons shown and each shown lesson whose fix ended done.",
+   "--lessons-write (default on with --adapt on) is a separate switch; a replay task never writes. result.json lists the lessons shown and the lessons a probe's edit cited.",
    "With --lessons off the prompts are byte-identical to before."
   ]
  },
  "localtools": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -8737,6 +9050,7 @@
     {
      "callees": [
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/llm/cache.py::CachedProvider.search",
       "amoeba/localtools/gate.py::escaping_path",
       "amoeba/localtools/gate.py::inside",
@@ -8752,6 +9066,7 @@
     {
      "callees": [
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/task/plan_search.py::without_plan_ids.strip"
      ],
      "doc": "The absolute path when `path` (relative paths count from the workspace) resolves inside the workspace.",
@@ -8789,6 +9104,7 @@
     {
      "callees": [
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/interp/plan_runner.py::PlanRunner.run",
       "amoeba/interp/runtime.py::Interpreter.run",
       "amoeba/localtools/office.py::soffice",
@@ -8817,7 +9133,8 @@
     },
     {
      "callees": [
-      "amoeba/config/prompts/__init__.py::resolve"
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve"
      ],
      "doc": "D148: the first part of a Bash command that would leave the workspace, judged by effect: the command runs from",
      "key": "amoeba/localtools/gate.py::escaping_path",
@@ -8825,7 +9142,8 @@
     },
     {
      "callees": [
-      "amoeba/config/prompts/__init__.py::resolve"
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve"
      ],
      "doc": "The command as it is sent: always started from the workspace (the server's shell keeps its last cwd).",
      "key": "amoeba/localtools/gate.py::in_workspace",
@@ -8844,7 +9162,8 @@
     },
     {
      "callees": [
-      "amoeba/config/prompts/__init__.py::resolve"
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve"
      ],
      "doc": "D96: a write to an MCP config, a hook or settings file, CLAUDE.md, a skill folder or .git is refused.",
      "key": "amoeba/localtools/gate.py::protected_path",
@@ -8949,6 +9268,7 @@
       "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/localtools/skills.py::skill_root_path",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -9942,11 +10262,11 @@
    "prompts": {},
    "title": "Local toolbox (OpenShell sandbox, D96)"
   },
-  "facts_hash": "0c86178c475ab216",
+  "facts_hash": "69a7c90381e202cb",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "b4f662b683c3285a",
   "sentence": "With --local-tools on, Claude Code's tools and skills run in a fresh OpenShell sandbox per run: no network, only the workspace writable.",
-  "source": "hand (model: still true)",
+  "source": "model: kept",
   "what": [
    "D96: `claude mcp serve` and every command run inside a fresh OpenShell sandbox per run (image amoeba-sandbox:local, gateway on 127.0.0.1:17680): no network, Landlock lets only /sandbox, /tmp and /dev/null be written, skills are read-only under /opt/skills, no secrets, runs as user sandbox; the sandbox is deleted at the end.",
    "The harness gate refuses first what it can see: network commands, paths outside the workspace, writes to MCP configs, hooks, settings, CLAUDE.md or skills (protected_config); what a command hides is stopped by the sandbox. Files are copied back to runs/<id>/workspace/ after each call.",
@@ -10482,7 +10802,7 @@
   ]
  },
  "ov_around": {
-  "checked_at": "c5f9e93",
+  "checked_at": "c1948d6",
   "facts": {
    "anchors": [
     {
@@ -10491,7 +10811,7 @@
      "fields": [],
      "key": "amoeba/llm/router.py::ModelRouter",
      "methods": [
-      "__init__(self, registry: dict[str, ModelEntry], policy: dict, make: Callable[[ModelEntry], LLMClient], mode: str='routed', allowed: list[str] | None=None, profile_allowed: list[str] | None=None, usd_cap: float | None=None, env=None, rate_dir: str | Path | None=None, role_prefs: dict | None=None, fixed_model: str | None=None, clock=time.time, sleep=time.sleep, failing_after: int=3)",
+      "__init__(self, registry: dict[str, ModelEntry], policy: dict, make: Callable[[ModelEntry], LLMClient], mode: str='routed', allowed: list[str] | None=None, profile_allowed: list[str] | None=None, usd_cap: float | None=None, env=None, rate_dir: str | Path | None=None, role_prefs: dict | None=None, fixed_model: str | None=None, clock=time.time, sleep=time.sleep, failing_after: int=3, base_prefs: dict | None=None)",
       "begin_run(self, data_class: str='normal', role_prefs: dict | None=None, usd_cap: float | None=None) -> None",
       "client(self, name: str) -> LLMClient",
       "bucket(self, name: str) -> SharedBucket",
@@ -10529,7 +10849,7 @@
    "prompts": {},
    "title": "Around every box"
   },
-  "facts_hash": "0f061f4bbe36bca3",
+  "facts_hash": "465a5e54b235a42d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "ac6fefe917436cc9",
   "sentence": "The model router behind every AI call and the niche profile every run obeys.",
@@ -10539,7 +10859,7 @@
   ]
  },
  "ov_leave": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -10561,6 +10881,10 @@
       "amoeba/config/niche.py::environment_text",
       "amoeba/config/schema.py::Limits",
       "amoeba/eval/judge.py::judge_hash",
+      "amoeba/eval/sim_score.py::AnswerKeyScorer.score",
+      "amoeba/eval/sim_score.py::FilesScorer.score",
+      "amoeba/eval/sim_score.py::HiddenTestsScorer.score",
+      "amoeba/eval/sim_score.py::RubricScorer.score",
       "amoeba/eval/sim_score.py::SimScorer.score",
       "amoeba/eval/sim_score.py::StandInScorer.score",
       "amoeba/eval/sim_score.py::score_run",
@@ -10663,14 +10987,14 @@
    "prompts": {},
    "title": "What every run leaves behind"
   },
-  "facts_hash": "8965627ca95980fc",
+  "facts_hash": "933e0734a9c428f3",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "788599a768833711",
   "sentence": "Every run saves thirty-seven files, including the team, draft, logs, tool data, results, reports, settings, native resolution records, communication protocol, probe results, and evidence logs.",
   "source": "model: rewritten",
   "what": [
    "Each run gets its own folder named by a random run id.",
-   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the task notes, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed ({run_one.seed}), the fault summary, the fault details, the plan search findings, the tool library, the planned model, the protocol used, the native resolution record, the team labels, the probe results, the evidence log, the lesson library, and the simulation scores.",
+   "It holds the team as built, the planner's draft with every round (each planner reply and both checkers' replies, kept even when drafting fails), the call log with each prompt and reply, the list of requested tools and skills (empty when none), a one-line result, a report of requested capabilities, the configuration for local tools, the toolbox description, the maximum agent count ({Envelope.max_agents}), the maximum turn limit ({Limits.max_turns}), the selected pool items, the timezone, the task interpretation, the task notes, the list of disabled tools, the provenance record, the model router summary, the experiment summary, the cache state, the family classification, the niche profile, the deliverable status, the workspace sources, the run status, the clarification settings, the assumed answers, the run seed ({run_one.seed}), the fault summary, the fault details, the plan search findings, the tool library, the planned model, the protocol used, the native resolution record, the team labels, the probe results, the evidence log, the lesson library, the simulation scores, and the detailed scoring breakdown.",
    "These files are the raw material later phases will learn from."
   ]
  },
@@ -10797,7 +11121,7 @@
   ]
  },
  "ov_run": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -10825,6 +11149,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._dispatch",
       "amoeba/interp/runtime.py::Interpreter._llm_sections",
       "amoeba/interp/runtime.py::full_action_input",
@@ -10847,6 +11172,7 @@
      "callees": [
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._llm_messages",
       "amoeba/interp/runtime.py::Interpreter._tool_loop",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.broadcast",
@@ -10946,7 +11272,7 @@
    "prompts": {},
    "title": "3 · Team runs the task"
   },
-  "facts_hash": "bb24225967012631",
+  "facts_hash": "2c58e40dfda6f862",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "81fa681844a11987",
   "sentence": "The helpers do the job step by step, as one writer with reviewers, or over the plan's step graph; every AI call, adaptation, and fault recovery is logged.",
@@ -15284,7 +15610,7 @@
   ]
  },
  "promote": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -15323,8 +15649,10 @@
       "scripts/promote.py::_sha",
       "scripts/promote.py::accept",
       "scripts/promote.py::apply_change_text",
+      "scripts/promote.py::arm_mode",
       "scripts/promote.py::candidates",
       "scripts/promote.py::change_problems",
+      "scripts/promote.py::drafts_with_slot",
       "scripts/promote.py::known_tools",
       "scripts/promote.py::parse_change",
       "scripts/promote.py::promote.done",
@@ -15339,8 +15667,14 @@
      "signature": "promote(lib: LessonLibrary, entry_id: str, replay: Path, llm, out_dir: Path, config: Path=CONFIG, seeds: list[int] | None=None, runner=None, passthrough=(), tools: list[str] | None=None) -> dict"
     },
     {
-     "callees": [],
-     "doc": "The plain-code accept rule.",
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
+     "doc": "The plain-code accept rule (D170: on paired runs, same task and seed). All must hold: the mean delta reaches",
      "key": "scripts/promote.py::accept",
      "signature": "accept(summary: dict, cfg: dict) -> tuple[bool, str]"
     },
@@ -15362,6 +15696,12 @@
      "doc": "Why plain code refuses a proposed change ([] = it may be tested).",
      "key": "scripts/promote.py::change_problems",
      "signature": "change_problems(change: dict, cfg: dict, tools: list[str]) -> list[str]"
+    },
+    {
+     "callees": [],
+     "doc": "D169: how the arms are run for this change. A planner rule acts while the Planner drafts, so both arms plan",
+     "key": "scripts/promote.py::arm_mode",
+     "signature": "arm_mode(change: dict, pcfg: dict) -> dict"
     },
     {
      "callees": [
@@ -15406,16 +15746,15 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
-      "amoeba/adapt/lessons.py::LessonLibrary.entries",
       "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.lessons",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
-      "amoeba/localtools/toolbox.py::LocalToolbox.entries",
       "amoeba/pool/stock.py::SharedPicks.get",
       "amoeba/task/plan_search.py::without_plan_ids.strip",
       "scripts/promote.py::promote_config"
      ],
-     "doc": "The plain-code trigger: approved, a lesson, helped >= min_helped on >= min_tasks tasks, hurt 0 in every niche.",
+     "doc": "The plain-code trigger: an approved lesson that helped >= min_helped on >= min_tasks tasks and hurt 0 in every",
      "key": "scripts/promote.py::candidates",
      "signature": "candidates(lib: LessonLibrary) -> list[dict]"
     },
@@ -15431,6 +15770,12 @@
      "doc": "The share of the run's steps whose step contract passed (D61), from artifacts/step_N.json; None without any.",
      "key": "scripts/promote.py::contract_rate",
      "signature": "contract_rate(run: Path) -> float | None"
+    },
+    {
+     "callees": [],
+     "doc": "D169: the run_task flags draft with prompts that hold the {lessons} slot (only the d24 prompts do).",
+     "key": "scripts/promote.py::drafts_with_slot",
+     "signature": "drafts_with_slot(passthrough) -> bool"
     },
     {
      "callees": [
@@ -15531,9 +15876,9 @@
      "callees": [
       "scripts/stage_e.py::run_pairs"
      ],
-     "doc": "The two config arms through scripts/stage_e.py (same drafts, picks and seeds; lesson writing off).",
+     "doc": "The two config arms through scripts/stage_e.py (same picks and seeds; lesson writing off). The changed arm",
      "key": "scripts/promote.py::stage_e_runner",
-     "signature": "stage_e_runner(tasks, ids, seeds, out, config_b, passthrough) -> list[dict]"
+     "signature": "stage_e_runner(tasks, ids, seeds, out, config_b, passthrough, fresh_plans: bool=False) -> list[dict]"
     },
     {
      "callees": [
@@ -15557,23 +15902,24 @@
    "kind": "ai",
    "numbers": [
     "AgentSpec.max_tokens",
-    "Episode.total_tokens"
+    "Episode.total_tokens",
+    "TIE"
    ],
    "prompts": {},
    "title": "Outer loop: a proven lesson becomes a general setting (D166)"
   },
-  "facts_hash": "258c896a2c0d89a1",
-  "seed_hash": "fa794fb5db4d53fc",
+  "facts_hash": "97de919b7ce7fe9a",
+  "seed_hash": "810cfa94d8cfe5be",
   "sentence": "Run by hand: an approved lesson that helped on several tasks and never hurt is turned into one general setting, tested on the replay set against today's config, and kept only by plain code's rule; the user applies it.",
   "source": "hand",
   "what": [
    "Trigger: approved, helped at least 3 times on at least 2 tasks, hurt {Episode.total_tokens} in every niche. One AI call proposes one change of adapt.yaml: the order of the cause's allowed edits, a planner rule, or one tool's guidance line. Code, prompts and the frozen judge are refused before any run.",
-   "The test runs only the replay set through stage_e's config arms: today's adapt.yaml against a temporary copy, same drafts, picks and seeds, lesson writing off, one judge hash for every run.",
-   "Accepted only if the mean score rises, no task drops more than the margin and the step-contract pass rate does not fall. A report and a patch are written; nothing is applied until --apply."
+   "The test runs only the replay set through stage_e's config arms: today's adapt.yaml against a temporary copy, same picks and seeds, lesson writing off, one judge hash for every run. D169: a planner rule runs both arms with fresh plans on promote.planner_seeds seeds (it acts while the Planner drafts); the other kinds share one draft. The report names the mode.",
+   "D170: runs are compared in pairs (same task, same seed). Accepted only if the mean delta reaches promote.min_delta, the changed arm wins more than twice as many pairs as it loses, no task drops more than the margin and the step-contract pass rate does not fall. A report (every pair) and a patch are written; nothing is applied until --apply."
   ]
  },
  "proposer": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -15631,6 +15977,12 @@
      "doc": "The checks on the live plan: a new helper's card is complete, its name new and the team within its size;",
      "key": "amoeba/interp/plan_runner.py::PlanRunner._d_live",
      "signature": "_d_live(self, reply, n: int) -> tuple[list[str], dict | None]"
+    },
+    {
+     "callees": [],
+     "doc": "D172: the Box 4 mode a run will actually get, from its flags, and why when it is not the one asked for:",
+     "key": "amoeba/adapt/probe.py::proposer_mode",
+     "signature": "proposer_mode(adapt: str, proposer: str, local_tools: str, local_tools_mode: str) -> tuple[str, str]"
     },
     {
      "callees": [],
@@ -15746,6 +16098,22 @@
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
      ],
+     "doc": "D168: how many probes (each estimated at one average step attempt, D151) the fixes' token allowance and the",
+     "key": "amoeba/adapt/probe.py::probe_room",
+     "signature": "probe_room(r, n: int, lim: dict) -> int"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/fixes.py::token_cap",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/interp/plan_runner.py::PlanRunner.avg_attempt",
+      "amoeba/interp/plan_runner.py::PlanRunner.billed_now",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get"
+     ],
      "doc": "How many probes the remaining allowance holds (2 or 1): each probe is estimated at one average step attempt",
      "key": "amoeba/adapt/probe.py::probes_affordable",
      "signature": "probes_affordable(r, n: int, lim: dict) -> int"
@@ -15753,6 +16121,7 @@
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
+      "amoeba/adapt/probe.py::lesson_cite_problems",
       "amoeba/adapt/proposer.py::fix_problems",
       "amoeba/adapt/proposer.py::parse_fix",
       "amoeba/adapt/proposer.py::quote_found",
@@ -15810,11 +16179,14 @@
       "amoeba/adapt/probe.py::composable",
       "amoeba/adapt/probe.py::compose_config",
       "amoeba/adapt/probe.py::compose_probe",
+      "amoeba/adapt/probe.py::control_probe",
+      "amoeba/adapt/probe.py::control_wanted",
       "amoeba/adapt/probe.py::finish",
       "amoeba/adapt/probe.py::keep_composed",
       "amoeba/adapt/probe.py::llm_pick",
       "amoeba/adapt/probe.py::pick",
       "amoeba/adapt/probe.py::probe",
+      "amoeba/adapt/probe.py::probe_room",
       "amoeba/adapt/probe.py::probes_affordable",
       "amoeba/adapt/probe.py::propose",
       "amoeba/adapt/probe.py::round_flags",
@@ -16002,6 +16374,10 @@
       [
        "because",
        "str"
+      ],
+      [
+       "from_lesson",
+       "str | None"
       ]
      ],
      "key": "amoeba/adapt/proposer.py::ScopedFixReply",
@@ -16353,18 +16729,18 @@
    },
    "title": "Fix proposer (D117 Stage D)"
   },
-  "facts_hash": "29da9dfb6050a29b",
-  "model": "gemini-3.1-flash-lite",
-  "seed_hash": "961606f22cc92a1f",
+  "facts_hash": "6afce7d159459126",
+  "seed_hash": "aa0575cc5fcf11e3",
   "sentence": "The last rung: one AI call proposes one edit for the stuck step; plain code checks it, applies it to the live plan and re-runs the step.",
-  "source": "model: rewritten",
+  "source": "hand",
   "what": [
    "Called only when the code fixes for the step are used up or not allowed (including \"capability fix unavailable: pool off\").",
    "It sees the task, the step's card and done_when, the cause and evidence, the last attempt's errors and checks (trimmed), the team (one line per role), the tools and skills of this run, the edits the cause allows and the fixes already tried.",
-   "It returns one JSON edit with a short reason: add_role_rule, add_helper_role (the Planner's role card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the Planner's plan format, for the part not done) or work_around (capability only, after a grant_tool or add_helper_role was tried for the step; stated under Limitations; counted as finished with limitation, never recovered). At most {PlanOptions.max_added_steps} added helpers per task.",
+   "It returns one JSON edit with a short reason: add_role_rule, add_helper_role (the Planner's role card), grant_tool (tools of this run only), split_step (two or three sub-steps), replan_remaining (the Planner's plan format, for the part not done) or work_around (capability only, after a grant_tool or add_helper_role was tried for the step; stated under Limitations; counted as finished with limitation, never recovered). At most two added helpers per task.",
    "Plain code checks, all in proposer.py and the plan runner: allowed for the cause, the schema, tools this run has (no outside action, not paid), text sizes and denied wording (adapt.yaml limits), team size and step graph, done steps untouched, not a repeat; one retry on an invalid reply, a second failure is no fix. The adaptation limits apply; success is the step ending done.",
    "D155: a split or a re-plan never drops a check: the replaced steps' checks move to the new steps by plain code, and a re-plan may not write checks.",
-   "D154: under --proposer scoped the last rung is a round: two scoped proposers, each edit probed from one snapshot and undone, plain code picks; the winner's probed state is kept."
+   "D154: under --proposer scoped the last rung is a round: two scoped proposers, each edit probed from one snapshot and undone, plain code picks; the winner's probed state is kept.",
+   "D172: with local tools in the OpenShell sandbox a probe's files cannot be undone and the round falls back to single; preflight reports the mode a run will get (proposer_mode), run_task refuses --lessons-write on with that fallback unless --allow-single-learning, and scripts/vm/ is a runner container in which local tools run in-process."
   ]
  },
  "provenance": {
@@ -16554,7 +16930,7 @@
   ]
  },
  "read_action": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -16562,6 +16938,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._dispatch",
       "amoeba/interp/runtime.py::Interpreter._llm_sections",
       "amoeba/interp/runtime.py::full_action_input",
@@ -16585,6 +16962,7 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/config/prompts/__init__.py::render",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/interp/runtime.py::Interpreter._dispatch",
       "amoeba/interp/runtime.py::Interpreter._llm_sections",
       "amoeba/interp/runtime.py::full_action_input",
@@ -16778,7 +17156,7 @@
    "prompts": {},
    "title": "Read \"## Action\""
   },
-  "facts_hash": "0669fe4f2a5f9bc9",
+  "facts_hash": "3880ae4306fd165d",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "8c7248ccf38edd67",
   "sentence": "Reads the helper's chosen action: runs a tool and loops, or accepts a final answer; gives up after five turns.",
@@ -16967,7 +17345,7 @@
   ]
  },
  "rounds": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -17011,7 +17389,6 @@
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
       "amoeba/adapt/lessons.py::LessonLibrary.get",
-      "amoeba/adapt/lessons.py::key_of",
       "amoeba/adapt/lessons.py::learn_from_round",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/plan_runner.py::PlanRunner.log_event",
@@ -17039,10 +17416,11 @@
    "prompts": {},
    "title": "Box 4 round record (D162)"
   },
-  "facts_hash": "78878439d294e6b7",
+  "facts_hash": "6e4c9a09be737550",
+  "model": "gemini-3.1-flash-lite",
   "seed_hash": "30ba486182276281",
   "sentence": "Writes one row per Box 4 round to the run's rounds.jsonl and to the hash-chained event log, so later tasks can learn from what each edit did.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "what": [
    "A row holds the task, the niche (recorded, never used to split), the cause, each edit with its scope and quote, each probe's status and its cleared, kept and new signals, tokens and samples, the pick and why, and the step's status after the round.",
    "The single rung is written in the same shape with one probe; a closing run_end row carries the run's task score and judge hash.",
@@ -17653,7 +18031,7 @@
   },
   "facts_hash": "ff7ce559e226b1f2",
   "model": "gemini-3.1-flash-lite",
-  "rejected_hash": "fc57b716d434bca9",
+  "rejected_hash": "2cf4b0077a7f31c2",
   "seed_hash": "98554a3d1a5efb46",
   "sentence": "Picks the model for every LLM call by plain-code rules: allowed and available models, hard filters that are never relaxed, then a preference for the role (none is set since D117), the role's default or the cheapest of the right size.",
   "source": "model: kept",
@@ -18220,7 +18598,7 @@
    "title": "RunResult"
   },
   "facts_hash": "0b521736677e5b1e",
-  "rejected_hash": "529c3c4e0203396b",
+  "rejected_hash": "17af38d6e1ccb26a",
   "seed_hash": "b48355d65df74af4",
   "sentence": "The one-line summary of a run: answer, score, calls, tokens, draft rounds and whether the checkers agreed.",
   "source": "hand",
@@ -18560,7 +18938,7 @@
    "title": "Solver"
   },
   "facts_hash": "664c23558dc2a9c8",
-  "rejected_hash": "112f66defe2bf683",
+  "rejected_hash": "610799aa48fad7bd",
   "seed_hash": "2ac3dd7f4f232c00",
   "sentence": "One AI writes the answer and rewrites it whenever a reviewer objects; an empty reply gets one retry.",
   "source": "hand",
@@ -18760,13 +19138,14 @@
   ]
  },
  "stage_e": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
       "amoeba/llm/router.py::ModelRouter.call",
       "amoeba/localtools/server.py::StdioServer.call",
@@ -18784,7 +19163,7 @@
      ],
      "doc": "",
      "key": "scripts/stage_e.py::run_pairs",
-     "signature": "run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthrough: list[str], python: str=sys.executable, faults: list[str] | None=None, arms: tuple=ARMS, lessons: str | None=None, lessons_write: str | None=None, config_b: str | None=None) -> list[dict]"
+     "signature": "run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthrough: list[str], python: str=sys.executable, faults: list[str] | None=None, arms: tuple=ARMS, lessons: str | None=None, lessons_write: str | None=None, config_b: str | None=None, fresh_plans: bool=False) -> list[dict]"
     },
     {
      "callees": [
@@ -18814,7 +19193,7 @@
      "callees": [],
      "doc": "",
      "key": "scripts/stage_e.py::arm_command",
-     "signature": "arm_command(arm: str, task_file: Path, seed: int, runs: Path, picks: Path, off_run: Path | None, passthrough: list[str], python: str=sys.executable, faults: list[str] | None=None, draft_from: Path | None=None, lessons: str | None=None, lessons_write: str | None=None) -> list[str]"
+     "signature": "arm_command(arm: str, task_file: Path, seed: int, runs: Path, picks: Path, off_run: Path | None, passthrough: list[str], python: str=sys.executable, faults: list[str] | None=None, draft_from: Path | None=None, lessons: str | None=None, lessons_write: str | None=None, fresh_plans: bool=False) -> list[str]"
     },
     {
      "callees": [],
@@ -18945,7 +19324,7 @@
    "prompts": {},
    "title": "Stage E: --adapt off vs on (pairs and report)"
   },
-  "facts_hash": "8cef79a1fc610c4f",
+  "facts_hash": "e0932f06e70e03fb",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "e328f8cc4fb1e139",
   "sentence": "Runs each task and seed with --adapt off, then on with the off run's draft and pool picks, and reports the two arms side by side.",
@@ -22014,7 +22393,7 @@
   ]
  },
  "toolmaker": {
-  "checked_at": "ac8daa8",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -22120,7 +22499,8 @@
     {
      "callees": [
       "amoeba/adapt/toolmaker.py::tw_config",
-      "amoeba/config/prompts/__init__.py::resolve"
+      "amoeba/config/prompts/__init__.py::resolve",
+      "amoeba/eval/sim_score.py::resolve"
      ],
      "doc": "",
      "key": "amoeba/adapt/toolmaker.py::library_root",
@@ -22311,7 +22691,7 @@
    },
    "title": "Tool writer and tool library (D125)"
   },
-  "facts_hash": "9d8911851318d217",
+  "facts_hash": "1cd50067066dbe1e",
   "model": "gemini-3.1-flash-lite",
   "seed_hash": "58455422af4b27cd",
   "sentence": "When a stuck step lacks a tool the pool cannot give, one AI call writes a small Python tool; plain code checks it, runs its self-test in the sandbox and only then gives it to the step.",
@@ -22324,7 +22704,7 @@
   ]
  },
  "tools": {
-  "checked_at": "02291d0",
+  "checked_at": "a19993e",
   "facts": {
    "anchors": [
     {
@@ -22488,6 +22868,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -22516,6 +22897,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -22545,6 +22927,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -22559,6 +22942,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -22572,6 +22956,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get"
@@ -22662,8 +23047,39 @@
     },
     {
      "callees": [
+      "amoeba/task/plan_search.py::without_plan_ids.strip",
+      "scripts/preflight.py::_stdout"
+     ],
+     "doc": "",
+     "key": "scripts/preflight.py::_json_tail",
+     "signature": "_json_tail(out: str) -> dict"
+    },
+    {
+     "callees": [
+      "scripts/preflight.py::Row"
+     ],
+     "doc": "",
+     "key": "scripts/preflight.py::_row",
+     "signature": "_row(check, ok, detail, fix, needed, warn=False) -> Row"
+    },
+    {
+     "callees": [
+      "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
+      "amoeba/adapt/toolmaker.py::ToolLibrary.get",
+      "amoeba/llm/cache.py::_Store.get",
+      "amoeba/pool/stock.py::SharedPicks.get",
+      "amoeba/task/plan_search.py::without_plan_ids.strip"
+     ],
+     "doc": "The text a local call printed: the server answers Bash with {\"stdout\": ..., \"stderr\": ...} after a header.",
+     "key": "scripts/preflight.py::_stdout",
+     "signature": "_stdout(out: str) -> str"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -22681,6 +23097,7 @@
     {
      "callees": [
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -22695,6 +23112,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/runtime.py::Interpreter.run_boss_reviewers.call",
       "amoeba/llm/cache.py::_Store.get",
@@ -22726,6 +23144,7 @@
      "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/interp/trace.py::TracedLLM.chat",
       "amoeba/llm/cache.py::_Store.get",
@@ -22745,8 +23164,19 @@
     },
     {
      "callees": [
+      "amoeba/adapt/probe.py::proposer_mode",
+      "scripts/preflight.py::Row",
+      "scripts/run_task.py::default_proposer"
+     ],
+     "doc": "D172: the Box 4 mode the run will actually get with these flags (scoped, or a fallback to single).",
+     "key": "scripts/preflight.py::check_proposer",
+     "signature": "check_proposer(w: World) -> list[Row]"
+    },
+    {
+     "callees": [
       "amoeba/adapt/evidence.py::EvidenceLog.append",
       "amoeba/adapt/faults.py::Faults.get",
+      "amoeba/adapt/lessons.py::LessonLibrary.get",
       "amoeba/adapt/toolmaker.py::ToolLibrary.get",
       "amoeba/llm/cache.py::_Store.get",
       "amoeba/pool/stock.py::SharedPicks.get",
@@ -22786,6 +23216,12 @@
      "doc": "",
      "key": "scripts/preflight.py::main",
      "signature": "main(argv: list[str] | None=None, world: World | None=None) -> int"
+    },
+    {
+     "callees": [],
+     "doc": "office.py's own check, made runnable alone (it needs only openpyxl and soffice), printing JSON.",
+     "key": "scripts/preflight.py::office_source",
+     "signature": "office_source() -> str"
     },
     {
      "callees": [
@@ -22963,6 +23399,11 @@
     ],
     [
      "decide",
+     "if self.box.server is None",
+     "set log = Path(self.tmp.name) / 'localtools.stderr.log'"
+    ],
+    [
+     "decide",
      "if self.research",
      "set data = self._linked_data(text, s, s['title'])"
     ],
@@ -22990,6 +23431,16 @@
      "decide",
      "if w.mode != 'sandbox'",
      "set rows = [Row(n, 'n/a', 'in-process mode') for n in ('docker', 'openshell gateway', 'image a"
+    ],
+    [
+     "fallback",
+     "\"generate the gateway's certs once (docs/RUNNING_ON_A_VM.md), then restart it\" if 'launch-scoped' in why else 'see the docker / gateway rows above'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'' if ok else fix",
+     "choose value"
     ],
     [
      "fallback",
@@ -23048,6 +23499,16 @@
     ],
     [
      "fallback",
+     "'ok' if ok else 'warn' if warn else 'missing'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'pip install -e . (the sandbox bridge runs python -m amoeba...)' if \"No module named 'amoeba'\" in why else \"generate the gateway's certs once (docs/RUNNING_ON_A_VM.md), then restart it\" if 'launch-scoped' in why else 'see the docker / gateway rows above'",
+     "choose value"
+    ],
+    [
+     "fallback",
      "'set' if w.env.get(k) else 'not set'",
      "choose value"
     ],
@@ -23058,7 +23519,12 @@
     ],
     [
      "fallback",
-     "'the gateway and the sandbox supervisor images must match: docker pull ghcr.io/nvidia/openshell/gateway:latest, then docker compose ... up -d again' if 'error phase' in why else 'see the docker / gateway rows above'",
+     "'the gateway and the sandbox supervisor images must match: docker pull ghcr.io/nvidia/openshell/gateway:latest, then docker compose ... up -d again' if 'error phase' in why else 'pip install -e . (the sandbox bridge runs python -m amoeba...)' if \"No module named 'amoeba'\" in why else \"generate the gateway's certs once (docs/RUNNING_ON_A_VM.md), then restart it\" if 'launch-scoped' in why else 'see the docker / gateway rows above'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "'warn' if warn else 'missing'",
      "choose value"
     ],
     [
@@ -23069,6 +23535,11 @@
     [
      "fallback",
      "(lambda m: f'add {PIP.get(m, m)} to amoeba/config/sandbox/Dockerfile and run build.sh') if w.mode == 'sandbox' else lambda m: f'pip install {PIP.get(m, m)}'",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "(out or '').split('\\n', 1)[-1] if (out or '').startswith('[local:') else out or ''",
      "choose value"
     ],
     [
@@ -23159,6 +23630,16 @@
     [
      "fallback",
      "except ValueError",
+     "return body"
+    ],
+    [
+     "fallback",
+     "except ValueError",
+     "return {}"
+    ],
+    [
+     "fallback",
+     "except ValueError",
      "try:\n    addrs = [x[4][0] for x in (resolve or socket.getaddrinfo)(host, parts.p"
     ],
     [
@@ -23169,6 +23650,11 @@
     [
      "fallback",
      "f\", sheets {', '.join(table['sheets'][:5])}\" if table.get('sheets') else ''",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "f\"{d.get('stdout', '')}\\n{d.get('stderr', '')}\".strip() if isinstance(d, dict) and 'stdout' in d else body",
      "choose value"
     ],
     [
@@ -23184,6 +23670,11 @@
     [
      "fallback",
      "local.without(names) if local is not None else None",
+     "choose value"
+    ],
+    [
+     "fallback",
+     "log.read_text(errors='replace').strip().splitlines()[-1:] if log.exists() else []",
      "choose value"
     ],
     [
@@ -23327,11 +23818,6 @@
      "raise WebToolError"
     ],
     [
-     "reject",
-     "if self.box.server is None",
-     "raise RuntimeError"
-    ],
-    [
      "stop",
      "if (stop := self._quota('fetch_url', self.limits.max_fetches_per_step))",
      "return stop"
@@ -23365,6 +23851,11 @@
      "stop",
      "if len(rows) >= max_rows",
      "stop (break)"
+    ],
+    [
+     "stop",
+     "if mode == 'scoped'",
+     "return [Row('proposer mode', 'ok', 'scoped (INV/DOM probes, control, compose; files undone in-process)')]"
     ],
     [
      "stop",
@@ -23461,11 +23952,12 @@
    "prompts": {},
    "title": "Tool box"
   },
-  "facts_hash": "af9386cac8e9f6f7",
-  "rejected_hash": "a601d9b25be31379",
+  "facts_hash": "25516bbd40963d8c",
+  "model": "gemini-3.1-flash-lite",
+  "rejected_hash": "24365d55e71323ce",
   "seed_hash": "2c75db60872a6fa5",
   "sentence": "Repeat a text back or do arithmetic safely; with --web-tools the plan runner also has web search and page reading.",
-  "source": "hand",
+  "source": "hand (model: still true)",
   "stale": "the model's reply was unusable or wrote a number the code does not hold",
   "what": [
    "Tools are looked up by name; a name that is not registered is an error, not a web search.",

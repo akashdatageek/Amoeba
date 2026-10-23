@@ -11,7 +11,9 @@ need it. Exit 1 when anything a category needs is missing. The checks:
 - sandbox mode: Docker running, the OpenShell gateway healthy, amoeba-sandbox:local built; the pool cache with skills;
 - through the run's own local toolbox (inside the sandbox, or on this host in in-process mode): one call each of
   Bash, Read, Write, Edit, Glob, Grep; the Python libraries (LIBS), soffice and office_check();
-- the skills xlsx, docx, pptx, pdf listed and attachable.
+- the skills xlsx, docx, pptx, pdf listed and attachable;
+- D172: the proposer mode the run will actually get (scoped, or single when local tools run in the sandbox, where a
+  probe's files cannot be undone); a fallback is a warning here, and run_task refuses --lessons-write on with it.
 Every outside call goes through `World`, so tests replace it (tests/test_preflight_d156.py)."""
 from __future__ import annotations
 
@@ -167,7 +169,18 @@ def _row(check, ok, detail, fix, needed, warn=False) -> Row:
 
 # box: tools
 def check_keys(w: World) -> list[Row]:
-    need = {"GEMINI_API_KEY": CATEGORIES, "TAVILY_API_KEY": ("research", "decision")}
+    """The keys the profile's team model and its verifier need (D172: e.g. CLAUDE_API_KEY for claude-sonnet), Gemini's
+    and Tavily's. Only whether each is set is shown, never a value."""
+    need = {}
+    try:
+        from amoeba.llm.profiles import get_profile
+        prof = get_profile(w.profile)
+        for p in (prof, *([get_profile(prof.verifier)] if getattr(prof, "verifier", None) else [])):
+            if p.api_key_env:
+                need[p.api_key_env] = CATEGORIES
+    except Exception:                               # an unknown profile is reported by the gemma call row
+        pass
+    need.update({"GEMINI_API_KEY": CATEGORIES, "TAVILY_API_KEY": ("research", "decision")})
     return [_row(k, bool(w.env.get(k)), "set" if w.env.get(k) else "not set", f"{k}: {ENV_FIX}", n)
             for k, n in need.items()]
 
@@ -336,7 +349,21 @@ def _json_tail(out: str) -> dict:
     return {}
 
 
-CHECKS = (check_keys, check_model, check_tavily, check_host, check_local)
+# box: tools
+def check_proposer(w: World) -> list[Row]:
+    """D172: the Box 4 mode the run will actually get with these flags (scoped, or a fallback to single)."""
+    from amoeba.adapt.probe import proposer_mode
+    from scripts.run_task import default_proposer
+    mode, why = proposer_mode(getattr(w, "adapt", "on"), getattr(w, "proposer", None) or default_proposer(),
+                              getattr(w, "local_tools", "on"), w.mode)
+    if mode == "scoped":
+        return [Row("proposer mode", "ok", "scoped (INV/DOM probes, control, compose; files undone in-process)")]
+    return [Row("proposer mode", "warn", f"{mode}: {why}",                 # run_task refuses learning from it
+                "run inside the runner container (scripts/vm/run.sh: AMOEBA_SANDBOX=1, --local-tools-mode inprocess)",
+                CATEGORIES)]
+
+
+CHECKS = (check_keys, check_model, check_tavily, check_host, check_local, check_proposer)
 
 
 # box: tools
@@ -374,14 +401,18 @@ def main(argv: list[str] | None = None, world: World | None = None) -> int:
     p.add_argument("--mode", choices=["sandbox", "inprocess"], default="sandbox", help="the local-tools mode")
     p.add_argument("--skip-model-check", action="store_true", help="skip the ~5 minute model_check")
     p.add_argument("--pool-dir", default="data/pool")
+    p.add_argument("--proposer", choices=["scoped", "single"], default=None, help="D172: as run_task's --proposer")
+    p.add_argument("--adapt", choices=["on", "off"], default="on", help="D172: as run_task's --adapt")
+    p.add_argument("--local-tools", choices=["on", "off"], default="on", help="D172: as run_task's --local-tools")
     args = p.parse_args(argv)
     w = world or World(args.mode, args.profile, args.skip_model_check, args.pool_dir)
+    w.proposer, w.adapt, w.local_tools = args.proposer, args.adapt, args.local_tools
     try:
         rows = run_checks(w)
     finally:
         if world is None:
             w.close()
-    print(f"== preflight: profile {args.profile}, local tools {args.mode}")
+    print(f"== preflight: profile {args.profile}, local tools {args.local_tools} ({args.mode}), adapt {args.adapt}")
     print(table(rows))
     missing = sorted({c for r in rows if r.status == "missing" for c in r.needed_by})
     print(f"== {'MISSING for: ' + ', '.join(missing) if missing else 'everything the categories need is here'}")

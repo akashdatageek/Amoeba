@@ -438,7 +438,11 @@ def run_one(task: Task, topology: str, llm: LLMClient, envelope: Envelope, tools
     exclude = (set() if box else LOCAL_FIELDS) | {f for f in PHASE2_FIELDS if getattr(result, f) is None}
     (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None), encoding="utf-8")
     if task.sim:                                     # D161: the task's scorer, after the answer is on disk
-        result.sim_score = score_run(run_dir, task, seed if sim_seed is None else sim_seed, judge)
+        try:
+            result.sim_score = score_run(run_dir, task, seed if sim_seed is None else sim_seed, judge)
+        except Exception as e:                       # D171: a scorer that cannot score leaves no score, never a crash
+            result.sim_score = {"score": None, "error": f"{type(e).__name__}: {e}"[:400], "judge_hash": judge}
+            (run_dir / "sim_score.json").write_text(json.dumps(result.sim_score, indent=2) + "\n", encoding="utf-8")
         exclude.discard("sim_score")
         (run_dir / "result.json").write_text(result.model_dump_json(indent=2, exclude=exclude or None),
                                              encoding="utf-8")
@@ -804,6 +808,7 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
     niche = getattr(args, "niche_profile", None)       # D102: the niche profile's models and verifier setting
     profile_models = getattr(args, "profile_models", None)
     niche_models = niche.allowed_models if niche is not None else None
+    prefs = None
     if niche_models is None and profile_models is None and not args.model:
         # the profile (--profile, else the default) names the run's model: the router calls that registry entry only,
         # so a second entry (claude-sonnet-5-5) never takes a Gemma run's verify steps, and --profile claude-sonnet
@@ -816,6 +821,10 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
             raise SystemExit(f"--profile {args.profile}: no registry entry in amoeba/config/models.yaml has model "
                              f"{prof.model!r}; the plan runner's router (D97) calls registry models only")
         profile_models = [entry] if entry else None
+        verify = routed_verifier(prof, registry, entry)                # D146 under the router: verify on another model
+        if verify:
+            profile_models.append(verify)
+            prefs = {"verifier": verify, "plan_observer": verify, "*": entry}
     usd_cap = getattr(args, "max_usd_per_run", None)
     if niche is not None:
         if niche.models.get("verifier_independence"):
@@ -823,9 +832,30 @@ def build_router_llm(args: argparse.Namespace, mode: str, registry=None, policy=
         if usd_cap is None:
             usd_cap = niche.safety.max_usd_per_run
     router = ModelRouter(registry, policy, make, mode=mode, allowed=allowed, usd_cap=usd_cap, fixed_model=fixed,
-                         profile_allowed=niche_models if niche_models is not None else profile_models)
+                         profile_allowed=niche_models if niche_models is not None else profile_models,
+                         base_prefs=prefs)
     router.profile = f"router:{mode}"
+    if prefs:
+        router.verifier = prof.verifier
+        print(f"verifier: {prof.verifier}: verify steps and the plan observer use {prefs['verifier']}")
     return router
+
+
+# box: router
+def routed_verifier(prof, registry: dict, team_entry: str | None) -> str | None:
+    """D146 under --routing routed: the registry entry of the profile's verifier profile (its model and route), when
+    that profile is named, differs from the team's entry and its key is set; None otherwise (the run says so)."""
+    if not prof.verifier or team_entry is None:
+        return None
+    vp = get_profile(prof.verifier)
+    name = next((n for n, e in registry.items() if e.model == vp.model
+                 and is_anthropic(e.provider) == is_anthropic(vp.provider)), None)
+    if name is None or name == team_entry:
+        return None
+    if not os.environ.get(registry[name].api_key_env or ""):
+        print(f"verifier: {vp.name}: key {registry[name].api_key_env} not set; verify steps use {team_entry}")
+        return None
+    return name
 
 
 # box: client
@@ -988,6 +1018,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                         "an edit helped (default: on with --adapt on); a task with set: replay never writes")
     p.add_argument("--lessons-dir", default=None, metavar="DIR",
                    help="D163: the lesson library folder (default: adapt.yaml lessons.library)")
+    p.add_argument("--allow-single-learning", action="store_true",
+                   help="D172: allow --lessons-write on when Box 4's scoped round would fall back to single "
+                        "(local tools in the sandbox): no INV/DOM comparison, compose or control")
     p.add_argument("--proposer", choices=["scoped", "single"], default=None,
                    help="plan, --adapt on: Box 4's last rung. scoped = two scoped fix proposers (how the team works / "
                         "what an expert would know), each edit tried from the same starting state, plain code picks; "
@@ -1157,6 +1190,15 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
             require_sandbox()
         except SandboxRequired as e:
             p.error(str(e))
+    if args.topology == "plan" and not getattr(args, "allow_single_learning", False):          # D172
+        from amoeba.adapt.probe import proposer_mode
+        write = args.lessons_write or ("on" if args.adapt == "on" else "off")
+        mode, why = proposer_mode(args.adapt, args.proposer or default_proposer(), args.local_tools,
+                                  args.local_tools_mode)
+        if write == "on" and args.proposer != "single" and mode == "single":
+            p.error(f"--lessons-write on, but Box 4's scoped round {why}. Run inside the runner container "
+                    "(scripts/vm/run.sh, --local-tools-mode inprocess), or pass --lessons-write off, or "
+                    "--allow-single-learning to learn from single rounds anyway")
     return args
 
 
@@ -1236,6 +1278,13 @@ def main(argv: list[str] | None = None) -> int:
         tasks = [Task.model_validate_json(l) for l in Path(args.tasks).read_text(encoding="utf-8").splitlines() if l.strip()]
     else:
         tasks = ToyTaskSource(args.seed, args.n).tasks() if args.toy else [Task(prompt=args.prompt, files=args.file)]
+    from amoeba.eval.sim_score import check_no_leak
+    for t in tasks:                                   # D171: a task is never given its own key or hidden tests
+        try:
+            check_no_leak(t)
+        except ValueError as e:
+            print(f"refused: {e}", file=sys.stderr)
+            return 2
     saved = load_saved_drafts(args.drafts_from) if args.drafts_from else None
     pool = PoolSetup(cache_dir=args.pool_dir, allow_remote_exec=getattr(args, "allow_remote_exec", False)) \
         if args.pool else None                                                   # D56; D137

@@ -975,12 +975,17 @@ BOXES: list[dict] = [
                "D155: a split or a re-plan never drops a check: the replaced steps' checks move to the new steps by "
                "plain code, and a re-plan may not write checks.",
                "D154: under --proposer scoped the last rung is a round: two scoped proposers, each edit probed from one "
-               "snapshot and undone, plain code picks; the winner's probed state is kept."],
+               "snapshot and undone, plain code picks; the winner's probed state is kept.",
+               "D172: with local tools in the OpenShell sandbox a probe's files cannot be undone and the round falls "
+               "back to single; preflight reports the mode a run will get (proposer_mode), run_task refuses "
+               "--lessons-write on with that fallback unless --allow-single-learning, and scripts/vm/ is a runner "
+               "container in which local tools run in-process."],
          proposes="One edit with a reason (fix_proposer prompt).",
          disposes="Plain code refuses, or applies the edit and judges the step by its checks and contract.",
          prompts=["fix_proposer"],
          anchors=["amoeba/adapt/proposer.py::fix_problems", "amoeba/interp/plan_runner.py::PlanRunner.propose_fix",
-                  "amoeba/interp/plan_runner.py::PlanRunner._d_live"], guard_anchors=[]),
+                  "amoeba/interp/plan_runner.py::PlanRunner._d_live", "amoeba/adapt/probe.py::proposer_mode"],
+         guard_anchors=[]),
     dict(id="stage_e", view="adapt", title="Stage E: --adapt off vs on (pairs and report)", kind="code", plan=None,
          sentence="Runs each task and seed with --adapt off, then on with the off run's draft and pool picks, and reports the two arms side by side.",
          what=[
@@ -1012,9 +1017,10 @@ BOXES: list[dict] = [
          what=["Verdicts: done or finished with limitation, or cleared a signal and added none = helped; added a "
                "signal and cleared none = hurt; nothing cleared or new = no effect; both, or tried only together "
                "with another edit = confounded.",
-               "The library (data/lessons/) is keyed by cause, op and scope; the niche of each count is recorded, "
-               "never used to split. A repeat updates the counts. New entries are unreviewed until the user "
-               "approves them (scripts/lessons.py).",
+               "The library (data/lessons/) has families, keyed by cause, op and scope, that count every verdict "
+               "for reports; the niche of each count is recorded, never used to split. D167: each written lesson is "
+               "its own entry with fixed text, its own status and counts, unreviewed until the user approves it "
+               "(scripts/lessons.py); it gains evidence only from its writing round and from probes that cite it.",
                "The reflector sees the round and the step card, never a score, and returns a cue and a lesson or "
                "NO_ENTRY; plain code refuses one with a task fact, denied wording or over the cap, asks once more, "
                "then drops it. It is skipped, and the skip logged, when the allowance would not hold it.",
@@ -1026,17 +1032,20 @@ BOXES: list[dict] = [
     dict(id="lessons_read", view="adapt", title="Box 2 and Box 4 read the library (D164)", kind="code", plan=None,
          sentence="With --lessons on, shows approved lessons to Box 4's proposers for the stuck step's cause and to the "
                   "Planner and both observers, picked by plain code.",
-         what=["An entry is shown when it is approved, has a lesson, helped more often than it hurt and never hurt in "
-               "this run's niche (and, for Box 4, has the stuck step's cause). Same-niche entries come first, then "
-               "the most-helped, within a count and a character cap.",
+         what=["A lesson is shown when it is approved, helped more often than it hurt (its own uses, D167) and never "
+               "hurt in this run's niche (and, for Box 4, has the stuck step's cause). Same-niche lessons come first, "
+               "then the most-helped, within a count and a character cap.",
+               "D167: Box 4 sees each lesson's id; a proposer whose edit follows one names it in from_lesson, and "
+               "plain code refuses a citation not shown for this cause or of another op or scope.",
                "Box 4: a 'What helped before for this cause' section in the proposer prompts; an edit must still "
                "quote this run's evidence. Box 2: the drafting prompts' existing {lessons} slot.",
                "--lessons-write (default on with --adapt on) is a separate switch; a replay task never writes. "
-               "result.json lists the lessons shown and each shown lesson whose fix ended done.",
+               "result.json lists the lessons shown and the lessons a probe's edit cited.",
                "With --lessons off the prompts are byte-identical to before."],
          proposes="Nothing: no AI works here.",
          disposes="Plain code picks the lessons and builds the sections.",
-         anchors=["amoeba/adapt/retrieval.py::retrieve", "amoeba/adapt/retrieval.py::box4_section"],
+         anchors=["amoeba/adapt/retrieval.py::retrieve", "amoeba/adapt/retrieval.py::box4_section",
+                  "amoeba/adapt/probe.py::lesson_cite_problems"],
          guard_anchors=[]),
     dict(id="compose", view="adapt", title="Compose two complementary edits (D165)", kind="code", plan=None,
          sentence="When the two probes of a scoped round each cleared a different signal and neither recovered the "
@@ -1050,6 +1059,21 @@ BOXES: list[dict] = [
          disposes="Plain code decides to compose, measures the probe and keeps it or not.",
          anchors=["amoeba/adapt/probe.py::compose_probe", "amoeba/adapt/probe.py::keep_composed"],
          guard_anchors=[]),
+    dict(id="control", view="adapt", title="Control probe: helped means better than a re-run (D168)", kind="code",
+         plan=None,
+         sentence="Re-runs a stuck step once with no edit from the same starting state, so an edit counts as helped "
+                  "only when it did better than doing nothing.",
+         what=["Helped: the edit ends done and the control did not, or it cleared a signal the control did not clear "
+               "and added none the control did not add. As well as the control: no effect. The control finished and "
+               "the edit did not: hurt. Without a control the verdict is uncontrolled, which promotion ignores.",
+               "The control is measured and undone like a probe, kept as step_N.probe-control.*, never picked, and "
+               "counts as a probe for the allowance; the edits come first when the allowance is short.",
+               "adapt.yaml probe.control: auto (always with --lessons-write on, else off), always, sampled "
+               "(control_rate), off."],
+         proposes="Nothing: no AI works here.",
+         disposes="Plain code runs the control, undoes it and gives the controlled verdicts.",
+         anchors=["amoeba/adapt/probe.py::control_probe", "amoeba/adapt/lessons.py::controlled_verdict"],
+         guard_anchors=[]),
     dict(id="promote", view="adapt", title="Outer loop: a proven lesson becomes a general setting (D166)", kind="ai",
          plan=None,
          sentence="Run by hand: an approved lesson that helped on several tasks and never hurt is turned into one "
@@ -1059,24 +1083,36 @@ BOXES: list[dict] = [
                "proposes one change of adapt.yaml: the order of the cause's allowed edits, a planner rule, or one "
                "tool's guidance line. Code, prompts and the frozen judge are refused before any run.",
                "The test runs only the replay set through stage_e's config arms: today's adapt.yaml against a "
-               "temporary copy, same drafts, picks and seeds, lesson writing off, one judge hash for every run.",
-               "Accepted only if the mean score rises, no task drops more than the margin and the step-contract pass "
-               "rate does not fall. A report and a patch are written; nothing is applied until --apply."],
+               "temporary copy, same picks and seeds, lesson writing off, one judge hash for every run. D169: a "
+               "planner rule runs both arms with fresh plans on promote.planner_seeds seeds (it acts while the "
+               "Planner drafts); the other kinds share one draft. The report names the mode.",
+               "D170: runs are compared in pairs (same task, same seed). Accepted only if the mean delta reaches "
+               "promote.min_delta, the changed arm wins more than twice as many pairs as it loses, no task drops more "
+               "than the margin and the step-contract pass rate does not fall. A report (every pair) and a patch are "
+               "written; nothing is applied until --apply."],
          proposes="The promoter proposes one general setting from one lesson.",
          disposes="Plain code checks the change, runs the arms, applies the accept rule and never applies it itself.",
-         anchors=["scripts/promote.py::promote", "scripts/promote.py::accept", "scripts/promote.py::change_problems"],
+         anchors=["scripts/promote.py::promote", "scripts/promote.py::accept", "scripts/promote.py::change_problems",
+                  "scripts/promote.py::arm_mode"],
          guard_anchors=[]),
-    dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorer (D161)", kind="code", plan=None,
+    dict(id="frozen_judge", view="adapt", title="Frozen judge and task scorers (D161, D171)", kind="ai", plan=None,
          sentence="Hashes every file that judges a run at the start of the run, and scores a task with the scorer it "
                   "names, so a later comparison knows both the score and the judge that gave it.",
          what=["config/frozen.yaml lists the judge: the domain checks, Box 2's plan checks, the answer score, the "
                "scorers and the baseline results. The digest goes to result.json and sim_score.json.",
                "Runs whose judge hashes differ, or are unknown, are refused for comparison (same_judge).",
-               "A task may name a scorer in its sim field; only a deterministic stand-in exists (the answer's first "
-               "number against an expected value). A real simulator becomes one more scorer."],
-         proposes="Nothing: no AI works here.",
-         disposes="Plain code hashes the files, scores the run and refuses mixed comparisons.",
-         anchors=["amoeba/eval/judge.py::judge_hash", "amoeba/eval/sim_score.py::score_run"], guard_anchors=[]),
+               "A task names its scorers (with weights) in its sim field. D171: answer_key (numbers with a "
+               "tolerance, exact strings), hidden_tests (a pytest folder run next to a copy of the delivered code), "
+               "files (plain-code checks on delivered files) and rubric (a fixed grader prompt and model, the median "
+               "of its calls), besides D161's stand-in.",
+               "The keys, hidden tests, grader prompt and grader settings are in the judge hash; a task given its own "
+               "key is refused, and a scorer that cannot score leaves no score rather than a crash."],
+         proposes="The rubric grader (a fixed model, never the team's) proposes a mark per call.",
+         disposes="Plain code hashes the files, runs every other scorer, takes the grader's median, weights the parts "
+                  "and refuses mixed comparisons.",
+         anchors=["amoeba/eval/judge.py::judge_hash", "amoeba/eval/sim_score.py::score_run",
+                  "amoeba/eval/sim_score.py::score_task", "amoeba/eval/sim_score.py::RubricScorer"],
+         guard_anchors=[]),
     dict(id="faults", view="adapt", title="Fault injection (D119, test-only)", kind="code", plan=None,
          sentence="Puts one known fault into one step, so the stuck watch's diagnosis and the fixes can be checked "
                   "against a ground truth; refused unless AMOEBA_TEST_FAULTS=1.",

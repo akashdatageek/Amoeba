@@ -1232,6 +1232,18 @@ hurt into one general setting (the order of a cause's edits, a planner rule, or 
 the replay set against today's config with everything else fixed and the judge frozen, and keeps it only when the
 results get better. It writes a report and a patch; the user applies it. Design: docs/design/D166_promote.md.
 
+**D167, a lesson's counts are about that lesson (Oct 22).** (cause, op, scope) is now a family whose counts are for reports. Every lesson the reflector writes is its own entry with fixed text, its own status and its own counts, and it gains evidence only when it is used: the round that wrote it, then probes whose proposer was shown it and cited it. Retrieval and promotion read lessons only. Design: docs/design/D167_lesson_identity.md.
+
+**D168, helped is measured against a control (Oct 22).** A scoped round re-runs the stuck step once more with no edit from the same start. An edit helped only when it did better than that control; doing as well is no effect, and a verdict without a control is recorded as uncontrolled and never promoted. The control is never picked and counts toward the fix allowance. Design: docs/design/D168_control_probe.md.
+
+**D169, planner-rule changes are tested with real planning (Oct 22).** A planner rule acts while the Planner drafts, so its test runs both arms with fresh plans on five seeds each instead of sharing the current arm's plan, which had hidden the rule. Other kinds keep the shared draft. The report says which mode ran and why. Design: docs/design/D169_planner_rule_arms.md.
+
+**D170, a stricter accept rule (Oct 22).** The outer loop compares the two arms pair by pair (same task, same seed). A change is kept only when the mean gain is at least 0.05 and it wins more than twice as many pairs as it loses, on top of the per-task drop and contract rules. The report shows every pair. Design: docs/design/D170_paired_accept.md.
+
+**D171, real scorers (Oct 22).** A task can now be scored by an answer key (numbers with a tolerance, exact strings), by hidden tests run against a copy of the delivered code, by plain-code checks on the delivered files, or by a fixed rubric grader (a fixed prompt, a fixed model and temperature, the median of three calls), alone or weighted together. The keys, the hidden tests and the grader are part of the frozen judge. Design: docs/design/D171_scorers.md.
+
+**D172, no silent fallback (Oct 22).** When local tools run in the sandbox, Box 4's scoped round cannot undo a probe's files and falls back to the single rung. Preflight now says so, a run that would learn from such rounds is refused unless the user allows it, and a throwaway runner container lets local tools run in-process so the scoped round runs in full. Design: docs/design/D172_runner_container.md.
+
 ### Deviations of Phase 2 (from the source papers and the CLAUDE.md rules)
 
 - **D136, step protocol v2:** a deliberate, user-approved deviation (Oct 16, 2026) from the CLAUDE.md rule that prompt

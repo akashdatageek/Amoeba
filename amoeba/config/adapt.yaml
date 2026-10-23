@@ -79,6 +79,15 @@ tool_writer:                  # D125: Box 4 writes a missing tool (amoeba/adapt/
     csv: []
     json: []
 
+# D168: the control probe of a scoped round: the same snapshot, no edit, the step re-run once, measured and undone. An
+# edit "helped" only when it did better than the control; without a control its verdict is "uncontrolled", which
+# promotion ignores. The control counts as a probe for the allowance (the edits come first) and is never picked.
+# auto = always when --lessons-write on, off otherwise; always; sampled (a seeded draw per task, step and try below
+# control_rate); off.
+probe:
+  control: auto
+  control_rate: 0.5
+
 # D165: compose — when the two probes of a scoped round were complementary (each cleared a different signal) and
 # neither recovered the step, a third probe applies both edits from the same starting state; it is kept when it ends
 # done, or clears more signals than either probe alone and adds none. Plan edits are never composed. It counts as a
@@ -109,7 +118,10 @@ promoted:
 promote:
   min_helped: 3               # an approved entry is a candidate after helping this often ...
   min_tasks: 2                # ... on at least this many different tasks, and with hurt 0 in every niche
-  seeds: 3                    # sim seeds per replay task, in both arms
+  seeds: 3                    # sim seeds per replay task, in both arms (one shared draft per task and seed)
+  planner_seeds: 5            # D169: seeds per replay task for a planner_rule change (both arms plan fresh)
+  min_delta: 0.05             # D170: the mean paired delta (same task, same seed) must reach this, and the changed
+                              # arm must win more than twice as many pairs as it loses
   max_task_drop: 0.05         # no replay task's mean score may drop by more than this
   max_text_chars: 300         # a planner rule or a tool-guidance line the proposal writes
   proposal_max_tokens: 1024   # the proposal call's reply room

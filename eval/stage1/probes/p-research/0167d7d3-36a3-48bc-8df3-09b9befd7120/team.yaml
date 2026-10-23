@@ -1,0 +1,438 @@
+team_id: 8214220e-02bd-4157-ba5e-302923271aec
+version: 1
+parent_version: null
+name: team-plan-p-resear
+topology: plan
+agents:
+  79b913ee-05ba-4543-85c3-ac59544d72cf:
+    agent_id: 79b913ee-05ba-4543-85c3-ac59544d72cf
+    name: Census Data Researcher
+    role: worker
+    model: claude-sonnet-5-5, gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - web_search
+    - fetch_url
+    - calc
+    - local:Bash
+    - local:Write
+    - local:Read
+    - find_tool
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: A demographic data specialist who knows Census Bureau products and
+      the difference between resident population and apportionment population. Retrieves
+      the Indiana figure straight from Census.gov pages.
+    role_prompt: 'You are a senior Census data researcher. Task: find Indiana''s 2020
+      Census resident population (April 1, 2020; excludes overseas federal personnel)
+      from an official census.gov source. Method: 0) First write one ''Lookup plan''
+      bullet: which release you will cite (2020 Census Apportionment Results or P.L.
+      94-171 Redistricting Data), that you want the resident population concept (not
+      the apportionment count that includes overseas personnel), and that ''date''
+      means the release/publication date. 1) web_search for ''Indiana 2020 Census
+      resident population census.gov apportionment'' and the P.L. 94-171 redistricting
+      release. 2) fetch_url the best census.gov page (for example the 2020 Census
+      Apportionment Results tables, the redistricting data release, or a state profile).
+      3) Quote the Indiana figure exactly as shown and say whether it is resident
+      population or apportionment population. 4) Record the page title, full URL,
+      and the release or publication date shown on the page, and say where on the
+      page the date appears. 5) If a second census.gov source gives the figure, record
+      it too. Output a bulleted list: lookup plan; figure; concept; source title;
+      URL; date; date type (release/publication/last revised); quoted passage; corroborating
+      source if any. If the page shows no date, say so and use the release date from
+      a census.gov press release, naming it. Do not use non-census sites as the cited
+      source.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Set out a short lookup plan, then find Indiana's 2020 Census resident population
+      and the exact title, URL and release date of an official Census.gov source.
+    skills:
+    - Census product knowledge
+    - source evaluation
+    - web research
+    outputs:
+    - artifact: Evidence note
+      format: 'list: lookup plan, figure, source title, URL, release date, quoted
+        passage, which population concept it is'
+    success_criteria:
+    - A lookup plan line comes first
+    - The figure comes from a census.gov page and is quoted from the page
+    - The release date is stated on or alongside the page
+    - The population concept is labelled
+    constraints:
+    - Use only census.gov (or its subdomains) as the cited source
+    - Do not infer the figure from memory; quote it from the page
+    - At most 5 turns
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: core
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: core
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: core
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  74c0b130-691a-4043-9130-787e2ddbe566:
+    agent_id: 74c0b130-691a-4043-9130-787e2ddbe566
+    name: Data Verification Reviewer
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    - web_search
+    - fetch_url
+    - local:Bash
+    - local:Write
+    - local:Read
+    - find_tool
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: An independent reviewer who rechecks figures and dates against the
+      primary source and tests concept confusion.
+    role_prompt: 'You are a senior verification reviewer. You receive an evidence
+      note on Indiana''s 2020 Census resident population. Independently fetch the
+      cited census.gov URL (and, if possible, a different census.gov page) and check:
+      the number matches digit for digit; it is resident population, not apportionment
+      population including overseas personnel; the date is correctly identified and
+      is a publication/release date. Compare with the working figure about 6,785,528
+      and use calc for any difference. Output a memo with headings: Verdict (confirmed
+      or corrected), Checks performed, Final figure, Final source (title, URL), Final
+      date, Caveats. State whether you re-fetched independently. If you cannot re-fetch,
+      say so and mark the verdict as partial.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Confirm or correct the figure, source and date before the answer is written.
+    skills:
+    - fact-checking
+    - Census terminology
+    - source auditing
+    outputs:
+    - artifact: Verification verdict
+      format: 'memo: verdict (confirmed/corrected), checks done, final figure, source,
+        date, caveats'
+    success_criteria:
+    - Figure matched on a page re-fetched independently
+    - Population concept and date confirmed
+    - Any mismatch resolved or flagged
+    constraints:
+    - Do not just copy the researcher's note; re-fetch
+    - At most 5 turns
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: core
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: core
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: core
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  d31901b7-4247-441d-beeb-510548c56a7c:
+    agent_id: d31901b7-4247-441d-beeb-510548c56a7c
+    name: Final Answer Writer
+    role: worker
+    model: gemma-4-31b
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: Assembles the verified result into a short final answer that begins
+      with the mandated line.
+    role_prompt: 'You assemble the final answer. Use only the verification verdict
+      (and the evidence note where consistent). The answer must open with this exact
+      line: I read "official U.S. Census Bureau source" as Census.gov data releases
+      such as the 2020 Census Apportionment Results or the P.L. 94-171 Redistricting
+      Data; if you meant data.census.gov tables or QuickFacts or Census Bureau publications
+      such as the 2020 Census Demographic Data Map Viewer or state profile pages,
+      the answer below may not apply. I read "its date" as The publication or release
+      date of the cited source; if you meant The census reference date, April 1, 2020,
+      the answer below may not apply. Then give: the Indiana 2020 Census resident
+      population (the verified number, as of April 1, 2020), the source title and
+      URL, and the source''s date. Add one sentence on any caveat from the verdict.
+      Do not add new facts.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Deliver a concise, correctly opened answer with number, source and date.
+    skills:
+    - concise technical writing
+    outputs:
+    - artifact: Final answer
+      format: 'memo: opening line, answer, source, date, short note'
+    success_criteria:
+    - First line is exactly the mandated line
+    - Figure, source, URL and date appear and match the verdict
+    - No new analysis
+    constraints:
+    - Use only verified material
+    - Keep it under about 150 words
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 79b913ee-05ba-4543-85c3-ac59544d72cf
+  dst: 74c0b130-691a-4043-9130-787e2ddbe566
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 79b913ee-05ba-4543-85c3-ac59544d72cf
+  dst: d31901b7-4247-441d-beeb-510548c56a7c
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 74c0b130-691a-4043-9130-787e2ddbe566
+  dst: d31901b7-4247-441d-beeb-510548c56a7c
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 79b913ee-05ba-4543-85c3-ac59544d72cf
+exit: d31901b7-4247-441d-beeb-510548c56a7c
+plan:
+- index: 0
+  agent_ids:
+  - 79b913ee-05ba-4543-85c3-ac59544d72cf
+  text: '[Census Data Researcher]: Plan the lookup and find the Indiana figure and
+    Census.gov source'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R6
+  depends_on: []
+  do: '1) Write a one-line lookup plan: release to cite, resident (not apportionment)
+    concept, release date as the date. 2) Search for the Indiana 2020 Census resident
+    population on census.gov. 3) Fetch the best page (apportionment results or P.L.
+    94-171 release). 4) Record the figure, concept, title, URL, release date, and
+    a quoted passage. 5) If a second census.gov source exists, record it.'
+  output: 'list: lookup plan, figure, concept, source title, URL, release date, quoted
+    passage, corroborating source'
+  done_when: The list starts with a lookup plan and gives one Indiana number from
+    a census.gov page, labelled as resident or apportionment population, with a title,
+    URL and dated release.
+  checks:
+  - name: output_has_list
+    params:
+      min_items: 5
+    covers:
+    - R1
+    - R2
+    - R3
+  - name: output_mentions
+    params:
+      terms:
+      - Indiana
+      - census.gov
+      - plan
+    covers:
+    - R1
+    - R2
+    - R6
+  - name: cites_every_figure
+    params: {}
+    covers:
+    - R1
+    - R2
+  - name: figures_dated
+    params: {}
+    covers:
+    - R3
+- index: 1
+  agent_ids:
+  - 74c0b130-691a-4043-9130-787e2ddbe566
+  text: '[Data Verification Reviewer]: Independently verify figure, source and date'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  - R5
+  depends_on:
+  - 1
+  do: 1) Re-fetch the cited census.gov page independently, and a second census.gov
+    source if possible. 2) Check the number digit for digit, the population concept,
+    and the date type. 3) Compare with about 6,785,528 using calc and explain any
+    gap. 4) Write the verdict memo.
+  output: 'memo: verdict, checks performed, final figure, final source, final date,
+    caveats'
+  done_when: The memo gives a verdict of confirmed or corrected, with the final figure,
+    source title and URL, and date, and states whether the figure was re-fetched independently.
+  checks:
+  - name: verdict_present
+    params: {}
+    covers:
+    - R5
+  - name: output_mentions
+    params:
+      terms:
+      - Indiana
+      - verdict
+      - source
+      - date
+    covers:
+    - R1
+    - R2
+    - R3
+  - name: cites_every_figure
+    params: {}
+    covers:
+    - R1
+    - R2
+  - name: figures_dated
+    params: {}
+    covers:
+    - R3
+- index: 2
+  agent_ids:
+  - d31901b7-4247-441d-beeb-510548c56a7c
+  text: '[Final Answer Writer]: Assemble the final answer'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  depends_on:
+  - 1
+  - 2
+  do: 1) Open with the mandated line exactly. 2) State the verified number, source
+    title and URL, and source date. 3) Add one caveat sentence if the verdict gave
+    one.
+  output: 'memo: opening line, answer, source and URL, date, short note'
+  done_when: The answer starts with the mandated line, and gives the figure, the source
+    with URL, and its date, all matching the verification verdict.
+  checks:
+  - name: output_mentions
+    params:
+      terms:
+      - official U.S. Census Bureau source
+      - its date
+      - Indiana
+      - census.gov
+    covers:
+    - R1
+    - R2
+    - R4
+  - name: cites_every_figure
+    params: {}
+    covers:
+    - R1
+    - R2
+  - name: figures_dated
+    params: {}
+    covers:
+    - R3
+requirements:
+  R1: Give the 2020 Census resident population of Indiana (April 1, 2020 count, excluding
+    overseas federal personnel) as a single number, confirmed against an official
+    Census.gov source.
+  R2: Cite the official Census.gov source (title and URL), such as the 2020 Census
+    Apportionment Results or the P.L. 94-171 Redistricting Data.
+  R3: Give the date of the cited source (its publication or release date).
+  R4: Open the final answer with the mandated line about the reading of "official
+    U.S. Census Bureau source" and "its date", worded exactly as given in the task.
+  R5: Verify the figure, the population concept and the source date independently
+    before the answer is finalised.
+  R6: 'Plan the lookup before searching (planning): state which release is to be cited,
+    which population concept is wanted (resident, not apportionment) and which date
+    counts (release date), following the working interpretation.'
+max_inner_turns: 3
+meta:
+  task_id: p-research
+  draft_rounds: 2
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: web_search
+    for_role: Census Data Researcher
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Census Data Researcher
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: web_search
+    for_role: Data Verification Reviewer
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Data Verification Reviewer
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool

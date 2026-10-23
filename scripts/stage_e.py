@@ -6,6 +6,9 @@ picks are the same and the arms differ only in Box 3. Everything after `--` is p
 unchanged. A pair whose arm already has a result.json is not run again (resumable). Each arm is logged to
 <out>/pairs.jsonl: task, seed, arm, run folder, exit code, start and end.
 
+D169: `--fresh-plans` leaves --drafts-from out, so each arm plans for itself (scripts/promote.py uses it for a
+planner_rule change, which a shared draft would hide from the changed arm's Planner).
+
 D119: `--inject-fault <cause>:<step>[:<n>]` (repeatable) runs injected pairs instead: both arms get the same fault
 (run_task's test-only flag, with AMOEBA_TEST_FAULTS=1 set for those two processes only), and both reuse the plan.json
 of the same task and seed's clean off run in <out> (run the clean pairs first), so an injected pair differs from the
@@ -55,14 +58,15 @@ def run_dir_of(runs: Path) -> Path | None:
 def arm_command(arm: str, task_file: Path, seed: int, runs: Path, picks: Path, off_run: Path | None,
                 passthrough: list[str], python: str = sys.executable, faults: list[str] | None = None,
                 draft_from: Path | None = None, lessons: str | None = None,
-                lessons_write: str | None = None) -> list[str]:
+                lessons_write: str | None = None, fresh_plans: bool = False) -> list[str]:
     adapt = ["--adapt", "on", "--proposer", arm] if arm in PROPOSER_ARMS else \
         [] if arm in CONFIG_ARMS else ["--adapt", arm]                                         # D154, D166
     cmd = [python, "-m", "scripts.run_task", "--tasks", str(task_file), "--seed", str(seed), *adapt,
            "--runs-dir", str(runs), "--picks-file", str(picks), *passthrough]
     if draft_from is not None:                    # D119: an injected pair reuses the clean off run's draft
         cmd += ["--drafts-from", str(draft_from)]
-    elif arm in ("on", PROPOSER_ARMS[1], CONFIG_ARMS[1]):   # the second arm reuses the first arm's draft
+    elif arm in ("on", PROPOSER_ARMS[1], CONFIG_ARMS[1]) and not fresh_plans:   # the second arm reuses the first's
+        # draft; D169: with fresh_plans each arm plans for itself (a change the Planner must see)
         cmd += ["--drafts-from", str(off_run)]
     for f in faults or []:
         cmd += ["--inject-fault", f]
@@ -103,7 +107,7 @@ def arm_env(faults: list[str] | None, config_b: str | None = None, arm: str | No
 def run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthrough: list[str],
               python: str = sys.executable, faults: list[str] | None = None, arms: tuple = ARMS,
               lessons: str | None = None, lessons_write: str | None = None,
-              config_b: str | None = None) -> list[dict]:
+              config_b: str | None = None, fresh_plans: bool = False) -> list[dict]:
     out.mkdir(parents=True, exist_ok=True)
     log, rows = out / "pairs.jsonl", []
     picks = out / "picks.json"
@@ -125,7 +129,7 @@ def run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthro
                     off_run = done if arm == arms[0] else off_run
                     print(f"== skip {task_id} seed {seed} {arm}: {done.name} exists", flush=True)
                     continue
-                if arm == arms[1] and off_run is None and not faults:
+                if arm == arms[1] and off_run is None and not faults and not fresh_plans:
                     print(f"== skip {task_id} seed {seed} {arm}: the {arms[0]} arm left no run to reuse", flush=True)
                     continue
                 runs.mkdir(parents=True, exist_ok=True)
@@ -134,7 +138,7 @@ def run_pairs(tasks: Path, ids: list[str], seeds: list[int], out: Path, passthro
                 t0 = time.monotonic()
                 rc = subprocess.call(arm_command(arm, task_file, seed, runs, picks, off_run, passthrough, python,
                                                  faults=faults, draft_from=clean, lessons=lessons,
-                                                 lessons_write=lessons_write),
+                                                 lessons_write=lessons_write, fresh_plans=fresh_plans),
                                      env=arm_env(faults, config_b=config_b, arm=arm))
                 run = run_dir_of(runs)
                 row = {"task": task_id, "seed": seed, "arm": arm, "run": str(run.resolve()) if run else None, "rc": rc,
@@ -169,6 +173,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--arms", choices=["adapt", "proposer", "config"], default="adapt",
                    help="adapt: --adapt off vs on (D117); proposer: --proposer single vs scoped, both adapt on, the "
                         "scoped arm reusing the single arm's draft (D154)")
+    p.add_argument("--fresh-plans", action="store_true",
+                   help="D169: each arm plans for itself (no --drafts-from); for a change the Planner must see")
     p.add_argument("--lessons", choices=["on", "off"], default=None,
                    help="D164: --lessons for both arms (the same reading in both)")
     p.add_argument("--lessons-write", choices=["on", "off"], default=None,
@@ -187,7 +193,7 @@ def main(argv: list[str] | None = None) -> None:
                 raise SystemExit(str(e))
     run_pairs(Path(a.tasks), a.ids.split(","), [int(s) for s in a.seeds.split(",")], Path(a.out), passthrough,
               faults=a.inject_fault, arms={"proposer": PROPOSER_ARMS, "config": CONFIG_ARMS}.get(a.arms, ARMS),
-              lessons=a.lessons, lessons_write=a.lessons_write, config_b=a.config_b)
+              lessons=a.lessons, lessons_write=a.lessons_write, config_b=a.config_b, fresh_plans=a.fresh_plans)
 
 
 if __name__ == "__main__":

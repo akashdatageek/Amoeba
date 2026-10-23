@@ -54,14 +54,43 @@ class Rubric(BaseModel):
 
 
 # box: frozen_judge
-class SimSpec(BaseModel):
-    """D161: which scorer scores a task, and its settings. Typed (no free-form object), so a Task stays a schema a
-    model's structured output can carry."""
+class ScorerRef(BaseModel):
+    """D171: one scorer of a task and its weight in the task's score."""
     model_config = ConfigDict(extra="forbid")
-    scorer: str                      # a name in amoeba/eval/sim_score.py SCORERS
+    name: str                        # a name in amoeba/eval/sim_score.py SCORERS
+    weight: float = 1.0
+
+
+# box: frozen_judge
+class SimSpec(BaseModel):
+    """D161: which scorers score a task, and their settings. Typed (no free-form object), so a Task stays a schema a
+    model's structured output can carry (and within Claude's 24 optional fields). D171: `scorers` (several, weighted;
+    the D161 form {"scorer": name} is read as one); `judge_set` is the prefix of the task set's judge folders,
+    <judge_set>_keys/<task id>.json and <judge_set>_hidden/<task id>/, both in the frozen judge, never given to the
+    team."""
+    model_config = ConfigDict(extra="forbid")
+    scorers: list[ScorerRef] = Field(default_factory=list)   # names in amoeba/eval/sim_score.py SCORERS
     expected: float | None = None    # the stand-in's target value
     baseline: float = 0.0            # the baseline's score on the same seed (the stand-in reads it from here)
-    config: str | None = None        # a scorer's own config file (a simulator's setup), when it has one
+    judge_set: str | None = None     # D171: e.g. "tasks/stage1" -> tasks/stage1_keys/, tasks/stage1_hidden/
+
+    @model_validator(mode="before")
+    @classmethod
+    def _one_scorer(cls, data):
+        if isinstance(data, dict) and "scorer" in data:                  # D161's form: one scorer by name
+            data = {**{k: v for k, v in data.items() if k != "scorer"},
+                    "scorers": [*(data.get("scorers") or []), {"name": data["scorer"]}]}
+        return data
+
+    @model_validator(mode="after")
+    def _some_scorer(self):
+        if not self.scorers:
+            raise ValueError("sim needs `scorers` (or `scorer`)")
+        return self
+
+    def folder(self, kind: str) -> str | None:
+        """The keys or hidden folder of the task set (kind: "keys" | "hidden")."""
+        return f"{self.judge_set}_{kind}" if self.judge_set else None
 
 
 # box: ov_task, task_record

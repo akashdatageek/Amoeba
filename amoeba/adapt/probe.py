@@ -59,6 +59,21 @@ def fallback_reason(r) -> str | None:
     return None
 
 
+# box: proposer
+def proposer_mode(adapt: str, proposer: str, local_tools: str, local_tools_mode: str) -> tuple[str, str]:
+    """D172: the Box 4 mode a run will actually get, from its flags, and why when it is not the one asked for:
+    ("scoped", ""), ("single", why) or ("none", why). The same rule as fallback_reason: with local tools in the
+    OpenShell sandbox a probe's workspace cannot be undone, so a scoped round falls back to single."""
+    if adapt != "on":
+        return "none", "adapt is off: Box 4 does not run"
+    if proposer != "scoped":
+        return "single", "--proposer single (asked for)"
+    if local_tools == "on" and local_tools_mode == "sandbox":
+        return "single", ("falls back: the workspace of a probe cannot be undone in the sandbox (local tools not "
+                          "in-process); no INV/DOM comparison, compose or control")
+    return "scoped", ""
+
+
 # ---- the snapshot ----------------------------------------------------------------------------------------------------
 # box: proposer
 class Snapshot:
@@ -179,6 +194,60 @@ def signal_names(meta: dict | None) -> list[str]:
 
 
 # box: proposer
+def probe_room(r, n: int, lim: dict) -> int:
+    """D168: how many probes (each estimated at one average step attempt, D151) the fixes' token allowance and the
+    step's share of a run cap still hold (99 before any attempt has a cost)."""
+    avg = r.avg_attempt()
+    if avg <= 0:
+        return 99
+    left = [token_cap(lim, avg) - r.adapt_tokens]
+    share = (getattr(r, "step_share", {}) or {}).get(getattr(r, "cur_step", None))
+    if share:
+        left.append(share["share"] - (r.billed_now() - r.step_t0[r.cur_step]))
+    return max(0, int(min(left) // avg))
+
+
+# box: control
+def control_config() -> dict:
+    """adapt.yaml `probe` (D168): control auto | always | sampled | off, control_rate for sampled."""
+    return {"control": "auto", "control_rate": 0.5, **(adapt_config().get("probe") or {})}
+
+
+# box: control
+def control_wanted(r, n: int, k: int, cfg: dict | None = None) -> str | None:
+    """None when this round runs a control probe, else why not. auto (the default): always when lesson writing is on,
+    off otherwise; sampled: a seeded draw per (task, step, try) below control_rate."""
+    cfg = cfg or control_config()
+    mode = str(cfg.get("control", "auto"))
+    if mode == "off":
+        return "probe.control off"
+    if mode == "auto":
+        return None if getattr(r.opt, "lessons_write", "off") == "on" else "probe.control auto: lesson writing is off"
+    if mode == "sampled":
+        import random
+        draw = random.Random(f"{r.ep.seed}:{r.task.id}:{n}:{k}").random()
+        rate = float(cfg.get("control_rate", 0.5))
+        return None if draw < rate else f"probe.control sampled: draw {draw:.3f} >= rate {rate}"
+    return None                                                   # always
+
+
+# box: control
+def control_probe(r, n: int, wave: int, start: "Snapshot", s0: list[str]) -> dict:
+    """D168: the same starting state, no edit, the step re-run once, measured and undone like any probe (its files
+    kept as step_N.probe-control.*). It is never picked; the verdicts compare each edit with it."""
+    from amoeba.interp.plan_runner import dependencies
+    start.restore(for_probe=True)
+    t0 = r.billed_now()
+    r.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.fix": "control", "amoeba.rung": "D",
+                                "amoeba.scope": "control", "amoeba.target": n, "amoeba.params": "{}"})
+    r.run_step(r.steps[n], wave, dependencies(r.cfg.plan)[n],
+               fixing={"kind": "control", "rung": "D", "target": n, "params": {}, "note": "", "scope": "control"})
+    out = measure(r, n, start, s0, t0, "control", "none", {}, {"reason": "the control: no edit (D168)"}, {})
+    out.pop("_after", None)
+    return out
+
+
+# box: proposer
 def probes_affordable(r, n: int, lim: dict) -> int:
     """How many probes the remaining allowance holds (2 or 1): each probe is estimated at one average step attempt
     (D151); the fixes' token allowance and the step's share of a run cap must hold that many."""
@@ -211,6 +280,7 @@ def propose(r, n: int, d: dict, scope: str, allowed: list[str]) -> dict:
             if not quote_found(reply.because, r._proposer_shown):
                 problems.append(f"because: the quote {reply.because[:80]!r} is not in the evidence or the last "
                                 "attempt you were shown")
+            problems += lesson_cite_problems(r, reply, scope, d["cause"])                 # D167
             if not problems and reply.edit.op in PLAN_OPS + ("add_helper_role",):
                 problems, change = r._d_live(reply, n)
         except (ValueError, ValidationError) as e:
@@ -226,6 +296,22 @@ def propose(r, n: int, d: dict, scope: str, allowed: list[str]) -> dict:
             break
     return {"scope": scope, "reply": reply, "change": change, "replies": replies,
             "refusals": [p for x in replies for p in x["problems"]]}
+
+
+# box: lessons_read
+def lesson_cite_problems(r, reply, scope: str, cause: str) -> list[str]:
+    """D167: a `from_lesson` must name a lesson shown to this round's proposers for this cause, with the edit's own op
+    and scope; [] when the reply cites none."""
+    lid = getattr(reply, "from_lesson", None)
+    if not lid:
+        return []
+    seen = (getattr(r, "lessons_seen", None) or {}).get(lid)
+    if seen is None or seen["cause"] != cause:
+        return [f"from_lesson: {lid!r} was not shown to you for this cause; cite only a lesson listed above, or none"]
+    if (seen["op"], seen["scope"]) != (reply.edit.op, scope):
+        return [f"from_lesson: {lid!r} is a lesson for {seen['op']} ({seen['scope']}), not for your edit "
+                f"{reply.edit.op} ({scope}); cite it only when your edit is that op in that scope"]
+    return []
 
 
 # box: proposer
@@ -244,7 +330,9 @@ def probe(r, n: int, wave: int, cand: dict, start: Snapshot, s0: list[str]) -> d
                                 "amoeba.params": json.dumps(p, default=str)[:2000]})
     r.run_step(r.steps[n], wave, dependencies(r.cfg.plan)[n],
                fixing={"kind": op, "rung": "D", "target": n, "params": p, "note": note, "scope": scope})
-    return measure(r, n, start, s0, t0, scope, op, p, {"because": reply.because, "reason": reply.reason},
+    return measure(r, n, start, s0, t0, scope, op, p, {"because": reply.because, "reason": reply.reason,
+                                                      **({"from_lesson": reply.from_lesson}
+                                                         if getattr(reply, "from_lesson", None) else {})},
                    rec, limited_ops=("work_around",))
 
 
@@ -335,7 +423,9 @@ def compose_probe(r, n: int, wave: int, cands: list[dict], start: Snapshot, s0: 
     from amoeba.interp.plan_runner import dependencies
     start.restore(for_probe=True)
     t0, rec = r.billed_now(), {}
-    parts = [{"scope": c["scope"], "op": c["reply"].edit.op, "params": c["reply"].edit.params} for c in cands]
+    parts = [{"scope": c["scope"], "op": c["reply"].edit.op, "params": c["reply"].edit.params,
+              **({"from_lesson": c["reply"].from_lesson} if getattr(c["reply"], "from_lesson", None) else {})}
+             for c in cands]
     notes = [r.apply_edit(n, c["reply"].edit.op, c["reply"].edit.params, c["change"], rec) for c in cands]
     r.i.trace.event("fix_try", {"amoeba.step": n, "amoeba.cause": cands[0].get("cause"), "amoeba.fix": "compose",
                                 "amoeba.rung": "D", "amoeba.scope": "compose", "amoeba.target": n,
@@ -395,6 +485,10 @@ def scoped_round(r, n: int, wave: int, d: dict) -> str:
     if len(scopes) == 2 and probes_affordable(r, n, lim) < 2:
         keep = "inv" if d["cause"] in INV_FIRST else "dom"
         scopes = {keep: scopes[keep]}
+    no_control = control_wanted(r, n, len(r.step_fixes(n)) + 1)
+    room = probe_room(r, n, lim)                         # D168: the control counts as a probe; the edits come first
+    if no_control is None and room < len(scopes) + 1:
+        no_control = f"the allowance holds only {room} probes: the edits come first"
     s0 = signal_names(r.artifacts[n]["meta"]) or list(d.get("signals") or [])
     cands = [dict(propose(r, n, d, s, ops), cause=d["cause"]) for s, ops in scopes.items()]
     valid = [c for c in cands if c["reply"] is not None]
@@ -402,7 +496,8 @@ def scoped_round(r, n: int, wave: int, d: dict) -> str:
            "candidates": [{"scope": c["scope"], "op": c["reply"].edit.op if c["reply"] else None,
                            "params": c["reply"].edit.params if c["reply"] else {},
                            "because": c["reply"].because if c["reply"] else "", "refusals": c["refusals"]}
-                          for c in cands], "probes": [], "pick": None, "pick_reason": "", "samples": 1}
+                          for c in cands], "probes": [], "pick": None, "pick_reason": "", "samples": 1,
+           "control": None, "control_skipped": no_control}
     rec = {"step": n, "try": len(r.step_fixes(n)) + 1, "cause": d["cause"], "kind": "scoped_round", "rung": "D",
            "target": n, "params": {}, "evidence": d["evidence"][:4], "round": rnd,
            "proposer": [x for c in cands for x in c["replies"]]}
@@ -418,6 +513,10 @@ def scoped_round(r, n: int, wave: int, d: dict) -> str:
     plan = [c for c in valid if c["reply"].edit.op in PLAN_OPS]
     probeable = [c for c in valid if c["reply"].edit.op not in PLAN_OPS]
     start = Snapshot.take(r, n)
+    if probeable and no_control is None:                 # D168: no edit, same start; never picked
+        rnd["control"] = control_probe(r, n, wave, start, s0)
+    elif not probeable:
+        rnd["control_skipped"] = "no edit to compare"
     for c in probeable:
         rnd["probes"].append(probe(r, n, wave, c, start, s0))
         if cfg.get("stop_on_first_done") and rnd["probes"][-1]["status"] == "done":

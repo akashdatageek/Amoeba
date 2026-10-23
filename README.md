@@ -602,6 +602,57 @@ flags>` never runs during a task. It works in five steps:
 
 Design: `docs/design/D166_promote.md`.
 
+## Fixes to the lessons and the outer loop (D167–D172)
+
+A review of the lesson library and the outer loop (main @ 9f1fb29) found six places where the evidence or the test was weaker than it looked. Each fix is general.
+
+**D167: a lesson's counts are about that lesson (Oct 22).**
+- **Families.** (cause, op, scope) is a *family*. It counts every verdict, for reports only.
+- **Lessons.** Each lesson the reflector writes is its own entry (`<family>__L<k>`) with its own text, status and counts. Its text never changes: new text is a new, unreviewed lesson.
+- **Evidence.** A lesson gains evidence only when it is used: the round that wrote it, then any probe whose proposer was shown it and named it in `from_lesson`. Plain code refuses a citation that was not shown for this cause or whose op or scope differs.
+- **Readers.** Retrieval, promotion and `python -m scripts.lessons approve|reject` work on lessons. An old library is migrated when it is opened.
+
+Design: `docs/design/D167_lesson_identity.md`.
+
+**D168: "helped" is measured against a control (Oct 22).**
+- **The control.** A scoped round adds a control probe: the same starting state, no edit, the step re-run once, measured and undone. It is never picked and counts as a probe for the allowance; when the allowance is short the edits come first.
+- **Helped.** An edit helped only when it ends done and the control did not, or it cleared a signal the control did not clear and added none the control did not add. Doing as well as the control is no effect.
+- **No control.** Without a control the verdict is `uncontrolled`: a lesson keeps it apart, and promotion ignores it.
+- **The setting.** `adapt.yaml probe.control`: `auto` (always with `--lessons-write on`, the default, else off), `always`, `sampled` (with `control_rate`) or `off`.
+
+Design: `docs/design/D168_control_probe.md`.
+
+**D169: planner-rule changes are tested with real planning (Oct 22).** The changed arm used to reuse the current arm's plan, so the Planner never saw a promoted planner rule.
+- **Planner rules.** A `planner_rule` change now runs both arms with fresh plans (`stage_e --fresh-plans`) on `promote.planner_seeds` seeds per task (default 5).
+- **Other kinds.** `tool_guidance` and `reorder_allowed_edits` keep the shared draft.
+- **Report.** It states the mode and why.
+- **Refusal.** A planner rule is refused before any run unless the arms draft with `--draft-prompts d24`, the only drafting prompts with the lessons slot.
+
+Design: `docs/design/D169_planner_rule_arms.md`.
+
+**D170: the accept rule needs more than "average went up" (Oct 22).** Runs are compared in pairs (the same task and seed in both arms). A change is accepted only if all of these hold:
+- the mean delta is at least `promote.min_delta` (default 0.05);
+- the changed arm wins more than twice as many pairs as it loses;
+- no task drops more than 0.05;
+- the step-contract pass rate does not fall.
+
+The report lists every pair, with the wins, losses, ties and the mean delta. Design: `docs/design/D170_paired_accept.md`.
+
+**D171: real scorers (Oct 22).** A task's `sim.scorers` (with weights) may name:
+- **`answer_key`**: numbers with a tolerance and exact strings, from `<judge_set>_keys/<task>.json`;
+- **`hidden_tests`**: a pytest folder in `<judge_set>_hidden/<task>/`, never given to the team, run next to a copy of the delivered code; the score is the share passed;
+- **`files`**: plain-code checks on the delivered files: exists, csv rows, live xlsx formulas, pdf pages, an image;
+- **`rubric`**: a fixed grader prompt and model (`amoeba/eval/judge.yaml`: gemma-4-31b, temperature 0, never the team's client); the score is the median of 3 calls.
+
+The keys, the hidden tests, the grader prompt and `judge.yaml` are all in the judge hash. A task whose files include its own key is refused. Design: `docs/design/D171_scorers.md`.
+
+**D172: Box 4's scoped round must not fall back silently (Oct 22).** With local tools in the OpenShell sandbox, a probe's files cannot be undone, so the scoped round falls back to single.
+- **Preflight** now reports the proposer mode a run will actually get.
+- **The refusal.** `run_task` refuses `--lessons-write on` (its default with adapt on) when the round would fall back, unless you pass `--allow-single-learning`.
+- **The runner container.** `scripts/vm/` holds a throwaway runner container: `docker build -f scripts/vm/Dockerfile -t amoeba-runner:local .`, then `scripts/vm/run.sh <out-dir> "<command>"`. Only the output folder is mounted, the keys are passed by name from the environment, and local tools run in-process (`AMOEBA_SANDBOX=1`, `--local-tools-mode inprocess`).
+
+Design: `docs/design/D172_runner_container.md`.
+
 ## Fault injection (D119, test-only)
 
 Stage E shows whether stuck steps recover, not whether the watch names the right cause. `--inject-fault

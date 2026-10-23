@@ -13,7 +13,7 @@ from amoeba.adapt.evidence import EvidenceLog
 
 ROUNDS = "rounds.jsonl"
 PROBE_KEYS = ("scope", "op", "params", "status", "limited", "cleared", "kept", "new", "tokens", "turns", "samples",
-              "composed_of")
+              "composed_of", "from_lesson")
 
 
 # box: rounds
@@ -32,6 +32,9 @@ def round_row(r, n: int, rnd: dict, mode: str, outcome: str) -> dict:
             "edits": [{"scope": c["scope"], "op": c["op"], "params": c.get("params") or {},
                        "because": c.get("because") or ""} for c in rnd.get("candidates") or [] if c.get("op")],
             "probes": [{k: p[k] for k in PROBE_KEYS if k in p} for p in rnd.get("probes") or []],
+            "control": {k: v for k, v in rnd["control"].items() if k in PROBE_KEYS} if rnd.get("control") else None,
+            "control_skipped": rnd.get("control_skipped") or (                     # D168
+                "the single rung runs no control" if mode == "single" and not rnd.get("control") else None),
             "pick": rnd.get("pick"), "pick_reason": rnd.get("pick_reason") or "", "base": rnd.get("base"),
             "flags": {k: rnd[k] for k in ("complementary", "shared_failure") if k in rnd},
             "step_status": status, "outcome": outcome}
@@ -47,12 +50,12 @@ def write_round(r, row: dict) -> dict:
             fh.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
         r.log_event("round", row)
     r.rounds.append(row)
-    from amoeba.adapt.lessons import key_of, learn_from_round
-    for p in row["probes"]:                              # D164: a shown lesson's edit that ended done
-        k = key_of(row["cause"], p["op"], p["scope"])
-        if p.get("status") == "done" and k in getattr(r, "lessons_shown", []) and \
-                not any(u["id"] == k and u["step"] == row["step"] for u in r.lessons_used):
-            r.lessons_used.append({"id": k, "step": row["step"]})
+    from amoeba.adapt.lessons import learn_from_round
+    for p in row["probes"]:                              # D164/D167: a shown lesson the probe's edit cited
+        for part in p.get("composed_of") or [p]:
+            k = part.get("from_lesson")
+            if k and not any(u["id"] == k and u["step"] == row["step"] for u in r.lessons_used):
+                r.lessons_used.append({"id": k, "step": row["step"], "status": p.get("status")})
     out = learn_from_round(r, row)                       # D163: off unless --lessons-write on
     if out["verdicts"] or out["skipped"]:
         r.learned.append({"step": row["step"], **out})

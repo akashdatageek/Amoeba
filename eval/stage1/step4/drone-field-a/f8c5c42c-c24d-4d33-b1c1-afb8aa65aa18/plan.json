@@ -1,0 +1,1960 @@
+{
+  "created_roles": [
+    {
+      "name": "Remote Sensing Analyst",
+      "description": "Precision-agriculture analyst who has processed many drone multispectral datasets. Careful about integer overflow, nodata, zone geometry and axis orientation, and produces clean map and table deliverables.",
+      "tools": [],
+      "suggestions": "",
+      "prompt": "You are a senior remote-sensing analyst. Work in the sandbox with Python. Turn 1: load inputs/red.png and inputs/nir.png (PIL), print mode, shape, dtype, min/max; if RGB/RGBA check the channels are identical and take one; if floats in 0-1 note it and rescale; confirm shape (60,90) for both. Turn 2: in ONE script cast to float64 (never subtract uint8 arrays), compute ndvi=(nir-red)/(nir+red), mask denominator==0 as NaN and count them. Orientation: x runs east along columns from the west edge, y runs south along rows from the north edge, so row 0 is north. Zone slices (rows,cols): Z1 [0:30,0:30], Z2 [0:30,30:60], Z3 [0:30,60:90], Z4 [30:60,0:30], Z5 [30:60,30:60], Z6 [30:60,60:90]. Use nanmean for zone and field means. Stressed = unrounded mean < 0.35; flag any zone within 0.0005 of 0.35. Write zones.csv with header exactly zone,mean_ndvi,stressed (4 dp, true/false, 6 rows). Plot ndvi_map.png with imshow(origin='upper'), colourbar labelled NDVI, boundaries at x=30,60 and y=30, labels Z1..Z6, axes in metres (x east, y south), dpi>=100. Save results.json. Turn 3: re-read the files, confirm the png exists and print a markdown table. Final answer: the table, the field mean, the stressed list, any flags, and one sentence stating the orientation used (x east along columns, y south along rows).",
+      "missing_tools": [
+        "Bash (Python 3 with numpy/matplotlib/PIL)",
+        "Read",
+        "Write"
+      ],
+      "is_summariser": false,
+      "seniority": "senior",
+      "goal": "Produce correct per-pixel NDVI, zone and field means, the stressed-zone list, ndvi_map.png and zones.csv, with the orientation convention applied correctly.",
+      "responsibilities": [
+        "Inspect both PNGs (mode, shape, dtype, range, channels) and confirm they are 90x60 and aligned",
+        "Compute NDVI in float64 and handle zero denominators",
+        "Apply the six 30x30 zone slices with columns = x east and rows = y south",
+        "Compute the six zone means and the field mean and apply the 0.35 threshold",
+        "Write ndvi_map.png, zones.csv and results.json"
+      ],
+      "skills": [
+        "NumPy/Python raster maths",
+        "NDVI interpretation",
+        "matplotlib mapping",
+        "zonal statistics"
+      ],
+      "inputs": [
+        "inputs/red.png",
+        "inputs/nir.png"
+      ],
+      "outputs": [
+        {
+          "artifact": "zones.csv",
+          "format": "csv with header zone,mean_ndvi,stressed; 6 rows Z1..Z6; mean to 4 decimals; stressed true/false"
+        },
+        {
+          "artifact": "ndvi_map.png",
+          "format": "png NDVI heatmap with colourbar, zone grid and labels, axes in metres, north at top"
+        },
+        {
+          "artifact": "results.json",
+          "format": "json: zone means (full precision and 4 dp), field mean, stressed list, image shape, zero-denominator count, near-threshold flags"
+        },
+        {
+          "artifact": "analysis report",
+          "format": "markdown table of zone means plus field mean, stressed list, and one line stating the orientation (x east along columns, y south along rows)"
+        }
+      ],
+      "success_criteria": [
+        "Arrays computed as float, no uint8 overflow",
+        "Shape (60,90) confirmed",
+        "Field mean equals the mean of the zone means within rounding",
+        "Stressed list matches the 0.35 rule on unrounded values",
+        "Map has row 0 (north) at the top"
+      ],
+      "constraints": [
+        "Never write into inputs/",
+        "At most 5 turns, so combine work into few scripts",
+        "Row 0 is the north edge and column 0 is the west edge; use imshow origin='upper'"
+      ],
+      "covers": [
+        "R1",
+        "R2",
+        "R4",
+        "R5",
+        "R7",
+        "R8"
+      ]
+    },
+    {
+      "name": "Route Optimisation Analyst",
+      "description": "Operations-research engineer who plans drone and vehicle routes. Uses exact search on small instances and reports lengths and margins precisely.",
+      "tools": [
+        "calc"
+      ],
+      "suggestions": "",
+      "prompt": "You are a senior route-optimisation engineer. Read results.json for the stressed zone list. Coordinates are metres with x east along the columns from the west edge and y south along the rows from the north edge. Centres: Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45); depot (0,0). In one Python script use itertools.permutations over the stressed zones, compute each closed tour length (depot -> zones -> depot) with math.hypot, sort, and print the best and the runner-up (note ties within 0.05 m; a reversed tour has equal length, so report one direction and mention it). Edge cases: none stressed -> 0 m; one -> out and back. margin = 260 - length; state 'within the limit by X m' or 'exceeds the limit by X m'. Round only the final figures to 1 decimal and note any 0.1 rounding difference between the leg sum and the total. Save route.json. Final answer: a markdown table of legs, the order as Home -> Zx -> ... -> Home, the total length, and the battery verdict containing the words 260 and margin.",
+      "missing_tools": [
+        "Bash (Python 3)",
+        "Read",
+        "Write"
+      ],
+      "is_summariser": false,
+      "seniority": "senior",
+      "goal": "Give the exact shortest closed tour from (0,0) over all stressed zone centres, with its length and the battery verdict.",
+      "responsibilities": [
+        "Read the stressed zone list from results.json",
+        "Map zones to centres in (x east, y south) metres",
+        "Enumerate all permutations and select the shortest closed tour",
+        "Report order, leg distances, total to 1 decimal and the margin against 260 m",
+        "Report ties and the runner-up"
+      ],
+      "skills": [
+        "TSP exact search",
+        "Euclidean geometry",
+        "clear numerical reporting"
+      ],
+      "inputs": [
+        "results.json from step 1 (stressed zones)"
+      ],
+      "outputs": [
+        {
+          "artifact": "route table",
+          "format": "markdown table: leg, from, to, distance m; with total and battery margin"
+        },
+        {
+          "artifact": "route.json",
+          "format": "json: order, legs, total_m, within_limit, margin_m"
+        }
+      ],
+      "success_criteria": [
+        "All permutations enumerated",
+        "Closed tour starts and ends at (0,0)",
+        "Length to 1 decimal; margin = 260 - length with explicit within/exceeds wording"
+      ],
+      "constraints": [
+        "Battery 260 m",
+        "Centres: Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45) with x east and y south",
+        "Straight-line legs only",
+        "Handle 0 or 1 stressed zones"
+      ],
+      "covers": [
+        "R3",
+        "R7"
+      ]
+    },
+    {
+      "name": "Independent Verifier",
+      "description": "QA data scientist who re-derives results with a different code path and checks deliverable files against the spec. Does not reuse the producers' scripts.",
+      "tools": [
+        "calc"
+      ],
+      "suggestions": "",
+      "prompt": "You are an independent verifier; do not reuse earlier scripts. Turn 1: read the PNGs by a different route than the analyst (e.g. PIL getdata() into pure Python lists), compute NDVI per pixel with plain float division, and compute six zone means and the field mean by explicit loops over zone bounds (rows 0-29/30-59, cols 0-29/30-59/60-89; rows = y south, columns = x east). Compare with zones.csv and results.json at 4 dp; check zero-denominator pixels and values within 0.0005 of 0.35. Turn 2: validate zones.csv (header zone,mean_ndvi,stressed; 6 rows; Z1-Z3 north, Z4-Z6 south; boolean agrees with the 0.35 rule) and ndvi_map.png (opens, not constant, north at top: compare the NW zone's pixel appearance with the data if feasible). Turn 3: check the route independently: distance matrix for the stressed zones, enumerate candidate orders, check route.json length within 0.05 m and the margin to 260 m. Final answer: a table of checks and a last line 'VERDICT: PASS' or 'VERDICT: FAIL' followed by discrepancies.",
+      "missing_tools": [
+        "Bash (Python 3)",
+        "Read"
+      ],
+      "is_summariser": false,
+      "seniority": "senior",
+      "goal": "Confirm or refute every number and file before the summary is written.",
+      "responsibilities": [
+        "Recompute NDVI and zone means independently",
+        "Check zones.csv format, PNG validity and north-at-top orientation, zone layout",
+        "Re-derive the route with calc or Python for the top candidates",
+        "Return a clear verdict with discrepancies listed"
+      ],
+      "skills": [
+        "independent recomputation",
+        "numerical tolerance checks",
+        "file validation"
+      ],
+      "inputs": [
+        "inputs/red.png and inputs/nir.png",
+        "zones.csv, ndvi_map.png, results.json from step 1",
+        "route.json from step 2"
+      ],
+      "outputs": [
+        {
+          "artifact": "verification report",
+          "format": "markdown: check table (check, expected, found, pass/fail) and a final line 'VERDICT: PASS' or 'VERDICT: FAIL' with fixes"
+        }
+      ],
+      "success_criteria": [
+        "Zone means agree to 4 dp via a different implementation",
+        "Stressed list matches the rule",
+        "CSV has 6 rows and the right columns",
+        "PNG opens, is not blank and has north at the top",
+        "Route length agrees within 0.05 m"
+      ],
+      "constraints": [
+        "Do not modify deliverables; report problems",
+        "At most 5 turns"
+      ],
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R7",
+        "R8"
+      ]
+    },
+    {
+      "name": "Delivery Summariser",
+      "description": "Technical writer who assembles verified results into a concise summary without adding new analysis.",
+      "tools": [],
+      "suggestions": "",
+      "prompt": "You assemble the final deliverable using only numbers in the analyst report, route table and verification report. Write a short memo with headings: Results (table: zone Z1..Z6, mean NDVI 4 dp, stressed yes/no, plus the whole-field mean), Stressed zones (list), Scouting route (order as Home -> ... -> Home, length in m to 1 decimal, battery limit 260 m, within the limit by X m or exceeding by X m), Assumptions (zone mean = mean of per-pixel NDVI; 30 m x 30 m zones in a 3 x 2 grid numbered row by row; x east along columns, y south along rows; centres at (15,15) etc.; straight horizontal legs; NaN or near-threshold notes), Deliverables (ndvi_map.png, zones.csv). Do not compute anything new. Mention any verifier caveat. Keep it under about 300 words besides the table.",
+      "missing_tools": [],
+      "is_summariser": true,
+      "seniority": "senior",
+      "goal": "Produce the short final summary from verified outputs only.",
+      "responsibilities": [
+        "Assemble zone and field means, stressed zones, route and battery verdict into a short memo",
+        "State assumptions and list the deliverable files",
+        "Carry over any verifier caveats"
+      ],
+      "skills": [
+        "concise technical writing"
+      ],
+      "inputs": [
+        "Analyst report, route table, verification report"
+      ],
+      "outputs": [
+        {
+          "artifact": "final summary",
+          "format": "memo with headings: Results, Stressed zones, Scouting route, Assumptions, Deliverables"
+        }
+      ],
+      "success_criteria": [
+        "Every number is copied from verified outputs",
+        "R1-R6 are visibly answered",
+        "Under about 300 words plus one table"
+      ],
+      "constraints": [
+        "No new calculations",
+        "If the verdict is FAIL, present corrected values or flag the issue"
+      ],
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8"
+      ]
+    }
+  ],
+  "plan": [
+    {
+      "index": 0,
+      "agent_names": [
+        "Remote Sensing Analyst"
+      ],
+      "text": "[Remote Sensing Analyst]: Compute NDVI, zone means, stressed zones; write map and CSV",
+      "title": "Compute NDVI, zone means, stressed zones; write map and CSV",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R4",
+        "R5",
+        "R7",
+        "R8"
+      ],
+      "depends_on": [],
+      "do": "1) Inspect red.png and nir.png (mode, shape, dtype, range, 60x90 alignment). 2) Cast to float64, compute per-pixel NDVI, mask zero denominators. 3) Compute the six zone means with the fixed slices (columns = x east, rows = y south) and the field mean. 4) Flag stressed zones (<0.35, unrounded) and near-threshold cases. 5) Write ndvi_map.png (colourbar, zone grid and labels, north at top), zones.csv (zone,mean_ndvi,stressed; 6 rows) and results.json. 6) Report the table, field mean, stressed list and an orientation line.",
+      "output": "table: zone x mean NDVI (4 dp) x stressed, plus the field mean, the stressed list and an orientation note (x east, y south); files zones.csv, ndvi_map.png, results.json",
+      "done_when": "zones.csv has 6 rows with header zone,mean_ndvi,stressed; ndvi_map.png exists and is a valid image; the report lists all six zone means and the field mean to 4 dp; the stressed zones are listed (or none stated); the orientation note is present.",
+      "checks": [
+        {
+          "name": "file_exists",
+          "params": {
+            "kind": "csv",
+            "name": "zones.csv"
+          },
+          "covers": [
+            "R5"
+          ]
+        },
+        {
+          "name": "csv_columns",
+          "params": {
+            "names": [
+              "zone",
+              "mean_ndvi",
+              "stressed"
+            ]
+          },
+          "covers": [
+            "R5"
+          ]
+        },
+        {
+          "name": "csv_rows_min",
+          "params": {
+            "n": 6
+          },
+          "covers": [
+            "R1",
+            "R5",
+            "R8"
+          ]
+        },
+        {
+          "name": "file_exists",
+          "params": {
+            "kind": "png",
+            "name": "ndvi_map.png"
+          },
+          "covers": [
+            "R4"
+          ]
+        },
+        {
+          "name": "image_exists",
+          "params": {
+            "kind": "png",
+            "min_px": 60
+          },
+          "covers": [
+            "R4"
+          ]
+        },
+        {
+          "name": "output_mentions",
+          "params": {
+            "terms": [
+              "east",
+              "south",
+              "stressed"
+            ]
+          },
+          "covers": [
+            "R2",
+            "R7"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "agent_names": [
+        "Route Optimisation Analyst"
+      ],
+      "text": "[Route Optimisation Analyst]: Shortest closed scouting route and battery check",
+      "title": "Shortest closed scouting route and battery check",
+      "kind": "work",
+      "covers": [
+        "R3",
+        "R7"
+      ],
+      "depends_on": [
+        1
+      ],
+      "do": "1) Read the stressed zones from results.json. 2) Map them to centres (x east, y south, metres). 3) Enumerate all permutations with depot (0,0) and compute closed tour lengths. 4) Pick the shortest (report ties and the reverse). 5) Give legs, total to 1 decimal and margin = 260 - length, stating within or exceeding. 6) Save route.json.",
+      "output": "table: leg x from x to x distance m, with total length, order and battery margin",
+      "done_when": "The route order and total length (1 decimal) are stated; all permutations were enumerated; the battery verdict gives an explicit margin in metres.",
+      "checks": [
+        {
+          "name": "output_has_table",
+          "params": {
+            "min_rows": 2
+          },
+          "covers": [
+            "R3"
+          ]
+        },
+        {
+          "name": "output_mentions",
+          "params": {
+            "terms": [
+              "260",
+              "margin"
+            ]
+          },
+          "covers": [
+            "R3",
+            "R7"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "agent_names": [
+        "Independent Verifier"
+      ],
+      "text": "[Independent Verifier]: Independently verify numbers, files and route",
+      "title": "Independently verify numbers, files and route",
+      "kind": "verify",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R7",
+        "R8"
+      ],
+      "depends_on": [
+        1,
+        2
+      ],
+      "do": "1) Recompute NDVI and zone/field means from the raw PNGs with a different implementation and compare at 4 dp. 2) Check the stressed list against the 0.35 rule and near-threshold cases. 3) Validate zones.csv, the zone layout (Z1-Z3 north, Z4-Z6 south) and ndvi_map.png (opens, not blank, north at top). 4) Recompute the route length and margin and the best alternative. 5) Issue the verdict.",
+      "output": "table: check x expected x found x pass/fail, ending with 'VERDICT: PASS' or 'VERDICT: FAIL' and discrepancies",
+      "done_when": "Every number in R1-R3 was independently reproduced or a discrepancy is listed; orientation and zone layout were checked; the verdict line is present.",
+      "checks": [
+        {
+          "name": "verdict_present",
+          "params": {},
+          "covers": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5",
+            "R7",
+            "R8"
+          ]
+        },
+        {
+          "name": "output_has_table",
+          "params": {
+            "min_rows": 5
+          },
+          "covers": [
+            "R1",
+            "R2",
+            "R3"
+          ]
+        }
+      ]
+    },
+    {
+      "index": 3,
+      "agent_names": [
+        "Delivery Summariser"
+      ],
+      "text": "[Delivery Summariser]: Assemble the final short summary",
+      "title": "Assemble the final short summary",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8"
+      ],
+      "depends_on": [
+        1,
+        2,
+        3
+      ],
+      "do": "Write the short memo from verified outputs: zone and field means table, stressed zones, route order, length, battery verdict and margin, assumptions (including the 3 x 2 zone grid and axis convention), and the delivered files. Use corrected values if the verifier found errors.",
+      "output": "memo: Results, Stressed zones, Scouting route, Assumptions, Deliverables",
+      "done_when": "The memo has a table of all six zone means and the field mean; it lists the stressed zones; it gives the route with length and margin; it names ndvi_map.png and zones.csv; it adds no new numbers.",
+      "checks": [
+        {
+          "name": "output_has_table",
+          "params": {
+            "min_rows": 6
+          },
+          "covers": [
+            "R1",
+            "R2",
+            "R6",
+            "R8"
+          ]
+        },
+        {
+          "name": "output_mentions",
+          "params": {
+            "terms": [
+              "Z1",
+              "Z6",
+              "stressed",
+              "260",
+              "ndvi_map.png",
+              "zones.csv",
+              "east",
+              "south"
+            ]
+          },
+          "covers": [
+            "R2",
+            "R3",
+            "R4",
+            "R5",
+            "R6",
+            "R7"
+          ]
+        }
+      ]
+    }
+  ],
+  "rounds_used": 2,
+  "consensus": false,
+  "role_feedback": "No SuggestionsNo Suggestions",
+  "plan_feedback": "No SuggestionsNo Suggestions",
+  "raw_draft": "## Requirements:\nR1: Compute NDVI = (NIR - Red) / (NIR + Red) per pixel from inputs/red.png and inputs/nir.png (8-bit, aligned bands), and give the mean NDVI of each of the six zones and of the whole field to 4 decimals.\nR2: List the stressed zones: a zone is stressed when its mean NDVI is below 0.35.\nR3: Find the shortest route for the scouting drone: it takes off from the NW corner (x 0, y 0), flies in straight lines over the centre of every stressed zone and lands back at that corner. Give the order and the length in metres to 1 decimal, and say whether it is within the 260 m battery limit and by how much.\nR4: Deliver ndvi_map.png, the per-pixel NDVI map, with a colourbar and ideally zone boundaries and labels, north at the top.\nR5: Deliver zones.csv with one row per zone and columns: zone, mean NDVI, stressed.\nR6: Deliver a short summary covering the zone and field means, the stressed zones, the route and the battery verdict.\nR7: Apply the coordinate convention throughout (map, zone slices, route): x runs east along the columns from the west edge and y runs south along the rows from the north edge. One pixel is 1 m x 1 m, and the origin (0,0) is the NW corner.\nR8: Split the 90 x 60 pixel field into six 30 m x 30 m management zones in a 3 x 2 grid, numbered row by row: Z1, Z2, Z3 on the north row (west to east) and Z4, Z5, Z6 on the south row.\n\n## Givens and Assumptions:\n- Inputs: inputs/red.png and inputs/nir.png, red and near-infrared bands, 8-bit, aligned, of a 90 x 60 pixel drone image of a field (90 columns, 60 rows).\n- One pixel is 1 m x 1 m, so the field is 90 m x 60 m and has 90 x 60 = 5400 pixels. x runs east along the columns from the west edge; y runs south along the rows from the north edge; origin (0,0) is the NW corner.\n- Six zones of 30 m x 30 m (900 pixels each, 6 x 900 = 5400) in a 3 x 2 grid (3 columns, 2 rows), numbered row by row. Z1 x0-30,y0-30; Z2 x30-60,y0-30; Z3 x60-90,y0-30; Z4 x0-30,y30-60; Z5 x30-60,y30-60; Z6 x60-90,y30-60. Pixel slices: Z1 rows 0:30,cols 0:30; Z2 rows 0:30,cols 30:60; Z3 rows 0:30,cols 60:90; Z4 rows 30:60,cols 0:30; Z5 rows 30:60,cols 30:60; Z6 rows 30:60,cols 60:90.\n- Zone centres in metres: Z1 (15,15), Z2 (45,15), Z3 (75,15), Z4 (15,45), Z5 (45,45), Z6 (75,45).\n- Distances from (0,0) to the centres: Z1 sqrt(450)=21.2; Z2 sqrt(2250)=47.4; Z3 sqrt(5850)=76.5; Z4 sqrt(2250)=47.4; Z5 sqrt(4050)=63.6; Z6 sqrt(7650)=87.5. Neighbouring centres are 30 m apart (diagonal 42.4).\n- Required precision: zone and field mean NDVI to 4 decimals; route length to 1 decimal.\n- Stress threshold 0.35 (stressed if mean NDVI < 0.35). Battery 260 m. The tour search has at most 6! = 720 permutations, so brute force is exact.\n- Assumption: the zone mean is the arithmetic mean of per-pixel NDVI over the zone's 900 pixels (not the NDVI of the mean bands). The field mean is the mean over all 5400 pixels.\n- Assumption: pixel i spans [i,i+1] m, so (0,0) is the outer corner of pixel (0,0) and zone centres are exact multiples of 15 m.\n- Assumption: pixels with NIR+Red = 0 are excluded from the means and counted. If there are none, this is moot.\n- Assumption: the stress test uses the unrounded mean. Any zone mean within 0.0005 of 0.35 is flagged.\n- Assumption: flight length is horizontal straight-line distance only, with no wind, climb, detour or reserve. The drone starts and ends at (0,0).\n- Assumption: if no zone is stressed the route is 0 m. If one is stressed the route is out-and-back (2 x distance).\n\n## Open Questions:\n- question: Is the zone mean the mean of per-pixel NDVI or the NDVI of the mean bands? | assumption: Mean of per-pixel NDVI, because the task defines NDVI per pixel and then asks for the mean NDVI.\n- question: How should NIR+Red = 0 pixels be handled? | assumption: Excluded as NaN from the means and reported; probably none exist.\n- question: Where exactly is a zone centre relative to the pixel grid? | assumption: At the geometric centre in metre coordinates, (15,15) etc., with the origin at the outer NW corner.\n\n## Selected Roles List:\n```\n[]\n```\n\n## Created Roles List:\n```\n{\"name\": \"Remote Sensing Analyst\", \"seniority\": \"senior\", \"description\": \"Precision-agriculture analyst who has processed many drone multispectral datasets. Careful about integer overflow, nodata, zone geometry and axis orientation, and produces clean map and table deliverables.\", \"goal\": \"Produce correct per-pixel NDVI, zone and field means, the stressed-zone list, ndvi_map.png and zones.csv, with the orientation convention applied correctly.\", \"responsibilities\": [\"Inspect both PNGs (mode, shape, dtype, range, channels) and confirm they are 90x60 and aligned\", \"Compute NDVI in float64 and handle zero denominators\", \"Apply the six 30x30 zone slices with columns = x east and rows = y south\", \"Compute the six zone means and the field mean and apply the 0.35 threshold\", \"Write ndvi_map.png, zones.csv and results.json\"], \"skills\": [\"NumPy/Python raster maths\", \"NDVI interpretation\", \"matplotlib mapping\", \"zonal statistics\"], \"tools\": [\"Bash (Python 3 with numpy/matplotlib/PIL)\", \"Read\", \"Write\"], \"inputs\": [\"inputs/red.png\", \"inputs/nir.png\"], \"outputs\": [{\"artifact\": \"zones.csv\", \"format\": \"csv with header zone,mean_ndvi,stressed; 6 rows Z1..Z6; mean to 4 decimals; stressed true/false\"}, {\"artifact\": \"ndvi_map.png\", \"format\": \"png NDVI heatmap with colourbar, zone grid and labels, axes in metres, north at top\"}, {\"artifact\": \"results.json\", \"format\": \"json: zone means (full precision and 4 dp), field mean, stressed list, image shape, zero-denominator count, near-threshold flags\"}, {\"artifact\": \"analysis report\", \"format\": \"markdown table of zone means plus field mean, stressed list, and one line stating the orientation (x east along columns, y south along rows)\"}], \"success_criteria\": [\"Arrays computed as float, no uint8 overflow\", \"Shape (60,90) confirmed\", \"Field mean equals the mean of the zone means within rounding\", \"Stressed list matches the 0.35 rule on unrounded values\", \"Map has row 0 (north) at the top\"], \"constraints\": [\"Never write into inputs/\", \"At most 5 turns, so combine work into few scripts\", \"Row 0 is the north edge and column 0 is the west edge; use imshow origin='upper'\"], \"covers\": [\"R1\", \"R2\", \"R4\", \"R5\", \"R7\", \"R8\"], \"is_summariser\": false, \"prompt\": \"You are a senior remote-sensing analyst. Work in the sandbox with Python. Turn 1: load inputs/red.png and inputs/nir.png (PIL), print mode, shape, dtype, min/max; if RGB/RGBA check the channels are identical and take one; if floats in 0-1 note it and rescale; confirm shape (60,90) for both. Turn 2: in ONE script cast to float64 (never subtract uint8 arrays), compute ndvi=(nir-red)/(nir+red), mask denominator==0 as NaN and count them. Orientation: x runs east along columns from the west edge, y runs south along rows from the north edge, so row 0 is north. Zone slices (rows,cols): Z1 [0:30,0:30], Z2 [0:30,30:60], Z3 [0:30,60:90], Z4 [30:60,0:30], Z5 [30:60,30:60], Z6 [30:60,60:90]. Use nanmean for zone and field means. Stressed = unrounded mean < 0.35; flag any zone within 0.0005 of 0.35. Write zones.csv with header exactly zone,mean_ndvi,stressed (4 dp, true/false, 6 rows). Plot ndvi_map.png with imshow(origin='upper'), colourbar labelled NDVI, boundaries at x=30,60 and y=30, labels Z1..Z6, axes in metres (x east, y south), dpi>=100. Save results.json. Turn 3: re-read the files, confirm the png exists and print a markdown table. Final answer: the table, the field mean, the stressed list, any flags, and one sentence stating the orientation used (x east along columns, y south along rows).\"},\n{\"name\": \"Route Optimisation Analyst\", \"seniority\": \"senior\", \"description\": \"Operations-research engineer who plans drone and vehicle routes. Uses exact search on small instances and reports lengths and margins precisely.\", \"goal\": \"Give the exact shortest closed tour from (0,0) over all stressed zone centres, with its length and the battery verdict.\", \"responsibilities\": [\"Read the stressed zone list from results.json\", \"Map zones to centres in (x east, y south) metres\", \"Enumerate all permutations and select the shortest closed tour\", \"Report order, leg distances, total to 1 decimal and the margin against 260 m\", \"Report ties and the runner-up\"], \"skills\": [\"TSP exact search\", \"Euclidean geometry\", \"clear numerical reporting\"], \"tools\": [\"Bash (Python 3)\", \"calc\", \"Read\", \"Write\"], \"inputs\": [\"results.json from step 1 (stressed zones)\"], \"outputs\": [{\"artifact\": \"route table\", \"format\": \"markdown table: leg, from, to, distance m; with total and battery margin\"}, {\"artifact\": \"route.json\", \"format\": \"json: order, legs, total_m, within_limit, margin_m\"}], \"success_criteria\": [\"All permutations enumerated\", \"Closed tour starts and ends at (0,0)\", \"Length to 1 decimal; margin = 260 - length with explicit within/exceeds wording\"], \"constraints\": [\"Battery 260 m\", \"Centres: Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45) with x east and y south\", \"Straight-line legs only\", \"Handle 0 or 1 stressed zones\"], \"covers\": [\"R3\", \"R7\"], \"is_summariser\": false, \"prompt\": \"You are a senior route-optimisation engineer. Read results.json for the stressed zone list. Coordinates are metres with x east along the columns from the west edge and y south along the rows from the north edge. Centres: Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45); depot (0,0). In one Python script use itertools.permutations over the stressed zones, compute each closed tour length (depot -> zones -> depot) with math.hypot, sort, and print the best and the runner-up (note ties within 0.05 m; a reversed tour has equal length, so report one direction and mention it). Edge cases: none stressed -> 0 m; one -> out and back. margin = 260 - length; state 'within the limit by X m' or 'exceeds the limit by X m'. Round only the final figures to 1 decimal and note any 0.1 rounding difference between the leg sum and the total. Save route.json. Final answer: a markdown table of legs, the order as Home -> Zx -> ... -> Home, the total length, and the battery verdict containing the words 260 and margin.\"},\n{\"name\": \"Independent Verifier\", \"seniority\": \"senior\", \"description\": \"QA data scientist who re-derives results with a different code path and checks deliverable files against the spec. Does not reuse the producers' scripts.\", \"goal\": \"Confirm or refute every number and file before the summary is written.\", \"responsibilities\": [\"Recompute NDVI and zone means independently\", \"Check zones.csv format, PNG validity and north-at-top orientation, zone layout\", \"Re-derive the route with calc or Python for the top candidates\", \"Return a clear verdict with discrepancies listed\"], \"skills\": [\"independent recomputation\", \"numerical tolerance checks\", \"file validation\"], \"tools\": [\"Bash (Python 3)\", \"calc\", \"Read\"], \"inputs\": [\"inputs/red.png and inputs/nir.png\", \"zones.csv, ndvi_map.png, results.json from step 1\", \"route.json from step 2\"], \"outputs\": [{\"artifact\": \"verification report\", \"format\": \"markdown: check table (check, expected, found, pass/fail) and a final line 'VERDICT: PASS' or 'VERDICT: FAIL' with fixes\"}], \"success_criteria\": [\"Zone means agree to 4 dp via a different implementation\", \"Stressed list matches the rule\", \"CSV has 6 rows and the right columns\", \"PNG opens, is not blank and has north at the top\", \"Route length agrees within 0.05 m\"], \"constraints\": [\"Do not modify deliverables; report problems\", \"At most 5 turns\"], \"covers\": [\"R1\", \"R2\", \"R3\", \"R4\", \"R5\", \"R7\", \"R8\"], \"is_summariser\": false, \"prompt\": \"You are an independent verifier; do not reuse earlier scripts. Turn 1: read the PNGs by a different route than the analyst (e.g. PIL getdata() into pure Python lists), compute NDVI per pixel with plain float division, and compute six zone means and the field mean by explicit loops over zone bounds (rows 0-29/30-59, cols 0-29/30-59/60-89; rows = y south, columns = x east). Compare with zones.csv and results.json at 4 dp; check zero-denominator pixels and values within 0.0005 of 0.35. Turn 2: validate zones.csv (header zone,mean_ndvi,stressed; 6 rows; Z1-Z3 north, Z4-Z6 south; boolean agrees with the 0.35 rule) and ndvi_map.png (opens, not constant, north at top: compare the NW zone's pixel appearance with the data if feasible). Turn 3: check the route independently: distance matrix for the stressed zones, enumerate candidate orders, check route.json length within 0.05 m and the margin to 260 m. Final answer: a table of checks and a last line 'VERDICT: PASS' or 'VERDICT: FAIL' followed by discrepancies.\"},\n{\"name\": \"Delivery Summariser\", \"seniority\": \"senior\", \"description\": \"Technical writer who assembles verified results into a concise summary without adding new analysis.\", \"goal\": \"Produce the short final summary from verified outputs only.\", \"responsibilities\": [\"Assemble zone and field means, stressed zones, route and battery verdict into a short memo\", \"State assumptions and list the deliverable files\", \"Carry over any verifier caveats\"], \"skills\": [\"concise technical writing\"], \"tools\": [], \"inputs\": [\"Analyst report, route table, verification report\"], \"outputs\": [{\"artifact\": \"final summary\", \"format\": \"memo with headings: Results, Stressed zones, Scouting route, Assumptions, Deliverables\"}], \"success_criteria\": [\"Every number is copied from verified outputs\", \"R1-R6 are visibly answered\", \"Under about 300 words plus one table\"], \"constraints\": [\"No new calculations\", \"If the verdict is FAIL, present corrected values or flag the issue\"], \"covers\": [\"R1\", \"R2\", \"R3\", \"R4\", \"R5\", \"R6\", \"R7\", \"R8\"], \"is_summariser\": true, \"prompt\": \"You assemble the final deliverable using only numbers in the analyst report, route table and verification report. Write a short memo with headings: Results (table: zone Z1..Z6, mean NDVI 4 dp, stressed yes/no, plus the whole-field mean), Stressed zones (list), Scouting route (order as Home -> ... -> Home, length in m to 1 decimal, battery limit 260 m, within the limit by X m or exceeding by X m), Assumptions (zone mean = mean of per-pixel NDVI; 30 m x 30 m zones in a 3 x 2 grid numbered row by row; x east along columns, y south along rows; centres at (15,15) etc.; straight horizontal legs; NaN or near-threshold notes), Deliverables (ndvi_map.png, zones.csv). Do not compute anything new. Mention any verifier caveat. Keep it under about 300 words besides the table.\"}\n```\n\n## Capability Requests:\n```\n{\"name\": \"python_interpreter\", \"kind\": \"tool\", \"for_role\": \"Remote Sensing Analyst\", \"what_it_does\": \"Runs Python 3 with numpy/PIL/matplotlib in the sandbox to read PNGs, compute NDVI and write files.\", \"input\": \"Python script\", \"output\": \"stdout and files in the workspace\", \"example_input\": \"import matplotlib.image as m; print(m.imread('inputs/red.png').shape)\", \"example_output\": \"(60, 90)\"},\n{\"name\": \"file_writing\", \"kind\": \"tool\", \"for_role\": \"Remote Sensing Analyst\", \"what_it_does\": \"Writes zones.csv, ndvi_map.png and results.json (and route.json for the route role) into the workspace.\", \"input\": \"file path and content\", \"output\": \"saved file\", \"example_input\": \"zones.csv with 6 rows\", \"example_output\": \"zones.csv written\"}\n```\n\n## Execution Plan:\n1. [Remote Sensing Analyst]: Compute NDVI, zone means, stressed zones; write map and CSV\n   kind: work\n   covers: R1, R2, R4, R5, R7, R8\n   depends_on: none\n   do: 1) Inspect red.png and nir.png (mode, shape, dtype, range, 60x90 alignment). 2) Cast to float64, compute per-pixel NDVI, mask zero denominators. 3) Compute the six zone means with the fixed slices (columns = x east, rows = y south) and the field mean. 4) Flag stressed zones (<0.35, unrounded) and near-threshold cases. 5) Write ndvi_map.png (colourbar, zone grid and labels, north at top), zones.csv (zone,mean_ndvi,stressed; 6 rows) and results.json. 6) Report the table, field mean, stressed list and an orientation line.\n   output: table: zone x mean NDVI (4 dp) x stressed, plus the field mean, the stressed list and an orientation note (x east, y south); files zones.csv, ndvi_map.png, results.json\n   done_when: zones.csv has 6 rows with header zone,mean_ndvi,stressed; ndvi_map.png exists and is a valid image; the report lists all six zone means and the field mean to 4 dp; the stressed zones are listed (or none stated); the orientation note is present.\n   checks: [{\"name\": \"file_exists\", \"params\": {\"kind\": \"csv\", \"name\": \"zones.csv\"}, \"covers\": [\"R5\"]}, {\"name\": \"csv_columns\", \"params\": {\"names\": [\"zone\", \"mean_ndvi\", \"stressed\"]}, \"covers\": [\"R5\"]}, {\"name\": \"csv_rows_min\", \"params\": {\"n\": 6}, \"covers\": [\"R1\", \"R5\", \"R8\"]}, {\"name\": \"file_exists\", \"params\": {\"kind\": \"png\", \"name\": \"ndvi_map.png\"}, \"covers\": [\"R4\"]}, {\"name\": \"image_exists\", \"params\": {\"kind\": \"png\", \"min_px\": 60}, \"covers\": [\"R4\"]}, {\"name\": \"output_mentions\", \"params\": {\"terms\": [\"east\", \"south\", \"stressed\"]}, \"covers\": [\"R2\", \"R7\"]}]\n2. [Route Optimisation Analyst]: Shortest closed scouting route and battery check\n   kind: work\n   covers: R3, R7\n   depends_on: 1\n   do: 1) Read the stressed zones from results.json. 2) Map them to centres (x east, y south, metres). 3) Enumerate all permutations with depot (0,0) and compute closed tour lengths. 4) Pick the shortest (report ties and the reverse). 5) Give legs, total to 1 decimal and margin = 260 - length, stating within or exceeding. 6) Save route.json.\n   output: table: leg x from x to x distance m, with total length, order and battery margin\n   done_when: The route order and total length (1 decimal) are stated; all permutations were enumerated; the battery verdict gives an explicit margin in metres.\n   checks: [{\"name\": \"output_has_table\", \"params\": {\"min_rows\": 2}, \"covers\": [\"R3\"]}, {\"name\": \"output_mentions\", \"params\": {\"terms\": [\"260\", \"margin\"]}, \"covers\": [\"R3\", \"R7\"]}]\n3. [Independent Verifier]: Independently verify numbers, files and route\n   kind: verify\n   covers: R1, R2, R3, R4, R5, R7, R8\n   depends_on: 1, 2\n   do: 1) Recompute NDVI and zone/field means from the raw PNGs with a different implementation and compare at 4 dp. 2) Check the stressed list against the 0.35 rule and near-threshold cases. 3) Validate zones.csv, the zone layout (Z1-Z3 north, Z4-Z6 south) and ndvi_map.png (opens, not blank, north at top). 4) Recompute the route length and margin and the best alternative. 5) Issue the verdict.\n   output: table: check x expected x found x pass/fail, ending with 'VERDICT: PASS' or 'VERDICT: FAIL' and discrepancies\n   done_when: Every number in R1-R3 was independently reproduced or a discrepancy is listed; orientation and zone layout were checked; the verdict line is present.\n   checks: [{\"name\": \"verdict_present\", \"params\": {}, \"covers\": [\"R1\", \"R2\", \"R3\", \"R4\", \"R5\", \"R7\", \"R8\"]}, {\"name\": \"output_has_table\", \"params\": {\"min_rows\": 5}, \"covers\": [\"R1\", \"R2\", \"R3\"]}]\n4. [Delivery Summariser]: Assemble the final short summary\n   kind: work\n   covers: R1, R2, R3, R4, R5, R6, R7, R8\n   depends_on: 1, 2, 3\n   do: Write the short memo from verified outputs: zone and field means table, stressed zones, route order, length, battery verdict and margin, assumptions (including the 3 x 2 zone grid and axis convention), and the delivered files. Use corrected values if the verifier found errors.\n   output: memo: Results, Stressed zones, Scouting route, Assumptions, Deliverables\n   done_when: The memo has a table of all six zone means and the field mean; it lists the stressed zones; it gives the route with length and margin; it names ndvi_map.png and zones.csv; it adds no new numbers.\n   checks: [{\"name\": \"output_has_table\", \"params\": {\"min_rows\": 6}, \"covers\": [\"R1\", \"R2\", \"R6\", \"R8\"]}, {\"name\": \"output_mentions\", \"params\": {\"terms\": [\"Z1\", \"Z6\", \"stressed\", \"260\", \"ndvi_map.png\", \"zones.csv\", \"east\", \"south\"]}, \"covers\": [\"R2\", \"R3\", \"R4\", \"R5\", \"R6\", \"R7\"]}]\n\n## Risks and Decisions:\n- uint8 overflow or integer division on the raw 8-bit arrays gives wrong NDVI; mitigated by an explicit float64 cast and independent recomputation.\n- PNG may be RGB, palette or 16-bit rather than plain 8-bit grayscale; the analyst inspects the mode and the verifier loads it independently.\n- NIR+Red = 0 pixels produce NaN or inf; they are masked and counted, and the verifier checks.\n- A zone mean very close to 0.35 could flip with rounding; the unrounded value is used and near-threshold cases are flagged. Decision point: if flagged, the summary states more decimals.\n- Flipped rows or swapped axes would swap the north and south zones and change the route; mitigated by fixed slices, origin='upper' and verifier checks.\n- The route may exceed 260 m; this is reported as an excess. Empty or single-zone stressed sets use the edge-case rules.\n- If the verifier returns FAIL, re-run steps 1-2 with the fixes before the summary.\n\n## RoleFeedback\nNone\n\n## PlanFeedback\nNone",
+  "capability_requests": [
+    {
+      "name": "python_interpreter",
+      "kind": "tool",
+      "for_role": "Remote Sensing Analyst",
+      "what_it_does": "Runs Python 3 with numpy/PIL/matplotlib in the sandbox to read PNGs, compute NDVI and write files.",
+      "input": "Python script",
+      "output": "stdout and files in the workspace",
+      "example_input": "import matplotlib.image as m; print(m.imread('inputs/red.png').shape)",
+      "example_output": "(60, 90)",
+      "source": "planner",
+      "step": null,
+      "canonical": "code_execution",
+      "mapped": true,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "file_writing",
+      "kind": "tool",
+      "for_role": "Remote Sensing Analyst",
+      "what_it_does": "Writes zones.csv, ndvi_map.png and results.json (and route.json for the route role) into the workspace.",
+      "input": "file path and content",
+      "output": "saved file",
+      "example_input": "zones.csv with 6 rows",
+      "example_output": "zones.csv written",
+      "source": "planner",
+      "step": null,
+      "canonical": "file_writing",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "Bash (Python 3 with numpy/matplotlib/PIL)",
+      "kind": "tool",
+      "for_role": "Remote Sensing Analyst",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "Bash (Python 3 with numpy/matplotlib/PIL)",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "Read",
+      "kind": "tool",
+      "for_role": "Remote Sensing Analyst",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "Read",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "Write",
+      "kind": "tool",
+      "for_role": "Remote Sensing Analyst",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "Write",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "Bash (Python 3)",
+      "kind": "tool",
+      "for_role": "Route Optimisation Analyst",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "Bash (Python 3)",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "Read",
+      "kind": "tool",
+      "for_role": "Route Optimisation Analyst",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "Read",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "Write",
+      "kind": "tool",
+      "for_role": "Route Optimisation Analyst",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "Write",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "Bash (Python 3)",
+      "kind": "tool",
+      "for_role": "Independent Verifier",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "Bash (Python 3)",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    },
+    {
+      "name": "Read",
+      "kind": "tool",
+      "for_role": "Independent Verifier",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "Read",
+      "mapped": false,
+      "status": null,
+      "pool_id": "",
+      "candidates": [],
+      "reason": ""
+    }
+  ],
+  "rounds": [
+    {
+      "index": 1,
+      "planner_raw": "## Requirements:\nR1: Compute NDVI = (NIR - Red) / (NIR + Red) per pixel from inputs/red.png and inputs/nir.png, and report the mean NDVI of each of the six zones (Z1..Z6) and of the whole field, to 4 decimals.\nR2: List the stressed zones, defined as zones whose mean NDVI is below 0.35.\nR3: Find the shortest closed route from the NW corner (0,0) over the centre of every stressed zone, in straight lines, back to (0,0). Give the visiting order and the length in metres to 1 decimal, and state whether it is within the 260 m battery limit and by how much (margin or excess).\nR4: Deliver ndvi_map.png, an image of the per-pixel NDVI map (with colourbar, and ideally zone boundaries and labels).\nR5: Deliver zones.csv with one row per zone and columns: zone, mean NDVI, stressed.\nR6: Deliver a short summary covering the zone and field means, the stressed zones, the route and the battery verdict.\n\n## Givens and Assumptions:\n- Image is 90 columns x 60 rows, 1 pixel = 1 m x 1 m, so the field is 90 m x 60 m. x runs east along columns, y runs south along rows, origin at the NW corner.\n- Six zones of 30 x 30 m (900 pixels each) in a 3 x 2 grid. Z1 x0-30,y0-30; Z2 x30-60,y0-30; Z3 x60-90,y0-30; Z4 x0-30,y30-60; Z5 x30-60,y30-60; Z6 x60-90,y30-60. Pixel slices: Z1 rows 0:30, cols 0:30; Z2 rows 0:30, cols 30:60; Z3 rows 0:30, cols 60:90; Z4 rows 30:60, cols 0:30; Z5 rows 30:60, cols 30:60; Z6 rows 30:60, cols 60:90.\n- Zone centres in metres: Z1 (15,15), Z2 (45,15), Z3 (75,15), Z4 (15,45), Z5 (45,45), Z6 (75,45).\n- Straight-line distances from (0,0) to the centres: Z1 sqrt(450)=21.2; Z2 sqrt(2250)=47.4; Z3 sqrt(5850)=76.5; Z4 sqrt(2250)=47.4; Z5 sqrt(4050)=63.6; Z6 sqrt(7650)=87.5. Neighbouring centres are 30 m apart horizontally or vertically (diagonal 42.4).\n- Stress threshold 0.35; battery 260 m. The closed-tour search is at most 6! = 720 permutations, so brute force is exact.\n- Assumption: the zone mean is the arithmetic mean of per-pixel NDVI over the 900 pixels of the zone (not the NDVI of mean bands). The field mean is the mean over all 5400 pixels.\n- Assumption: pixel i spans [i, i+1] m, so the corner (0,0) is the outer corner of pixel (0,0) and the zone centres are exact multiples of 15 m.\n- Assumption: pixels with NIR+Red = 0 have undefined NDVI and are excluded from the means (their count is reported). If there are none, this is moot.\n- Assumption: the stress test uses the unrounded mean. Any zone mean within 0.0005 of 0.35 is flagged for review.\n- Assumption: flight length is horizontal straight-line distance only, with no wind, climb, detour or reserve. The drone starts and ends at (0,0).\n- Assumption: if no zone is stressed, the route is 0 m. If one zone is stressed, the route is the out-and-back (2 x distance).\n\n## Open Questions:\n- question: Is the zone mean the mean of per-pixel NDVI or the NDVI of the mean bands? | assumption: Mean of per-pixel NDVI, as the task defines NDVI per pixel and then asks for the mean NDVI.\n- question: How should NIR+Red = 0 pixels be handled? | assumption: Excluded as NaN from the means and reported; likely none exist.\n- question: Where exactly is a zone centre relative to the pixel grid? | assumption: At the geometric centre in metre coordinates, (15,15) etc., with the field origin at the outer NW corner.\n\n## Selected Roles List:\n```\n[]\n```\n\n## Created Roles List:\n```\n{\"name\": \"Remote Sensing Analyst\", \"seniority\": \"senior\", \"description\": \"Precision-agriculture analyst who has processed many drone multispectral datasets. Careful about integer overflow, nodata and zone geometry, and produces clean map and table deliverables.\", \"goal\": \"Produce correct per-pixel NDVI, zone and field means, the stressed-zone list, ndvi_map.png and zones.csv.\", \"responsibilities\": [\"Inspect both PNGs (mode, shape, dtype, value range, channels) and confirm they are 90x60 and aligned\", \"Compute NDVI in float64 and handle zero denominators\", \"Compute the six zone means and the field mean, and apply the 0.35 threshold\", \"Write ndvi_map.png and zones.csv\", \"Save results.json for downstream steps\"], \"skills\": [\"NumPy/Python raster maths\", \"NDVI interpretation\", \"matplotlib mapping\", \"zonal statistics\"], \"tools\": [\"Bash (Python 3 with numpy/matplotlib/PIL)\", \"Read\", \"Write\"], \"inputs\": [\"inputs/red.png\", \"inputs/nir.png\"], \"outputs\": [{\"artifact\": \"zones.csv\", \"format\": \"csv with header zone,mean_ndvi,stressed; 6 rows Z1..Z6; mean to 4 decimals; stressed true/false\"}, {\"artifact\": \"ndvi_map.png\", \"format\": \"png, NDVI heatmap with colourbar and zone grid and labels\"}, {\"artifact\": \"results.json\", \"format\": \"json: zone means (full precision and 4 dp), field mean, stressed list, image shape, zero-denominator count, near-threshold flag\"}, {\"artifact\": \"analysis report\", \"format\": \"markdown table of zone means plus the stressed list\"}], \"success_criteria\": [\"Arrays read as float, not uint8, with no overflow\", \"Image shape (60, 90) confirmed\", \"Zone means reproduced to 4 dp and the field mean equals the mean of the zone means (equal sized zones) within rounding\", \"Stressed list matches the 0.35 rule on unrounded values\"], \"constraints\": [\"Never write into inputs/\", \"At most 5 turns, so combine work into few scripts\", \"Row 0 is the north edge and column 0 is the west edge; do not flip the map (use imshow origin='upper')\"], \"covers\": [\"R1\", \"R2\", \"R4\", \"R5\"], \"is_summariser\": false, \"prompt\": \"You are a senior remote-sensing analyst. Work in the sandbox with Python. Turn 1: load inputs/red.png and inputs/nir.png (PIL or matplotlib.image), print mode, shape, dtype, min/max; if an image is RGB or RGBA, check that the channels are identical and take one; if values are floats in 0-1, rescale to 0-255 ints or note it; confirm shape is (60, 90) for both. Turn 2: in ONE script, cast to float64 (never subtract uint8 arrays), compute ndvi=(nir-red)/(nir+red), mask denominator==0 as NaN and count those pixels. Zone slices (rows,cols): Z1 [0:30,0:30], Z2 [0:30,30:60], Z3 [0:30,60:90], Z4 [30:60,0:30], Z5 [30:60,30:60], Z6 [30:60,60:90]. Use nanmean for zone and field means. Stressed = unrounded mean < 0.35; flag any zone within 0.0005 of 0.35. Write zones.csv with header exactly zone,mean_ndvi,stressed (mean rounded to 4 decimals, stressed as true/false, 6 rows). Plot ndvi_map.png with imshow(origin='upper'), a diverging or viridis colormap, colourbar labelled NDVI, zone boundaries at x=30,60 and y=30, labels Z1..Z6, axes in metres; dpi >=100. Save results.json with full-precision means, 4dp means, field mean, stressed list, shape, NaN count. Turn 3: re-read zones.csv and results.json, confirm the png exists and its size, and print a markdown table. Final answer: the table, the field mean, the stressed list and any flags (near-threshold, NaN pixels, unusual image mode).\"},\n{\"name\": \"Route Optimisation Analyst\", \"seniority\": \"senior\", \"description\": \"Operations-research engineer who plans drone and vehicle routes. Uses exact search on small instances and reports lengths and margins precisely.\", \"goal\": \"Give the exact shortest closed tour from (0,0) over all stressed zone centres, with its length and the battery verdict.\", \"responsibilities\": [\"Read the stressed zone list from results.json\", \"Map zones to centres\", \"Enumerate all permutations and select the shortest closed tour\", \"Report the order, leg distances, total length to 1 decimal and the margin against 260 m\", \"Report ties and the second-best route\"], \"skills\": [\"TSP exact search\", \"Euclidean geometry\", \"clear numerical reporting\"], \"tools\": [\"Bash (Python 3)\", \"calc\", \"Read\"], \"inputs\": [\"results.json from step 1 (stressed zones)\"], \"outputs\": [{\"artifact\": \"route table\", \"format\": \"markdown table: leg, from, to, distance m; with total and battery margin\"}, {\"artifact\": \"route.json\", \"format\": \"json: order, legs, total_m, within_limit, margin_m\"}], \"success_criteria\": [\"All permutations of the stressed set enumerated\", \"Closed tour starts and ends at (0,0)\", \"Length given to 1 decimal, margin = 260 - length with explicit sign and wording (within/exceeds)\"], \"constraints\": [\"Battery 260 m\", \"Centres: Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45)\", \"Straight-line legs only\", \"Handle the edge cases of 0 or 1 stressed zones\"], \"covers\": [\"R3\"], \"is_summariser\": false, \"prompt\": \"You are a senior route-optimisation engineer. Read results.json for the stressed zone list. Use centres Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45), depot (0,0). In one Python script use itertools.permutations over the stressed zones, compute each closed tour length (depot -> zones in order -> depot) with math.hypot, sort, and print the best and the runner-up (note ties within 0.05 m; a reversed tour has equal length, so report one direction and mention it). Edge cases: none stressed -> 0 m, no flight needed; one -> out and back. Compute margin = 260 - length; state 'within the limit by X m' or 'exceeds the limit by X m'. Round only the final figures to 1 decimal, and check that the rounded leg sum is consistent with the rounded total, noting any 0.1 rounding difference. Save route.json. Final answer: a markdown table of legs, the order written as Home -> Zx -> ... -> Home, total length and the battery verdict.\"},\n{\"name\": \"Independent Verifier\", \"seniority\": \"senior\", \"description\": \"QA data scientist who re-derives results with a different code path and checks deliverable files against the spec. Does not reuse the producers' scripts.\", \"goal\": \"Confirm or refute every number and file before the summary is written.\", \"responsibilities\": [\"Recompute NDVI and zone means independently with a different method\", \"Check zones.csv format, PNG validity and orientation, and route correctness\", \"Re-derive the route by hand with calc for the top candidates\", \"Return a clear verdict with discrepancies listed\"], \"skills\": [\"independent recomputation\", \"numerical tolerance checks\", \"file validation\"], \"tools\": [\"Bash (Python 3)\", \"calc\", \"Read\"], \"inputs\": [\"inputs/red.png and inputs/nir.png\", \"zones.csv, ndvi_map.png, results.json from step 1\", \"route.json from step 2\"], \"outputs\": [{\"artifact\": \"verification report\", \"format\": \"markdown: check table (check, expected, found, pass/fail) and a final line 'VERDICT: PASS' or 'VERDICT: FAIL' with fixes\"}], \"success_criteria\": [\"Zone means agree to 4 dp using a different implementation (e.g. pure-Python loops or Pillow-to-list)\", \"Stressed list matches the rule\", \"CSV has exactly 6 rows and the right columns\", \"PNG opens and is not blank\", \"Route length agrees within 0.05 m with an independent check\"], \"constraints\": [\"Do not modify deliverables; report problems instead\", \"At most 5 turns\"], \"covers\": [\"R1\", \"R2\", \"R3\", \"R4\", \"R5\"], \"is_summariser\": false, \"prompt\": \"You are an independent verifier; do not reuse the earlier scripts. Turn 1: read the PNGs with a different route than the analyst (e.g. PIL .getdata() into pure Python lists, or numpy via a different loader), compute NDVI per pixel with plain float division, and compute the six zone means and the field mean by explicit loops over the zone bounds (rows 0-29/30-59, cols 0-29/30-59/60-89). Compare them with zones.csv and results.json at 4 dp; also check for zero-denominator pixels and for values within 0.0005 of 0.35. Turn 2: validate zones.csv (header zone,mean_ndvi,stressed; 6 rows; boolean agrees with the 0.35 rule), open ndvi_map.png (size, not constant, north at top: compare the pixel layout of the north-west zone against the data if feasible). Turn 3: check the route independently: build the distance matrix for the stressed zones with calc or Python, enumerate or reason about the candidate orders, check that route.json's length matches within 0.05 m and the margin to 260 m is right. Final answer: a table of checks and a last line 'VERDICT: PASS' or 'VERDICT: FAIL' followed by any discrepancies.\"},\n{\"name\": \"Delivery Summariser\", \"seniority\": \"senior\", \"description\": \"Technical writer who assembles verified results into a concise executive summary without adding new analysis.\", \"goal\": \"Produce the short final summary from verified outputs only.\", \"responsibilities\": [\"Assemble zone and field means, stressed zones, route and battery verdict into a short memo\", \"State the assumptions and list the deliverable files\", \"Carry over any verifier caveats\"], \"skills\": [\"concise technical writing\"], \"tools\": [], \"inputs\": [\"Analyst report, route table, verification report\"], \"outputs\": [{\"artifact\": \"final summary\", \"format\": \"memo with headings: Results, Stressed zones, Scouting route, Assumptions, Deliverables\"}], \"success_criteria\": [\"Every number is copied from verified outputs\", \"All of R1-R6 are visibly answered\", \"Under ~300 words plus one table\"], \"constraints\": [\"No new calculations\", \"If the verdict is FAIL, present the corrected values or flag the issue clearly\"], \"covers\": [\"R1\", \"R2\", \"R3\", \"R4\", \"R5\", \"R6\"], \"is_summariser\": true, \"prompt\": \"You assemble the final deliverable. Using only the numbers in the analyst report, route table and verification report, write a short memo with headings: Results (table: zone, mean NDVI 4 dp, stressed yes/no, plus the whole-field mean), Stressed zones (list), Scouting route (order as Home -> ... -> Home, length in m to 1 decimal, battery limit 260 m, within the limit by X m or exceeding by X m), Assumptions (zone means are the mean of per-pixel NDVI; zone centres at (15,15) etc.; straight horizontal legs; any NaN or near-threshold notes), Deliverables (ndvi_map.png, zones.csv). Do not compute anything new or alter figures. Mention any caveat the verifier raised. Keep it under about 300 words besides the table.\"}\n```\n\n## Capability Requests:\n```\n{\"name\": \"python_interpreter\", \"kind\": \"tool\", \"for_role\": \"Remote Sensing Analyst\", \"what_it_does\": \"Runs Python 3 with numpy/PIL/matplotlib in the sandbox to read PNGs, compute NDVI and write files.\", \"input\": \"Python script\", \"output\": \"stdout and files in the workspace\", \"example_input\": \"import matplotlib.image as m; print(m.imread('inputs/red.png').shape)\", \"example_output\": \"(60, 90)\"},\n{\"name\": \"file_writing\", \"kind\": \"tool\", \"for_role\": \"Remote Sensing Analyst\", \"what_it_does\": \"Writes zones.csv, ndvi_map.png, results.json and route.json into the workspace.\", \"input\": \"file path and content\", \"output\": \"saved file\", \"example_input\": \"zones.csv with 6 rows\", \"example_output\": \"zones.csv written\"}\n```\n\n## Execution Plan:\n1. [Remote Sensing Analyst]: Compute NDVI, zone means, stressed zones; write map and CSV\n   kind: work\n   covers: R1, R2, R4, R5\n   depends_on: none\n   do: 1) Inspect red.png and nir.png (mode, shape, dtype, range, alignment 60x90). 2) Cast to float64, compute per-pixel NDVI, mask zero denominators. 3) Compute the six zone means and the field mean (nanmean over the 30x30 slices). 4) Flag the stressed zones (<0.35, unrounded) and near-threshold cases. 5) Write ndvi_map.png (NDVI heatmap, colourbar, zone grid and labels, north at top), zones.csv (zone,mean_ndvi,stressed; 6 rows), results.json. 6) Report the table, field mean and stressed list.\n   output: table: zone x mean NDVI (4 dp) x stressed, plus the field mean and the stressed list; files zones.csv, ndvi_map.png, results.json\n   done_when: zones.csv has 6 rows with the header zone,mean_ndvi,stressed; ndvi_map.png exists and is a valid image of reasonable size; the report lists all six zone means and the field mean to 4 dp and the stressed zones (or states none).\n   checks: [{\"name\": \"file_exists\", \"params\": {\"kind\": \"csv\", \"name\": \"zones.csv\"}, \"covers\": [\"R5\"]}, {\"name\": \"csv_columns\", \"params\": {\"names\": [\"zone\", \"mean_ndvi\", \"stressed\"]}, \"covers\": [\"R5\"]}, {\"name\": \"csv_rows_min\", \"params\": {\"n\": 6}, \"covers\": [\"R1\", \"R5\"]}, {\"name\": \"file_exists\", \"params\": {\"kind\": \"png\", \"name\": \"ndvi_map.png\"}, \"covers\": [\"R4\"]}, {\"name\": \"image_exists\", \"params\": {\"kind\": \"png\", \"min_px\": 60}, \"covers\": [\"R4\"]}, {\"name\": \"output_has_table\", \"params\": {\"min_rows\": 6}, \"covers\": [\"R1\", \"R2\"]}]\n2. [Route Optimisation Analyst]: Shortest closed scouting route and battery check\n   kind: work\n   covers: R3\n   depends_on: 1\n   do: 1) Read the stressed zones from results.json. 2) Enumerate all permutations over their centres with depot (0,0) and compute the closed tour lengths. 3) Pick the shortest (report ties and the reverse direction). 4) Compute the total to 1 decimal, the leg distances and margin = 260 - length, saying within or exceeding. 5) Save route.json.\n   output: table: leg x from x to x distance m, with total length, the order and the battery margin\n   done_when: The route order and the total length (1 decimal) are stated, all permutations were enumerated, and the battery verdict gives an explicit margin in metres.\n   checks: [{\"name\": \"output_has_table\", \"params\": {\"min_rows\": 2}, \"covers\": [\"R3\"]}, {\"name\": \"output_mentions\", \"params\": {\"terms\": [\"260\", \"margin\"]}, \"covers\": [\"R3\"]}]\n3. [Independent Verifier]: Independently verify numbers, files and route\n   kind: verify\n   covers: R1, R2, R3, R4, R5\n   depends_on: 1, 2\n   do: 1) Recompute NDVI and zone/field means from the raw PNGs using a different implementation and compare at 4 dp. 2) Check the stressed list against the 0.35 rule and near-threshold cases. 3) Validate zones.csv and ndvi_map.png (opens, not blank, orientation). 4) Independently recompute the tour length and the margin for the claimed route and the best alternative. 5) Issue the verdict.\n   output: table: check x expected x found x pass/fail, ending with 'VERDICT: PASS' or 'VERDICT: FAIL' and the list of discrepancies\n   done_when: Every number in R1-R3 was independently reproduced or a discrepancy is listed; the verdict line is present.\n   checks: [{\"name\": \"verdict_present\", \"params\": {}, \"covers\": [\"R1\", \"R2\", \"R3\", \"R4\", \"R5\"]}, {\"name\": \"output_has_table\", \"params\": {\"min_rows\": 5}, \"covers\": [\"R1\", \"R2\", \"R3\"]}]\n4. [Delivery Summariser]: Assemble the final short summary\n   kind: work\n   covers: R1, R2, R3, R4, R5, R6\n   depends_on: 1, 2, 3\n   do: Write the short memo from the verified outputs: zone and field means table, stressed zones, route order, length, battery verdict and margin, assumptions, and the list of delivered files (ndvi_map.png, zones.csv). Use corrected values if the verifier found errors.\n   output: memo: Results, Stressed zones, Scouting route, Assumptions, Deliverables\n   done_when: The memo has all six zone means and the field mean, the stressed list, the route with its length and margin, and names both files; it adds no new numbers.\n   checks: [{\"name\": \"output_has_table\", \"params\": {\"min_rows\": 6}, \"covers\": [\"R1\", \"R2\", \"R6\"]}, {\"name\": \"output_mentions\", \"params\": {\"terms\": [\"Z1\", \"Z6\", \"stressed\", \"260\", \"ndvi_map.png\", \"zones.csv\"]}, \"covers\": [\"R2\", \"R3\", \"R4\", \"R5\", \"R6\"]}]\n\n## Risks and Decisions:\n- uint8 overflow or integer division when subtracting or dividing the raw 8-bit arrays gives wrong NDVI; mitigated by an explicit float64 cast and independent re-computation.\n- PNG may be RGB, palette or 16-bit rather than plain 8-bit grayscale; the analyst inspects the mode and reduces to a single band, and the verifier loads it independently.\n- NIR+Red = 0 pixels would produce NaN or inf; they are masked and counted, and the verifier checks.\n- A zone mean very close to 0.35 could flip depending on rounding; the unrounded value is used and near-threshold cases are flagged. Decision point: if flagged, the summary states the value to more decimals.\n- Wrong zone orientation (flipped rows) would swap the north and south zones and so the route; mitigated by fixed slices, origin='upper' and verifier checks.\n- The route may exceed 260 m; this is reported as an excess, not hidden. If the stressed set is empty or has a single zone, the edge-case rules apply.\n- If the verifier returns FAIL, steps 1-2 are re-run with the fixes before the summary.\n\n## RoleFeedback\nNone\n\n## PlanFeedback\nNone",
+      "roles": [
+        {
+          "name": "Remote Sensing Analyst",
+          "seniority": "senior",
+          "description": "Precision-agriculture analyst who has processed many drone multispectral datasets. Careful about integer overflow, nodata and zone geometry, and produces clean map and table deliverables.",
+          "goal": "Produce correct per-pixel NDVI, zone and field means, the stressed-zone list, ndvi_map.png and zones.csv.",
+          "responsibilities": [
+            "Inspect both PNGs (mode, shape, dtype, value range, channels) and confirm they are 90x60 and aligned",
+            "Compute NDVI in float64 and handle zero denominators",
+            "Compute the six zone means and the field mean, and apply the 0.35 threshold",
+            "Write ndvi_map.png and zones.csv",
+            "Save results.json for downstream steps"
+          ],
+          "skills": [
+            "NumPy/Python raster maths",
+            "NDVI interpretation",
+            "matplotlib mapping",
+            "zonal statistics"
+          ],
+          "tools": [
+            "Bash (Python 3 with numpy/matplotlib/PIL)",
+            "Read",
+            "Write"
+          ],
+          "inputs": [
+            "inputs/red.png",
+            "inputs/nir.png"
+          ],
+          "outputs": [
+            {
+              "artifact": "zones.csv",
+              "format": "csv with header zone,mean_ndvi,stressed; 6 rows Z1..Z6; mean to 4 decimals; stressed true/false"
+            },
+            {
+              "artifact": "ndvi_map.png",
+              "format": "png, NDVI heatmap with colourbar and zone grid and labels"
+            },
+            {
+              "artifact": "results.json",
+              "format": "json: zone means (full precision and 4 dp), field mean, stressed list, image shape, zero-denominator count, near-threshold flag"
+            },
+            {
+              "artifact": "analysis report",
+              "format": "markdown table of zone means plus the stressed list"
+            }
+          ],
+          "success_criteria": [
+            "Arrays read as float, not uint8, with no overflow",
+            "Image shape (60, 90) confirmed",
+            "Zone means reproduced to 4 dp and the field mean equals the mean of the zone means (equal sized zones) within rounding",
+            "Stressed list matches the 0.35 rule on unrounded values"
+          ],
+          "constraints": [
+            "Never write into inputs/",
+            "At most 5 turns, so combine work into few scripts",
+            "Row 0 is the north edge and column 0 is the west edge; do not flip the map (use imshow origin='upper')"
+          ],
+          "covers": [
+            "R1",
+            "R2",
+            "R4",
+            "R5"
+          ],
+          "is_summariser": false,
+          "prompt": "You are a senior remote-sensing analyst. Work in the sandbox with Python. Turn 1: load inputs/red.png and inputs/nir.png (PIL or matplotlib.image), print mode, shape, dtype, min/max; if an image is RGB or RGBA, check that the channels are identical and take one; if values are floats in 0-1, rescale to 0-255 ints or note it; confirm shape is (60, 90) for both. Turn 2: in ONE script, cast to float64 (never subtract uint8 arrays), compute ndvi=(nir-red)/(nir+red), mask denominator==0 as NaN and count those pixels. Zone slices (rows,cols): Z1 [0:30,0:30], Z2 [0:30,30:60], Z3 [0:30,60:90], Z4 [30:60,0:30], Z5 [30:60,30:60], Z6 [30:60,60:90]. Use nanmean for zone and field means. Stressed = unrounded mean < 0.35; flag any zone within 0.0005 of 0.35. Write zones.csv with header exactly zone,mean_ndvi,stressed (mean rounded to 4 decimals, stressed as true/false, 6 rows). Plot ndvi_map.png with imshow(origin='upper'), a diverging or viridis colormap, colourbar labelled NDVI, zone boundaries at x=30,60 and y=30, labels Z1..Z6, axes in metres; dpi >=100. Save results.json with full-precision means, 4dp means, field mean, stressed list, shape, NaN count. Turn 3: re-read zones.csv and results.json, confirm the png exists and its size, and print a markdown table. Final answer: the table, the field mean, the stressed list and any flags (near-threshold, NaN pixels, unusual image mode)."
+        },
+        {
+          "name": "Route Optimisation Analyst",
+          "seniority": "senior",
+          "description": "Operations-research engineer who plans drone and vehicle routes. Uses exact search on small instances and reports lengths and margins precisely.",
+          "goal": "Give the exact shortest closed tour from (0,0) over all stressed zone centres, with its length and the battery verdict.",
+          "responsibilities": [
+            "Read the stressed zone list from results.json",
+            "Map zones to centres",
+            "Enumerate all permutations and select the shortest closed tour",
+            "Report the order, leg distances, total length to 1 decimal and the margin against 260 m",
+            "Report ties and the second-best route"
+          ],
+          "skills": [
+            "TSP exact search",
+            "Euclidean geometry",
+            "clear numerical reporting"
+          ],
+          "tools": [
+            "Bash (Python 3)",
+            "calc",
+            "Read"
+          ],
+          "inputs": [
+            "results.json from step 1 (stressed zones)"
+          ],
+          "outputs": [
+            {
+              "artifact": "route table",
+              "format": "markdown table: leg, from, to, distance m; with total and battery margin"
+            },
+            {
+              "artifact": "route.json",
+              "format": "json: order, legs, total_m, within_limit, margin_m"
+            }
+          ],
+          "success_criteria": [
+            "All permutations of the stressed set enumerated",
+            "Closed tour starts and ends at (0,0)",
+            "Length given to 1 decimal, margin = 260 - length with explicit sign and wording (within/exceeds)"
+          ],
+          "constraints": [
+            "Battery 260 m",
+            "Centres: Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45)",
+            "Straight-line legs only",
+            "Handle the edge cases of 0 or 1 stressed zones"
+          ],
+          "covers": [
+            "R3"
+          ],
+          "is_summariser": false,
+          "prompt": "You are a senior route-optimisation engineer. Read results.json for the stressed zone list. Use centres Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45), depot (0,0). In one Python script use itertools.permutations over the stressed zones, compute each closed tour length (depot -> zones in order -> depot) with math.hypot, sort, and print the best and the runner-up (note ties within 0.05 m; a reversed tour has equal length, so report one direction and mention it). Edge cases: none stressed -> 0 m, no flight needed; one -> out and back. Compute margin = 260 - length; state 'within the limit by X m' or 'exceeds the limit by X m'. Round only the final figures to 1 decimal, and check that the rounded leg sum is consistent with the rounded total, noting any 0.1 rounding difference. Save route.json. Final answer: a markdown table of legs, the order written as Home -> Zx -> ... -> Home, total length and the battery verdict."
+        },
+        {
+          "name": "Independent Verifier",
+          "seniority": "senior",
+          "description": "QA data scientist who re-derives results with a different code path and checks deliverable files against the spec. Does not reuse the producers' scripts.",
+          "goal": "Confirm or refute every number and file before the summary is written.",
+          "responsibilities": [
+            "Recompute NDVI and zone means independently with a different method",
+            "Check zones.csv format, PNG validity and orientation, and route correctness",
+            "Re-derive the route by hand with calc for the top candidates",
+            "Return a clear verdict with discrepancies listed"
+          ],
+          "skills": [
+            "independent recomputation",
+            "numerical tolerance checks",
+            "file validation"
+          ],
+          "tools": [
+            "Bash (Python 3)",
+            "calc",
+            "Read"
+          ],
+          "inputs": [
+            "inputs/red.png and inputs/nir.png",
+            "zones.csv, ndvi_map.png, results.json from step 1",
+            "route.json from step 2"
+          ],
+          "outputs": [
+            {
+              "artifact": "verification report",
+              "format": "markdown: check table (check, expected, found, pass/fail) and a final line 'VERDICT: PASS' or 'VERDICT: FAIL' with fixes"
+            }
+          ],
+          "success_criteria": [
+            "Zone means agree to 4 dp using a different implementation (e.g. pure-Python loops or Pillow-to-list)",
+            "Stressed list matches the rule",
+            "CSV has exactly 6 rows and the right columns",
+            "PNG opens and is not blank",
+            "Route length agrees within 0.05 m with an independent check"
+          ],
+          "constraints": [
+            "Do not modify deliverables; report problems instead",
+            "At most 5 turns"
+          ],
+          "covers": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5"
+          ],
+          "is_summariser": false,
+          "prompt": "You are an independent verifier; do not reuse the earlier scripts. Turn 1: read the PNGs with a different route than the analyst (e.g. PIL .getdata() into pure Python lists, or numpy via a different loader), compute NDVI per pixel with plain float division, and compute the six zone means and the field mean by explicit loops over the zone bounds (rows 0-29/30-59, cols 0-29/30-59/60-89). Compare them with zones.csv and results.json at 4 dp; also check for zero-denominator pixels and for values within 0.0005 of 0.35. Turn 2: validate zones.csv (header zone,mean_ndvi,stressed; 6 rows; boolean agrees with the 0.35 rule), open ndvi_map.png (size, not constant, north at top: compare the pixel layout of the north-west zone against the data if feasible). Turn 3: check the route independently: build the distance matrix for the stressed zones with calc or Python, enumerate or reason about the candidate orders, check that route.json's length matches within 0.05 m and the margin to 260 m is right. Final answer: a table of checks and a last line 'VERDICT: PASS' or 'VERDICT: FAIL' followed by any discrepancies."
+        },
+        {
+          "name": "Delivery Summariser",
+          "seniority": "senior",
+          "description": "Technical writer who assembles verified results into a concise executive summary without adding new analysis.",
+          "goal": "Produce the short final summary from verified outputs only.",
+          "responsibilities": [
+            "Assemble zone and field means, stressed zones, route and battery verdict into a short memo",
+            "State the assumptions and list the deliverable files",
+            "Carry over any verifier caveats"
+          ],
+          "skills": [
+            "concise technical writing"
+          ],
+          "tools": [],
+          "inputs": [
+            "Analyst report, route table, verification report"
+          ],
+          "outputs": [
+            {
+              "artifact": "final summary",
+              "format": "memo with headings: Results, Stressed zones, Scouting route, Assumptions, Deliverables"
+            }
+          ],
+          "success_criteria": [
+            "Every number is copied from verified outputs",
+            "All of R1-R6 are visibly answered",
+            "Under ~300 words plus one table"
+          ],
+          "constraints": [
+            "No new calculations",
+            "If the verdict is FAIL, present the corrected values or flag the issue clearly"
+          ],
+          "covers": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5",
+            "R6"
+          ],
+          "is_summariser": true,
+          "prompt": "You assemble the final deliverable. Using only the numbers in the analyst report, route table and verification report, write a short memo with headings: Results (table: zone, mean NDVI 4 dp, stressed yes/no, plus the whole-field mean), Stressed zones (list), Scouting route (order as Home -> ... -> Home, length in m to 1 decimal, battery limit 260 m, within the limit by X m or exceeding by X m), Assumptions (zone means are the mean of per-pixel NDVI; zone centres at (15,15) etc.; straight horizontal legs; any NaN or near-threshold notes), Deliverables (ndvi_map.png, zones.csv). Do not compute anything new or alter figures. Mention any caveat the verifier raised. Keep it under about 300 words besides the table."
+        }
+      ],
+      "plan": [
+        {
+          "agents": [
+            "Remote Sensing Analyst"
+          ],
+          "text": "[Remote Sensing Analyst]: Compute NDVI, zone means, stressed zones; write map and CSV",
+          "title": "Compute NDVI, zone means, stressed zones; write map and CSV",
+          "kind": "work",
+          "covers": [
+            "R1",
+            "R2",
+            "R4",
+            "R5"
+          ],
+          "depends_on": [],
+          "do": "1) Inspect red.png and nir.png (mode, shape, dtype, range, alignment 60x90). 2) Cast to float64, compute per-pixel NDVI, mask zero denominators. 3) Compute the six zone means and the field mean (nanmean over the 30x30 slices). 4) Flag the stressed zones (<0.35, unrounded) and near-threshold cases. 5) Write ndvi_map.png (NDVI heatmap, colourbar, zone grid and labels, north at top), zones.csv (zone,mean_ndvi,stressed; 6 rows), results.json. 6) Report the table, field mean and stressed list.",
+          "output": "table: zone x mean NDVI (4 dp) x stressed, plus the field mean and the stressed list; files zones.csv, ndvi_map.png, results.json",
+          "done_when": "zones.csv has 6 rows with the header zone,mean_ndvi,stressed; ndvi_map.png exists and is a valid image of reasonable size; the report lists all six zone means and the field mean to 4 dp and the stressed zones (or states none).",
+          "checks": [
+            {
+              "name": "file_exists",
+              "params": {
+                "kind": "csv",
+                "name": "zones.csv"
+              },
+              "covers": [
+                "R5"
+              ]
+            },
+            {
+              "name": "csv_columns",
+              "params": {
+                "names": [
+                  "zone",
+                  "mean_ndvi",
+                  "stressed"
+                ]
+              },
+              "covers": [
+                "R5"
+              ]
+            },
+            {
+              "name": "csv_rows_min",
+              "params": {
+                "n": 6
+              },
+              "covers": [
+                "R1",
+                "R5"
+              ]
+            },
+            {
+              "name": "file_exists",
+              "params": {
+                "kind": "png",
+                "name": "ndvi_map.png"
+              },
+              "covers": [
+                "R4"
+              ]
+            },
+            {
+              "name": "image_exists",
+              "params": {
+                "kind": "png",
+                "min_px": 60
+              },
+              "covers": [
+                "R4"
+              ]
+            },
+            {
+              "name": "output_has_table",
+              "params": {
+                "min_rows": 6
+              },
+              "covers": [
+                "R1",
+                "R2"
+              ]
+            }
+          ]
+        },
+        {
+          "agents": [
+            "Route Optimisation Analyst"
+          ],
+          "text": "[Route Optimisation Analyst]: Shortest closed scouting route and battery check",
+          "title": "Shortest closed scouting route and battery check",
+          "kind": "work",
+          "covers": [
+            "R3"
+          ],
+          "depends_on": [
+            1
+          ],
+          "do": "1) Read the stressed zones from results.json. 2) Enumerate all permutations over their centres with depot (0,0) and compute the closed tour lengths. 3) Pick the shortest (report ties and the reverse direction). 4) Compute the total to 1 decimal, the leg distances and margin = 260 - length, saying within or exceeding. 5) Save route.json.",
+          "output": "table: leg x from x to x distance m, with total length, the order and the battery margin",
+          "done_when": "The route order and the total length (1 decimal) are stated, all permutations were enumerated, and the battery verdict gives an explicit margin in metres.",
+          "checks": [
+            {
+              "name": "output_has_table",
+              "params": {
+                "min_rows": 2
+              },
+              "covers": [
+                "R3"
+              ]
+            },
+            {
+              "name": "output_mentions",
+              "params": {
+                "terms": [
+                  "260",
+                  "margin"
+                ]
+              },
+              "covers": [
+                "R3"
+              ]
+            }
+          ]
+        },
+        {
+          "agents": [
+            "Independent Verifier"
+          ],
+          "text": "[Independent Verifier]: Independently verify numbers, files and route",
+          "title": "Independently verify numbers, files and route",
+          "kind": "verify",
+          "covers": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5"
+          ],
+          "depends_on": [
+            1,
+            2
+          ],
+          "do": "1) Recompute NDVI and zone/field means from the raw PNGs using a different implementation and compare at 4 dp. 2) Check the stressed list against the 0.35 rule and near-threshold cases. 3) Validate zones.csv and ndvi_map.png (opens, not blank, orientation). 4) Independently recompute the tour length and the margin for the claimed route and the best alternative. 5) Issue the verdict.",
+          "output": "table: check x expected x found x pass/fail, ending with 'VERDICT: PASS' or 'VERDICT: FAIL' and the list of discrepancies",
+          "done_when": "Every number in R1-R3 was independently reproduced or a discrepancy is listed; the verdict line is present.",
+          "checks": [
+            {
+              "name": "verdict_present",
+              "params": {},
+              "covers": [
+                "R1",
+                "R2",
+                "R3",
+                "R4",
+                "R5"
+              ]
+            },
+            {
+              "name": "output_has_table",
+              "params": {
+                "min_rows": 5
+              },
+              "covers": [
+                "R1",
+                "R2",
+                "R3"
+              ]
+            }
+          ]
+        },
+        {
+          "agents": [
+            "Delivery Summariser"
+          ],
+          "text": "[Delivery Summariser]: Assemble the final short summary",
+          "title": "Assemble the final short summary",
+          "kind": "work",
+          "covers": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5",
+            "R6"
+          ],
+          "depends_on": [
+            1,
+            2,
+            3
+          ],
+          "do": "Write the short memo from the verified outputs: zone and field means table, stressed zones, route order, length, battery verdict and margin, assumptions, and the list of delivered files (ndvi_map.png, zones.csv). Use corrected values if the verifier found errors.",
+          "output": "memo: Results, Stressed zones, Scouting route, Assumptions, Deliverables",
+          "done_when": "The memo has all six zone means and the field mean, the stressed list, the route with its length and margin, and names both files; it adds no new numbers.",
+          "checks": [
+            {
+              "name": "output_has_table",
+              "params": {
+                "min_rows": 6
+              },
+              "covers": [
+                "R1",
+                "R2",
+                "R6"
+              ]
+            },
+            {
+              "name": "output_mentions",
+              "params": {
+                "terms": [
+                  "Z1",
+                  "Z6",
+                  "stressed",
+                  "260",
+                  "ndvi_map.png",
+                  "zones.csv"
+                ]
+              },
+              "covers": [
+                "R2",
+                "R3",
+                "R4",
+                "R5",
+                "R6"
+              ]
+            }
+          ]
+        }
+      ],
+      "capability_requests": [
+        {
+          "name": "python_interpreter",
+          "kind": "tool",
+          "for_role": "Remote Sensing Analyst",
+          "what_it_does": "Runs Python 3 with numpy/PIL/matplotlib in the sandbox to read PNGs, compute NDVI and write files.",
+          "input": "Python script",
+          "output": "stdout and files in the workspace",
+          "example_input": "import matplotlib.image as m; print(m.imread('inputs/red.png').shape)",
+          "example_output": "(60, 90)",
+          "source": "planner",
+          "step": null,
+          "canonical": "code_execution",
+          "mapped": true,
+          "status": null,
+          "pool_id": "",
+          "candidates": [],
+          "reason": ""
+        },
+        {
+          "name": "file_writing",
+          "kind": "tool",
+          "for_role": "Remote Sensing Analyst",
+          "what_it_does": "Writes zones.csv, ndvi_map.png, results.json and route.json into the workspace.",
+          "input": "file path and content",
+          "output": "saved file",
+          "example_input": "zones.csv with 6 rows",
+          "example_output": "zones.csv written",
+          "source": "planner",
+          "step": null,
+          "canonical": "file_writing",
+          "mapped": false,
+          "status": null,
+          "pool_id": "",
+          "candidates": [],
+          "reason": ""
+        }
+      ],
+      "agent_observer_raw": "",
+      "score": {
+        "hard_failed": 2,
+        "blocking": 0
+      },
+      "plan_diff": null,
+      "reading_revision": null,
+      "agent_observer": "No Suggestions",
+      "plan_observer_raw": "## Suggestions\nNo Suggestions\n\n## Verdict\nAPPROVE",
+      "plan_observer": "No Suggestions",
+      "consensus": false,
+      "gate_failed": [
+        "task_coverage",
+        "done_when_reachable"
+      ],
+      "agent_verdict": "APPROVE",
+      "plan_verdict": "APPROVE",
+      "agent_suggestions_n": 0,
+      "plan_suggestions_n": 0
+    },
+    {
+      "index": 2,
+      "planner_raw": "## Requirements:\nR1: Compute NDVI = (NIR - Red) / (NIR + Red) per pixel from inputs/red.png and inputs/nir.png (8-bit, aligned bands), and give the mean NDVI of each of the six zones and of the whole field to 4 decimals.\nR2: List the stressed zones: a zone is stressed when its mean NDVI is below 0.35.\nR3: Find the shortest route for the scouting drone: it takes off from the NW corner (x 0, y 0), flies in straight lines over the centre of every stressed zone and lands back at that corner. Give the order and the length in metres to 1 decimal, and say whether it is within the 260 m battery limit and by how much.\nR4: Deliver ndvi_map.png, the per-pixel NDVI map, with a colourbar and ideally zone boundaries and labels, north at the top.\nR5: Deliver zones.csv with one row per zone and columns: zone, mean NDVI, stressed.\nR6: Deliver a short summary covering the zone and field means, the stressed zones, the route and the battery verdict.\nR7: Apply the coordinate convention throughout (map, zone slices, route): x runs east along the columns from the west edge and y runs south along the rows from the north edge. One pixel is 1 m x 1 m, and the origin (0,0) is the NW corner.\nR8: Split the 90 x 60 pixel field into six 30 m x 30 m management zones in a 3 x 2 grid, numbered row by row: Z1, Z2, Z3 on the north row (west to east) and Z4, Z5, Z6 on the south row.\n\n## Givens and Assumptions:\n- Inputs: inputs/red.png and inputs/nir.png, red and near-infrared bands, 8-bit, aligned, of a 90 x 60 pixel drone image of a field (90 columns, 60 rows).\n- One pixel is 1 m x 1 m, so the field is 90 m x 60 m and has 90 x 60 = 5400 pixels. x runs east along the columns from the west edge; y runs south along the rows from the north edge; origin (0,0) is the NW corner.\n- Six zones of 30 m x 30 m (900 pixels each, 6 x 900 = 5400) in a 3 x 2 grid (3 columns, 2 rows), numbered row by row. Z1 x0-30,y0-30; Z2 x30-60,y0-30; Z3 x60-90,y0-30; Z4 x0-30,y30-60; Z5 x30-60,y30-60; Z6 x60-90,y30-60. Pixel slices: Z1 rows 0:30,cols 0:30; Z2 rows 0:30,cols 30:60; Z3 rows 0:30,cols 60:90; Z4 rows 30:60,cols 0:30; Z5 rows 30:60,cols 30:60; Z6 rows 30:60,cols 60:90.\n- Zone centres in metres: Z1 (15,15), Z2 (45,15), Z3 (75,15), Z4 (15,45), Z5 (45,45), Z6 (75,45).\n- Distances from (0,0) to the centres: Z1 sqrt(450)=21.2; Z2 sqrt(2250)=47.4; Z3 sqrt(5850)=76.5; Z4 sqrt(2250)=47.4; Z5 sqrt(4050)=63.6; Z6 sqrt(7650)=87.5. Neighbouring centres are 30 m apart (diagonal 42.4).\n- Required precision: zone and field mean NDVI to 4 decimals; route length to 1 decimal.\n- Stress threshold 0.35 (stressed if mean NDVI < 0.35). Battery 260 m. The tour search has at most 6! = 720 permutations, so brute force is exact.\n- Assumption: the zone mean is the arithmetic mean of per-pixel NDVI over the zone's 900 pixels (not the NDVI of the mean bands). The field mean is the mean over all 5400 pixels.\n- Assumption: pixel i spans [i,i+1] m, so (0,0) is the outer corner of pixel (0,0) and zone centres are exact multiples of 15 m.\n- Assumption: pixels with NIR+Red = 0 are excluded from the means and counted. If there are none, this is moot.\n- Assumption: the stress test uses the unrounded mean. Any zone mean within 0.0005 of 0.35 is flagged.\n- Assumption: flight length is horizontal straight-line distance only, with no wind, climb, detour or reserve. The drone starts and ends at (0,0).\n- Assumption: if no zone is stressed the route is 0 m. If one is stressed the route is out-and-back (2 x distance).\n\n## Open Questions:\n- question: Is the zone mean the mean of per-pixel NDVI or the NDVI of the mean bands? | assumption: Mean of per-pixel NDVI, because the task defines NDVI per pixel and then asks for the mean NDVI.\n- question: How should NIR+Red = 0 pixels be handled? | assumption: Excluded as NaN from the means and reported; probably none exist.\n- question: Where exactly is a zone centre relative to the pixel grid? | assumption: At the geometric centre in metre coordinates, (15,15) etc., with the origin at the outer NW corner.\n\n## Selected Roles List:\n```\n[]\n```\n\n## Created Roles List:\n```\n{\"name\": \"Remote Sensing Analyst\", \"seniority\": \"senior\", \"description\": \"Precision-agriculture analyst who has processed many drone multispectral datasets. Careful about integer overflow, nodata, zone geometry and axis orientation, and produces clean map and table deliverables.\", \"goal\": \"Produce correct per-pixel NDVI, zone and field means, the stressed-zone list, ndvi_map.png and zones.csv, with the orientation convention applied correctly.\", \"responsibilities\": [\"Inspect both PNGs (mode, shape, dtype, range, channels) and confirm they are 90x60 and aligned\", \"Compute NDVI in float64 and handle zero denominators\", \"Apply the six 30x30 zone slices with columns = x east and rows = y south\", \"Compute the six zone means and the field mean and apply the 0.35 threshold\", \"Write ndvi_map.png, zones.csv and results.json\"], \"skills\": [\"NumPy/Python raster maths\", \"NDVI interpretation\", \"matplotlib mapping\", \"zonal statistics\"], \"tools\": [\"Bash (Python 3 with numpy/matplotlib/PIL)\", \"Read\", \"Write\"], \"inputs\": [\"inputs/red.png\", \"inputs/nir.png\"], \"outputs\": [{\"artifact\": \"zones.csv\", \"format\": \"csv with header zone,mean_ndvi,stressed; 6 rows Z1..Z6; mean to 4 decimals; stressed true/false\"}, {\"artifact\": \"ndvi_map.png\", \"format\": \"png NDVI heatmap with colourbar, zone grid and labels, axes in metres, north at top\"}, {\"artifact\": \"results.json\", \"format\": \"json: zone means (full precision and 4 dp), field mean, stressed list, image shape, zero-denominator count, near-threshold flags\"}, {\"artifact\": \"analysis report\", \"format\": \"markdown table of zone means plus field mean, stressed list, and one line stating the orientation (x east along columns, y south along rows)\"}], \"success_criteria\": [\"Arrays computed as float, no uint8 overflow\", \"Shape (60,90) confirmed\", \"Field mean equals the mean of the zone means within rounding\", \"Stressed list matches the 0.35 rule on unrounded values\", \"Map has row 0 (north) at the top\"], \"constraints\": [\"Never write into inputs/\", \"At most 5 turns, so combine work into few scripts\", \"Row 0 is the north edge and column 0 is the west edge; use imshow origin='upper'\"], \"covers\": [\"R1\", \"R2\", \"R4\", \"R5\", \"R7\", \"R8\"], \"is_summariser\": false, \"prompt\": \"You are a senior remote-sensing analyst. Work in the sandbox with Python. Turn 1: load inputs/red.png and inputs/nir.png (PIL), print mode, shape, dtype, min/max; if RGB/RGBA check the channels are identical and take one; if floats in 0-1 note it and rescale; confirm shape (60,90) for both. Turn 2: in ONE script cast to float64 (never subtract uint8 arrays), compute ndvi=(nir-red)/(nir+red), mask denominator==0 as NaN and count them. Orientation: x runs east along columns from the west edge, y runs south along rows from the north edge, so row 0 is north. Zone slices (rows,cols): Z1 [0:30,0:30], Z2 [0:30,30:60], Z3 [0:30,60:90], Z4 [30:60,0:30], Z5 [30:60,30:60], Z6 [30:60,60:90]. Use nanmean for zone and field means. Stressed = unrounded mean < 0.35; flag any zone within 0.0005 of 0.35. Write zones.csv with header exactly zone,mean_ndvi,stressed (4 dp, true/false, 6 rows). Plot ndvi_map.png with imshow(origin='upper'), colourbar labelled NDVI, boundaries at x=30,60 and y=30, labels Z1..Z6, axes in metres (x east, y south), dpi>=100. Save results.json. Turn 3: re-read the files, confirm the png exists and print a markdown table. Final answer: the table, the field mean, the stressed list, any flags, and one sentence stating the orientation used (x east along columns, y south along rows).\"},\n{\"name\": \"Route Optimisation Analyst\", \"seniority\": \"senior\", \"description\": \"Operations-research engineer who plans drone and vehicle routes. Uses exact search on small instances and reports lengths and margins precisely.\", \"goal\": \"Give the exact shortest closed tour from (0,0) over all stressed zone centres, with its length and the battery verdict.\", \"responsibilities\": [\"Read the stressed zone list from results.json\", \"Map zones to centres in (x east, y south) metres\", \"Enumerate all permutations and select the shortest closed tour\", \"Report order, leg distances, total to 1 decimal and the margin against 260 m\", \"Report ties and the runner-up\"], \"skills\": [\"TSP exact search\", \"Euclidean geometry\", \"clear numerical reporting\"], \"tools\": [\"Bash (Python 3)\", \"calc\", \"Read\", \"Write\"], \"inputs\": [\"results.json from step 1 (stressed zones)\"], \"outputs\": [{\"artifact\": \"route table\", \"format\": \"markdown table: leg, from, to, distance m; with total and battery margin\"}, {\"artifact\": \"route.json\", \"format\": \"json: order, legs, total_m, within_limit, margin_m\"}], \"success_criteria\": [\"All permutations enumerated\", \"Closed tour starts and ends at (0,0)\", \"Length to 1 decimal; margin = 260 - length with explicit within/exceeds wording\"], \"constraints\": [\"Battery 260 m\", \"Centres: Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45) with x east and y south\", \"Straight-line legs only\", \"Handle 0 or 1 stressed zones\"], \"covers\": [\"R3\", \"R7\"], \"is_summariser\": false, \"prompt\": \"You are a senior route-optimisation engineer. Read results.json for the stressed zone list. Coordinates are metres with x east along the columns from the west edge and y south along the rows from the north edge. Centres: Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45); depot (0,0). In one Python script use itertools.permutations over the stressed zones, compute each closed tour length (depot -> zones -> depot) with math.hypot, sort, and print the best and the runner-up (note ties within 0.05 m; a reversed tour has equal length, so report one direction and mention it). Edge cases: none stressed -> 0 m; one -> out and back. margin = 260 - length; state 'within the limit by X m' or 'exceeds the limit by X m'. Round only the final figures to 1 decimal and note any 0.1 rounding difference between the leg sum and the total. Save route.json. Final answer: a markdown table of legs, the order as Home -> Zx -> ... -> Home, the total length, and the battery verdict containing the words 260 and margin.\"},\n{\"name\": \"Independent Verifier\", \"seniority\": \"senior\", \"description\": \"QA data scientist who re-derives results with a different code path and checks deliverable files against the spec. Does not reuse the producers' scripts.\", \"goal\": \"Confirm or refute every number and file before the summary is written.\", \"responsibilities\": [\"Recompute NDVI and zone means independently\", \"Check zones.csv format, PNG validity and north-at-top orientation, zone layout\", \"Re-derive the route with calc or Python for the top candidates\", \"Return a clear verdict with discrepancies listed\"], \"skills\": [\"independent recomputation\", \"numerical tolerance checks\", \"file validation\"], \"tools\": [\"Bash (Python 3)\", \"calc\", \"Read\"], \"inputs\": [\"inputs/red.png and inputs/nir.png\", \"zones.csv, ndvi_map.png, results.json from step 1\", \"route.json from step 2\"], \"outputs\": [{\"artifact\": \"verification report\", \"format\": \"markdown: check table (check, expected, found, pass/fail) and a final line 'VERDICT: PASS' or 'VERDICT: FAIL' with fixes\"}], \"success_criteria\": [\"Zone means agree to 4 dp via a different implementation\", \"Stressed list matches the rule\", \"CSV has 6 rows and the right columns\", \"PNG opens, is not blank and has north at the top\", \"Route length agrees within 0.05 m\"], \"constraints\": [\"Do not modify deliverables; report problems\", \"At most 5 turns\"], \"covers\": [\"R1\", \"R2\", \"R3\", \"R4\", \"R5\", \"R7\", \"R8\"], \"is_summariser\": false, \"prompt\": \"You are an independent verifier; do not reuse earlier scripts. Turn 1: read the PNGs by a different route than the analyst (e.g. PIL getdata() into pure Python lists), compute NDVI per pixel with plain float division, and compute six zone means and the field mean by explicit loops over zone bounds (rows 0-29/30-59, cols 0-29/30-59/60-89; rows = y south, columns = x east). Compare with zones.csv and results.json at 4 dp; check zero-denominator pixels and values within 0.0005 of 0.35. Turn 2: validate zones.csv (header zone,mean_ndvi,stressed; 6 rows; Z1-Z3 north, Z4-Z6 south; boolean agrees with the 0.35 rule) and ndvi_map.png (opens, not constant, north at top: compare the NW zone's pixel appearance with the data if feasible). Turn 3: check the route independently: distance matrix for the stressed zones, enumerate candidate orders, check route.json length within 0.05 m and the margin to 260 m. Final answer: a table of checks and a last line 'VERDICT: PASS' or 'VERDICT: FAIL' followed by discrepancies.\"},\n{\"name\": \"Delivery Summariser\", \"seniority\": \"senior\", \"description\": \"Technical writer who assembles verified results into a concise summary without adding new analysis.\", \"goal\": \"Produce the short final summary from verified outputs only.\", \"responsibilities\": [\"Assemble zone and field means, stressed zones, route and battery verdict into a short memo\", \"State assumptions and list the deliverable files\", \"Carry over any verifier caveats\"], \"skills\": [\"concise technical writing\"], \"tools\": [], \"inputs\": [\"Analyst report, route table, verification report\"], \"outputs\": [{\"artifact\": \"final summary\", \"format\": \"memo with headings: Results, Stressed zones, Scouting route, Assumptions, Deliverables\"}], \"success_criteria\": [\"Every number is copied from verified outputs\", \"R1-R6 are visibly answered\", \"Under about 300 words plus one table\"], \"constraints\": [\"No new calculations\", \"If the verdict is FAIL, present corrected values or flag the issue\"], \"covers\": [\"R1\", \"R2\", \"R3\", \"R4\", \"R5\", \"R6\", \"R7\", \"R8\"], \"is_summariser\": true, \"prompt\": \"You assemble the final deliverable using only numbers in the analyst report, route table and verification report. Write a short memo with headings: Results (table: zone Z1..Z6, mean NDVI 4 dp, stressed yes/no, plus the whole-field mean), Stressed zones (list), Scouting route (order as Home -> ... -> Home, length in m to 1 decimal, battery limit 260 m, within the limit by X m or exceeding by X m), Assumptions (zone mean = mean of per-pixel NDVI; 30 m x 30 m zones in a 3 x 2 grid numbered row by row; x east along columns, y south along rows; centres at (15,15) etc.; straight horizontal legs; NaN or near-threshold notes), Deliverables (ndvi_map.png, zones.csv). Do not compute anything new. Mention any verifier caveat. Keep it under about 300 words besides the table.\"}\n```\n\n## Capability Requests:\n```\n{\"name\": \"python_interpreter\", \"kind\": \"tool\", \"for_role\": \"Remote Sensing Analyst\", \"what_it_does\": \"Runs Python 3 with numpy/PIL/matplotlib in the sandbox to read PNGs, compute NDVI and write files.\", \"input\": \"Python script\", \"output\": \"stdout and files in the workspace\", \"example_input\": \"import matplotlib.image as m; print(m.imread('inputs/red.png').shape)\", \"example_output\": \"(60, 90)\"},\n{\"name\": \"file_writing\", \"kind\": \"tool\", \"for_role\": \"Remote Sensing Analyst\", \"what_it_does\": \"Writes zones.csv, ndvi_map.png and results.json (and route.json for the route role) into the workspace.\", \"input\": \"file path and content\", \"output\": \"saved file\", \"example_input\": \"zones.csv with 6 rows\", \"example_output\": \"zones.csv written\"}\n```\n\n## Execution Plan:\n1. [Remote Sensing Analyst]: Compute NDVI, zone means, stressed zones; write map and CSV\n   kind: work\n   covers: R1, R2, R4, R5, R7, R8\n   depends_on: none\n   do: 1) Inspect red.png and nir.png (mode, shape, dtype, range, 60x90 alignment). 2) Cast to float64, compute per-pixel NDVI, mask zero denominators. 3) Compute the six zone means with the fixed slices (columns = x east, rows = y south) and the field mean. 4) Flag stressed zones (<0.35, unrounded) and near-threshold cases. 5) Write ndvi_map.png (colourbar, zone grid and labels, north at top), zones.csv (zone,mean_ndvi,stressed; 6 rows) and results.json. 6) Report the table, field mean, stressed list and an orientation line.\n   output: table: zone x mean NDVI (4 dp) x stressed, plus the field mean, the stressed list and an orientation note (x east, y south); files zones.csv, ndvi_map.png, results.json\n   done_when: zones.csv has 6 rows with header zone,mean_ndvi,stressed; ndvi_map.png exists and is a valid image; the report lists all six zone means and the field mean to 4 dp; the stressed zones are listed (or none stated); the orientation note is present.\n   checks: [{\"name\": \"file_exists\", \"params\": {\"kind\": \"csv\", \"name\": \"zones.csv\"}, \"covers\": [\"R5\"]}, {\"name\": \"csv_columns\", \"params\": {\"names\": [\"zone\", \"mean_ndvi\", \"stressed\"]}, \"covers\": [\"R5\"]}, {\"name\": \"csv_rows_min\", \"params\": {\"n\": 6}, \"covers\": [\"R1\", \"R5\", \"R8\"]}, {\"name\": \"file_exists\", \"params\": {\"kind\": \"png\", \"name\": \"ndvi_map.png\"}, \"covers\": [\"R4\"]}, {\"name\": \"image_exists\", \"params\": {\"kind\": \"png\", \"min_px\": 60}, \"covers\": [\"R4\"]}, {\"name\": \"output_mentions\", \"params\": {\"terms\": [\"east\", \"south\", \"stressed\"]}, \"covers\": [\"R2\", \"R7\"]}]\n2. [Route Optimisation Analyst]: Shortest closed scouting route and battery check\n   kind: work\n   covers: R3, R7\n   depends_on: 1\n   do: 1) Read the stressed zones from results.json. 2) Map them to centres (x east, y south, metres). 3) Enumerate all permutations with depot (0,0) and compute closed tour lengths. 4) Pick the shortest (report ties and the reverse). 5) Give legs, total to 1 decimal and margin = 260 - length, stating within or exceeding. 6) Save route.json.\n   output: table: leg x from x to x distance m, with total length, order and battery margin\n   done_when: The route order and total length (1 decimal) are stated; all permutations were enumerated; the battery verdict gives an explicit margin in metres.\n   checks: [{\"name\": \"output_has_table\", \"params\": {\"min_rows\": 2}, \"covers\": [\"R3\"]}, {\"name\": \"output_mentions\", \"params\": {\"terms\": [\"260\", \"margin\"]}, \"covers\": [\"R3\", \"R7\"]}]\n3. [Independent Verifier]: Independently verify numbers, files and route\n   kind: verify\n   covers: R1, R2, R3, R4, R5, R7, R8\n   depends_on: 1, 2\n   do: 1) Recompute NDVI and zone/field means from the raw PNGs with a different implementation and compare at 4 dp. 2) Check the stressed list against the 0.35 rule and near-threshold cases. 3) Validate zones.csv, the zone layout (Z1-Z3 north, Z4-Z6 south) and ndvi_map.png (opens, not blank, north at top). 4) Recompute the route length and margin and the best alternative. 5) Issue the verdict.\n   output: table: check x expected x found x pass/fail, ending with 'VERDICT: PASS' or 'VERDICT: FAIL' and discrepancies\n   done_when: Every number in R1-R3 was independently reproduced or a discrepancy is listed; orientation and zone layout were checked; the verdict line is present.\n   checks: [{\"name\": \"verdict_present\", \"params\": {}, \"covers\": [\"R1\", \"R2\", \"R3\", \"R4\", \"R5\", \"R7\", \"R8\"]}, {\"name\": \"output_has_table\", \"params\": {\"min_rows\": 5}, \"covers\": [\"R1\", \"R2\", \"R3\"]}]\n4. [Delivery Summariser]: Assemble the final short summary\n   kind: work\n   covers: R1, R2, R3, R4, R5, R6, R7, R8\n   depends_on: 1, 2, 3\n   do: Write the short memo from verified outputs: zone and field means table, stressed zones, route order, length, battery verdict and margin, assumptions (including the 3 x 2 zone grid and axis convention), and the delivered files. Use corrected values if the verifier found errors.\n   output: memo: Results, Stressed zones, Scouting route, Assumptions, Deliverables\n   done_when: The memo has a table of all six zone means and the field mean; it lists the stressed zones; it gives the route with length and margin; it names ndvi_map.png and zones.csv; it adds no new numbers.\n   checks: [{\"name\": \"output_has_table\", \"params\": {\"min_rows\": 6}, \"covers\": [\"R1\", \"R2\", \"R6\", \"R8\"]}, {\"name\": \"output_mentions\", \"params\": {\"terms\": [\"Z1\", \"Z6\", \"stressed\", \"260\", \"ndvi_map.png\", \"zones.csv\", \"east\", \"south\"]}, \"covers\": [\"R2\", \"R3\", \"R4\", \"R5\", \"R6\", \"R7\"]}]\n\n## Risks and Decisions:\n- uint8 overflow or integer division on the raw 8-bit arrays gives wrong NDVI; mitigated by an explicit float64 cast and independent recomputation.\n- PNG may be RGB, palette or 16-bit rather than plain 8-bit grayscale; the analyst inspects the mode and the verifier loads it independently.\n- NIR+Red = 0 pixels produce NaN or inf; they are masked and counted, and the verifier checks.\n- A zone mean very close to 0.35 could flip with rounding; the unrounded value is used and near-threshold cases are flagged. Decision point: if flagged, the summary states more decimals.\n- Flipped rows or swapped axes would swap the north and south zones and change the route; mitigated by fixed slices, origin='upper' and verifier checks.\n- The route may exceed 260 m; this is reported as an excess. Empty or single-zone stressed sets use the edge-case rules.\n- If the verifier returns FAIL, re-run steps 1-2 with the fixes before the summary.\n\n## RoleFeedback\nNone\n\n## PlanFeedback\nNone",
+      "roles": [
+        {
+          "name": "Remote Sensing Analyst",
+          "seniority": "senior",
+          "description": "Precision-agriculture analyst who has processed many drone multispectral datasets. Careful about integer overflow, nodata, zone geometry and axis orientation, and produces clean map and table deliverables.",
+          "goal": "Produce correct per-pixel NDVI, zone and field means, the stressed-zone list, ndvi_map.png and zones.csv, with the orientation convention applied correctly.",
+          "responsibilities": [
+            "Inspect both PNGs (mode, shape, dtype, range, channels) and confirm they are 90x60 and aligned",
+            "Compute NDVI in float64 and handle zero denominators",
+            "Apply the six 30x30 zone slices with columns = x east and rows = y south",
+            "Compute the six zone means and the field mean and apply the 0.35 threshold",
+            "Write ndvi_map.png, zones.csv and results.json"
+          ],
+          "skills": [
+            "NumPy/Python raster maths",
+            "NDVI interpretation",
+            "matplotlib mapping",
+            "zonal statistics"
+          ],
+          "tools": [
+            "Bash (Python 3 with numpy/matplotlib/PIL)",
+            "Read",
+            "Write"
+          ],
+          "inputs": [
+            "inputs/red.png",
+            "inputs/nir.png"
+          ],
+          "outputs": [
+            {
+              "artifact": "zones.csv",
+              "format": "csv with header zone,mean_ndvi,stressed; 6 rows Z1..Z6; mean to 4 decimals; stressed true/false"
+            },
+            {
+              "artifact": "ndvi_map.png",
+              "format": "png NDVI heatmap with colourbar, zone grid and labels, axes in metres, north at top"
+            },
+            {
+              "artifact": "results.json",
+              "format": "json: zone means (full precision and 4 dp), field mean, stressed list, image shape, zero-denominator count, near-threshold flags"
+            },
+            {
+              "artifact": "analysis report",
+              "format": "markdown table of zone means plus field mean, stressed list, and one line stating the orientation (x east along columns, y south along rows)"
+            }
+          ],
+          "success_criteria": [
+            "Arrays computed as float, no uint8 overflow",
+            "Shape (60,90) confirmed",
+            "Field mean equals the mean of the zone means within rounding",
+            "Stressed list matches the 0.35 rule on unrounded values",
+            "Map has row 0 (north) at the top"
+          ],
+          "constraints": [
+            "Never write into inputs/",
+            "At most 5 turns, so combine work into few scripts",
+            "Row 0 is the north edge and column 0 is the west edge; use imshow origin='upper'"
+          ],
+          "covers": [
+            "R1",
+            "R2",
+            "R4",
+            "R5",
+            "R7",
+            "R8"
+          ],
+          "is_summariser": false,
+          "prompt": "You are a senior remote-sensing analyst. Work in the sandbox with Python. Turn 1: load inputs/red.png and inputs/nir.png (PIL), print mode, shape, dtype, min/max; if RGB/RGBA check the channels are identical and take one; if floats in 0-1 note it and rescale; confirm shape (60,90) for both. Turn 2: in ONE script cast to float64 (never subtract uint8 arrays), compute ndvi=(nir-red)/(nir+red), mask denominator==0 as NaN and count them. Orientation: x runs east along columns from the west edge, y runs south along rows from the north edge, so row 0 is north. Zone slices (rows,cols): Z1 [0:30,0:30], Z2 [0:30,30:60], Z3 [0:30,60:90], Z4 [30:60,0:30], Z5 [30:60,30:60], Z6 [30:60,60:90]. Use nanmean for zone and field means. Stressed = unrounded mean < 0.35; flag any zone within 0.0005 of 0.35. Write zones.csv with header exactly zone,mean_ndvi,stressed (4 dp, true/false, 6 rows). Plot ndvi_map.png with imshow(origin='upper'), colourbar labelled NDVI, boundaries at x=30,60 and y=30, labels Z1..Z6, axes in metres (x east, y south), dpi>=100. Save results.json. Turn 3: re-read the files, confirm the png exists and print a markdown table. Final answer: the table, the field mean, the stressed list, any flags, and one sentence stating the orientation used (x east along columns, y south along rows)."
+        },
+        {
+          "name": "Route Optimisation Analyst",
+          "seniority": "senior",
+          "description": "Operations-research engineer who plans drone and vehicle routes. Uses exact search on small instances and reports lengths and margins precisely.",
+          "goal": "Give the exact shortest closed tour from (0,0) over all stressed zone centres, with its length and the battery verdict.",
+          "responsibilities": [
+            "Read the stressed zone list from results.json",
+            "Map zones to centres in (x east, y south) metres",
+            "Enumerate all permutations and select the shortest closed tour",
+            "Report order, leg distances, total to 1 decimal and the margin against 260 m",
+            "Report ties and the runner-up"
+          ],
+          "skills": [
+            "TSP exact search",
+            "Euclidean geometry",
+            "clear numerical reporting"
+          ],
+          "tools": [
+            "Bash (Python 3)",
+            "calc",
+            "Read",
+            "Write"
+          ],
+          "inputs": [
+            "results.json from step 1 (stressed zones)"
+          ],
+          "outputs": [
+            {
+              "artifact": "route table",
+              "format": "markdown table: leg, from, to, distance m; with total and battery margin"
+            },
+            {
+              "artifact": "route.json",
+              "format": "json: order, legs, total_m, within_limit, margin_m"
+            }
+          ],
+          "success_criteria": [
+            "All permutations enumerated",
+            "Closed tour starts and ends at (0,0)",
+            "Length to 1 decimal; margin = 260 - length with explicit within/exceeds wording"
+          ],
+          "constraints": [
+            "Battery 260 m",
+            "Centres: Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45) with x east and y south",
+            "Straight-line legs only",
+            "Handle 0 or 1 stressed zones"
+          ],
+          "covers": [
+            "R3",
+            "R7"
+          ],
+          "is_summariser": false,
+          "prompt": "You are a senior route-optimisation engineer. Read results.json for the stressed zone list. Coordinates are metres with x east along the columns from the west edge and y south along the rows from the north edge. Centres: Z1(15,15) Z2(45,15) Z3(75,15) Z4(15,45) Z5(45,45) Z6(75,45); depot (0,0). In one Python script use itertools.permutations over the stressed zones, compute each closed tour length (depot -> zones -> depot) with math.hypot, sort, and print the best and the runner-up (note ties within 0.05 m; a reversed tour has equal length, so report one direction and mention it). Edge cases: none stressed -> 0 m; one -> out and back. margin = 260 - length; state 'within the limit by X m' or 'exceeds the limit by X m'. Round only the final figures to 1 decimal and note any 0.1 rounding difference between the leg sum and the total. Save route.json. Final answer: a markdown table of legs, the order as Home -> Zx -> ... -> Home, the total length, and the battery verdict containing the words 260 and margin."
+        },
+        {
+          "name": "Independent Verifier",
+          "seniority": "senior",
+          "description": "QA data scientist who re-derives results with a different code path and checks deliverable files against the spec. Does not reuse the producers' scripts.",
+          "goal": "Confirm or refute every number and file before the summary is written.",
+          "responsibilities": [
+            "Recompute NDVI and zone means independently",
+            "Check zones.csv format, PNG validity and north-at-top orientation, zone layout",
+            "Re-derive the route with calc or Python for the top candidates",
+            "Return a clear verdict with discrepancies listed"
+          ],
+          "skills": [
+            "independent recomputation",
+            "numerical tolerance checks",
+            "file validation"
+          ],
+          "tools": [
+            "Bash (Python 3)",
+            "calc",
+            "Read"
+          ],
+          "inputs": [
+            "inputs/red.png and inputs/nir.png",
+            "zones.csv, ndvi_map.png, results.json from step 1",
+            "route.json from step 2"
+          ],
+          "outputs": [
+            {
+              "artifact": "verification report",
+              "format": "markdown: check table (check, expected, found, pass/fail) and a final line 'VERDICT: PASS' or 'VERDICT: FAIL' with fixes"
+            }
+          ],
+          "success_criteria": [
+            "Zone means agree to 4 dp via a different implementation",
+            "Stressed list matches the rule",
+            "CSV has 6 rows and the right columns",
+            "PNG opens, is not blank and has north at the top",
+            "Route length agrees within 0.05 m"
+          ],
+          "constraints": [
+            "Do not modify deliverables; report problems",
+            "At most 5 turns"
+          ],
+          "covers": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5",
+            "R7",
+            "R8"
+          ],
+          "is_summariser": false,
+          "prompt": "You are an independent verifier; do not reuse earlier scripts. Turn 1: read the PNGs by a different route than the analyst (e.g. PIL getdata() into pure Python lists), compute NDVI per pixel with plain float division, and compute six zone means and the field mean by explicit loops over zone bounds (rows 0-29/30-59, cols 0-29/30-59/60-89; rows = y south, columns = x east). Compare with zones.csv and results.json at 4 dp; check zero-denominator pixels and values within 0.0005 of 0.35. Turn 2: validate zones.csv (header zone,mean_ndvi,stressed; 6 rows; Z1-Z3 north, Z4-Z6 south; boolean agrees with the 0.35 rule) and ndvi_map.png (opens, not constant, north at top: compare the NW zone's pixel appearance with the data if feasible). Turn 3: check the route independently: distance matrix for the stressed zones, enumerate candidate orders, check route.json length within 0.05 m and the margin to 260 m. Final answer: a table of checks and a last line 'VERDICT: PASS' or 'VERDICT: FAIL' followed by discrepancies."
+        },
+        {
+          "name": "Delivery Summariser",
+          "seniority": "senior",
+          "description": "Technical writer who assembles verified results into a concise summary without adding new analysis.",
+          "goal": "Produce the short final summary from verified outputs only.",
+          "responsibilities": [
+            "Assemble zone and field means, stressed zones, route and battery verdict into a short memo",
+            "State assumptions and list the deliverable files",
+            "Carry over any verifier caveats"
+          ],
+          "skills": [
+            "concise technical writing"
+          ],
+          "tools": [],
+          "inputs": [
+            "Analyst report, route table, verification report"
+          ],
+          "outputs": [
+            {
+              "artifact": "final summary",
+              "format": "memo with headings: Results, Stressed zones, Scouting route, Assumptions, Deliverables"
+            }
+          ],
+          "success_criteria": [
+            "Every number is copied from verified outputs",
+            "R1-R6 are visibly answered",
+            "Under about 300 words plus one table"
+          ],
+          "constraints": [
+            "No new calculations",
+            "If the verdict is FAIL, present corrected values or flag the issue"
+          ],
+          "covers": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5",
+            "R6",
+            "R7",
+            "R8"
+          ],
+          "is_summariser": true,
+          "prompt": "You assemble the final deliverable using only numbers in the analyst report, route table and verification report. Write a short memo with headings: Results (table: zone Z1..Z6, mean NDVI 4 dp, stressed yes/no, plus the whole-field mean), Stressed zones (list), Scouting route (order as Home -> ... -> Home, length in m to 1 decimal, battery limit 260 m, within the limit by X m or exceeding by X m), Assumptions (zone mean = mean of per-pixel NDVI; 30 m x 30 m zones in a 3 x 2 grid numbered row by row; x east along columns, y south along rows; centres at (15,15) etc.; straight horizontal legs; NaN or near-threshold notes), Deliverables (ndvi_map.png, zones.csv). Do not compute anything new. Mention any verifier caveat. Keep it under about 300 words besides the table."
+        }
+      ],
+      "plan": [
+        {
+          "agents": [
+            "Remote Sensing Analyst"
+          ],
+          "text": "[Remote Sensing Analyst]: Compute NDVI, zone means, stressed zones; write map and CSV",
+          "title": "Compute NDVI, zone means, stressed zones; write map and CSV",
+          "kind": "work",
+          "covers": [
+            "R1",
+            "R2",
+            "R4",
+            "R5",
+            "R7",
+            "R8"
+          ],
+          "depends_on": [],
+          "do": "1) Inspect red.png and nir.png (mode, shape, dtype, range, 60x90 alignment). 2) Cast to float64, compute per-pixel NDVI, mask zero denominators. 3) Compute the six zone means with the fixed slices (columns = x east, rows = y south) and the field mean. 4) Flag stressed zones (<0.35, unrounded) and near-threshold cases. 5) Write ndvi_map.png (colourbar, zone grid and labels, north at top), zones.csv (zone,mean_ndvi,stressed; 6 rows) and results.json. 6) Report the table, field mean, stressed list and an orientation line.",
+          "output": "table: zone x mean NDVI (4 dp) x stressed, plus the field mean, the stressed list and an orientation note (x east, y south); files zones.csv, ndvi_map.png, results.json",
+          "done_when": "zones.csv has 6 rows with header zone,mean_ndvi,stressed; ndvi_map.png exists and is a valid image; the report lists all six zone means and the field mean to 4 dp; the stressed zones are listed (or none stated); the orientation note is present.",
+          "checks": [
+            {
+              "name": "file_exists",
+              "params": {
+                "kind": "csv",
+                "name": "zones.csv"
+              },
+              "covers": [
+                "R5"
+              ]
+            },
+            {
+              "name": "csv_columns",
+              "params": {
+                "names": [
+                  "zone",
+                  "mean_ndvi",
+                  "stressed"
+                ]
+              },
+              "covers": [
+                "R5"
+              ]
+            },
+            {
+              "name": "csv_rows_min",
+              "params": {
+                "n": 6
+              },
+              "covers": [
+                "R1",
+                "R5",
+                "R8"
+              ]
+            },
+            {
+              "name": "file_exists",
+              "params": {
+                "kind": "png",
+                "name": "ndvi_map.png"
+              },
+              "covers": [
+                "R4"
+              ]
+            },
+            {
+              "name": "image_exists",
+              "params": {
+                "kind": "png",
+                "min_px": 60
+              },
+              "covers": [
+                "R4"
+              ]
+            },
+            {
+              "name": "output_mentions",
+              "params": {
+                "terms": [
+                  "east",
+                  "south",
+                  "stressed"
+                ]
+              },
+              "covers": [
+                "R2",
+                "R7"
+              ]
+            }
+          ]
+        },
+        {
+          "agents": [
+            "Route Optimisation Analyst"
+          ],
+          "text": "[Route Optimisation Analyst]: Shortest closed scouting route and battery check",
+          "title": "Shortest closed scouting route and battery check",
+          "kind": "work",
+          "covers": [
+            "R3",
+            "R7"
+          ],
+          "depends_on": [
+            1
+          ],
+          "do": "1) Read the stressed zones from results.json. 2) Map them to centres (x east, y south, metres). 3) Enumerate all permutations with depot (0,0) and compute closed tour lengths. 4) Pick the shortest (report ties and the reverse). 5) Give legs, total to 1 decimal and margin = 260 - length, stating within or exceeding. 6) Save route.json.",
+          "output": "table: leg x from x to x distance m, with total length, order and battery margin",
+          "done_when": "The route order and total length (1 decimal) are stated; all permutations were enumerated; the battery verdict gives an explicit margin in metres.",
+          "checks": [
+            {
+              "name": "output_has_table",
+              "params": {
+                "min_rows": 2
+              },
+              "covers": [
+                "R3"
+              ]
+            },
+            {
+              "name": "output_mentions",
+              "params": {
+                "terms": [
+                  "260",
+                  "margin"
+                ]
+              },
+              "covers": [
+                "R3",
+                "R7"
+              ]
+            }
+          ]
+        },
+        {
+          "agents": [
+            "Independent Verifier"
+          ],
+          "text": "[Independent Verifier]: Independently verify numbers, files and route",
+          "title": "Independently verify numbers, files and route",
+          "kind": "verify",
+          "covers": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5",
+            "R7",
+            "R8"
+          ],
+          "depends_on": [
+            1,
+            2
+          ],
+          "do": "1) Recompute NDVI and zone/field means from the raw PNGs with a different implementation and compare at 4 dp. 2) Check the stressed list against the 0.35 rule and near-threshold cases. 3) Validate zones.csv, the zone layout (Z1-Z3 north, Z4-Z6 south) and ndvi_map.png (opens, not blank, north at top). 4) Recompute the route length and margin and the best alternative. 5) Issue the verdict.",
+          "output": "table: check x expected x found x pass/fail, ending with 'VERDICT: PASS' or 'VERDICT: FAIL' and discrepancies",
+          "done_when": "Every number in R1-R3 was independently reproduced or a discrepancy is listed; orientation and zone layout were checked; the verdict line is present.",
+          "checks": [
+            {
+              "name": "verdict_present",
+              "params": {},
+              "covers": [
+                "R1",
+                "R2",
+                "R3",
+                "R4",
+                "R5",
+                "R7",
+                "R8"
+              ]
+            },
+            {
+              "name": "output_has_table",
+              "params": {
+                "min_rows": 5
+              },
+              "covers": [
+                "R1",
+                "R2",
+                "R3"
+              ]
+            }
+          ]
+        },
+        {
+          "agents": [
+            "Delivery Summariser"
+          ],
+          "text": "[Delivery Summariser]: Assemble the final short summary",
+          "title": "Assemble the final short summary",
+          "kind": "work",
+          "covers": [
+            "R1",
+            "R2",
+            "R3",
+            "R4",
+            "R5",
+            "R6",
+            "R7",
+            "R8"
+          ],
+          "depends_on": [
+            1,
+            2,
+            3
+          ],
+          "do": "Write the short memo from verified outputs: zone and field means table, stressed zones, route order, length, battery verdict and margin, assumptions (including the 3 x 2 zone grid and axis convention), and the delivered files. Use corrected values if the verifier found errors.",
+          "output": "memo: Results, Stressed zones, Scouting route, Assumptions, Deliverables",
+          "done_when": "The memo has a table of all six zone means and the field mean; it lists the stressed zones; it gives the route with length and margin; it names ndvi_map.png and zones.csv; it adds no new numbers.",
+          "checks": [
+            {
+              "name": "output_has_table",
+              "params": {
+                "min_rows": 6
+              },
+              "covers": [
+                "R1",
+                "R2",
+                "R6",
+                "R8"
+              ]
+            },
+            {
+              "name": "output_mentions",
+              "params": {
+                "terms": [
+                  "Z1",
+                  "Z6",
+                  "stressed",
+                  "260",
+                  "ndvi_map.png",
+                  "zones.csv",
+                  "east",
+                  "south"
+                ]
+              },
+              "covers": [
+                "R2",
+                "R3",
+                "R4",
+                "R5",
+                "R6",
+                "R7"
+              ]
+            }
+          ]
+        }
+      ],
+      "capability_requests": [
+        {
+          "name": "python_interpreter",
+          "kind": "tool",
+          "for_role": "Remote Sensing Analyst",
+          "what_it_does": "Runs Python 3 with numpy/PIL/matplotlib in the sandbox to read PNGs, compute NDVI and write files.",
+          "input": "Python script",
+          "output": "stdout and files in the workspace",
+          "example_input": "import matplotlib.image as m; print(m.imread('inputs/red.png').shape)",
+          "example_output": "(60, 90)",
+          "source": "planner",
+          "step": null,
+          "canonical": "code_execution",
+          "mapped": true,
+          "status": null,
+          "pool_id": "",
+          "candidates": [],
+          "reason": ""
+        },
+        {
+          "name": "file_writing",
+          "kind": "tool",
+          "for_role": "Remote Sensing Analyst",
+          "what_it_does": "Writes zones.csv, ndvi_map.png and results.json (and route.json for the route role) into the workspace.",
+          "input": "file path and content",
+          "output": "saved file",
+          "example_input": "zones.csv with 6 rows",
+          "example_output": "zones.csv written",
+          "source": "planner",
+          "step": null,
+          "canonical": "file_writing",
+          "mapped": false,
+          "status": null,
+          "pool_id": "",
+          "candidates": [],
+          "reason": ""
+        }
+      ],
+      "agent_observer_raw": "",
+      "score": {
+        "hard_failed": 1,
+        "blocking": 0
+      },
+      "plan_diff": {
+        "requirements_added": [
+          "R7",
+          "R8"
+        ],
+        "requirements_removed": [],
+        "requirements_changed": [
+          "R1",
+          "R2",
+          "R3",
+          "R4"
+        ],
+        "steps_added": [],
+        "steps_removed": [],
+        "steps_changed": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "roles_before": [
+          "Remote Sensing Analyst",
+          "Route Optimisation Analyst",
+          "Independent Verifier",
+          "Delivery Summariser"
+        ],
+        "roles_after": [
+          "Remote Sensing Analyst",
+          "Route Optimisation Analyst",
+          "Independent Verifier",
+          "Delivery Summariser"
+        ]
+      },
+      "reading_revision": null,
+      "agent_observer": "No Suggestions",
+      "plan_observer_raw": "## Suggestions\nNo Suggestions\n\n## Verdict\nAPPROVE",
+      "plan_observer": "No Suggestions",
+      "consensus": false,
+      "gate_failed": [
+        "done_when_reachable"
+      ],
+      "agent_verdict": "APPROVE",
+      "plan_verdict": "APPROVE",
+      "agent_suggestions_n": 0,
+      "plan_suggestions_n": 0
+    }
+  ],
+  "prompts": "d24",
+  "requirements": {
+    "R1": "Compute NDVI = (NIR - Red) / (NIR + Red) per pixel from inputs/red.png and inputs/nir.png (8-bit, aligned bands), and give the mean NDVI of each of the six zones and of the whole field to 4 decimals.",
+    "R2": "List the stressed zones: a zone is stressed when its mean NDVI is below 0.35.",
+    "R3": "Find the shortest route for the scouting drone: it takes off from the NW corner (x 0, y 0), flies in straight lines over the centre of every stressed zone and lands back at that corner. Give the order and the length in metres to 1 decimal, and say whether it is within the 260 m battery limit and by how much.",
+    "R4": "Deliver ndvi_map.png, the per-pixel NDVI map, with a colourbar and ideally zone boundaries and labels, north at the top.",
+    "R5": "Deliver zones.csv with one row per zone and columns: zone, mean NDVI, stressed.",
+    "R6": "Deliver a short summary covering the zone and field means, the stressed zones, the route and the battery verdict.",
+    "R7": "Apply the coordinate convention throughout (map, zone slices, route): x runs east along the columns from the west edge and y runs south along the rows from the north edge. One pixel is 1 m x 1 m, and the origin (0,0) is the NW corner.",
+    "R8": "Split the 90 x 60 pixel field into six 30 m x 30 m management zones in a 3 x 2 grid, numbered row by row: Z1, Z2, Z3 on the north row (west to east) and Z4, Z5, Z6 on the south row."
+  },
+  "givens": [
+    "Inputs: inputs/red.png and inputs/nir.png, red and near-infrared bands, 8-bit, aligned, of a 90 x 60 pixel drone image of a field (90 columns, 60 rows).",
+    "One pixel is 1 m x 1 m, so the field is 90 m x 60 m and has 90 x 60 = 5400 pixels. x runs east along the columns from the west edge; y runs south along the rows from the north edge; origin (0,0) is the NW corner.",
+    "Six zones of 30 m x 30 m (900 pixels each, 6 x 900 = 5400) in a 3 x 2 grid (3 columns, 2 rows), numbered row by row. Z1 x0-30,y0-30; Z2 x30-60,y0-30; Z3 x60-90,y0-30; Z4 x0-30,y30-60; Z5 x30-60,y30-60; Z6 x60-90,y30-60. Pixel slices: Z1 rows 0:30,cols 0:30; Z2 rows 0:30,cols 30:60; Z3 rows 0:30,cols 60:90; Z4 rows 30:60,cols 0:30; Z5 rows 30:60,cols 30:60; Z6 rows 30:60,cols 60:90.",
+    "Zone centres in metres: Z1 (15,15), Z2 (45,15), Z3 (75,15), Z4 (15,45), Z5 (45,45), Z6 (75,45).",
+    "Distances from (0,0) to the centres: Z1 sqrt(450)=21.2; Z2 sqrt(2250)=47.4; Z3 sqrt(5850)=76.5; Z4 sqrt(2250)=47.4; Z5 sqrt(4050)=63.6; Z6 sqrt(7650)=87.5. Neighbouring centres are 30 m apart (diagonal 42.4).",
+    "Required precision: zone and field mean NDVI to 4 decimals; route length to 1 decimal.",
+    "Stress threshold 0.35 (stressed if mean NDVI < 0.35). Battery 260 m. The tour search has at most 6! = 720 permutations, so brute force is exact.",
+    "Assumption: the zone mean is the arithmetic mean of per-pixel NDVI over the zone's 900 pixels (not the NDVI of the mean bands). The field mean is the mean over all 5400 pixels.",
+    "Assumption: pixel i spans [i,i+1] m, so (0,0) is the outer corner of pixel (0,0) and zone centres are exact multiples of 15 m.",
+    "Assumption: pixels with NIR+Red = 0 are excluded from the means and counted. If there are none, this is moot.",
+    "Assumption: the stress test uses the unrounded mean. Any zone mean within 0.0005 of 0.35 is flagged.",
+    "Assumption: flight length is horizontal straight-line distance only, with no wind, climb, detour or reserve. The drone starts and ends at (0,0).",
+    "Assumption: if no zone is stressed the route is 0 m. If one is stressed the route is out-and-back (2 x distance)."
+  ],
+  "risks": [
+    "uint8 overflow or integer division on the raw 8-bit arrays gives wrong NDVI; mitigated by an explicit float64 cast and independent recomputation.",
+    "PNG may be RGB, palette or 16-bit rather than plain 8-bit grayscale; the analyst inspects the mode and the verifier loads it independently.",
+    "NIR+Red = 0 pixels produce NaN or inf; they are masked and counted, and the verifier checks.",
+    "A zone mean very close to 0.35 could flip with rounding; the unrounded value is used and near-threshold cases are flagged. Decision point: if flagged, the summary states more decimals.",
+    "Flipped rows or swapped axes would swap the north and south zones and change the route; mitigated by fixed slices, origin='upper' and verifier checks.",
+    "The route may exceed 260 m; this is reported as an excess. Empty or single-zone stressed sets use the edge-case rules.",
+    "If the verifier returns FAIL, re-run steps 1-2 with the fixes before the summary."
+  ],
+  "open_questions": [
+    {
+      "question": "Is the zone mean the mean of per-pixel NDVI or the NDVI of the mean bands?",
+      "assumption": "Mean of per-pixel NDVI, because the task defines NDVI per pixel and then asks for the mean NDVI."
+    },
+    {
+      "question": "How should NIR+Red = 0 pixels be handled?",
+      "assumption": "Excluded as NaN from the means and reported; probably none exist."
+    },
+    {
+      "question": "Where exactly is a zone centre relative to the pixel grid?",
+      "assumption": "At the geometric centre in metre coordinates, (15,15) etc., with the origin at the outer NW corner."
+    }
+  ],
+  "interpretation": {
+    "entities": [],
+    "working": [],
+    "ambiguous": [],
+    "gap": 0.3,
+    "question": null,
+    "context": {}
+  },
+  "quality": {
+    "checks": {
+      "requirements_covered": {
+        "ok": true,
+        "requirements": 8,
+        "uncovered_by_steps": [],
+        "uncovered_by_roles": []
+      },
+      "dependencies_valid": {
+        "ok": true,
+        "bad": []
+      },
+      "roles_fully_defined": {
+        "ok": true,
+        "defined": 4,
+        "roles": 4,
+        "thin": {}
+      },
+      "summariser": {
+        "ok": true,
+        "declared_by_planner": 1,
+        "name": "Delivery Summariser",
+        "tools": [],
+        "owns_steps": [
+          4
+        ]
+      },
+      "tools_accounted": {
+        "ok": false,
+        "missing_not_requested_by_planner": [
+          "Bash (Python 3 with numpy/matplotlib/PIL)",
+          "Bash (Python 3)",
+          "Read",
+          "Write"
+        ]
+      },
+      "verification_step": {
+        "ok": true,
+        "steps": [
+          2,
+          3,
+          4
+        ]
+      },
+      "independent_verification": {
+        "ok": true,
+        "candidates": [
+          {
+            "step": 3,
+            "verifiers": [
+              "Independent Verifier"
+            ],
+            "producers": [
+              "Remote Sensing Analyst",
+              "Route Optimisation Analyst"
+            ],
+            "independent": true
+          }
+        ]
+      },
+      "task_coverage": {
+        "ok": true,
+        "numbers": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "8",
+          "30",
+          "60",
+          "90",
+          "260",
+          "0.35"
+        ],
+        "missing_numbers": [],
+        "phrases": [
+          "runs east along the columns from the",
+          "runs south along the rows from the",
+          "Compute NDVI =",
+          "List the stressed zones",
+          "Find the shortest such route",
+          "Deliver ndvi_map.png"
+        ],
+        "missing_phrases": []
+      },
+      "done_when_properties": {
+        "ok": true,
+        "gaps": {}
+      },
+      "outside_action_fallback": {
+        "ok": true,
+        "steps": []
+      },
+      "done_when_reachable": {
+        "ok": false,
+        "exact_match": [],
+        "too_many_conditions": [
+          {
+            "step": 1,
+            "conditions": 7
+          },
+          {
+            "step": 4,
+            "conditions": 8
+          }
+        ]
+      },
+      "requirements_checked": {
+        "ok": true,
+        "unchecked": []
+      },
+      "checks_valid": {
+        "ok": true,
+        "invalid": []
+      },
+      "checks_reachable": {
+        "ok": true,
+        "too_many": [],
+        "no_file_tool": []
+      },
+      "input_files_named": {
+        "ok": true,
+        "files": 2,
+        "not_named": []
+      }
+    },
+    "passed": 13,
+    "failed": 2,
+    "na": 0,
+    "failed_checks": [
+      "tools_accounted",
+      "done_when_reachable"
+    ],
+    "hard_failed": [
+      "done_when_reachable"
+    ]
+  },
+  "gate_hits": 2,
+  "requests_proposed": 6,
+  "requests_dropped_by_observers": 0,
+  "plan_search": {
+    "status": "not_needed",
+    "why": "Everything needed (NDVI formula, zone layout, stress threshold, battery limit, route geometry) is defined in the task or is standard computation, so no external facts are required.",
+    "calls": 2,
+    "tokens": 1200
+  },
+  "planning_tier": "standard",
+  "planning_signals": {
+    "requirements": 6,
+    "web": false,
+    "files": 4,
+    "outside": false,
+    "how": "auto"
+  },
+  "published_round": 2,
+  "published_score": {
+    "hard_failed": 1,
+    "blocking": 0
+  }
+}

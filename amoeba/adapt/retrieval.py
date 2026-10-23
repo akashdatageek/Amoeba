@@ -1,6 +1,7 @@
-"""D164 — what Box 2 and Box 4 are shown from the lesson library (D163). Retrieval is plain code, no embeddings:
+"""D164 — what Box 2 and Box 4 are shown from the lesson library (D163). Retrieval is plain code, no embeddings, and
+reads lessons, never families (D167: a lesson's counts are only its own uses):
 
-- the entry is approved and has a lesson;
+- the lesson is approved;
 - it helped more often than it hurt, over every niche;
 - it never hurt in this run's niche;
 - for Box 4, its cause is the stuck step's cause (Box 2 takes any cause).
@@ -17,7 +18,7 @@ from amoeba.adapt.lessons import LessonLibrary, lessons_config
 def retrieve(lib: LessonLibrary, niche: str, cause: str | None = None, max_entries: int | None = None) -> list[dict]:
     cfg = lessons_config()
     n = int(cfg["max_entries"] if max_entries is None else max_entries)
-    ok = [e for e in lib.entries() if e.get("status") == "approved" and (e.get("lesson") or "").strip()
+    ok = [e for e in lib.lessons() if e.get("status") == "approved" and (e.get("lesson") or "").strip()
           and e["counts"]["helped"] > e["counts"]["hurt"]
           and not (e.get("by_niche", {}).get(niche) or {}).get("hurt")
           and (cause is None or e["cause"] == cause)]
@@ -31,7 +32,8 @@ def _lines(entries: list[dict], max_chars: int, cause: bool) -> list[str]:
     out, used = [], 0
     for e in entries:
         c = e["counts"]
-        line = (f"- {e['op']} ({e['scope']}" + ("" if cause else f", for {e['cause']}") +
+        line = ("- " + (f"[{e['id']}] " if cause else "") + f"{e['op']} ({e['scope']}" +
+                ("" if cause else f", for {e['cause']}") +
                 f"), helped {c['helped']}, hurt {c['hurt']}: {e['lesson']}")
         if used + len(line) > max_chars:
             break
@@ -47,7 +49,9 @@ def box4_section(entries: list[dict], max_chars: int | None = None) -> str:
     if not lines:
         return ""
     return ("\n\n# What helped before for this cause\nFrom earlier tasks, counted by plain code. A hint only: your "
-            "edit must still quote this run's evidence in `because`, and every check still applies.\n"
+            "edit must still quote this run's evidence in `because`, and every check still applies. If your edit "
+            "follows one of these lessons, add \"from_lesson\": \"<its id in brackets>\" to your reply (its op and "
+            "scope must be yours); plain code counts the result for that lesson only then.\n"
             + "\n".join(lines))
 
 

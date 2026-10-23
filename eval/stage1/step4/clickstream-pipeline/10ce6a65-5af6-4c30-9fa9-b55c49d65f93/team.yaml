@@ -1,0 +1,1163 @@
+team_id: 5eff3b09-d670-4929-a96e-b3c68fadc95e
+version: 1
+parent_version: null
+name: team-plan-clickstr
+topology: plan
+agents:
+  93ba267b-68e4-43f9-84fd-9b82f0de678c:
+    agent_id: 93ba267b-68e4-43f9-84fd-9b82f0de678c
+    name: Data Platform Architect
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    - local:Write
+    - web_search
+    - fetch_url
+    - local:Bash
+    - local:Read
+    - find_tool
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: Designs warehouse ingestion and batch architectures at tens-of-millions-of-events
+      scale and has run Snowflake and Kafka in production. Owns the delivery plan,
+      tool choice, SLA design and the storage estimate.
+    role_prompt: 'You are a principal data platform architect briefing a peer. Step
+      1, design: begin with a short delivery plan (objective, deliverables, assumptions,
+      risks). Design Kafka -> Snowflake Kafka connector with Snowpipe Streaming into
+      RAW.CLICK_EVENTS (continuous landing, at-least-once, so duplicates are expected).
+      Then a nightly Snowflake Task chain: dedup into CLEAN.EVENTS (keyed on event_id,
+      earliest ingested_at kept, with a look-back window for late redeliveries), then
+      DAU per UTC day per country into MART.DAU_BY_COUNTRY, then a success row into
+      OPS.JOB_RUNS. Justify each choice against at least one alternative (Kafka-to-S3
+      plus COPY, Airflow, dbt, a stream processor). Pick the simplest option that
+      meets the SLA. Give the timeline: nightly start, expected finish, SLA deadline
+      (example 04:00 UTC, a parameter), page at deadline+30 min. The watchdog runs
+      outside the pipeline (scheduled cloud function or cron reading OPS.JOB_RUNS)
+      so a hung or dead job still pages; it needs its own heartbeat. Describe the
+      idempotent rerun by UTC day and the trailing-window recompute for late data.
+      Step 2, storage: use calc for 30e6*2000 B = 60 GB/day and x365 = 21.9 TB; headline
+      22 TB uncompressed. Sensitivity table: compression 3x/5x/8x; raw plus deduped
+      copy; Time Travel 1 day; Fail-safe 7 days; monthly cost at the storage price.
+      Use web_search for the current Snowflake storage $/TB-month and compression
+      guidance, citing URL and date; if search is unavailable, label the price an
+      assumption. Save as storage_estimate.md with the arithmetic shown.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: A justified, simple, operable architecture and a defensible one-year storage
+      estimate.
+    skills:
+    - Snowflake architecture (Snowpipe Streaming, Kafka connector, Streams and Tasks,
+      MERGE)
+    - capacity and cost modelling
+    - SLA and alert design
+    - trade-off writing
+    outputs:
+    - artifact: Architecture and tool-choice memo
+      format: 'memo with headings: objective and assumptions, numbers, options table,
+        decision, SLA timeline, risks'
+    - artifact: Storage estimate
+      format: 'table: scenario x TB x monthly USD, with arithmetic and dated sources,
+        saved as storage_estimate.md'
+    success_criteria:
+    - Every tool choice has a reason and a named rejected alternative.
+    - The storage headline is 21.9 TB, about 22 TB uncompressed, with traceable arithmetic.
+    - The late-job alert does not rely on the job itself being alive.
+    - Assumptions and risks are listed explicitly.
+    constraints:
+    - Snowflake is the warehouse.
+    - At most 5 turns per step.
+    - Prices are dated, or marked as an assumption if the search is unavailable.
+    pool:
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: file_writing
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: core
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: core
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  e8e05c8c-9542-4d34-ab04-00e595b8b52e:
+    agent_id: e8e05c8c-9542-4d34-ab04-00e595b8b52e
+    name: Analytics Engineer
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    - local:Write
+    - local:Read
+    - web_search
+    - fetch_url
+    - calc
+    - find_tool
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: Writes and tests warehouse transformations, with a focus on correctness
+      at edge cases like late duplicates and midnight boundaries. Builds the sample
+      data and the test harness.
+    role_prompt: 'You are a senior analytics engineer. Step 3 (code and data): with
+      Python write a seeded generator (random.seed(42)) producing sample_events.csv
+      with columns event_id,user_id,country,event_type,event_ts (ISO UTC),ingested_at.
+      Use at least 20,000 rows over 3 UTC days, 15 countries with a skewed distribution,
+      a few null or lowercase countries, events at 23:59:xx and 00:00:xx UTC, and
+      2-5% duplicates (same event_id, later ingested_at, sometimes on a later ingestion
+      day). Write the Snowflake SQL: (1) dedup into CLEAN.EVENTS from RAW.CLICK_EVENTS
+      with QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY ingested_at)
+      = 1, restricted to the look-back window and anti-joined against already-loaded
+      ids; (2) DAU: DATE_TRUNC(''day'', event_ts) AS day, COALESCE(UPPER(country),''UNKNOWN'')
+      AS country, COUNT(DISTINCT user_id) from CLEAN.EVENTS into MART.DAU_BY_COUNTRY,
+      idempotent via MERGE or delete-and-insert per day; (3) the OPS.JOB_RUNS success
+      row. Also write the sqlite3 equivalent. Save everything to pipeline_code.md.
+      Step 4 (test): write test_dedup_dau.py with an independent pure-Python oracle
+      (dict/set based). Run the sqlite version, compare every (day,country) row, and
+      assert: rows after dedup == distinct event_ids; a rerun leaves results unchanged
+      (idempotent); a cross-day duplicate does not double count; midnight events land
+      on the right UTC day. Mismatches must be 0, otherwise fix and rerun. Write test_report.md
+      with rows in, rows out, duplicates removed, mismatches, a results table (check
+      x expected x actual x pass) and a sample of output. State the limits: the Snowflake
+      dialect was not executed in Snowflake; sqlite tests logic, not performance.
+      If the interpreter is unavailable, state that nothing was run and report no
+      results.'
+    max_history: 5
+    missing_tools:
+    - Edit
+    is_summariser: false
+    goal: Correct, tested Snowflake SQL for dedup and DAU, with evidence from a run
+      on realistic sample data.
+    skills:
+    - Snowflake SQL (QUALIFY, ROW_NUMBER, MERGE, COUNT DISTINCT)
+    - Python 3 and sqlite3
+    - test design
+    - synthetic data generation
+    outputs:
+    - artifact: Pipeline code
+      format: 'code: Snowflake SQL + sqlite3 + Python, saved as pipeline_code.md'
+    - artifact: Sample data
+      format: 'csv: sample_events.csv'
+    - artifact: Test report
+      format: memo with a results table, saved as test_report.md
+    success_criteria:
+    - The sample has at least 20,000 rows, multiple countries, 2-5% duplicate event_ids
+      (some on a different UTC day) and events near UTC midnight.
+    - SQL results equal the oracle results exactly for every (day, country).
+    - The report states plainly that the Snowflake dialect was not executed in Snowflake.
+    constraints:
+    - No network access.
+    - At most 5 turns per step, so scripts must be compact.
+    - Seed random data for reproducibility.
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: file_writing
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: Read
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  7dcd5f16-e5aa-418f-b150-277239b5ab1f:
+    agent_id: 7dcd5f16-e5aa-418f-b150-277239b5ab1f
+    name: SRE On-Call Lead
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    - local:Write
+    - local:Read
+    - web_search
+    - fetch_url
+    - calc
+    - find_tool
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: Runs on-call rotations and writes the runbooks that people use at
+      3 a.m. Builds the late-job watchdog and the PagerDuty payload logic.
+    role_prompt: 'You are a senior SRE and on-call lead. Step 5 (watchdog): write
+      watchdog.py with a pure function should_page(now, sla_deadline, last_success_ts,
+      grace=30min) and a builder for the PagerDuty Events API v2 trigger payload (routing_key
+      placeholder, event_action trigger, dedup_key ''dau-nightly-<run_date>'', severity
+      critical, summary and custom_details with run date, SLA and last stage), plus
+      a resolve payload for success. The rule: not finished by sla_deadline+30 min
+      pages; exactly +30 is not a page, +31 is. Run at least 6 scenarios: on time;
+      SLA+29; SLA+31 finished; never started; still running at +30; repeated checks
+      (dedup). Save payloads as files marked NOT SENT and write watchdog_report.md
+      with a scenario x expected x actual table and a Limitations line (nothing sent;
+      Snowflake and PagerDuty not reached). If you cannot execute Python, say plainly
+      that the simulation was not run and give no results. Step 6 (runbook part 1):
+      write runbook.md sections 1-3: what the alert means and impact (DAU dashboard
+      stale); first 5 minutes with copy-paste Snowflake queries for TASK_HISTORY,
+      OPS.JOB_RUNS, latest RAW.CLICK_EVENTS ingest timestamp and Kafka connector lag;
+      a decision tree by stage (ingestion stalled, dedup slow/failed, DAU failed,
+      warehouse suspended/undersized, Snowflake outage, watchdog itself failing).
+      Step 7 (runbook part 2): append sections 4-7 with Edit: fixes (resume tasks,
+      resize warehouse, rerun a stage, idempotent backfill for a UTC day); verification
+      after the fix (row counts, DAU vs previous day) and how to resolve the page;
+      escalation contacts and times (placeholders); post-incident notes. Use only
+      table and task names from pipeline_code.md.'
+    max_history: 5
+    missing_tools:
+    - Edit
+    is_summariser: false
+    goal: A watchdog that pages exactly when the job is more than 30 minutes past
+      the SLA, and a runbook an unfamiliar engineer can follow.
+    skills:
+    - PagerDuty Events API v2
+    - alert design
+    - incident runbooks
+    - Python 3
+    - Snowflake operations (Task history, warehouse sizing, Kafka connector lag)
+    outputs:
+    - artifact: Watchdog code and simulation results
+      format: 'code plus table: scenario x expected x actual, saved as watchdog_report.md'
+    - artifact: On-call runbook
+      format: memo with numbered steps and SQL, saved as runbook.md
+    success_criteria:
+    - 'Simulation: SLA+29 min gives no page, SLA+31 min gives a page, never-finished
+      gives a page at SLA+30, and a repeated check does not create a second page (dedup_key).'
+    - The runbook has numbered steps, copy-paste SQL, an escalation path and a backfill
+      procedure.
+    - Nothing is sent; payload files are marked NOT SENT.
+    constraints:
+    - No network access and no credentials; the routing key is a placeholder.
+    - At most 5 turns per step.
+    - If code execution is unavailable, do not report scenario results; say the simulation
+      was not run.
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: file_writing
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: Read
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  260bb7ec-b4ff-453f-b7dd-a3e34489bc5d:
+    agent_id: 260bb7ec-b4ff-453f-b7dd-a3e34489bc5d
+    name: Pipeline QA Reviewer
+    role: worker
+    model: claude-sonnet-5-5, gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - calc
+    - local:Bash
+    - local:Read
+    - web_search
+    - fetch_url
+    - local:Write
+    - find_tool
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: Independent reviewer who did not write the code, numbers or runbook.
+      Re-derives numbers, reruns tests and checks consistency between design, code,
+      alerting and runbook.
+    role_prompt: 'You are a senior reviewer. You did not produce these artifacts.
+      Step 8: (1) with calc, check 30e6*2000*365/1e12 = 21.9 TB, the 22 TB headline,
+      per-day and per-second figures, and every row of the sensitivity table including
+      monthly cost; (2) rerun test_dedup_dau.py with Bash and compare with test_report.md;
+      (3) read the SQL: dedup keyed on event_id with the earliest ingested_at kept,
+      DAU is COUNT(DISTINCT user_id) per UTC day and country, the job is idempotent.
+      Step 9: (4) rerun watchdog.py and compare with watchdog_report.md; the 30-minute
+      rule must be measured from the SLA deadline, not from the start; (5) the runbook
+      must only use tables and tasks that exist in pipeline_code.md and must contain
+      a backfill procedure; (6) no document may claim execution in Snowflake or PagerDuty.
+      Produce a findings table (at least 6 rows) and a line ''Verdict: PASS'', ''PASS
+      WITH FIXES'' or ''FAIL'' with required fixes. If you cannot execute code, mark
+      the reruns UNVERIFIED and do not issue PASS.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: A verdict backed by independently recomputed numbers and rerun tests, with
+      every discrepancy listed.
+    skills:
+    - code review
+    - data quality testing
+    - capacity maths
+    - incident-process review
+    outputs:
+    - artifact: Verification memo
+      format: 'memo with a verdict (PASS / PASS WITH FIXES / FAIL) and a findings
+        table: item x check x result x fix needed'
+    success_criteria:
+    - Storage figures were recomputed independently and agree within rounding, or
+      discrepancies are flagged.
+    - The tests were rerun by the reviewer and mismatch=0 is confirmed or contradicted.
+    - Any mention of Snowflake or PagerDuty execution is checked against what was
+      actually run.
+    constraints:
+    - Do not edit the other roles' outputs; report findings only.
+    - At most 5 turns per step.
+    - If code execution is unavailable, mark each rerun UNVERIFIED and do not issue
+      PASS.
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: Read
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: core
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  d2286353-fada-4d83-8874-88f66aea450e:
+    agent_id: d2286353-fada-4d83-8874-88f66aea450e
+    name: Delivery Technical Writer
+    role: worker
+    model: claude-sonnet-5-5, gemma-4-31b-it
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: Assembles the specialists' outputs into one coherent deliverable.
+      Adds no new analysis.
+    role_prompt: 'You are the final editor. Start the answer with exactly this line:
+      I read "cloud warehouse" as Snowflake; if you meant Google BigQuery or Amazon
+      Redshift or Databricks / Azure Synapse, the answer below may not apply. I read
+      "duplicate events" as Events sharing the same event_id, from Kafka at-least-once
+      redelivery; if you meant Events identical on a composite key (user, timestamp,
+      type, etc.) or Fully identical rows across all fields, the answer below may
+      not apply. I read "finishes more than 30 minutes late" as Later than 30 minutes
+      after the scheduled completion deadline or SLA time; if you meant Runtime exceeding
+      the expected duration by 30 minutes or More than 30 minutes after the scheduled
+      start time, the answer below may not apply. I read "one year of raw events"
+      as 365 days × 30M × 2 KB, about 22 TB uncompressed; if you meant Compressed
+      columnar storage in the warehouse, a fraction of 22 TB or Includes duplicates
+      and replicas or retention overhead, the answer below may not apply. Then assemble,
+      in order: summary; tool choices and justification; pipeline design and SLA timeline;
+      the transformation code; test results on the sample; storage estimate; watchdog
+      and PagerDuty alerting; the runbook; limitations. Use only content and numbers
+      from the earlier steps, applying the verifier''s required fixes or listing unresolved
+      ones. Limitations must say that the Snowflake SQL was not run in Snowflake (tests
+      ran on a local stand-in), that no PagerDuty page was sent (payloads saved and
+      marked NOT SENT), any UNVERIFIED items, and which values are placeholders (SLA,
+      credentials, routing key, contacts).'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: One final document that opens with the required assumption line and contains
+      every deliverable consistently.
+    skills:
+    - technical editing
+    - document structure
+    outputs:
+    - artifact: Final deliverable
+      format: 'memo with headings: summary, tool choices, pipeline, code, test results,
+        storage estimate, alerting, runbook, limitations'
+    success_criteria:
+    - The first line is the required assumption line, verbatim.
+    - Numbers match the verified figures.
+    - Limitations state what was not executed, what is UNVERIFIED and that nothing
+      was sent.
+    constraints:
+    - No new analysis or new numbers.
+    - Do not weaken the verifier's findings.
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 93ba267b-68e4-43f9-84fd-9b82f0de678c
+  dst: e8e05c8c-9542-4d34-ab04-00e595b8b52e
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 93ba267b-68e4-43f9-84fd-9b82f0de678c
+  dst: 7dcd5f16-e5aa-418f-b150-277239b5ab1f
+  type: sequential
+  schema_id: text
+  condition: null
+- src: e8e05c8c-9542-4d34-ab04-00e595b8b52e
+  dst: 7dcd5f16-e5aa-418f-b150-277239b5ab1f
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 93ba267b-68e4-43f9-84fd-9b82f0de678c
+  dst: 260bb7ec-b4ff-453f-b7dd-a3e34489bc5d
+  type: sequential
+  schema_id: text
+  condition: null
+- src: e8e05c8c-9542-4d34-ab04-00e595b8b52e
+  dst: 260bb7ec-b4ff-453f-b7dd-a3e34489bc5d
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 7dcd5f16-e5aa-418f-b150-277239b5ab1f
+  dst: 260bb7ec-b4ff-453f-b7dd-a3e34489bc5d
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 93ba267b-68e4-43f9-84fd-9b82f0de678c
+  dst: d2286353-fada-4d83-8874-88f66aea450e
+  type: sequential
+  schema_id: text
+  condition: null
+- src: e8e05c8c-9542-4d34-ab04-00e595b8b52e
+  dst: d2286353-fada-4d83-8874-88f66aea450e
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 7dcd5f16-e5aa-418f-b150-277239b5ab1f
+  dst: d2286353-fada-4d83-8874-88f66aea450e
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 260bb7ec-b4ff-453f-b7dd-a3e34489bc5d
+  dst: d2286353-fada-4d83-8874-88f66aea450e
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 93ba267b-68e4-43f9-84fd-9b82f0de678c
+exit: d2286353-fada-4d83-8874-88f66aea450e
+plan:
+- index: 0
+  agent_ids:
+  - 93ba267b-68e4-43f9-84fd-9b82f0de678c
+  text: '[Data Platform Architect]: Delivery plan, architecture, tool choice and SLA
+    design'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R5
+  - R14
+  depends_on: []
+  do: '1) Write a short delivery plan: objective, deliverables, assumptions, risks.
+    2) Write the options table (ingestion, orchestration, dedup method, alerting)
+    with the chosen and rejected option for each. 3) Define the nightly timeline:
+    start, expected finish, SLA deadline 04:00 UTC (parameter), page at +30 min. 4)
+    Name the tables RAW.CLICK_EVENTS, CLEAN.EVENTS, MART.DAU_BY_COUNTRY, OPS.JOB_RUNS.
+    5) Define the dedup look-back window and the idempotent rerun by day. 6) Design
+    the external watchdog that checks OPS.JOB_RUNS.'
+  output: 'memo: architecture and tool-choice memo with an options table, assumptions
+    and risks, a timeline and named objects'
+  done_when: 'The memo has: (1) an options table with a rejected alternative per tool;
+    (2) assumptions and risks; (3) a timeline with the SLA and the page at +30 min;
+    (4) the four table names; (5) the external watchdog design.'
+  checks:
+  - name: output_has_table
+    params:
+      min_rows: 4
+    covers:
+    - R1
+  - name: output_mentions
+    params:
+      terms:
+      - Snowflake
+      - Kafka
+      - PagerDuty
+      - event_id
+      - watchdog
+      - SLA
+    covers:
+    - R2
+    - R5
+    - R1
+  - name: output_mentions
+    params:
+      terms:
+      - assumption
+      - risk
+      - objective
+    covers:
+    - R14
+- index: 1
+  agent_ids:
+  - 93ba267b-68e4-43f9-84fd-9b82f0de678c
+  text: '[Data Platform Architect]: One-year raw storage estimate'
+  kind: work
+  covers:
+  - R8
+  depends_on: []
+  do: '1) With calc: 30e6*2000 = 60 GB/day; x365 = 21.9 TB, headline about 22 TB uncompressed.
+    2) web_search for the Snowflake storage price and compression guidance and date
+    them; if unavailable, label them assumptions. 3) Build the sensitivity table:
+    compression 3x/5x/8x, raw plus deduped copy, Time Travel, Fail-safe, monthly cost.
+    4) Save as storage_estimate.md.'
+  output: 'table: scenario x TB x monthly USD, with the arithmetic and dated sources,
+    saved as storage_estimate.md'
+  done_when: 'storage_estimate.md is saved with: (1) the 22 TB uncompressed headline;
+    (2) at least 5 scenarios with arithmetic; (3) a date or an explicit assumption
+    label on each price.'
+  checks:
+  - name: output_has_table
+    params:
+      min_rows: 5
+    covers:
+    - R8
+  - name: output_mentions
+    params:
+      terms:
+      - '21.9'
+      - 22 TB
+      - uncompressed
+      - Time Travel
+    covers:
+    - R8
+  - name: figures_dated
+    params: {}
+    covers:
+    - R8
+  - name: file_exists
+    params:
+      kind: md
+      name: storage_estimate.md
+    covers:
+    - R8
+- index: 2
+  agent_ids:
+  - e8e05c8c-9542-4d34-ab04-00e595b8b52e
+  text: '[Analytics Engineer]: Write transformation code and generate sample data'
+  kind: work
+  covers:
+  - R3
+  - R4
+  - R6
+  - R7
+  depends_on:
+  - 1
+  do: 1) Write a seeded generator and create sample_events.csv (>=20,000 rows, 3 UTC
+    days, 15 countries, 2-5% duplicates including cross-day redeliveries, midnight-boundary
+    events, null or lowercase countries). 2) Write the Snowflake SQL for dedup, DAU
+    and the job-runs marker, plus the sqlite3 equivalent. 3) Save as pipeline_code.md.
+  output: 'code: Snowflake SQL and sqlite3 equivalent in pipeline_code.md, with sample_events.csv'
+  done_when: (1) sample_events.csv has the required columns and at least 20,000 rows;
+    (2) pipeline_code.md has the event_id dedup SQL; (3) it has the COUNT(DISTINCT
+    user_id) DAU SQL per UTC day and country; (4) it has the idempotent load.
+  checks:
+  - name: csv_rows_min
+    params:
+      n: 20000
+    covers:
+    - R7
+  - name: csv_columns
+    params:
+      names:
+      - event_id
+      - user_id
+      - country
+      - event_type
+      - event_ts
+      - ingested_at
+    covers:
+    - R7
+  - name: file_exists
+    params:
+      kind: md
+      name: pipeline_code.md
+    covers:
+    - R6
+  - name: output_mentions
+    params:
+      terms:
+      - event_id
+      - ROW_NUMBER
+      - COUNT(DISTINCT user_id)
+      - UTC
+    covers:
+    - R3
+    - R4
+    - R6
+- index: 3
+  agent_ids:
+  - e8e05c8c-9542-4d34-ab04-00e595b8b52e
+  text: '[Analytics Engineer]: Test the transformation on the sample data'
+  kind: work
+  covers:
+  - R3
+  - R4
+  - R7
+  depends_on:
+  - 3
+  do: '1) Write the independent Python oracle and test_dedup_dau.py. 2) Run it: compare
+    every (day,country); assert dedup count equals distinct event_id count, idempotent
+    rerun, cross-day duplicates not double counted, midnight events on the right day.
+    3) Fix and rerun on any mismatch. 4) Write test_report.md with counts, a results
+    table and limits.'
+  output: 'memo: test report with a results table (check x expected x actual x pass),
+    saved as test_report.md'
+  done_when: 'test_report.md shows: (1) rows in, rows out and duplicates removed;
+    (2) mismatches = 0 against the oracle; (3) the idempotency result; (4) a statement
+    that the Snowflake dialect was not executed in Snowflake.'
+  checks:
+  - name: file_exists
+    params:
+      kind: md
+      name: test_report.md
+    covers:
+    - R7
+  - name: output_has_table
+    params:
+      min_rows: 5
+    covers:
+    - R3
+    - R4
+    - R7
+  - name: output_mentions
+    params:
+      terms:
+      - mismatch
+      - oracle
+      - idempotent
+      - not executed in Snowflake
+    covers:
+    - R7
+    - R3
+    - R4
+- index: 4
+  agent_ids:
+  - 7dcd5f16-e5aa-418f-b150-277239b5ab1f
+  text: '[SRE On-Call Lead]: Late-job watchdog and PagerDuty payload, simulated'
+  kind: work
+  covers:
+  - R5
+  - R6
+  depends_on:
+  - 1
+  - 3
+  do: 1) Write watchdog.py with should_page and the PagerDuty Events API v2 payload
+    builder (placeholder routing key, dedup_key, resolve). 2) Run at least 6 scenarios
+    including SLA+29 and SLA+31, never started, still running, repeated checks. 3)
+    Save payloads as files marked NOT SENT and write watchdog_report.md. If Python
+    cannot be run, say the simulation was not run and give no results.
+  output: 'table: scenario x expected page x actual page, plus code, saved as watchdog_report.md'
+  done_when: 'watchdog_report.md has: (1) at least 6 scenarios with actual equal to
+    expected, or a statement that the simulation was not run; (2) SLA+29 no page and
+    SLA+31 page; (3) payload files marked NOT SENT; (4) a Limitations line.'
+  checks:
+  - name: file_exists
+    params:
+      kind: md
+      name: watchdog_report.md
+    covers:
+    - R5
+  - name: output_has_table
+    params:
+      min_rows: 6
+    covers:
+    - R5
+  - name: output_mentions
+    params:
+      terms:
+      - dedup_key
+      - SLA
+      - 30 min
+      - NOT SENT
+    covers:
+    - R5
+    - R6
+  - name: not_sent_fallback
+    params: {}
+    covers:
+    - R5
+- index: 5
+  agent_ids:
+  - 7dcd5f16-e5aa-418f-b150-277239b5ab1f
+  text: '[SRE On-Call Lead]: Runbook part 1: alert meaning, first 5 minutes, decision
+    tree'
+  kind: work
+  covers:
+  - R9
+  depends_on:
+  - 1
+  - 4
+  - 5
+  do: 'Write runbook.md sections 1-3. Section 1: what the alert means and the impact
+    (DAU dashboard stale). Section 2: the first 5 minutes as numbered steps with copy-paste
+    Snowflake queries (TASK_HISTORY, OPS.JOB_RUNS, latest RAW.CLICK_EVENTS ingest
+    time, Kafka connector lag). Section 3: a decision tree by stage covering ingestion
+    stalled, dedup slow or failed, DAU failed, warehouse suspended or undersized,
+    Snowflake outage, and the watchdog itself failing. Use only names from pipeline_code.md.'
+  output: 'memo: runbook part 1 with numbered triage steps and SQL snippets, saved
+    as runbook.md'
+  done_when: 'runbook.md has: (1) the alert meaning and impact; (2) numbered triage
+    steps; (3) at least 4 copy-paste queries; (4) a decision tree covering all six
+    failure areas.'
+  checks:
+  - name: file_exists
+    params:
+      kind: md
+      name: runbook.md
+    covers:
+    - R9
+  - name: output_has_list
+    params:
+      min_items: 8
+    covers:
+    - R9
+  - name: output_mentions
+    params:
+      terms:
+      - TASK_HISTORY
+      - OPS.JOB_RUNS
+      - RAW.CLICK_EVENTS
+      - watchdog
+    covers:
+    - R9
+- index: 6
+  agent_ids:
+  - 7dcd5f16-e5aa-418f-b150-277239b5ab1f
+  text: '[SRE On-Call Lead]: Runbook part 2: fixes, backfill, verification, escalation'
+  kind: work
+  covers:
+  - R9
+  depends_on:
+  - 6
+  do: 'Append sections 4-7 to runbook.md with Edit: fixes (resume tasks, resize warehouse,
+    rerun a stage, idempotent backfill for a UTC day); verification after the fix
+    and how to resolve the page; escalation contacts and times as placeholders; post-incident
+    notes.'
+  output: 'memo: complete runbook with backfill, verification, escalation and post-incident
+    sections, saved as runbook.md'
+  done_when: 'runbook.md now has: (1) a backfill procedure for a UTC day; (2) fix
+    commands; (3) verification and resolve steps; (4) escalation placeholders; (5)
+    post-incident notes.'
+  checks:
+  - name: file_exists
+    params:
+      kind: md
+      name: runbook.md
+    covers:
+    - R9
+  - name: output_mentions
+    params:
+      terms:
+      - backfill
+      - escalat
+      - resolve
+      - post-incident
+    covers:
+    - R9
+- index: 7
+  agent_ids:
+  - 260bb7ec-b4ff-453f-b7dd-a3e34489bc5d
+  text: '[Pipeline QA Reviewer]: Verify storage figures, SQL semantics and test rerun'
+  kind: verify
+  covers:
+  - R3
+  - R4
+  - R6
+  - R7
+  - R8
+  depends_on:
+  - 2
+  - 4
+  do: '1) Recompute the storage figures and every sensitivity row with calc. 2) Rerun
+    test_dedup_dau.py and compare with test_report.md (mark UNVERIFIED if code cannot
+    be run). 3) Review the SQL: event_id key with earliest ingested_at, UTC day, distinct
+    users, idempotency. 4) Write a findings table.'
+  output: 'memo: verification part 1 with a findings table (item x check x result
+    x fix needed)'
+  done_when: 'The memo has: (1) a findings table of at least 4 rows; (2) a statement
+    that storage was recomputed and tests rerun, or marked UNVERIFIED; (3) the list
+    of fixes needed.'
+  checks:
+  - name: output_has_table
+    params:
+      min_rows: 4
+    covers:
+    - R7
+    - R8
+  - name: output_mentions
+    params:
+      terms:
+      - recomputed
+      - rerun
+      - idempotent
+      - event_id
+    covers:
+    - R3
+    - R4
+    - R6
+    - R8
+- index: 8
+  agent_ids:
+  - 260bb7ec-b4ff-453f-b7dd-a3e34489bc5d
+  text: '[Pipeline QA Reviewer]: Verify watchdog, runbook consistency and issue the
+    verdict'
+  kind: verify
+  covers:
+  - R5
+  - R9
+  - R6
+  depends_on:
+  - 5
+  - 7
+  - 8
+  do: 1) Rerun watchdog.py and compare with watchdog_report.md (UNVERIFIED if not
+    runnable); check the +30 rule is measured from the SLA deadline. 2) Check the
+    runbook uses only tables and tasks found in pipeline_code.md and contains a backfill
+    procedure. 3) Check no document claims execution in Snowflake or PagerDuty. 4)
+    Merge with step 8 findings and issue the verdict.
+  output: 'memo: verification part 2 with a findings table and a verdict line'
+  done_when: 'The memo has: (1) a findings table of at least 6 rows including step
+    8 findings; (2) a verdict of PASS, PASS WITH FIXES or FAIL, never PASS if a rerun
+    was UNVERIFIED; (3) the required fixes.'
+  checks:
+  - name: verdict_present
+    params: {}
+    covers:
+    - R5
+    - R9
+    - R6
+  - name: output_has_table
+    params:
+      min_rows: 6
+    covers:
+    - R5
+    - R9
+  - name: output_mentions
+    params:
+      terms:
+      - Verdict
+      - rerun
+      - backfill
+      - NOT SENT
+    covers:
+    - R5
+    - R9
+    - R6
+- index: 9
+  agent_ids:
+  - d2286353-fada-4d83-8874-88f66aea450e
+  text: '[Delivery Technical Writer]: Assemble the final deliverable'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R8
+  - R9
+  - R10
+  - R11
+  - R12
+  - R13
+  depends_on:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  do: Open with the required four-part assumption line verbatim. Then assemble summary,
+    tool choices and justification, pipeline and SLA, code, test results, storage
+    estimate, alerting, runbook and limitations. Apply the verifier's fixes or list
+    them as unresolved; add no new analysis.
+  output: 'memo: final deliverable with headings: summary, tool choices, pipeline,
+    code, test results, storage estimate, alerting, runbook, limitations'
+  done_when: 'The document: (1) starts with the required assumption line; (2) has
+    all nine sections; (3) uses the verified figures; (4) has limitations saying the
+    SQL was not run in Snowflake, nothing was sent to PagerDuty, and which values
+    are placeholders.'
+  checks:
+  - name: output_mentions
+    params:
+      terms:
+      - I read "cloud warehouse" as Snowflake
+    covers:
+    - R10
+  - name: output_mentions
+    params:
+      terms:
+      - I read "duplicate events" as Events sharing the same event_id
+    covers:
+    - R11
+  - name: output_mentions
+    params:
+      terms:
+      - I read "finishes more than 30 minutes late" as Later than 30 minutes after
+        the scheduled completion deadline
+    covers:
+    - R12
+  - name: output_mentions
+    params:
+      terms:
+      - I read "one year of raw events" as 365 days
+      - 22 TB uncompressed
+      - runbook
+      - NOT SENT
+      - not run in Snowflake
+    covers:
+    - R13
+    - R8
+    - R9
+  - name: output_has_list
+    params:
+      min_items: 5
+    covers:
+    - R1
+    - R2
+requirements:
+  R1: Choose and justify the tools (Kafka-to-Snowflake ingestion, orchestration, transformation,
+    alerting).
+  R2: Build a nightly pipeline that loads the Kafka clickstream events (30M/day, ~2
+    KB each) into the cloud warehouse (Snowflake).
+  R3: Remove duplicate events (same event_id, from Kafka at-least-once redelivery)
+    in the pipeline.
+  R4: Compute daily active users per country (distinct user_id with at least one event
+    per UTC day, per country).
+  R5: Page the on-call engineer through PagerDuty if the job finishes more than 30
+    minutes after the scheduled completion deadline (SLA time).
+  R6: Write the transformation code (Snowflake SQL for dedup and DAU, plus orchestration/watchdog
+    code).
+  R7: Test the transformation code on a sample of real-looking data and report the
+    results.
+  R8: Estimate warehouse storage for one year of raw events.
+  R9: Deliver a runbook for the on-call engineer.
+  R10: Read "cloud warehouse" as Snowflake, and say so in the opening line, flagging
+    BigQuery, Redshift and Databricks/Synapse as readings for which the answer may
+    not apply.
+  R11: Read "duplicate events" as events sharing the same event_id (Kafka at-least-once
+    redelivery), and say so in the opening line, flagging composite-key and fully
+    identical rows as other readings.
+  R12: Read "finishes more than 30 minutes late" as later than 30 minutes after the
+    scheduled completion deadline or SLA time, and say so in the opening line, flagging
+    runtime overrun and time since start as other readings.
+  R13: Read "one year of raw events" as 365 days x 30M x 2 KB, about 22 TB uncompressed,
+    and say so in the opening line, flagging compressed storage and replicas/retention
+    overhead as other readings.
+  R14: 'Plan the work before staffing it: pin down the objective and deliverables,
+    work out the numbers, record assumptions and risks, assign roles and build in
+    checks.'
+max_inner_turns: 3
+meta:
+  task_id: clickstream-pipeline
+  draft_rounds: 3
+  consensus: false
+  dependency_relinked: []
+  capability_requests:
+  - name: python_interpreter
+    for_role: Analytics Engineer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: python_interpreter
+    for_role: SRE On-Call Lead
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: python_interpreter
+    for_role: Pipeline QA Reviewer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: file_reading
+    for_role: Pipeline QA Reviewer
+    canonical: file_reading
+    status: unfilled
+    reason: pick_none
+  - name: file_writing
+    for_role: SRE On-Call Lead
+    canonical: file_writing
+    status: filled
+    reason: ''
+  - name: file_writing
+    for_role: Data Platform Architect
+    canonical: file_writing
+    status: filled
+    reason: ''
+  - name: file_writing
+    for_role: Analytics Engineer
+    canonical: file_writing
+    status: filled
+    reason: ''
+  - name: snowflake_sandbox
+    for_role: Analytics Engineer
+    canonical: snowflake_sandbox
+    status: unfilled
+    reason: pick_none
+  - name: web_search
+    for_role: Data Platform Architect
+    canonical: web_search
+    status: unfilled
+    reason: registered_tool
+  - name: fetch_url
+    for_role: Data Platform Architect
+    canonical: fetch_url
+    status: unfilled
+    reason: registered_tool
+  - name: Write
+    for_role: Data Platform Architect
+    canonical: Write
+    status: filled
+    reason: ''
+  - name: Bash
+    for_role: Analytics Engineer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: Write
+    for_role: Analytics Engineer
+    canonical: Write
+    status: filled
+    reason: ''
+  - name: Read
+    for_role: Analytics Engineer
+    canonical: Read
+    status: filled
+    reason: ''
+  - name: Edit
+    for_role: Analytics Engineer
+    canonical: Edit
+    status: unfilled
+    reason: cap_reached
+  - name: Bash
+    for_role: SRE On-Call Lead
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: Write
+    for_role: SRE On-Call Lead
+    canonical: Write
+    status: filled
+    reason: ''
+  - name: Read
+    for_role: SRE On-Call Lead
+    canonical: Read
+    status: filled
+    reason: ''
+  - name: Edit
+    for_role: SRE On-Call Lead
+    canonical: Edit
+    status: unfilled
+    reason: cap_reached
+  - name: Bash
+    for_role: Pipeline QA Reviewer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: Read
+    for_role: Pipeline QA Reviewer
+    canonical: Read
+    status: filled
+    reason: ''

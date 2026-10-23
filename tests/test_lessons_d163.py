@@ -48,9 +48,15 @@ def test_a_lesson_with_task_facts_denied_wording_or_too_long_is_refused():
         parse_reflection("I think the lesson is to try harder.")
 
 
-def row(*probes, cause="tool_error", niche="general", task_id=TASK_ID):
+# D168: the round's control (no edit, re-run once) stayed stuck and cleared nothing
+CONTROL = {"scope": "control", "op": "none", "status": "incomplete", "cleared": [], "kept": ["x"], "new": [],
+           "limited": False, "tokens": 10, "samples": 1}
+
+
+def row(*probes, cause="tool_error", niche="general", task_id=TASK_ID, control=CONTROL):
     return {"kind": "round", "task_id": task_id, "niche": niche, "step": 1, "cause": cause, "signals": ["x"],
-            "edits": [], "probes": list(probes), "pick": "inv", "pick_reason": "", "step_status": "done"}
+            "edits": [], "probes": list(probes), "pick": "inv", "pick_reason": "", "step_status": "done",
+            "control": control}
 
 
 def test_the_library_counts_every_verdict_and_a_repeat_updates_the_same_entry(tmp_path):
@@ -65,8 +71,8 @@ def test_the_library_counts_every_verdict_and_a_repeat_updates_the_same_entry(tm
     assert inv["counts"]["helped"] == 2 and inv["by_niche"] == {
         "general": {"helped": 1, "hurt": 0, "no_effect": 0, "confounded": 0},
         "calc": {"helped": 1, "hurt": 0, "no_effect": 0, "confounded": 0}}
-    assert inv["task_ids"] == [TASK_ID, "task-0002"] and inv["status"] == "unreviewed"
-    assert dom["counts"]["hurt"] == 1 and not dom["lesson"]
+    assert inv["task_ids"] == [TASK_ID, "task-0002"] and "status" not in inv     # D167: a family has no status
+    assert dom["counts"]["hurt"] == 1 and not lib.lessons(dom["id"])
     assert len(lib.evidence(inv["id"])) == 2 and (tmp_path / inv["id"] / "edit.json").exists()
     assert "Helped 2, hurt 0" in (tmp_path / inv["id"] / "EXPERIENCE.md").read_text()
 
@@ -98,7 +104,7 @@ def test_a_hurt_probe_raises_hurt_without_a_lesson_or_a_call(tmp_path):
     assert out == {"verdicts": [{"id": key_of("tool_error", "add_role_rule", "inv"), "op": "add_role_rule",
                                  "scope": "inv", "verdict": "hurt"}], "lesson": None, "skipped": None}
     [e] = LessonLibrary(tmp_path / "lib").entries()
-    assert e["counts"]["hurt"] == 1 and e["lesson"] == ""
+    assert e["counts"]["hurt"] == 1 and LessonLibrary(tmp_path / "lib").lessons() == []
 
 
 LESSON = json.dumps({"cue": "A step keeps calling one tool and never ends with its output.",
@@ -126,7 +132,9 @@ def test_three_runs_with_the_same_fault_leave_one_entry_helped_three_times(task,
     entries = {e["id"]: e for e in LessonLibrary(lib).entries()}
     inv = entries[key_of("tool_error", "add_role_rule", "inv")]
     assert inv["counts"]["helped"] == 3 and inv["run_ids"] == ["run0", "run1", "run2"]
-    assert inv["lesson"].startswith("add_role_rule (inv)") and inv["status"] == "unreviewed"
+    [les] = LessonLibrary(lib).lessons(inv["id"])         # D167: the same text three times is one lesson ...
+    assert les["lesson"].startswith("add_role_rule (inv)") and les["status"] == "unreviewed"
+    assert les["counts"]["helped"] == 1                   # ... counted once: the round that wrote it (none cited it)
     assert entries[key_of("tool_error", "add_role_rule", "dom")]["counts"]["no_effect"] == 3
     prompt = llm.calls_of("reflector")[0]["messages"][-1]["content"]
     assert "no score, no rubric and no answer key" in prompt and "tools: " in prompt and "skills: " in prompt
@@ -138,14 +146,15 @@ def test_a_refused_lesson_is_asked_once_more_then_dropped(task, envelope, trace,
     llm, ep = fault_run(task, envelope, trace, tools, tmp_path / "run", tmp_path / "lib", reflector=[bad, bad])
     calls = llm.calls_of("reflector")
     assert len(calls) == 2 and "refused by plain code" in calls[1]["messages"][-1]["content"]
-    assert all(not e["lesson"] for e in LessonLibrary(tmp_path / "lib").entries())
+    assert LessonLibrary(tmp_path / "lib").lessons() == []
     assert [e["amoeba.attempt"] for e in trace.events("reflector_reply")] == [1, 2]
 
 
 def test_no_entry_writes_no_lesson_but_keeps_the_counts(task, envelope, trace, tools, tmp_path):
     llm, ep = fault_run(task, envelope, trace, tools, tmp_path / "run", tmp_path / "lib", reflector=["NO_ENTRY"])
     inv = LessonLibrary(tmp_path / "lib").get(key_of("tool_error", "add_role_rule", "inv"))
-    assert inv["counts"]["helped"] == 1 and inv["lesson"] == "" and len(llm.calls_of("reflector")) == 1
+    assert inv["counts"]["helped"] == 1 and not LessonLibrary(tmp_path / "lib").lessons() and \
+        len(llm.calls_of("reflector")) == 1
 
 
 def test_with_writing_off_nothing_is_written_and_no_call_is_made(task, envelope, trace, tools, tmp_path):
@@ -170,8 +179,8 @@ def test_the_reflector_is_skipped_when_the_cap_would_not_hold_it(task, envelope,
 def test_the_cli_lists_shows_approves_and_rejects(tmp_path, capsys):
     lib = LessonLibrary(tmp_path)
     [v] = round_verdicts(row(p("done")))
-    e = lib.record(v, "general", TASK_ID, "run1")
-    lib.add_lesson(e["id"], "a cue", "add_role_rule (inv): a lesson", "low", "run1")
+    fam = lib.record(v, "general", TASK_ID, "run1")
+    e = lib.add_lesson(fam["id"], "a cue", "add_role_rule (inv): a lesson", "low", "run1")
     assert lessons_cli(["--root", str(tmp_path), "list"]) == 0 and e["id"] in capsys.readouterr().out
     assert lessons_cli(["--root", str(tmp_path), "show", e["id"]]) == 0 and "a lesson" in capsys.readouterr().out
     assert lessons_cli(["--root", str(tmp_path), "approve", e["id"]]) == 0
@@ -179,3 +188,4 @@ def test_the_cli_lists_shows_approves_and_rejects(tmp_path, capsys):
     assert lessons_cli(["--root", str(tmp_path), "reject", e["id"]]) == 0
     assert lib.get(e["id"])["status"] == "rejected"
     assert lessons_cli(["--root", str(tmp_path), "show", "nope"]) == 1
+    assert lessons_cli(["--root", str(tmp_path), "approve", fam["id"]]) == 1      # D167: a family has no status

@@ -21,18 +21,23 @@ CAUSE, OP, SCOPE = "tool_error", "add_tool_guidance", "inv"
 
 
 def library(root, helped=3, tasks=2, hurt=0, status="approved"):
-    lib = LessonLibrary(root)
+    lib = LessonLibrary(root)                    # D167: the lesson's own uses (the writing round, then cited uses)
+    lid = None
     for k in range(helped):
         [v] = round_verdicts(row(dict(p("done"), op=OP, scope=SCOPE), cause=CAUSE, task_id=f"t{k % tasks}"))
         lib.record(v, "general", f"t{k % tasks}", f"r{k}")
+        if lid is None:
+            lid = lib.add_lesson(key_of(CAUSE, OP, SCOPE), "A tool keeps failing on its input format.",
+                                 "add_tool_guidance (inv): say on the tool how its input must look.", "medium", "r0",
+                                 first=v, niche="general", task_id=f"t{k % tasks}")["id"]
+        else:
+            lib.record_use(lid, v, "general", f"t{k % tasks}", f"r{k}")
     for _ in range(hurt):
         [v] = round_verdicts(row(dict(p(new=["x"]), op=OP, scope=SCOPE), cause=CAUSE))
         lib.record(v, "calc", "t9", "r9")
-    eid = key_of(CAUSE, OP, SCOPE)
-    lib.add_lesson(eid, "A tool keeps failing on its input format.",
-                   "add_tool_guidance (inv): say on the tool how its input must look.", "medium", "r0")
-    lib.set_status(eid, status)
-    return lib, eid
+        lib.record_use(lid, v, "calc", "t9", "r9")
+    lib.set_status(lid, status)
+    return lib, lid
 
 
 def test_the_trigger_is_plain_code(tmp_path):

@@ -19,17 +19,22 @@ LESSON_TEXT = "add_role_rule (inv): tell the looping role to stop and give its f
 
 def seed_library(root, niche="general", hurt_in=None, status="approved", helped=3, cause="tool_error",
                  op="add_role_rule", scope="inv"):
-    lib = LessonLibrary(root)
+    lib = LessonLibrary(root)                    # D167: the lesson's own uses (the writing round, then cited uses)
+    lid = None
     for k in range(helped):
         [v] = round_verdicts(row(dict(p("done"), op=op, scope=scope), cause=cause, task_id=f"t{k}"))
         lib.record(v, niche, f"t{k}", f"r{k}")
+        if lid is None:
+            lid = lib.add_lesson(key_of(cause, op, scope), "A step keeps calling one tool and never ends.",
+                                 LESSON_TEXT, "medium", "r0", first=v, niche=niche, task_id=f"t{k}")["id"]
+        else:
+            lib.record_use(lid, v, niche, f"t{k}", f"r{k}")
     if hurt_in:
         [v] = round_verdicts(row(dict(p(new=["x"]), op=op, scope=scope), cause=cause))
         lib.record(v, hurt_in, "t9", "r9")
-    eid = key_of(cause, op, scope)
-    lib.add_lesson(eid, "A step keeps calling one tool and never ends.", LESSON_TEXT, "medium", "r0")
-    lib.set_status(eid, status)
-    return lib, eid
+        lib.record_use(lid, v, hurt_in, "t9", "r9")
+    lib.set_status(lid, status)
+    return lib, lid
 
 
 def test_retrieval_is_plain_code(tmp_path):
@@ -41,10 +46,10 @@ def test_retrieval_is_plain_code(tmp_path):
     assert retrieve(lib, "general") == []                                          # only approved
     lib2, eid2 = seed_library(tmp_path / "b", hurt_in="calc")
     assert retrieve(lib2, "calc") == [] and retrieve(lib2, "general")                # hurt in this niche: hidden
-    lib3, _ = seed_library(tmp_path / "c", helped=1)
+    lib3, eid3 = seed_library(tmp_path / "c", helped=1)
     for _ in range(2):
         [v] = round_verdicts(row(p(new=["x"])))
-        lib3.record(v, "other", "t8", "r8")
+        lib3.record_use(eid3, v, "other", "t8", "r8")
     assert retrieve(lib3, "general") == []                                          # helped must exceed hurt
 
 
@@ -81,7 +86,8 @@ def test_with_reading_on_a_matching_proposer_prompt_shows_the_lesson_and_result_
     prompt = llm.calls_of("fix_proposer_inv")[0]["messages"][-1]["content"]
     assert "# What helped before for this cause" in prompt and LESSON_TEXT in prompt and "helped 3, hurt 0" in prompt
     assert ep.adaptation["lessons"]["shown"] == [eid]
-    assert ep.adaptation["lessons"]["used"] == [{"id": eid, "step": 1}]     # the matching fix ended done
+    assert f"[{eid}]" in prompt and "from_lesson" in prompt                # D167: the id a proposer may cite
+    assert ep.adaptation["lessons"]["used"] == []          # D167: used = cited by the edit; this reply cites none
     assert not llm.calls_of("reflector") and lib.get(eid)["counts"]["helped"] == 3   # writing off: no change
 
 

@@ -17,10 +17,13 @@ change, tested first on the replay set, and applied only by the user.
    checks that the judge hash is the same before and after.
 3. **Test.** Only the replay set (`set: replay`) runs, through `scripts/stage_e.py --arms config`.
    - The two arms are today's adapt.yaml and a temporary copy with the change. The live file is never touched.
-   - Both arms use the same drafts, picks and sim seeds (`promote.seeds` per task) and `--lessons-write off`.
+   - Both arms use the same picks and sim seeds and `--lessons-write off`. D169: a `planner_rule` change runs with
+     both arms planning fresh on `promote.planner_seeds` seeds (default 5), so the changed arm's Planner sees the
+     rule; the other kinds share the current arm's draft on `promote.seeds` seeds. The report says which, and why.
    - Every run must carry the same judge hash.
-4. **Accept (plain code)** only if:
-   - the mean sim-score delta (changed - current) is above 0;
+4. **Accept (plain code)** on paired runs (the same task and seed in both arms, D170) only if:
+   - the mean sim-score delta (changed - current) is at least `promote.min_delta` (0.05);
+   - the changed arm wins more than twice as many pairs as it loses (ties count for neither);
    - no task's mean score drops by more than `promote.max_task_drop`;
    - the step-contract pass rate does not fall.
 5. **Output.**
@@ -51,21 +54,23 @@ from amoeba.eval.judge import JudgeMismatch, frozen_paths, judge_hash, same_judg
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_REL = "amoeba/config/adapt.yaml"
+TIE = 1e-9                                  # D170: a pair whose scores differ by no more than this is a tie
 KINDS = {"reorder_allowed_edits": {"kind", "cause", "order", "file"}, "planner_rule": {"kind", "text", "file"},
          "tool_guidance": {"kind", "tool", "text", "file"}}
 
 
 # box: promote
 def promote_config() -> dict:
-    return {"min_helped": 3, "min_tasks": 2, "seeds": 3, "max_task_drop": 0.05, "max_text_chars": 300,
+    return {"min_helped": 3, "min_tasks": 2, "seeds": 3, "planner_seeds": 5, "min_delta": 0.05, "max_task_drop": 0.05, "max_text_chars": 300,
             "proposal_max_tokens": 1024, "dir": "promotions", **(adapt_config().get("promote") or {})}
 
 
 # box: promote
 def candidates(lib: LessonLibrary) -> list[dict]:
-    """The plain-code trigger: approved, a lesson, helped >= min_helped on >= min_tasks tasks, hurt 0 in every niche."""
+    """The plain-code trigger: an approved lesson that helped >= min_helped on >= min_tasks tasks and hurt 0 in every
+    niche. D167: a lesson's own counts (its uses), never its family's."""
     c = promote_config()
-    out = [e for e in lib.entries() if e.get("status") == "approved" and (e.get("lesson") or "").strip()
+    out = [e for e in lib.lessons() if e.get("status") == "approved" and (e.get("lesson") or "").strip()
            and e["counts"]["helped"] >= int(c["min_helped"]) and len(e.get("task_ids") or []) >= int(c["min_tasks"])
            and e["counts"]["hurt"] == 0 and not any((v or {}).get("hurt") for v in (e.get("by_niche") or {}).values())]
     return sorted(out, key=lambda e: (-e["counts"]["helped"], e["id"]))
@@ -167,11 +172,33 @@ def replay_ids(tasks: Path) -> list[str]:
 
 
 # box: promote
-def stage_e_runner(tasks, ids, seeds, out, config_b, passthrough) -> list[dict]:
-    """The two config arms through scripts/stage_e.py (same drafts, picks and seeds; lesson writing off)."""
+def stage_e_runner(tasks, ids, seeds, out, config_b, passthrough, fresh_plans: bool = False) -> list[dict]:
+    """The two config arms through scripts/stage_e.py (same picks and seeds; lesson writing off). The changed arm
+    reuses the current arm's draft, unless fresh_plans (D169): then each arm plans for itself."""
     from scripts.stage_e import CONFIG_ARMS, run_pairs
     return run_pairs(Path(tasks), list(ids), list(seeds), Path(out), list(passthrough), arms=CONFIG_ARMS,
-                     lessons_write="off", config_b=str(config_b))
+                     lessons_write="off", config_b=str(config_b), fresh_plans=fresh_plans)
+
+
+# box: promote
+def drafts_with_slot(passthrough) -> bool:
+    """D169: the run_task flags draft with prompts that hold the {lessons} slot (only the d24 prompts do)."""
+    flags = list(passthrough)
+    return "--draft-prompts" in flags and flags[flags.index("--draft-prompts") + 1] == "d24"
+
+
+# box: promote
+def arm_mode(change: dict, pcfg: dict) -> dict:
+    """D169: how the arms are run for this change. A planner rule acts while the Planner drafts, so both arms plan
+    fresh on promote.planner_seeds seeds (a shared draft would hide the rule); the other kinds act after planning,
+    so the arms share one draft and differ only where the change acts."""
+    if change["kind"] == "planner_rule":
+        return {"mode": "fresh plans", "seeds": int(pcfg["planner_seeds"]),
+                "why": "a planner rule acts while the Planner drafts, so each arm plans for itself (a shared draft "
+                       "would hide the rule from the changed arm's planner)"}
+    return {"mode": "shared draft", "seeds": int(pcfg["seeds"]),
+            "why": f"a {change['kind']} change acts after planning, so both arms run the same draft and differ only "
+                   "where the change acts"}
 
 
 # box: promote
@@ -212,26 +239,39 @@ def summarise(rows: list[dict]) -> dict:
         b = [v["changed"]["score"] for k, v in full.items() if k[0] == t]
         per_task.append({"task": t, "seeds": len(a), "current": sum(a) / len(a), "changed": sum(b) / len(b),
                          "drop": sum(a) / len(a) - sum(b) / len(b)})
-    deltas = [v["changed"]["score"] - v["current"]["score"] for v in full.values()]
+    pair_rows = [{"task": k[0], "seed": k[1], "current": v["current"]["score"], "changed": v["changed"]["score"],
+                  "delta": v["changed"]["score"] - v["current"]["score"]} for k, v in sorted(full.items())]
+    deltas = [x["delta"] for x in pair_rows]
     rate = lambda arm: [v[arm]["contract"] for v in full.values() if v[arm]["contract"] is not None]
     mean = lambda xs: sum(xs) / len(xs) if xs else None
     return {"judge_hash": judge, "pairs": len(full), "mean_delta": mean(deltas), "per_task": per_task,
+            "pair_rows": pair_rows, "wins": sum(d > TIE for d in deltas), "losses": sum(d < -TIE for d in deltas),
+            "ties": sum(abs(d) <= TIE for d in deltas),                                        # D170
             "contract_current": mean(rate("current")), "contract_changed": mean(rate("changed"))}
 
 
 # box: promote
 def accept(summary: dict, cfg: dict) -> tuple[bool, str]:
-    """The plain-code accept rule."""
-    if summary["mean_delta"] is None or summary["mean_delta"] <= 0:
-        return False, f"the mean score delta is {summary['mean_delta']:+.4f}, not above 0"
+    """The plain-code accept rule (D170: on paired runs, same task and seed). All must hold: the mean delta reaches
+    promote.min_delta; the changed arm wins more than twice as many pairs as it loses; no task's mean drops by more
+    than promote.max_task_drop; the step-contract pass rate does not fall."""
+    md = float(cfg.get("min_delta", 0.05))
+    if summary["mean_delta"] is None:
+        return False, "no pair has a score"
+    if summary["mean_delta"] < md:
+        return False, f"the mean score delta is {summary['mean_delta']:+.4f}, below promote.min_delta {md}"
     worst = max(summary["per_task"], key=lambda t: t["drop"])
     if worst["drop"] > float(cfg["max_task_drop"]):
         return False, f"task {worst['task']} drops by {worst['drop']:.4f} > {cfg['max_task_drop']}"
+    w, l = summary["wins"], summary["losses"]
+    if not w > 2 * l:
+        return False, f"the changed arm wins {w} pairs and loses {l}: it must win more than twice as many as it loses"
     a, b = summary["contract_current"], summary["contract_changed"]
     if a is not None and (b is None or b < a):
         return False, f"the step-contract pass rate falls ({a:.3f} → {b if b is None else round(b, 3)})"
-    return True, (f"the mean score rises by {summary['mean_delta']:+.4f}, no task drops more than "
-                  f"{cfg['max_task_drop']}, and the step-contract pass rate does not fall")
+    return True, (f"the mean score rises by {summary['mean_delta']:+.4f} (at least {md}), the changed arm wins {w} "
+                  f"pairs and loses {l}, no task drops more than {cfg['max_task_drop']}, and the step-contract pass "
+                  "rate does not fall")
 
 
 # box: promote
@@ -329,8 +369,14 @@ def promote(lib: LessonLibrary, entry_id: str, replay: Path, llm, out_dir: Path,
     ids = replay_ids(replay)
     if not ids:
         return done("refused", f"{replay} has no task with set: replay")
-    seeds = list(seeds) if seeds is not None else list(range(int(pcfg["seeds"])))
-    rows = (runner or stage_e_runner)(replay, ids, seeds, out_dir / "arms" / name, tmp, list(passthrough))
+    mode = arm_mode(change, pcfg)                                       # D169
+    rec["test_mode"] = mode
+    if mode["mode"] == "fresh plans" and not drafts_with_slot(passthrough):
+        return done("refused", "a planner rule reaches the Planner only through the d24 drafting prompts' lessons "
+                               "slot; pass --draft-prompts d24 after --")
+    seeds = list(seeds) if seeds is not None else list(range(mode["seeds"]))
+    rows = (runner or stage_e_runner)(replay, ids, seeds, out_dir / "arms" / name, tmp, list(passthrough),
+                                      **({"fresh_plans": True} if mode["mode"] == "fresh plans" else {}))
     try:
         summary = summarise(rows)
     except JudgeMismatch as e:
@@ -357,13 +403,21 @@ def report_text(rec: dict, entry: dict | None) -> str:
                   "```", ""]
     if rec.get("arms"):
         a = rec["arms"]
-        lines += ["**The test** (replay set only, both arms on the same drafts, picks and seeds, lesson writing off; "
-                  f"judge {a['judge_hash'][:12]}):", "",
+        tm = rec.get("test_mode") or {}
+        lines += [f"**The test mode:** {tm.get('mode', 'shared draft')} — {tm.get('why', '')}.", "",
+                  "**The test** (replay set only, both arms on the same picks and seeds"
+                  + (", each arm planning fresh" if tm.get("mode") == "fresh plans" else ", on the same drafts")
+                  + f", lesson writing off; judge {a['judge_hash'][:12]}):", "",
                   "| task | seeds | current | changed | drop |", "|---|---|---|---|---|",
                   *[f"| {t['task']} | {t['seeds']} | {t['current']:.4f} | {t['changed']:.4f} | {t['drop']:+.4f} |"
                     for t in a["per_task"]], "",
-                  f"Mean delta {a['mean_delta']:+.4f} over {a['pairs']} pairs; step-contract pass rate "
-                  f"{a['contract_current']} → {a['contract_changed']}.", ""]
+                  "**Every pair** (same task, same seed):", "",
+                  "| task | seed | current | changed | delta |", "|---|---|---|---|---|",
+                  *[f"| {x['task']} | {x['seed']} | {x['current']:.4f} | {x['changed']:.4f} | {x['delta']:+.4f} |"
+                    for x in a.get("pair_rows") or []], "",
+                  f"{a.get('wins', 0)} wins, {a.get('losses', 0)} losses, {a.get('ties', 0)} "
+                  f"{'tie' if a.get('ties') == 1 else 'ties'}. Mean delta {a['mean_delta']:+.4f} over {a['pairs']} "
+                  f"pairs; step-contract pass rate {a['contract_current']} → {a['contract_changed']}.", ""]
     if rec["decision"] == "accepted":
         lines += ["**Nothing has been applied.** To apply it, run:", "",
                   f"    python -m scripts.promote --apply {rec['report']}", "",

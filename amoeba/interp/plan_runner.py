@@ -885,7 +885,8 @@ class PlanRunner:
         self.rounds: list[dict] = []                      # D162: every Box 4 round, as written to rounds.jsonl
         self.learned: list[dict] = []                     # D163: per round, the verdicts counted and the lesson written
         self.lessons_shown: list[str] = []                # D164: lesson ids shown to Box 4's proposers
-        self.lessons_used: list[dict] = []                # D164: {id, step} of a shown lesson whose fix ended done
+        self.lessons_used: list[dict] = []                # D167: {id, step, status} of a shown lesson a probe cited
+        self.lessons_seen: dict[str, dict] = {}           # D167: lesson id -> {cause, op, scope} shown to Box 4
         self.watch_rules: dict[int, list[dict]] = {}      # D154: step -> reminders plain code adds (add_watch_rule)
         self.scoped_fallbacks: list[dict] = []            # D154: rounds run single because files could not be undone
         self.fault_at_start: dict[int, dict] = {}         # D154: step -> the fault state when its last attempt began
@@ -2586,8 +2587,14 @@ class PlanRunner:
             early = (any(f["rung"] != "D" and str(f.get("result", "")).startswith("failed") for f in mine)
                      and not any(f["rung"] == "D" for f in mine) and n not in self.proposer_gave_up)
             fix = None if early else (fresh[0] if fresh else None)
-            if fix is None:                               # Stage D: the fix proposer (last rung, or next after a failed fix)
-                done = self.propose_fix(n, wave, d) if n not in self.proposer_gave_up else "none"
+            try:
+                done = self._adapt_once(n, wave, d, fix)
+            except NoModelAvailable as e:                 # the run's USD cap (D97) or no model left: a limit, not a crash
+                why = f"limit: no model left ({str(e)[:200]})"
+                self.i.trace.event("adapt_no_model", {"amoeba.step": n, "amoeba.why": why})
+                self.log_event("adapt_no_model", {"step": n, "why": why})
+                break
+            if fix is None:
                 if done == "replanned":
                     for k in self.fixes[-1].get("replaced_by") or []:      # D129: the new steps count their own fixes
                         self.fix_epoch[k] = len(self.fixes)
@@ -2600,8 +2607,6 @@ class PlanRunner:
                     parts = list(notes) or [f"no code fix left for {d['cause']}"]
                     why = "; ".join(parts + ([self.proposer_gave_up[n]] if n in self.proposer_gave_up else []))
                     break
-            else:
-                self.apply_fix(n, wave, d, fix)
             meta = self.artifacts[n]["meta"]
             if meta["status"] == "done":
                 break
@@ -2623,6 +2628,14 @@ class PlanRunner:
                                                           + (", ".join(cats) or "none given") + ")") if x)
             return "stop_blocked"
         return "stop" if lim["stop_when_exhausted"] else None
+
+    # box: fixes
+    def _adapt_once(self, n: int, wave: int, d: dict, fix: dict | None) -> str | None:
+        """One rung of the loop above: the fix proposer (Stage D) when no code fix is picked, else that code fix."""
+        if fix is None:
+            return self.propose_fix(n, wave, d) if n not in self.proposer_gave_up else "none"
+        self.apply_fix(n, wave, d, fix)
+        return None
 
     # box: fixes
     def fix_ctx(self, n: int) -> dict:
@@ -3496,6 +3509,7 @@ class PlanRunner:
         for e in entries:
             if e["id"] not in self.lessons_shown:
                 self.lessons_shown.append(e["id"])
+            self.lessons_seen[e["id"]] = {k: e[k] for k in ("cause", "op", "scope")}               # D167
         return box4_section(entries)
 
     # box: proposer

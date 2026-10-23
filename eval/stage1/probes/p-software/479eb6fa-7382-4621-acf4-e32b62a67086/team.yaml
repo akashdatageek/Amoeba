@@ -1,0 +1,444 @@
+team_id: 7727eb02-f574-4b1e-9294-bfcde1521f0f
+version: 1
+parent_version: null
+name: team-plan-p-softwa
+topology: plan
+agents:
+  33669e15-2436-405d-84ea-12acb4236b60:
+    agent_id: 33669e15-2436-405d-84ea-12acb4236b60
+    name: Python Developer
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    - local:Write
+    - local:Read
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: A senior Python engineer who writes small, well-tested utility modules.
+      Accountable for the implementation, the test file and a real pytest run.
+    role_prompt: 'You are a senior Python developer. Task: create slug.py with slugify(text)
+      and test_slug.py with pytest tests, then run them. Spec: lowercase the text;
+      replace every run of non-alphanumeric characters with a single ''-''; strip
+      leading and trailing ''-''. Assumption to follow: alphanumeric means ASCII [a-z0-9]
+      after lowercasing, so ''é'' is a separator. Input is a str. Empty or all-symbol
+      input returns ''''. Method (you have 5 turns): (1) Write slug.py, e.g. `import
+      re` and `return re.sub(r''[^a-z0-9]+'', ''-'', text.lower()).strip(''-'')`,
+      with a short docstring. (2) Write test_slug.py with `from slug import slugify`
+      and parametrised cases: ''Hello World'' -> ''hello-world''; ''  Hello,   World!!  ''
+      -> ''hello-world''; ''a---b___c'' -> ''a-b-c''; ''---abc---'' -> ''abc''; ''''
+      -> ''''; ''!!!'' -> ''''; ''Python 3.12 Release'' -> ''python-3-12-release'';
+      ''Café Münch'' -> ''caf-m-nch''; ''ALLCAPS'' -> ''allcaps''; ''already-a-slug''
+      -> ''already-a-slug''. Compute each expected value by hand from the spec, not
+      by copying the function''s output. (3) Run `python3 -m pytest -v test_slug.py`
+      in the workspace. (4) If anything fails, decide whether the code or the test
+      expectation is wrong against the spec, fix it and rerun. (5) Report. Output
+      format: a code block for slug.py, a code block for test_slug.py, then the verbatim
+      final pytest output and one line such as ''N passed, M failed''. If pytest could
+      not run, say so plainly and show the error.'
+    max_history: 5
+    missing_tools:
+    - Edit
+    is_summariser: false
+    goal: Deliver a correct slug.py and a passing test_slug.py, with the genuine pytest
+      output captured.
+    skills:
+    - Python regex
+    - pytest
+    - edge-case test design
+    outputs:
+    - artifact: slug.py
+      format: Python file in the workspace
+    - artifact: test_slug.py
+      format: Python file in the workspace
+    - artifact: build report
+      format: code blocks with both files plus the verbatim pytest output and a pass/fail
+        count
+    success_criteria:
+    - slug.py defines slugify(text) and uses only the standard library
+    - The tests cover mixed case, runs of punctuation and spaces, leading and trailing
+      separators, an empty string, an all-symbol string, digits, and non-ASCII input
+    - pytest was actually run and its real output is quoted
+    constraints:
+    - At most 5 turns, so keep the files small and write both before running
+    - Never claim a result that was not produced by a real run
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Write
+      name: local:Write
+      source: local
+      request: file_writing
+      text: 'ActionInput: {"file_path": "name.ext", "content": "..."} (a path inside
+        the workspace).'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: Read
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  87295a67-afbe-4666-97aa-137f13ac3423:
+    agent_id: 87295a67-afbe-4666-97aa-137f13ac3423
+    name: QA Reviewer
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools:
+    - local:Bash
+    - local:Read
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: An independent test engineer who did not write the code. Rechecks
+      that the files exist, that the tests really pass, and that the tests actually
+      exercise the spec.
+    role_prompt: 'You are a senior QA engineer verifying work you did not produce.
+      Steps (5 turns max): (1) Read slug.py and test_slug.py. Confirm the function
+      name slugify, lowercase, the single-hyphen collapse and the strip are all present,
+      and that the tests import from slug. (2) Run `python3 -m pytest -v test_slug.py`
+      and note the exact pass/fail counts. (3) In one python3 call, probe slugify
+      with at least 5 inputs not in the tests, e.g. ''  Multiple   spaces '', ''a_b-c.d'',
+      ''--x--'', ''123 ABC'', ''!@#'', ''Ünïcode'', and print input, expected by the
+      spec (assume ASCII-only [a-z0-9]), and actual. (4) Judge whether the tests would
+      fail for an implementation that, say, does not strip, does not collapse runs,
+      or does not lowercase. (5) Write the memo with headings: Verdict (PASS or FAIL
+      in the first line), Independent pytest result, Probe table, Test adequacy, Issues.
+      Be specific and honest. If the counts differ from the developer''s report, say
+      so.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: false
+    goal: Give an evidence-based verdict on whether slugify meets the spec and whether
+      the reported test result is true.
+    skills:
+    - code review
+    - pytest
+    - boundary-value testing
+    outputs:
+    - artifact: verification verdict
+      format: 'memo: Verdict (PASS/FAIL), independent pytest output, probe table of
+        input -> expected -> actual, issues found'
+    success_criteria:
+    - The pytest rerun result matches the reported one
+    - At least 5 independent probes are compared with the spec
+    - The verdict is explicit
+    constraints:
+    - Do not rewrite the code. Report issues only, unless a file is missing
+    - At most 5 turns
+    pool:
+    - kind: tool
+      id: local:Bash
+      name: local:Bash
+      source: local
+      request: python_interpreter
+      text: 'ActionInput: the shell command as plain text (or {"command": "..."}).
+        It runs from the workspace folder; python3 has openpyxl, python-docx, python-pptx,
+        matplotlib and pypdf; there is no network. Save every file you make inside
+        the workspace (e.g. chart.png) and name it in your output.'
+    - kind: tool
+      id: local:Read
+      name: local:Read
+      source: local
+      request: Read
+      text: 'ActionInput: a file path inside the workspace (relative paths start there),
+        or {"file_path": "...", "offset": N, "limit": N}.'
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+  9c18a304-db4c-4a84-ba1b-adad8ed8c56d:
+    agent_id: 9c18a304-db4c-4a84-ba1b-adad8ed8c56d
+    name: Report Writer
+    role: worker
+    model: claude-sonnet-5-5
+    prompt:
+      system: 'You are a Group, named Alex, your goal is Effectively delivering information
+        according to plan., and the constraint is . '
+      user: seed:autoagents_custom_action
+      format: sections
+    tools: []
+    contract:
+      inputs:
+        prior: text
+      outputs:
+        result: text
+      effects: []
+    limits:
+      max_turns: 6
+    suggestions: ''
+    description: Assembles the final deliverable from the developer's and reviewer's
+      outputs. Adds no new analysis.
+    role_prompt: 'You assemble the final report from the earlier steps. Do not add
+      new analysis or change code. Structure: 1) Summary, in one or two sentences:
+      what was built and the test result (e.g. ''N passed''). 2) slug.py in a code
+      block, exactly as delivered. 3) test_slug.py in a code block. 4) Test result:
+      the verbatim pytest summary from the run. 5) Independent verification: the QA
+      verdict and any issues. 6) Assumptions: ASCII-only alphanumerics, str input,
+      '''' for empty or all-symbol input. If the developer''s and reviewer''s results
+      disagree, report the discrepancy. Use the reviewer''s rerun as authoritative.'
+    max_history: 5
+    missing_tools: []
+    is_summariser: true
+    goal: Produce a concise final report containing the code, the tests and the verified
+      test result.
+    skills:
+    - technical writing
+    outputs:
+    - artifact: final report
+      format: 'memo: Summary, slug.py, test_slug.py, Test result, Verification, Assumptions'
+    success_criteria:
+    - Both files appear in full
+    - The test result matches the verified run exactly
+    - Assumptions such as ASCII-only are stated
+    constraints:
+    - Create no new analysis and do not invent results
+    - If the reviewer found issues, report them plainly
+    pool: []
+    created_by: drafter
+    temperature: 0.2
+    max_tokens: 8192
+edges:
+- src: 33669e15-2436-405d-84ea-12acb4236b60
+  dst: 87295a67-afbe-4666-97aa-137f13ac3423
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 33669e15-2436-405d-84ea-12acb4236b60
+  dst: 9c18a304-db4c-4a84-ba1b-adad8ed8c56d
+  type: sequential
+  schema_id: text
+  condition: null
+- src: 87295a67-afbe-4666-97aa-137f13ac3423
+  dst: 9c18a304-db4c-4a84-ba1b-adad8ed8c56d
+  type: sequential
+  schema_id: text
+  condition: null
+entry:
+- 33669e15-2436-405d-84ea-12acb4236b60
+exit: 9c18a304-db4c-4a84-ba1b-adad8ed8c56d
+plan:
+- index: 0
+  agent_ids:
+  - 33669e15-2436-405d-84ea-12acb4236b60
+  text: '[Python Developer]: Write slugify, write pytest tests, run them'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  depends_on: []
+  do: '1) Write slug.py with slugify(text): lowercase, re.sub(r''[^a-z0-9]+'', ''-'',
+    ...), strip(''-''). 2) Write test_slug.py with parametrised cases covering the
+    spec and the edge cases (empty, all-symbol, digits, non-ASCII, already-slug input),
+    with expected values worked out by hand from the spec. 3) Run python3 -m pytest
+    -v test_slug.py. 4) Fix failures by deciding against the spec whether the code
+    or the test is wrong, then rerun. 5) Report both files and the verbatim pytest
+    output with the pass/fail counts.'
+  output: 'code: slug.py and test_slug.py contents, followed by the verbatim pytest
+    output and a ''N passed, M failed'' line'
+  done_when: slug.py and test_slug.py exist in the workspace, pytest was actually
+    run, and the report quotes its real output with pass/fail counts.
+  checks:
+  - name: output_mentions
+    params:
+      terms:
+      - slugify
+      - def test
+      - passed
+    covers:
+    - R1
+    - R4
+    - R5
+  - name: output_mentions
+    params:
+      terms:
+      - re.sub
+      - strip
+    covers:
+    - R2
+    - R3
+- index: 1
+  agent_ids:
+  - 87295a67-afbe-4666-97aa-137f13ac3423
+  text: '[QA Reviewer]: Independently rerun tests and probe slugify'
+  kind: verify
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  - R6
+  depends_on:
+  - 1
+  do: 1) Read both files and confirm they match the spec. 2) Rerun pytest and record
+    the counts. 3) Probe slugify with at least 5 extra inputs and compare with the
+    spec. 4) Judge whether the tests would catch common faults (no strip, no collapse,
+    no lowercase). 5) Write the verdict memo.
+  output: 'memo: Verdict (PASS/FAIL), independent pytest result, probe table (input,
+    expected, actual), test adequacy, issues'
+  done_when: The memo opens with an explicit PASS or FAIL verdict, shows the independently
+    rerun pytest result and a probe table of at least 5 rows, and says whether it
+    matches the developer's reported result.
+  checks:
+  - name: verdict_present
+    params: {}
+    covers:
+    - R5
+    - R6
+  - name: output_has_table
+    params:
+      min_rows: 5
+    covers:
+    - R2
+    - R3
+  - name: output_mentions
+    params:
+      terms:
+      - pytest
+      - slugify
+    covers:
+    - R1
+    - R4
+- index: 2
+  agent_ids:
+  - 9c18a304-db4c-4a84-ba1b-adad8ed8c56d
+  text: '[Report Writer]: Assemble final report with test result'
+  kind: work
+  covers:
+  - R1
+  - R2
+  - R3
+  - R4
+  - R5
+  - R6
+  depends_on:
+  - 1
+  - 2
+  do: 'Assemble the report: a summary line with the test result, slug.py, test_slug.py,
+    the verbatim pytest result, the QA verdict and the assumptions. Flag any discrepancy
+    between the two runs.'
+  output: 'memo: Summary, slug.py, test_slug.py, Test result, Verification, Assumptions'
+  done_when: The report contains both files in full, the verified pytest pass/fail
+    result, the QA verdict and the stated assumptions.
+  checks:
+  - name: output_mentions
+    params:
+      terms:
+      - slugify
+      - pytest
+      - passed
+    covers:
+    - R1
+    - R5
+    - R6
+  - name: output_mentions
+    params:
+      terms:
+      - slug.py
+      - test_slug.py
+    covers:
+    - R4
+  - name: output_mentions
+    params:
+      terms:
+      - hyphen
+      - lowercase
+    covers:
+    - R2
+    - R3
+requirements:
+  R1: Write a Python module slug.py exposing slugify(text) that lowercases the input.
+  R2: slugify turns each run of non-alphanumeric characters into exactly one hyphen.
+  R3: slugify strips leading and trailing hyphens from the result.
+  R4: Write pytest tests for slugify in test_slug.py, covering lowercasing, run collapsing,
+    stripping, and edge cases.
+  R5: Run the pytest tests and capture the real output.
+  R6: Report the test result (pass/fail counts and the actual pytest output summary).
+max_inner_turns: 3
+meta:
+  task_id: p-software
+  draft_rounds: 1
+  consensus: true
+  dependency_relinked: []
+  capability_requests:
+  - name: python_interpreter
+    for_role: Python Developer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: file_writing
+    for_role: Python Developer
+    canonical: file_writing
+    status: filled
+    reason: ''
+  - name: python_interpreter
+    for_role: QA Reviewer
+    canonical: code_execution
+    status: filled
+    reason: ''
+  - name: Bash (python3, pytest)
+    for_role: Python Developer
+    canonical: Bash (python3, pytest)
+    status: filled
+    reason: ''
+  - name: Write
+    for_role: Python Developer
+    canonical: Write
+    status: filled
+    reason: ''
+  - name: Read
+    for_role: Python Developer
+    canonical: Read
+    status: filled
+    reason: ''
+  - name: Edit
+    for_role: Python Developer
+    canonical: Edit
+    status: unfilled
+    reason: cap_reached
+  - name: Bash (python3, pytest)
+    for_role: QA Reviewer
+    canonical: Bash (python3, pytest)
+    status: filled
+    reason: ''
+  - name: Read
+    for_role: QA Reviewer
+    canonical: Read
+    status: filled
+    reason: ''
