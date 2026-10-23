@@ -1,0 +1,314 @@
+{
+  "version": 2,
+  "diff": {
+    "steps_added": [
+      10
+    ],
+    "steps_rewritten": [
+      1
+    ],
+    "steps_dropped": [],
+    "reassigned": null,
+    "role_added": null,
+    "requests": [],
+    "split_of": 1
+  },
+  "roles": [
+    {
+      "name": "Fuel & Trucking Data Researcher",
+      "tools": [
+        "local:Write",
+        "web_search",
+        "fetch_url",
+        "calc",
+        "local:Read",
+        "find_tool",
+        "local:Bash"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Fleet Cost Analyst",
+      "tools": [
+        "local:Read",
+        "local:Bash",
+        "local:Write",
+        "local:Edit",
+        "web_search",
+        "fetch_url",
+        "calc",
+        "find_tool"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Memo Author",
+      "tools": [
+        "local:Read",
+        "local:Bash",
+        "local:Write",
+        "local:Edit",
+        "web_search",
+        "fetch_url",
+        "calc",
+        "find_tool"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Numbers & Sources Auditor",
+      "tools": [
+        "local:Read",
+        "local:Bash",
+        "local:Write",
+        "local:Edit",
+        "web_search",
+        "fetch_url",
+        "calc",
+        "find_tool"
+      ],
+      "missing_tools": []
+    },
+    {
+      "name": "Final Deliverable Editor",
+      "tools": [],
+      "missing_tools": []
+    }
+  ],
+  "steps": [
+    {
+      "number": 1,
+      "roles": [
+        "Fuel & Trucking Data Researcher"
+      ],
+      "text": "[Fuel & Trucking Data Researcher]: Confirm the EIA Midwest diesel series and that EIA has no Indiana series, then fetch the EIA history data and save the raw rows to disk.",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R7",
+        "R11"
+      ],
+      "depends_on": [],
+      "do": "1) web_search to confirm series EMD_EPD2D_PTE_R20_DPG, its URL, and that EIA has no Indiana state diesel series; note the source date. 2) fetch_url the EIA history page (and the prior-year page if the window spans two years). 3) Immediately use local:Write to save the fetched weekly rows (date, price) verbatim to eia_raw_midwest.txt, so nothing is lost to context truncation. Read files back only with local:Read path alone (no offset or limit).",
+      "output": "eia_raw_midwest.txt with the raw weekly dates and prices, plus the series ID, URL and retrieval date and the no-Indiana-series confirmation.",
+      "done_when": "eia_raw_midwest.txt exists on disk with at least 52 weekly date and price rows, and the series ID, URL, retrieval date and no-Indiana-series finding are stated.",
+      "status": "not run"
+    },
+    {
+      "number": 2,
+      "roles": [
+        "Fuel & Trucking Data Researcher"
+      ],
+      "text": "[Fuel & Trucking Data Researcher]: Find the latest ATRI marginal cost per mile and fuel component",
+      "kind": "work",
+      "covers": [
+        "R3",
+        "R7"
+      ],
+      "depends_on": [],
+      "do": "1) web_search for the ATRI 'An Analysis of the Operational Costs of Trucking' latest edition. 2) fetch_url the ATRI page or a reputable summary. 3) Record edition, data year, release date, total marginal cost per mile, fuel cost per mile, fuel share, URL and retrieval date. 4) If the fuel figure is not found, write NOT FOUND and give the nearest sourced substitute, labelled.",
+      "output": "list: ATRI edition, data year, release date, total $/mile, fuel $/mile, fuel share, URL, retrieval date, gaps",
+      "done_when": "Total and fuel cost per mile are reported with edition year, URL and retrieval date, or marked NOT FOUND with a labelled substitute.",
+      "status": "not run"
+    },
+    {
+      "number": 3,
+      "roles": [
+        "Fleet Cost Analyst"
+      ],
+      "text": "[Fleet Cost Analyst]: Build the formula workbook",
+      "kind": "work",
+      "covers": [
+        "R2",
+        "R4",
+        "R9",
+        "R10",
+        "R11"
+      ],
+      "depends_on": [
+        1,
+        2,
+        10
+      ],
+      "do": "1) Read the CSV and the ATRI note. 2) Write one Python script that builds the xlsx: Inputs sheet with live cells 35, 2300, 6.2 and 1.25; Weekly sheet with 52 rows and ROUND surcharge, gallons and fleet-cost formulas; Bands sheet with 41 rows; Summary sheet (average/high/low with INDEX/MATCH dates, 52-week total cost, average fuel $/mile, ATRI comparison); Sources sheet (incl. the Midwest proxy note and gaps). 3) Run it; check that the file exists, formulas are present and row counts are right.",
+      "output": "code: the build script, plus fuel_surcharge_workbook.xlsx",
+      "done_when": "The xlsx has live formulas with 52 Weekly rows; the Inputs cells are referenced by the formulas; the Bands sheet has 41 rows; the Summary and Sources sheets exist.",
+      "status": "not run"
+    },
+    {
+      "number": 4,
+      "roles": [
+        "Fleet Cost Analyst"
+      ],
+      "text": "[Fleet Cost Analyst]: Compute key figures independently and reconcile with the workbook",
+      "kind": "work",
+      "covers": [
+        "R2",
+        "R3",
+        "R7",
+        "R9",
+        "R10"
+      ],
+      "depends_on": [
+        3
+      ],
+      "do": "1) From the CSV, compute in Python with Decimal ROUND_HALF_UP the weekly surcharge, gallons, fleet cost, average/high/low week with dates, 52-week total cost, average fuel $/mile, the 41 band surcharges, and the ATRI comparison (carrier $/mile vs ATRI fuel $/mile and fuel share, with NOT FOUND labels carried through). 2) Write key_figures.json. 3) Compare it with the workbook's formula results (LibreOffice recalculation if available, else re-evaluate the formulas in Python) and report any difference.",
+      "output": "code: reconciliation script and key_figures.json, plus a match/mismatch note",
+      "done_when": "key_figures.json exists with average/high/low week, totals, 41 bands and the ATRI comparison; the Python values match the workbook formula logic (or any mismatch is listed).",
+      "status": "not run"
+    },
+    {
+      "number": 5,
+      "roles": [
+        "Fleet Cost Analyst"
+      ],
+      "text": "[Fleet Cost Analyst]: Draw the price and surcharge chart",
+      "kind": "work",
+      "covers": [
+        "R5"
+      ],
+      "depends_on": [
+        1,
+        10
+      ],
+      "do": "1) Read the EIA CSV. 2) With matplotlib draw the weekly price (left axis, $/gal) and the surcharge ((price−1.25)/6.2, rounded to the cent, right axis, $/mile) against week date. 3) Add the title naming the EIA Midwest PADD 2 series, legend, axis labels and an 'EIA, retrieved <date>' footnote. 4) Save at dpi 150 and check the width with Bash.",
+      "output": "code: chart script and price_surcharge_chart.png",
+      "done_when": "The PNG exists, is at least 1200 px wide, and shows both series with labelled axes, legend and title.",
+      "status": "not run"
+    },
+    {
+      "number": 6,
+      "roles": [
+        "Memo Author"
+      ],
+      "text": "[Memo Author]: Draft the Word memo text and statistics",
+      "kind": "work",
+      "covers": [
+        "R6",
+        "R7",
+        "R8",
+        "R11",
+        "R12",
+        "R13"
+      ],
+      "depends_on": [
+        2,
+        4,
+        5
+      ],
+      "do": "1) Read key_figures.json, the ATRI note and the CSV metadata. 2) Build fuel_surcharge_memo.docx in python-docx: header, the mandated opening paragraph (both readings and their alternatives), recommendation and formula, 52-week statistics with week dates, ATRI comparison, sources and dates, gaps and assumptions. 3) Leave a marked place for the band table.",
+      "output": "memo: fuel_surcharge_memo.docx draft (opening paragraph, recommendation, statistics, ATRI comparison, sources and dates, gaps)",
+      "done_when": "The docx exists and opens with the mandated paragraph; it gives average, highest and lowest weeks with dates; it gives the ATRI comparison with edition and year; every figure carries a source and date; it has a gaps/assumptions statement.",
+      "status": "not run"
+    },
+    {
+      "number": 7,
+      "roles": [
+        "Memo Author"
+      ],
+      "text": "[Memo Author]: Add the 41-row band table and fit the memo to 2 pages",
+      "kind": "work",
+      "covers": [
+        "R6",
+        "R10",
+        "R12"
+      ],
+      "depends_on": [
+        6
+      ],
+      "do": "1) Insert the 41-row band table (bands $3.00–3.049 … $4.95–4.999 plus '$5.00 and above', surcharge at the lower bound in $/mile) as 3 side-by-side blocks, from key_figures.json. 2) Set margins to 0.7 in, body at least 10 pt, table at least 9 pt. 3) Convert to PDF and count pages; if no counter is available, estimate by line count and flag UNVERIFIED. 4) Trim until at most 2 pages.",
+      "output": "memo: final fuel_surcharge_memo.docx with band table, plus a page-count note",
+      "done_when": "The docx has the band table covering $3.00–$5.00 and is at most 2 pages (or flagged unverified), with font sizes within limits.",
+      "status": "not run"
+    },
+    {
+      "number": 8,
+      "roles": [
+        "Numbers & Sources Auditor"
+      ],
+      "text": "[Numbers & Sources Auditor]: Independently verify data, calculations, files and memo",
+      "kind": "verify",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14"
+      ],
+      "depends_on": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        7,
+        10
+      ],
+      "do": "1) Check the CSV (52 rows, consecutive dates, series ID) and spot-check 2–3 prices against EIA. 2) Recompute surcharges, weekly cost, statistics and the 41 bands with Decimal half-up rounding and compare with key_figures.json and the workbook. 3) Check the xlsx formulas, input cells (35, 2300, 6.2, 1.25) and the PNG. 4) Check the docx: opening paragraph with both readings and alternatives, page count (or mark UNVERIFIED), required sections, citations, dates. 5) Confirm the ATRI figures against the cited source. 6) Issue PASS or FAIL and list defects with the step to rerun.",
+      "output": "table: check x expected x found x pass/fail, ending with a VERDICT line and a defect list",
+      "done_when": "Every check has a pass/fail (or UNVERIFIED) result, the recomputation is reproduced in code, and a clear verdict is stated.",
+      "status": "not run"
+    },
+    {
+      "number": 9,
+      "roles": [
+        "Final Deliverable Editor"
+      ],
+      "text": "[Final Deliverable Editor]: Assemble the final answer",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7",
+        "R8",
+        "R9",
+        "R10",
+        "R11",
+        "R12",
+        "R13",
+        "R14"
+      ],
+      "depends_on": [
+        8,
+        10
+      ],
+      "do": "1) Start with the mandated interpretation text. 2) Summarise the verified headline results. 3) List the three deliverable files. 4) Carry over sources with dates, plus gaps and substitutions. 5) State the verification verdict and any unresolved defects; if FAIL, say which step needs a rerun.",
+      "output": "memo: final answer with opening line, key results, deliverables list, sources and dates, limitations",
+      "done_when": "The first line is the mandated text; the figures match the verified key figures; all three files are named; gaps, substitutions and the verdict are stated.",
+      "status": "not run"
+    },
+    {
+      "number": 10,
+      "roles": [
+        "Fuel & Trucking Data Researcher"
+      ],
+      "text": "[Fuel & Trucking Data Researcher]: Build eia_midwest_diesel_52wk.csv from the saved raw file, with every row dated and cited, and write the gaps note.",
+      "kind": "work",
+      "covers": [
+        "R1",
+        "R7",
+        "R11"
+      ],
+      "depends_on": [
+        1
+      ],
+      "do": "1) Use local:Bash (grep, sed, head, tail) to select the 52 most recent consecutive Monday rows from eia_raw_midwest.txt; do not paste rows through context by hand. 2) Write eia_midwest_diesel_52wk.csv with columns week_date, price_usd_per_gal, series_id, source_url, retrieved_date, and fill the series ID, URL and retrieval date on every row. 3) Check with local:Bash that there are 52 data rows, the dates are 7 days apart, and the latest date is the latest release. 4) State the Midwest-as-Indiana-proxy note and any gaps or substitutes, each with a date.",
+      "output": "eia_midwest_diesel_52wk.csv (52 rows, columns week_date, price_usd_per_gal, series_id, source_url, retrieved_date) plus a gaps note that includes the proxy statement and dates.",
+      "done_when": "The CSV file exists with 52 consecutive weekly rows, each with price, series ID, URL and retrieval date; the proxy note is stated; every web figure carries a date; gaps and substitutes are written down.",
+      "status": "not run"
+    }
+  ]
+}

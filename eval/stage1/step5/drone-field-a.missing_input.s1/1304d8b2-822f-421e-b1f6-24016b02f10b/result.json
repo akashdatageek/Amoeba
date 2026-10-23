@@ -1,0 +1,1861 @@
+{
+  "interpretation": {
+    "working": [],
+    "ambiguous": [],
+    "question": null,
+    "context": {},
+    "opening_line": null,
+    "added_by_code": {}
+  },
+  "input_files": [
+    {
+      "path": "inputs/red.png",
+      "size": 3118
+    },
+    {
+      "path": "inputs/nir.png",
+      "size": 3123
+    }
+  ],
+  "local_step_shares": {
+    "1": {
+      "share": 18,
+      "left": 60,
+      "not_run": 5,
+      "factor": 1.5
+    },
+    "2": {
+      "share": 21,
+      "left": 58,
+      "not_run": 4,
+      "factor": 1.5
+    },
+    "3": {
+      "share": 28,
+      "left": 56,
+      "not_run": 3,
+      "factor": 1.5
+    },
+    "4": {
+      "share": 41,
+      "left": 55,
+      "not_run": 2,
+      "factor": 1.5
+    },
+    "5": {
+      "share": 72,
+      "left": 48,
+      "not_run": 1,
+      "factor": 1.5
+    }
+  },
+  "judge_hash": "79ba86f6d3821bcb256a6adb2633eb544c8578d78af4c6e0acc9057d4fcca1a2",
+  "sim_score": {
+    "score": 1.0,
+    "baseline": 0.0,
+    "delta": 1.0,
+    "seed": 1,
+    "scorer": "answer_key+files",
+    "parts": [
+      {
+        "name": "answer_key",
+        "weight": 3.0,
+        "score": 1.0,
+        "detail": [
+          {
+            "kind": "number",
+            "name": "Z1 mean NDVI",
+            "value": 0.6004,
+            "tol": 0.002,
+            "ok": true,
+            "found": 0.6004
+          },
+          {
+            "kind": "number",
+            "name": "Z2 mean NDVI",
+            "value": 0.1472,
+            "tol": 0.002,
+            "ok": true,
+            "found": 0.1472
+          },
+          {
+            "kind": "number",
+            "name": "Z3 mean NDVI",
+            "value": 0.5003,
+            "tol": 0.002,
+            "ok": true,
+            "found": 0.5003
+          },
+          {
+            "kind": "number",
+            "name": "Z4 mean NDVI",
+            "value": 0.119,
+            "tol": 0.002,
+            "ok": true,
+            "found": 0.119
+          },
+          {
+            "kind": "number",
+            "name": "Z5 mean NDVI",
+            "value": 0.5543,
+            "tol": 0.002,
+            "ok": true,
+            "found": 0.5543
+          },
+          {
+            "kind": "number",
+            "name": "Z6 mean NDVI",
+            "value": 0.1612,
+            "tol": 0.002,
+            "ok": true,
+            "found": 0.1612
+          },
+          {
+            "kind": "number",
+            "name": "field mean NDVI",
+            "value": 0.3471,
+            "tol": 0.002,
+            "ok": true,
+            "found": 0.3471
+          },
+          {
+            "kind": "number",
+            "name": "shortest route (base-Z2-Z6-Z4-base or reverse), m",
+            "value": 197.3,
+            "tol": 0.2,
+            "ok": true,
+            "found": 197.3
+          },
+          {
+            "kind": "number",
+            "name": "battery margin, m",
+            "value": 62.7,
+            "tol": 0.2,
+            "ok": true,
+            "found": 62.7
+          }
+        ]
+      },
+      {
+        "name": "files",
+        "weight": 1.0,
+        "score": 1.0,
+        "detail": [
+          {
+            "check": "image",
+            "path": "ndvi_map.png",
+            "ok": true
+          },
+          {
+            "check": "rows",
+            "path": "zones.csv",
+            "min": 6,
+            "max": 6,
+            "ok": true
+          }
+        ]
+      }
+    ],
+    "judge_hash": "79ba86f6d3821bcb256a6adb2633eb544c8578d78af4c6e0acc9057d4fcca1a2"
+  },
+  "lessons": {
+    "read": "off",
+    "write": "on",
+    "shown": [],
+    "used": []
+  },
+  "run_id": "1304d8b2-822f-421e-b1f6-24016b02f10b",
+  "task_id": "drone-field-a",
+  "draft_source": null,
+  "team_id": "62123919-fe8e-4eec-8993-3a8aa0186918",
+  "topology": "plan",
+  "answer": "# Summary memo\n\n## Result\n| Zone | Mean NDVI | Stressed |\n|---|---|---|\n| Z1 | 0.6004 | No |\n| Z2 | 0.1472 | Yes |\n| Z3 | 0.5003 | No |\n| Z4 | 0.1190 | Yes |\n| Z5 | 0.5543 | No |\n| Z6 | 0.1612 | Yes |\n\nWhole-field mean NDVI: 0.3471 [S2].\n\n## Stressed zones\nZ2, Z4, Z6 (mean NDVI below 0.35) [S2].\n\n## Scouting route\nHome (0,0) → Z2 (45,15) → Z6 (75,45) → Z4 (15,45) → Home. Length 197.3 m [S5]. The reverse order ties. Battery: within the 260 m limit by 62.7 m [S5].\n\n## Deliverables\n- ndvi_map.png: NDVI map, 1000 x 750 px, north at top [S4].\n- zones.csv: columns zone, mean_ndvi, stressed; 6 rows [S2].\n- Supporting files: results.json (zone means, field mean, stressed list, centres), ndvi.npy (60×90 NDVI array), mk.py (script that built the map and CSV), qa_ndvi.py and qa_route.py (QA recomputation scripts).\n\n## Assumptions and flags\n- Metre coordinates from the NW corner, x east, y south. Centres are at x = 15, 45, 75 and y = 15, 45.\n- Undefined pixels: 0 [S2].\n- No zone mean is within 0.0005 of 0.35. The field mean is below 0.35, but the rule applies to zones only.\n- QA verdict: PASS, no discrepancies; no corrections needed.\n\n## Limitations\n- Steps 1–3 were partial (mislabelled citation tags); steps 2 and 3 were stale (built before step 1's rework). QA's recomputation matched their values.\n- Step 4 was disputed over a battery-limit tag (260 vs 62.7); its PASS verdict and the 62.7 m margin are consistent.\n- The PNG was not inspected visually; Z1 placement is inferred from the plot extent and label coordinates.\n\n- NOT MET: R3 — Find the shortest route that starts at the NW corner (0,0), flies in straight lines over the centre of every stressed zone and lands back at (0,0). Give the vis (the final answer does not cover it; checked by plain code on the final answer)\n",
+  "error": "partial",
+  "score": null,
+  "total_tokens": 292138,
+  "usage": {
+    "calls": 40,
+    "input": 250365,
+    "output": 41773,
+    "reasoning": 34592,
+    "tokens": 326730,
+    "cached_calls": 0,
+    "model": "claude-sonnet-5-5",
+    "cost_usd": 0.711534,
+    "models": [
+      "claude-sonnet-5-5",
+      "gemma-4-31b-it"
+    ]
+  },
+  "latency_ms": 1164228,
+  "n_llm_calls": 40,
+  "draft_rounds": 2,
+  "consensus": false,
+  "blocked_steps": [],
+  "requested_capabilities": [
+    {
+      "name": "python_interpreter",
+      "kind": "tool",
+      "for_role": "Remote Sensing Analyst",
+      "what_it_does": "Runs python3 in the sandboxed workspace with numpy, PIL and matplotlib to read PNGs, compute NDVI and write PNG, CSV and JSON files.",
+      "input": "a python script",
+      "output": "stdout and files in the workspace",
+      "example_input": "python3 -c \"from PIL import Image; import numpy as np; print(np.array(Image.open('inputs/red.png')).shape)\"",
+      "example_output": "(60, 90)",
+      "source": "planner",
+      "step": null,
+      "canonical": "code_execution",
+      "mapped": true,
+      "status": "filled",
+      "pool_id": "local:Bash",
+      "candidates": [
+        "local:Bash",
+        "local:Write",
+        "local:Read",
+        "local:skill:anthropics_skills/xlsx",
+        "io.github.sadri-dridi/hosts-ok"
+      ],
+      "reason": ""
+    },
+    {
+      "name": "file_writing",
+      "kind": "tool",
+      "for_role": "Remote Sensing Analyst",
+      "what_it_does": "Writes deliverable files (zones.csv, ndvi_map.png, results.json) into the workspace.",
+      "input": "file path and content",
+      "output": "file saved",
+      "example_input": "zones.csv with header zone,mean_ndvi,stressed",
+      "example_output": "zones.csv written, 6 rows",
+      "source": "planner",
+      "step": null,
+      "canonical": "file_writing",
+      "mapped": false,
+      "status": "filled",
+      "pool_id": "local:Write",
+      "candidates": [
+        "local:Write",
+        "local:skill:anthropics_skills/xlsx",
+        "io.github.sadri-dridi/json-pointer-ok",
+        "io.github.sadri-dridi/json-ptr-ok",
+        "io.github.sadri-dridi/png-magic"
+      ],
+      "reason": ""
+    },
+    {
+      "name": "python_interpreter",
+      "kind": "tool",
+      "for_role": "Route Optimisation Analyst",
+      "what_it_does": "Runs python3 to enumerate permutations and compute tour lengths.",
+      "input": "a python script",
+      "output": "stdout",
+      "example_input": "itertools.permutations(['Z1','Z4'])",
+      "example_output": "best route Z1,Z4 length 107.7",
+      "source": "planner",
+      "step": null,
+      "canonical": "code_execution",
+      "mapped": true,
+      "status": "filled",
+      "pool_id": "local:Bash",
+      "candidates": [
+        "local:Bash",
+        "io.github.sadri-dridi/unicode-len",
+        "io.github.sadri-dridi/uu-len",
+        "io.github.paulieb89/pinescript-mcp",
+        "local:skill:anthropics_skills/xlsx"
+      ],
+      "reason": ""
+    },
+    {
+      "name": "python_interpreter",
+      "kind": "tool",
+      "for_role": "Independent QA Analyst",
+      "what_it_does": "Runs python3 for an independent recomputation of NDVI means and route lengths.",
+      "input": "a python script",
+      "output": "stdout",
+      "example_input": "loop over pixels computing (n-r)/(n+r)",
+      "example_output": "Z1 mean 0.4123",
+      "source": "planner",
+      "step": null,
+      "canonical": "code_execution",
+      "mapped": true,
+      "status": "filled",
+      "pool_id": "local:Bash",
+      "candidates": [
+        "local:Bash",
+        "io.github.sadri-dridi/unicode-len",
+        "io.github.sadri-dridi/uu-len",
+        "local:skill:anthropics_skills/xlsx",
+        "io.github.paulieb89/pinescript-mcp"
+      ],
+      "reason": ""
+    },
+    {
+      "name": "python_interpreter (Bash with python3, numpy, PIL, matplotlib)",
+      "kind": "tool",
+      "for_role": "Remote Sensing Analyst",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "python_interpreter (Bash with python3, numpy, PIL, matplotlib)",
+      "mapped": false,
+      "status": "filled",
+      "pool_id": "local:Bash",
+      "candidates": [
+        "local:Bash",
+        "com.a2awire/data-pypi-release-package-release-python-dependency",
+        "io.github.TheCompanyAtlas/colorado-sos",
+        "io.github.pcmarts/recruiter-roles-mcp",
+        "io.github.sadri-dridi/aria-role"
+      ],
+      "reason": ""
+    },
+    {
+      "name": "file writing",
+      "kind": "tool",
+      "for_role": "Remote Sensing Analyst",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "file writing",
+      "mapped": false,
+      "status": "filled",
+      "pool_id": "local:Write",
+      "candidates": [
+        "local:Write",
+        "local:skill:anthropics_skills/discernment-nudge",
+        "io.github.TheCompanyAtlas/colorado-sos",
+        "io.github.fisher-byte/markovo",
+        "io.github.pcmarts/recruiter-roles-mcp"
+      ],
+      "reason": ""
+    },
+    {
+      "name": "python_interpreter (Bash with python3)",
+      "kind": "tool",
+      "for_role": "Route Optimisation Analyst",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "python_interpreter (Bash with python3)",
+      "mapped": false,
+      "status": "filled",
+      "pool_id": "local:Bash",
+      "candidates": [
+        "local:Bash",
+        "com.a2awire/data-pypi-release-package-release-python-dependency",
+        "io.github.TheCompanyAtlas/colorado-sos",
+        "io.github.pcmarts/recruiter-roles-mcp",
+        "io.github.sadri-dridi/aria-role"
+      ],
+      "reason": ""
+    },
+    {
+      "name": "python_interpreter (Bash with python3)",
+      "kind": "tool",
+      "for_role": "Independent QA Analyst",
+      "what_it_does": "named in the role's tools; no such tool is registered",
+      "input": "",
+      "output": "",
+      "example_input": "",
+      "example_output": "",
+      "source": "unregistered_tool",
+      "step": null,
+      "canonical": "python_interpreter (Bash with python3)",
+      "mapped": false,
+      "status": "filled",
+      "pool_id": "local:Bash",
+      "candidates": [
+        "local:Bash",
+        "com.a2awire/data-pypi-release-package-release-python-dependency",
+        "io.github.TheCompanyAtlas/colorado-sos",
+        "io.github.pcmarts/recruiter-roles-mcp",
+        "io.github.sadri-dridi/aria-role"
+      ],
+      "reason": ""
+    }
+  ],
+  "requests_proposed": 5,
+  "requests_dropped_by_observers": 1,
+  "draft_quality": {
+    "checks": {
+      "requirements_covered": {
+        "ok": true,
+        "requirements": 9,
+        "uncovered_by_steps": [],
+        "uncovered_by_roles": []
+      },
+      "dependencies_valid": {
+        "ok": true,
+        "bad": []
+      },
+      "roles_fully_defined": {
+        "ok": true,
+        "defined": 4,
+        "roles": 4,
+        "thin": {}
+      },
+      "summariser": {
+        "ok": true,
+        "declared_by_planner": 1,
+        "name": "Delivery Summariser",
+        "tools": [],
+        "owns_steps": [
+          5
+        ]
+      },
+      "tools_accounted": {
+        "ok": false,
+        "missing_not_requested_by_planner": [
+          "python_interpreter (Bash with python3)",
+          "python_interpreter (Bash with python3, numpy, PIL, matplotlib)"
+        ]
+      },
+      "verification_step": {
+        "ok": true,
+        "steps": [
+          3,
+          4
+        ]
+      },
+      "independent_verification": {
+        "ok": true,
+        "candidates": [
+          {
+            "step": 4,
+            "verifiers": [
+              "Independent QA Analyst"
+            ],
+            "producers": [
+              "Remote Sensing Analyst",
+              "Route Optimisation Analyst"
+            ],
+            "independent": true
+          }
+        ]
+      },
+      "task_coverage": {
+        "ok": true,
+        "numbers": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "8",
+          "30",
+          "60",
+          "90",
+          "260",
+          "0.35"
+        ],
+        "missing_numbers": [],
+        "phrases": [
+          "runs east along the columns from the",
+          "runs south along the rows from the",
+          "Compute NDVI =",
+          "List the stressed zones",
+          "Find the shortest such route",
+          "Deliver ndvi_map.png"
+        ],
+        "missing_phrases": []
+      },
+      "done_when_properties": {
+        "ok": false,
+        "gaps": {
+          "R1": {
+            "missing": [
+              "chart"
+            ],
+            "steps": [
+              1,
+              4
+            ]
+          }
+        }
+      },
+      "outside_action_fallback": {
+        "ok": true,
+        "steps": []
+      },
+      "done_when_reachable": {
+        "ok": false,
+        "exact_match": [],
+        "too_many_conditions": [
+          {
+            "step": 5,
+            "conditions": 8
+          }
+        ]
+      },
+      "requirements_checked": {
+        "ok": true,
+        "unchecked": []
+      },
+      "checks_valid": {
+        "ok": true,
+        "invalid": []
+      },
+      "checks_reachable": {
+        "ok": true,
+        "too_many": [],
+        "no_file_tool": []
+      },
+      "input_files_named": {
+        "ok": true,
+        "files": 2,
+        "not_named": []
+      }
+    },
+    "passed": 12,
+    "failed": 3,
+    "na": 0,
+    "failed_checks": [
+      "tools_accounted",
+      "done_when_properties",
+      "done_when_reachable"
+    ],
+    "hard_failed": [
+      "done_when_properties",
+      "done_when_reachable"
+    ]
+  },
+  "unmapped_capabilities": [
+    "file writing",
+    "file_writing",
+    "python_interpreter (Bash with python3)",
+    "python_interpreter (Bash with python3, numpy, PIL, matplotlib)"
+  ],
+  "answer_assembled_by_code": [],
+  "figure_ledger": {
+    "8": {
+      "status": "cited",
+      "step": 1,
+      "as": "8",
+      "sources": [
+        "S1",
+        "S1",
+        "S1"
+      ]
+    },
+    "90": {
+      "status": "cited",
+      "step": 1,
+      "as": "90",
+      "sources": [
+        "S1",
+        "S1",
+        "S1"
+      ]
+    },
+    "60": {
+      "status": "cited",
+      "step": 1,
+      "as": "60",
+      "sources": [
+        "S1",
+        "S1",
+        "S1"
+      ]
+    },
+    "36": {
+      "status": "cited",
+      "step": 1,
+      "as": "36",
+      "sources": [
+        "S1",
+        "S1",
+        "S1"
+      ]
+    },
+    "107": {
+      "status": "cited",
+      "step": 1,
+      "as": "107",
+      "sources": [
+        "S1",
+        "S1",
+        "S1"
+      ]
+    },
+    "106": {
+      "status": "cited",
+      "step": 1,
+      "as": "106",
+      "sources": [
+        "S1",
+        "S1",
+        "S1"
+      ]
+    },
+    "174": {
+      "status": "cited",
+      "step": 1,
+      "as": "174",
+      "sources": [
+        "S1",
+        "S1",
+        "S1"
+      ]
+    },
+    "0": {
+      "status": "cited",
+      "step": 1,
+      "as": "0",
+      "sources": [
+        "S1",
+        "S1",
+        "S1"
+      ]
+    },
+    "30": {
+      "status": "given",
+      "step": 1,
+      "as": "30",
+      "sources": []
+    },
+    "1": {
+      "status": "derived",
+      "step": 1,
+      "as": "1",
+      "sources": []
+    },
+    "3": {
+      "status": "given",
+      "step": 1,
+      "as": "3",
+      "sources": []
+    },
+    "0.35": {
+      "status": "derived",
+      "step": 1,
+      "as": "0.35",
+      "sources": []
+    },
+    "4": {
+      "status": "cited",
+      "step": 1,
+      "as": "4",
+      "sources": [
+        "S2"
+      ]
+    },
+    "0.6004": {
+      "status": "derived",
+      "step": 1,
+      "as": "0.6004",
+      "sources": []
+    },
+    "0.1472": {
+      "status": "derived",
+      "step": 1,
+      "as": "0.1472",
+      "sources": []
+    },
+    "0.5003": {
+      "status": "derived",
+      "step": 1,
+      "as": "0.5003",
+      "sources": []
+    },
+    "0.1190": {
+      "status": "derived",
+      "step": 1,
+      "as": "0.1190",
+      "sources": []
+    },
+    "0.5543": {
+      "status": "derived",
+      "step": 1,
+      "as": "0.5543",
+      "sources": []
+    },
+    "0.1612": {
+      "status": "derived",
+      "step": 1,
+      "as": "0.1612",
+      "sources": []
+    },
+    "0.3471": {
+      "status": "cited",
+      "step": 1,
+      "as": "0.3471",
+      "sources": [
+        "S2"
+      ]
+    },
+    "0.34707929": {
+      "status": "cited",
+      "step": 1,
+      "as": "0.34707929",
+      "sources": [
+        "S2"
+      ]
+    },
+    "2": {
+      "status": "given",
+      "step": 1,
+      "as": "2",
+      "sources": []
+    },
+    "15": {
+      "status": "derived",
+      "step": 1,
+      "as": "15",
+      "sources": []
+    },
+    "45": {
+      "status": "derived",
+      "step": 1,
+      "as": "45",
+      "sources": []
+    },
+    "75": {
+      "status": "derived",
+      "step": 1,
+      "as": "75",
+      "sources": []
+    },
+    "5.6": {
+      "status": "cited",
+      "step": 1,
+      "as": "5.6",
+      "sources": [
+        "S2"
+      ]
+    },
+    "17": {
+      "status": "cited",
+      "step": 1,
+      "as": "17",
+      "sources": [
+        "S2"
+      ]
+    },
+    "0.0005": {
+      "status": "cited",
+      "step": 1,
+      "as": "0.0005",
+      "sources": [
+        "S2"
+      ]
+    },
+    "1000": {
+      "status": "cited",
+      "step": 2,
+      "as": "1000",
+      "sources": [
+        "S4"
+      ]
+    },
+    "750": {
+      "status": "cited",
+      "step": 2,
+      "as": "750",
+      "sources": [
+        "S4"
+      ]
+    },
+    "0.1": {
+      "status": "cited",
+      "step": 2,
+      "as": "0.1",
+      "sources": [
+        "S4"
+      ]
+    },
+    "0.8": {
+      "status": "cited",
+      "step": 2,
+      "as": "0.8",
+      "sources": [
+        "S4"
+      ]
+    },
+    "6": {
+      "status": "cited",
+      "step": 2,
+      "as": "6",
+      "sources": [
+        "S4"
+      ]
+    },
+    "4515": {
+      "status": "cited",
+      "step": 3,
+      "as": "45,15",
+      "sources": [
+        "S5"
+      ]
+    },
+    "1545": {
+      "status": "cited",
+      "step": 3,
+      "as": "15,45",
+      "sources": [
+        "S5"
+      ]
+    },
+    "7545": {
+      "status": "cited",
+      "step": 3,
+      "as": "75,45",
+      "sources": [
+        "S5"
+      ]
+    },
+    "00": {
+      "status": "cited",
+      "step": 3,
+      "as": "0,0",
+      "sources": [
+        "S5"
+      ]
+    },
+    "47.4342": {
+      "status": "cited",
+      "step": 3,
+      "as": "47.4342",
+      "sources": [
+        "S5"
+      ]
+    },
+    "42.4264": {
+      "status": "cited",
+      "step": 3,
+      "as": "42.4264",
+      "sources": [
+        "S5"
+      ]
+    },
+    "60.0000": {
+      "status": "cited",
+      "step": 3,
+      "as": "60.0000",
+      "sources": [
+        "S5"
+      ]
+    },
+    "197.3": {
+      "status": "cited",
+      "step": 3,
+      "as": "197.3",
+      "sources": [
+        "S5"
+      ]
+    },
+    "197.2947366762442": {
+      "status": "cited",
+      "step": 3,
+      "as": "197.2947366762442",
+      "sources": [
+        "S5"
+      ]
+    },
+    "60.0": {
+      "status": "derived",
+      "step": 3,
+      "as": "60.0",
+      "sources": []
+    },
+    "197.2948": {
+      "status": "derived",
+      "step": 3,
+      "as": "197.2948",
+      "sources": []
+    },
+    "260": {
+      "status": "given",
+      "step": 3,
+      "as": "260",
+      "sources": []
+    },
+    "62.7": {
+      "status": "derived",
+      "step": 3,
+      "as": "62.7",
+      "sources": []
+    },
+    "197.2947": {
+      "status": "derived",
+      "step": 3,
+      "as": "197.2947",
+      "sources": []
+    },
+    "62.7053": {
+      "status": "derived",
+      "step": 3,
+      "as": "62.7053",
+      "sources": []
+    },
+    "218.64": {
+      "status": "unverified",
+      "step": 3,
+      "as": "218.64",
+      "sources": []
+    },
+    "21.35": {
+      "status": "unverified",
+      "step": 3,
+      "as": "21.35",
+      "sources": []
+    },
+    "87.4643": {
+      "status": "cited",
+      "step": 3,
+      "as": "87.4643",
+      "sources": [
+        "S5",
+        "S5"
+      ]
+    },
+    "174.93": {
+      "status": "cited",
+      "step": 3,
+      "as": "174.93",
+      "sources": [
+        "S5",
+        "S5"
+      ]
+    },
+    "174.9": {
+      "status": "cited",
+      "step": 3,
+      "as": "174.9",
+      "sources": [
+        "S5",
+        "S5"
+      ]
+    },
+    "219.8": {
+      "status": "cited",
+      "step": 3,
+      "as": "219.8",
+      "sources": [
+        "S5"
+      ]
+    },
+    "219.7513": {
+      "status": "cited",
+      "step": 3,
+      "as": "219.7513",
+      "sources": [
+        "S5"
+      ]
+    },
+    "40.2487": {
+      "status": "cited",
+      "step": 3,
+      "as": "40.2487",
+      "sources": [
+        "S5"
+      ]
+    },
+    "40.2": {
+      "status": "cited",
+      "step": 3,
+      "as": "40.2",
+      "sources": [
+        "S5"
+      ]
+    },
+    "22.4566": {
+      "status": "cited",
+      "step": 3,
+      "as": "22.4566",
+      "sources": [
+        "S5"
+      ]
+    },
+    "22.5": {
+      "status": "cited",
+      "step": 3,
+      "as": "22.5",
+      "sources": [
+        "S5"
+      ]
+    },
+    "237.3": {
+      "status": "cited",
+      "step": 3,
+      "as": "237.3",
+      "sources": [
+        "S5"
+      ]
+    },
+    "237.3249": {
+      "status": "cited",
+      "step": 3,
+      "as": "237.3249",
+      "sources": [
+        "S5"
+      ]
+    },
+    "22.6751": {
+      "status": "cited",
+      "step": 3,
+      "as": "22.6751",
+      "sources": [
+        "S5"
+      ]
+    },
+    "22.7": {
+      "status": "cited",
+      "step": 3,
+      "as": "22.7",
+      "sources": [
+        "S5"
+      ]
+    },
+    "40.0302": {
+      "status": "cited",
+      "step": 3,
+      "as": "40.0302",
+      "sources": [
+        "S5"
+      ]
+    },
+    "40.0": {
+      "status": "cited",
+      "step": 3,
+      "as": "40.0",
+      "sources": [
+        "S5"
+      ]
+    },
+    "1515": {
+      "status": "cited",
+      "step": 4,
+      "as": "15,15",
+      "sources": [
+        "S11"
+      ]
+    }
+  },
+  "replan": {},
+  "refinement": {
+    "self_refine": "on-issues",
+    "steps": 5,
+    "steps_refined": 4,
+    "by_reason": {
+      "provenance": 3,
+      "contract": 1
+    },
+    "before": {
+      "failed_checks": 0,
+      "untagged": 27,
+      "hallucinated": 0
+    },
+    "after": {
+      "failed_checks": 0,
+      "untagged": 7,
+      "hallucinated": 0
+    },
+    "collab": "critique",
+    "collab_steps": 0,
+    "collab_agreed": 0,
+    "collab_rounds": 0,
+    "contract": {
+      "steps_lacking_undeclared": 0,
+      "steps_with_unused": 0,
+      "not_needed_lines": 9,
+      "tool_calls": 12,
+      "tool_calls_ok": 11,
+      "refine_findings_before": 2,
+      "refine_findings_after": 1
+    }
+  },
+  "blocked_capabilities": {},
+  "summary_check": {
+    "new_number_in_summary": 0,
+    "new_numbers": [],
+    "limitations_section": true,
+    "answer_figures": 28,
+    "answer_cited": 13,
+    "answer_unverified": [],
+    "answer_untagged": [],
+    "blocked_capabilities": [],
+    "limitations_added_by_code": [],
+    "files_listed_by_code": [],
+    "cited_figures_left_out": [
+      "36",
+      "107",
+      "106",
+      "174",
+      "0.34707929",
+      "5.6",
+      "17",
+      "0.1",
+      "0.8",
+      "47.4342",
+      "42.4264",
+      "60.0000"
+    ]
+  },
+  "provenance": {
+    "total": {
+      "cited": 154,
+      "unverified": 3,
+      "given": 34,
+      "derived": 82,
+      "inherited": 12,
+      "untagged": 7,
+      "numbers": 292,
+      "hallucinated_citations": 0
+    },
+    "steps": {
+      "1": {
+        "cited": 26,
+        "unverified": 0,
+        "given": 21,
+        "derived": 59,
+        "inherited": 0,
+        "untagged": 6,
+        "numbers": 112,
+        "hallucinated_citations": [],
+        "untagged_examples": [
+          "45",
+          "15",
+          "15",
+          "45",
+          "75",
+          "45"
+        ],
+        "given_with_web_tag": []
+      },
+      "2": {
+        "cited": 27,
+        "unverified": 0,
+        "given": 0,
+        "derived": 6,
+        "inherited": 0,
+        "untagged": 0,
+        "numbers": 33,
+        "hallucinated_citations": [],
+        "untagged_examples": [],
+        "given_with_web_tag": []
+      },
+      "3": {
+        "cited": 51,
+        "unverified": 3,
+        "given": 4,
+        "derived": 15,
+        "inherited": 0,
+        "untagged": 1,
+        "numbers": 74,
+        "hallucinated_citations": [],
+        "untagged_examples": [
+          "62.7"
+        ],
+        "given_with_web_tag": []
+      },
+      "4": {
+        "cited": 37,
+        "unverified": 0,
+        "given": 0,
+        "derived": 0,
+        "inherited": 0,
+        "untagged": 0,
+        "numbers": 37,
+        "hallucinated_citations": [],
+        "untagged_examples": [],
+        "given_with_web_tag": []
+      },
+      "5": {
+        "cited": 13,
+        "unverified": 0,
+        "given": 9,
+        "derived": 2,
+        "inherited": 12,
+        "untagged": 0,
+        "numbers": 36,
+        "hallucinated_citations": [],
+        "untagged_examples": [],
+        "given_with_web_tag": []
+      }
+    }
+  },
+  "profile": "router:routed",
+  "models": {
+    "requested": {
+      "calls": [
+        "claude-sonnet-5-5",
+        "gemma-4-31b-it"
+      ]
+    },
+    "returned": [
+      "claude-sonnet-5-5",
+      "gemma-4-31b-it"
+    ]
+  },
+  "pool": {
+    "status": "ran",
+    "filled": 8,
+    "unfilled": 0,
+    "llm_calls": 8,
+    "reasons": {},
+    "attached": [
+      {
+        "id": "local:Bash",
+        "kind": "tool",
+        "kind_requested": "tool",
+        "as": "local:Bash",
+        "helpers": [
+          "Remote Sensing Analyst"
+        ],
+        "source": "local"
+      },
+      {
+        "id": "local:Write",
+        "kind": "tool",
+        "kind_requested": "tool",
+        "as": "local:Write",
+        "helpers": [
+          "Remote Sensing Analyst"
+        ],
+        "source": "local"
+      },
+      {
+        "id": "local:Bash",
+        "kind": "tool",
+        "kind_requested": "tool",
+        "as": "local:Bash",
+        "helpers": [
+          "Route Optimisation Analyst"
+        ],
+        "source": "local"
+      },
+      {
+        "id": "local:Bash",
+        "kind": "tool",
+        "kind_requested": "tool",
+        "as": "local:Bash",
+        "helpers": [
+          "Independent QA Analyst"
+        ],
+        "source": "local"
+      },
+      {
+        "id": "local:Bash",
+        "kind": "tool",
+        "kind_requested": "tool",
+        "as": "local:Bash",
+        "helpers": [
+          "Remote Sensing Analyst"
+        ],
+        "source": "local"
+      },
+      {
+        "id": "local:Write",
+        "kind": "tool",
+        "kind_requested": "tool",
+        "as": "local:Write",
+        "helpers": [
+          "Remote Sensing Analyst"
+        ],
+        "source": "local"
+      },
+      {
+        "id": "local:Bash",
+        "kind": "tool",
+        "kind_requested": "tool",
+        "as": "local:Bash",
+        "helpers": [
+          "Route Optimisation Analyst"
+        ],
+        "source": "local"
+      },
+      {
+        "id": "local:Bash",
+        "kind": "tool",
+        "kind_requested": "tool",
+        "as": "local:Bash",
+        "helpers": [
+          "Independent QA Analyst"
+        ],
+        "source": "local"
+      }
+    ],
+    "local": {
+      "server": {
+        "name": "claude/tengu",
+        "version": "2.1.289"
+      },
+      "error": null,
+      "exposed": [
+        "local:Bash",
+        "local:Read",
+        "local:Write",
+        "local:Edit",
+        "local:Glob",
+        "local:Grep"
+      ],
+      "skills_listed": 19
+    },
+    "pool": "ran"
+  },
+  "files_created": [
+    {
+      "path": "mk.py",
+      "size": 1327,
+      "step": 2
+    },
+    {
+      "path": "ndvi.npy",
+      "size": 43328,
+      "step": 1
+    },
+    {
+      "path": "ndvi_map.png",
+      "size": 65316,
+      "step": 2
+    },
+    {
+      "path": "qa_ndvi.py",
+      "size": 1609,
+      "step": 4
+    },
+    {
+      "path": "qa_route.py",
+      "size": 997,
+      "step": 4
+    },
+    {
+      "path": "results.json",
+      "size": 714,
+      "step": 1
+    },
+    {
+      "path": "zones.csv",
+      "size": 124,
+      "step": 2
+    }
+  ],
+  "local_tool_calls": 12,
+  "local_refusals": {},
+  "skills_attached": [],
+  "clarification": null,
+  "rubric": null,
+  "family": {
+    "family": "calc",
+    "how": "rule",
+    "keywords": [
+      "compute",
+      "how much"
+    ]
+  },
+  "deliverables": {
+    "answer_chars": 1031,
+    "requirements": {
+      "R1": {
+        "id": "R1",
+        "text": "Compute per-pixel NDVI = (NIR - Red)/(NIR + Red) from inputs/red.png and inputs/nir.png, and give the mean NDVI of each of the six 30 x 30 m zones (Z1-Z3 north row W-E, Z4-Z6 south row W-E) and of the whole field, each to 4 decimals.",
+        "status": "met",
+        "status_legacy": "met",
+        "coverage": 0.62,
+        "body_coverage": 0.62,
+        "checks": [
+          {
+            "check": "file_exists",
+            "pass": true
+          },
+          {
+            "check": "output_has_table",
+            "pass": true
+          },
+          {
+            "check": "verdict_present",
+            "pass": true
+          },
+          {
+            "check": "output_has_table",
+            "pass": true
+          }
+        ],
+        "checks_failed": [],
+        "terms_missing": [
+          "compu",
+          "per-p",
+          "input",
+          "decim",
+          "30"
+        ],
+        "files_missing": [],
+        "blocked": []
+      },
+      "R2": {
+        "id": "R2",
+        "text": "List the stressed zones (zone mean NDVI < 0.35).",
+        "status": "met",
+        "status_legacy": "met",
+        "coverage": 1.0,
+        "body_coverage": 1.0,
+        "checks": [
+          {
+            "check": "file_exists",
+            "pass": true
+          },
+          {
+            "check": "output_has_table",
+            "pass": true
+          },
+          {
+            "check": "output_mentions",
+            "pass": true
+          },
+          {
+            "check": "verdict_present",
+            "pass": true
+          },
+          {
+            "check": "output_has_table",
+            "pass": true
+          }
+        ],
+        "checks_failed": [],
+        "terms_missing": [],
+        "files_missing": [],
+        "blocked": []
+      },
+      "R3": {
+        "id": "R3",
+        "text": "Find the shortest route that starts at the NW corner (0,0), flies in straight lines over the centre of every stressed zone and lands back at (0,0). Give the visiting order and the total length in metres to 1 decimal.",
+        "status": "reported_missing",
+        "status_legacy": "met",
+        "coverage": 0.5,
+        "body_coverage": 0.45,
+        "checks": [
+          {
+            "check": "output_has_list",
+            "pass": true
+          },
+          {
+            "check": "output_mentions",
+            "pass": true
+          },
+          {
+            "check": "verdict_present",
+            "pass": true
+          },
+          {
+            "check": "output_has_table",
+            "pass": true
+          }
+        ],
+        "checks_failed": [],
+        "terms_missing": [
+          "find",
+          "short",
+          "start",
+          "flies",
+          "strai",
+          "lines",
+          "lands",
+          "back",
+          "visit",
+          "total"
+        ],
+        "files_missing": [],
+        "blocked": []
+      },
+      "R4": {
+        "id": "R4",
+        "text": "State whether the route is within the 260 m battery limit and by how many metres (margin or excess).",
+        "status": "met",
+        "status_legacy": "met",
+        "coverage": 0.7,
+        "body_coverage": 0.6,
+        "checks": [
+          {
+            "check": "output_has_list",
+            "pass": true
+          },
+          {
+            "check": "output_mentions",
+            "pass": true
+          },
+          {
+            "check": "verdict_present",
+            "pass": true
+          },
+          {
+            "check": "output_has_table",
+            "pass": true
+          }
+        ],
+        "checks_failed": [],
+        "terms_missing": [
+          "wheth",
+          "many",
+          "exces"
+        ],
+        "files_missing": [],
+        "blocked": []
+      },
+      "R5": {
+        "id": "R5",
+        "text": "Deliver ndvi_map.png, an image of the NDVI map.",
+        "status": "met",
+        "status_legacy": "met",
+        "coverage": 0.67,
+        "body_coverage": 0.67,
+        "checks": [
+          {
+            "check": "file_exists",
+            "pass": true
+          },
+          {
+            "check": "image_exists",
+            "pass": true
+          },
+          {
+            "check": "verdict_present",
+            "pass": true
+          }
+        ],
+        "checks_failed": [],
+        "terms_missing": [
+          "image"
+        ],
+        "files_missing": [],
+        "blocked": []
+      },
+      "R6": {
+        "id": "R6",
+        "text": "Deliver zones.csv with one row per zone and columns zone, mean NDVI, stressed.",
+        "status": "met",
+        "status_legacy": "met",
+        "coverage": 1.0,
+        "body_coverage": 1.0,
+        "checks": [
+          {
+            "check": "file_exists",
+            "pass": true
+          },
+          {
+            "check": "csv_columns",
+            "pass": true
+          },
+          {
+            "check": "csv_rows_min",
+            "pass": true
+          },
+          {
+            "check": "verdict_present",
+            "pass": true
+          }
+        ],
+        "checks_failed": [],
+        "terms_missing": [],
+        "files_missing": [],
+        "blocked": []
+      },
+      "R7": {
+        "id": "R7",
+        "text": "Deliver a short summary covering the zone means, field mean, stressed zones, route, length and battery verdict.",
+        "status": "met",
+        "status_legacy": "met",
+        "coverage": 0.92,
+        "body_coverage": 0.92,
+        "checks": [
+          {
+            "check": "output_mentions",
+            "pass": true
+          },
+          {
+            "check": "output_has_table",
+            "pass": true
+          }
+        ],
+        "checks_failed": [],
+        "terms_missing": [
+          "cover"
+        ],
+        "files_missing": [],
+        "blocked": []
+      },
+      "R8": {
+        "id": "R8",
+        "text": "Treat x as running east along the columns from the west edge (column 0 = west edge, x = 0 at the west edge) in the zone slicing, the map and the route coordinates.",
+        "status": "met",
+        "status_legacy": "met",
+        "coverage": 0.5,
+        "body_coverage": 0.5,
+        "checks": [
+          {
+            "check": "output_mentions",
+            "pass": true
+          },
+          {
+            "check": "image_exists",
+            "pass": true
+          },
+          {
+            "check": "output_mentions",
+            "pass": true
+          },
+          {
+            "check": "verdict_present",
+            "pass": true
+          }
+        ],
+        "checks_failed": [],
+        "terms_missing": [
+          "treat",
+          "runni",
+          "along",
+          "west",
+          "edge",
+          "slici"
+        ],
+        "files_missing": [],
+        "blocked": []
+      },
+      "R9": {
+        "id": "R9",
+        "text": "Treat y as running south along the rows from the north edge (row 0 = north edge, y = 0 at the north edge) in the zone slicing, the map (north at top, no vertical flip) and the route coordinates.",
+        "status": "met",
+        "status_legacy": "met",
+        "coverage": 0.5,
+        "body_coverage": 0.5,
+        "checks": [
+          {
+            "check": "output_mentions",
+            "pass": true
+          },
+          {
+            "check": "image_exists",
+            "pass": true
+          },
+          {
+            "check": "output_mentions",
+            "pass": true
+          },
+          {
+            "check": "verdict_present",
+            "pass": true
+          }
+        ],
+        "checks_failed": [],
+        "terms_missing": [
+          "treat",
+          "runni",
+          "along",
+          "edge",
+          "slici",
+          "verti",
+          "flip"
+        ],
+        "files_missing": [],
+        "blocked": []
+      }
+    },
+    "unmet": [
+      "R3"
+    ],
+    "promised": [
+      {
+        "name": "results.json",
+        "kind": "json",
+        "where": "step 1 output"
+      },
+      {
+        "name": "zones.csv",
+        "kind": "csv",
+        "where": "step 2 output"
+      },
+      {
+        "name": "ndvi_map.png",
+        "kind": "png",
+        "where": "step 2 output"
+      },
+      {
+        "name": null,
+        "kind": "png",
+        "where": "requirement R1"
+      },
+      {
+        "name": null,
+        "kind": "csv",
+        "where": "requirement R6"
+      }
+    ],
+    "met_legacy": [
+      "R1",
+      "R2",
+      "R3",
+      "R4",
+      "R5",
+      "R6",
+      "R7",
+      "R8",
+      "R9"
+    ],
+    "reported_missing": [
+      "R3"
+    ],
+    "files_missing": [],
+    "files_made": [
+      "mk.py",
+      "ndvi.npy",
+      "ndvi_map.png",
+      "qa_ndvi.py",
+      "qa_route.py",
+      "results.json",
+      "zones.csv"
+    ],
+    "checked_files": true,
+    "undated": [],
+    "core_missing": [],
+    "ok": false
+  },
+  "requirement_status": {
+    "R1": "met",
+    "R2": "met",
+    "R3": "reported_missing",
+    "R4": "met",
+    "R5": "met",
+    "R6": "met",
+    "R7": "met",
+    "R8": "met",
+    "R9": "met"
+  },
+  "stuck": [],
+  "adaptation": {
+    "fixes": [],
+    "recovered_steps": [],
+    "finished_with_limitation_steps": [],
+    "stuck_steps": [],
+    "tokens": 0,
+    "cost_usd": 0.0,
+    "skipped": [],
+    "stopped": null,
+    "kept_going": [],
+    "usd_limit_enforced": true,
+    "token_allowance": null,
+    "step_shares": {
+      "1": {
+        "share": 1473807,
+        "left_tokens": 4912692,
+        "steps_not_run": 5,
+        "factor": 1.5
+      },
+      "2": {
+        "share": 1830822,
+        "left_tokens": 4882192,
+        "steps_not_run": 4,
+        "factor": 1.5
+      },
+      "3": {
+        "share": 2430421,
+        "left_tokens": 4860843,
+        "steps_not_run": 3,
+        "factor": 1.5
+      },
+      "4": {
+        "share": 3625899,
+        "left_tokens": 4834533,
+        "steps_not_run": 2,
+        "factor": 1.5
+      },
+      "5": {
+        "share": 7038778,
+        "left_tokens": 4692519,
+        "steps_not_run": 1,
+        "factor": 1.5
+      }
+    },
+    "proposer": "scoped",
+    "scoped_fallbacks": [],
+    "lessons_learned": [],
+    "lessons": {
+      "shown": [],
+      "used": []
+    },
+    "make_tool_unavailable": [],
+    "workarounds": [],
+    "tools_made": [],
+    "left_on_old_output": []
+  },
+  "faults": [
+    {
+      "cause": "missing_input",
+      "step": 2,
+      "n": 200,
+      "upstream": 1,
+      "fired": 1,
+      "cleared": null,
+      "expected": {
+        "diagnosis": "missing_input",
+        "first_fix": "add_dependency"
+      }
+    }
+  ],
+  "protocol": {
+    "asked": "v2",
+    "used": "v2",
+    "why": "native tool calling"
+  },
+  "planning_tier": "standard",
+  "verifier_independence": [
+    {
+      "step": 4,
+      "checks": [
+        1,
+        2,
+        3
+      ],
+      "verifier_models": [
+        "claude-sonnet-5-5",
+        "gemma-4-31b-it"
+      ],
+      "producer_models": [
+        "claude-sonnet-5-5"
+      ],
+      "independence": "same_model"
+    }
+  ],
+  "published_round": 2,
+  "plan_search": {
+    "status": "not_needed",
+    "why": "Everything needed (NDVI formula, zone geometry, threshold, battery limit) is given in the task, and the computation uses only the provided images, so no external facts are required.",
+    "calls": 2,
+    "tokens": 1194
+  },
+  "status": "agent_error",
+  "routing": {
+    "mode": "routed",
+    "per_model": {
+      "claude-sonnet-5-5": {
+        "calls": 28,
+        "input_tokens": 165039,
+        "output_tokens": 48508,
+        "usd": 0.711534
+      },
+      "gemma-4-31b": {
+        "calls": 12,
+        "input_tokens": 85326,
+        "output_tokens": 27857,
+        "usd": 0.0
+      }
+    },
+    "usd": 0.711534,
+    "decisions": 40,
+    "verifier_same_family": 0,
+    "no_model": 0,
+    "fallbacks": 3,
+    "cooldown_wait_s": 0,
+    "rate_wait_s": 0
+  }
+}
