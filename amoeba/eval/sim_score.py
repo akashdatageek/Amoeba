@@ -244,8 +244,9 @@ SCORE_LINE = re.compile(r"SCORE:\s*([01](?:\.\d+)?|\.\d+)", re.I)
 
 # box: frozen_judge
 def parse_mark(text: str | None) -> float:
-    """The grader's `SCORE: <0..1>` line; an unreadable reply scores 0."""
-    m = SCORE_LINE.search(text or "")
+    """The grader's last `SCORE: <0..1>` line (its reasoning may quote the format first); an unreadable reply
+    scores 0."""
+    m = ([None] + list(SCORE_LINE.finditer(text or "")))[-1]
     return min(1.0, max(0.0, float(m.group(1)))) if m else 0.0
 
 

@@ -171,3 +171,11 @@ def test_a_grader_reply_cut_off_by_length_is_asked_again_with_twice_the_room(tmp
     room = S.judge_config()["rubric"]["max_tokens"]
     assert got["score"] == 0.5 and g.calls == [room, 2 * room] * 3 and room >= 4096
     assert got["parts"][0]["detail"]["retried"] == 3
+
+
+def test_the_graders_last_score_line_is_its_verdict():
+    """Part 2 Step 4 (db-choice): the grader's reasoning quoted a SCORE line before its own last line
+    ("SCORE: 0.1428..."), and the first match gave the run 1.0."""
+    from amoeba.eval.sim_score import parse_mark
+    reply = "<thought>The format is SCORE: 1 at the end ...</thought>\n1. met\n2. not met\nSCORE: 0.14285714285714285"
+    assert parse_mark(reply) == 0.142857 or round(parse_mark(reply), 6) == 0.142857
