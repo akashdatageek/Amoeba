@@ -1,0 +1,199 @@
+Source: S42
+URL: https://benchant.com/blog/alloydb-omni-postgresql
+Title: AlloyDB Omni: The better PostgreSQL?
+
+[![benchANT Homepage](/_next/static/media/Logo.fbb0d038.svg)
+
+![benchANT Homepage](/_next/static/media/LogoMobile.a4c4b3d6.svg)](/)
+
+[Database  
+Ranking](/ranking/database-ranking)[DBaaS  
+Navigator](/navigator/dbaas)
+
+# AlloyDB Omni - The better PostgreSQL?
+
+AlloyDB from Google Cloud is the new modern DBaaS solution with a 100% PostgreSQL-API and competes with AWS Aurora and CosmosDB for PostgreSQL from MS Azure.
+
+It claims to be more than 2x faster than standard PostgreSQL for transactional workloads, and 100 times faster for analytical queries.
+
+For a few weeks AlloyDB Omni, a downloadable, self-managed database version of AlloyDB is available.
+
+Well, are you interested in getting some first-hand performance numbers?
+
+## Table of Contents
+
+* Chapter 1: [Key Insights](/blog/alloydb-omni-postgresql#key-insights---alloydb-omni)
+* Chapter 2: [About AlloyDB & AlloyDB Omni](/blog/alloydb-omni-postgresql#alloydb--alloydb-omni--a-short-introduction)
+  + [Pricing](/blog/alloydb-omni-postgresql#pricing-of-alloydb-omni)
+  + [Performance Claim](/blog/alloydb-omni-postgresql#the-bold-marketing-performance-claim-of-alloydb)
+* Chapter 3: [Performance Results](/blog/alloydb-omni-postgresql#performance-results--alloydb-omni-vs-postgresql)
+  + [Throughput](/blog/alloydb-omni-postgresql#throughput-results---alloydb-omni)
+  + [Latency](/blog/alloydb-omni-postgresql#latency-results---alloydb-omni)
+* Chapter 4: [Performance/Cost Analysis](/blog/alloydb-omni-postgresql#performancecost-analysis--alloydb-omni-vs-postgresql)
+* Chapter 5: [Summary](/blog/alloydb-omni-postgresql#summary)
+* Appendix
+  + [Benchmark Settings](/blog/alloydb-omni-postgresql#appendix---benchmark-specification)
+  + [Workload Settings](/blog/alloydb-omni-postgresql#appendix--workload--database-specification)
+
+## Key Insights - AlloyDB Omni
+
+* AlloyDB Omni is a self-managed database version of AlloyDB, a cloud-native distributed database with a PostgreSQL-API developed by Google Cloud Platform.
+* The developer version is free to use, beyond that AlloyDB Omni is priced at $69.95 per vCPU and month.
+* AlloyDB is also offered as DBaaS on the Google Cloud Platform.
+* It claims to be twice as fast as regular PostgreSQL for transactional workloads and 100x as fast for analytical workloads with its column-oriented extension.
+* Our baseline performance measurements for 4 different workload types show that AlloyDB Omni provides throughput improvements of up to 35%, compared to PostgreSQL without using any of the AlloyDB-specific extensions.
+* The results for latencies are nearly identical for AlloyDB Omni and PostgreSQL, only the update latency for the YCSB A workload is significantly better.
+* When calculating the price/performance ratio, PostgreSQL shows better price/performance results than AlloyDB due to the DBMS license costs.
+* In our baseline measurements, the advertised performance claims can not be validated.
+
+## AlloyDB & AlloyDB Omni – A Short Introduction
+
+AlloyDB is a cloud-native, fully-managed Database-as-a-Service product from Google Cloud Platform, and has a PostgreSQL-compatible API. From a database market perspective, it is the pendant to MS Azures CosmosDB with PostgreSQL-API and AWS Aurora.
+
+In March 2023 Google Cloud released the downloadable version AlloyDB Omni, which allows you to run the database on any infrastructure you want – on cloud or on-premises.
+
+Besides Google-specific enhancements to the PostgreSQL core, AlloyDB Omni comes with Google-specific PostgreSQL columnar storage extension for analytical workloads (google\_columnar\_engine).
+
+## Pricing of AlloyDB Omni
+
+On the [AlloyDB Omni pricing page](https://cloud.google.com/alloydb/omni/pricing) you can find out, that AlloyDB is a free downloadable database, but it is not free to use.
+
+Only a developer instance can be used for free.
+
+For production workloads, you need to buy a starter subscription, which is priced $80.94 per month and vCPU, which means for 16vCPUs you have a monthly fee of 16x $80.94 = $1,295 additionally to your infrastructure costs.
+
+![AlloyDB Omni pricing](/_next/image?url=%2Fstatic%2Farticle%2Falloydb-omni-postgresql%2FAlloy_DB_pricing.png&w=3840&q=100)
+
+### The bold marketing performance claim of AlloyDB
+
+When you open the [product page of AlloyDB Omni](https://cloud.google.com/alloydb/omni?hl=en), one of the first things are the performance claims you can find:
+
+* “Superior performance, more than 2x faster than standard PostgreSQL for transactional workloads\*”
+* “Integrated columnar engine for up to 100x faster analytical queries than standard PostgreSQL\*”
+
+![AlloyDB performance claims](/_next/image?url=%2Fstatic%2Farticle%2Falloydb-omni-postgresql%2FAlloy_DB_performance_claims.png&w=3840&q=100)
+
+On the webpage, there is no explanation or link for the “\*”. But on the AlloyDB main page, which has the same performance claims, you find an explanation, that this was tested by Google on March 2022 without any published results.
+
+You can find some performance test done by other performance engineers:
+
+* Michael Aboagye, PostgreSQL consultant from vettabase, tested AlloyDB with the pgbench-Benchmarking tool [in this blog post](https://vettabase.com/alloydb-versus-postgresql/#Performance_biases). His measurements showed better results for write operations, while AlloyDB was better for reads, but he changed the VM for PostgreSQL to a high-CPU VM.
+* A TPC-H benchmark for the special columnar engine, with AlloyDB vs GCPs Google BigQuery [in this Medium post](https://medium.com/@doctusoft/compare-analytical-queries-performance-of-alloydb-with-bigquery-91deecf19573) by Aliz. His measurements result show faster analytical queries for AlloyDB for data sets smaller up to 60 GB, for bigger data sets BigQuery was scaling better.
+* And another [benchmark blog post from Pythian](https://www.pythian.com/blog/an-initial-test-of-googles-alloydb-columnar-engine) for the columnar engine of AlloyDB, which shows significant performance improvements for certain query scenarios compared to the default engine.
+
+In order to substantiate these claims or question them critically, we have carried out a first series of benchmarks that compares the performance of PostgreSQL vs. AlloyDB Omni.
+
+This first series focuses on a baseline performance comparison without using any of the advanced AlloyDB features such as the columnar storage engine. This will be the target for an upcoming benchmark series.
+
+## Performance Results – AlloyDB Omni vs PostgreSQL
+
+For our performance measurements, we are using 4 different workload types to get a bigger picture and maybe identify sweet spots:
+
+* YCSB - A: non-transactional workload with 95% read and 5% update queries
+* YCSB - B: non-transactional with 50% read and 50% update queries
+* TPC-C: transactional online transaction processing (OLTP) workload
+* TPC-H: transactional online analytical processing (OLAP) workload
+
+These are the same workloads we used in our [PostgreSQL v16 vs v15 study](https://benchant.com/blog/postgresql-v16-performance).
+
+The benchmarks are carried out with our benchANT platform, an automated database benchmarking framework.
+
+The benchmarking process of the benchANT platform deploys the database instances directly of the VMs of the selected cloud provider. However, AlloyDB Omni is always shipped within a docker container and in consequence, AlloyDB is running in a container on the VMs while the standard PostgreSQL is running directly on the VM.
+
+At the time of our benchmarks, AlloyDB Omni was based on PostgreSQL v15. To be fair, we also used PostgreSQL v15 as a reference.
+
+For infrastructure, we used cloud resources with 8vCPUs and 32GB RAM on the Open Telekom Cloud, a European cloud provider.
+
+The full [benchmarking specs](/blog/alloydb-omni-postgresql#benchmarkspecs) and [workload specs](/blog/alloydb-omni-postgresql#workoadspecs) can be found in the appendix of this article.
+
+### Throughput Results - AlloyDB Omni
+
+![AlloyDB Omni performance testing - Throughput YCSB](/_next/image?url=%2Fstatic%2Farticle%2Falloydb-omni-postgresql%2FAlloy_DB_Omni_performance_testing_Throughput_YCSB.png&w=3840&q=100)
+
+![AlloyDB Omni performance testing - Throughput TPC-C & TPC-H](/_next/image?url=%2Fstatic%2Farticle%2Falloydb-omni-postgresql%2FAlloy_DB_Omni_performance_testing_Throughput_TPC_C_and_TPC_H.png&w=3840&q=100)
+
+* For the simpler YCSB workloads, we see performance advantages for AlloyDB Omni between 11% and 32%.
+* For the applied transactional workload, AlloyDB also performs around 32% better compared to PostgreSQL.
+* For the analytical workload, AlloyDB is around 16% faster than PostgreSQL, without the column-store extension.
+
+Note: Please notify the different result dimensions of the measurements.
+
+### Latency Results - AlloyDB Omni
+
+![AlloyDB Omni performance testing - Read Latency YCSB](/_next/image?url=%2Fstatic%2Farticle%2Falloydb-omni-postgresql%2FAlloy_DB_Omni_performance_testing_Read_Latency_YCSB.png&w=3840&q=100)
+
+![AlloyDB Omni performance testing - Update Latency YCSB](/_next/image?url=%2Fstatic%2Farticle%2Falloydb-omni-postgresql%2FAlloy_DB_Omni_performance_testing_Update_Latency_YCSB.png&w=3840&q=100)
+
+![AlloyDB Omni performance testing - Latency TPC-C & TPC-H](/_next/image?url=%2Fstatic%2Farticle%2Falloydb-omni-postgresql%2FAlloy_DB_Omni_performance_testing_Latency_TPC_C_and_TPC_H.png&w=3840&q=100)
+
+* The results show nearly identical latencies for AlloyDB Omni and PostgreSQL v15.
+* Only the update latency for YCSB A shows some significant performance advantages for AlloyDB Omni (~45%).
+
+Note: Please notify the different latency dimension for the TPC-H workload. For TPC-C and TPC-H there is only a combined overall latency result available due to the benchmark definition.
+
+## Performance/Cost Analysis – AlloyDB Omni vs PostgreSQL
+
+For the performance/cost analysis, we are using the infrastructure costs for the VM, where the two databases are deployed. As they are deployed on the same instance size for fair performance comparisons, we see identical results.
+
+But when we add the DBMS license costs for AlloyDB, as described in the [pricing chapter](/blog/alloydb-omni-postgresql#pricing), we see significantly higher monthly costs for AlloyDB.
+
+If we put these monthly costs in relation to the throughput results we get a KPI, which shows the economical efficiency of the solutions.
+
+![AlloyDB Omni performance testing - Monthly Costs](/_next/image?url=%2Fstatic%2Farticle%2Falloydb-omni-postgresql%2FAlloy_DB_Omni_performance_testing_Monthly_Costs.png&w=3840&q=100)
+
+![AlloyDB Omni performance testing - Performance per Cost 2 YCSB](/_next/image?url=%2Fstatic%2Farticle%2Falloydb-omni-postgresql%2FAlloy_DB_Omni_performance_testing_Performance_per_Cost_2_YCSB.png&w=3840&q=100)
+
+![AlloyDB Omni performance testing - Performance per Cost 2 TPC-C TPC-H](/_next/image?url=%2Fstatic%2Farticle%2Falloydb-omni-postgresql%2FAlloy_DB_Omni_performance_testing_Performance_per_Cost_2_TPC_C_TPC_H.png&w=3840&q=100)
+
+Although AlloyDB Omni has slightly better throughput results, this performance gain stays in no relationship to the higher costs, compared to the open-source PostgreSQL v15 solution.
+
+## Summary
+
+AlloyDB Omni comes with promising performance claims to outperform standard PostgreSQL for online transactional (2x times) and analytical workloads (100x times). Our first independent and comparable measurements for online transactional workloads show slight performance advantages, up to 1.35x better performance compared to PostgreSQL v15.
+
+With respect to the price-performance ratio that takes into account the AlloyDB Omni licensing costs, the results indicate that AlloyDB Omni provides a lower throughput/$ compared to standard PostgreSQL.
+
+In this benchmarking study, we did not tune any of the databases to their maximum performance but used the default configuration. Applying workload-specific tuning is planned for upcoming benchmarking studies.
+
+It is also planned to benchmark the performance of analytical workloads for the AlloyDB Omni columnar storage engine against standard PostgreSQL and other PostgreSQL columnar storage engines such as Hydra.
+
+## Appendix - Benchmark Specification
+
+All measurement results can be found in our [GitHub repository](https://github.com/benchANT/postgresql-vs-google-alloydb-omni), including all applied configs and a full audit of the benchmarking runs.
+
+Cloud Configuration
+
+| **Cloud Configuration** | **DBMS Instance** | **Benchmark Instance** |
+| **Cloud** | OTC | OTC |
+| **Region** | de-de | de-de |
+| **Instance Type** | s3.2xlarge.4 | s3.4xlarge.2 |
+| **Instance Specs** | 8 vCores/32 GB RAM | 16 vCores/32 GB RAM |
+| **Storage Type** | Ultra-high I/O | Common I/O |
+| **Storage Size** | 200 GB | 50GB GB |
+| **OS** | Ubuntu 20.04 | Ubuntu 20.04 |
+
+## Appendix – Workload & Database Specification
+
+### Workload 1 & 2: YCSB Read-heavy/Read-Update
+
+YCSB Configuration
+
+| **YCSB Configuration** | **read-heavy** | **read-update** |
+| **version** | 0.17.0 | 0.17.0 |
+| **runtime** | 30m | 30m |
+| **threads** | 50 | 50 |
+| **initial data** | 50 GB | 50GB |
+| **record size** | 1 KB | 1 KB |
+| **read proportion** | 95% | 50% |
+| **update** | 5% | 50% |
+| **request distribution** | zipfian | zipfian |
+
+### Workload 3 (TPC-C) & 4 (TPC-H) Configuration:
+
+BenchBase Configuration
+
+| **BenchBase Configuration** | **TPC-C** | **TPC-H** |
+| **Version** | master | master |
+| **Runtime** | 30m | 30m |
+| **Terminals** | 20 | 2 |
+| **Scale Factor** | 100 | 5 |

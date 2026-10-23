@@ -1,0 +1,177 @@
+Source: S1
+URL: https://espresso.ai/post/explaining-snowflake-pricing
+Title: Explaining Snowflake Pricing
+
+[![](https://cdn.prod.website-files.com/65d64e120afc85ff60e6b84c/6978d5e5002a227d81585eec_espresso-AI-logo_with-R-white.svg)](/)
+
+[Log in](https://app.espressocomputing.com/)
+
+[Book a Call](/demo)
+
+![](https://cdn.prod.website-files.com/65dcbc0ed454e053755396ba/684968f66b8f6befea30b91d_espressoAI_03.webp)
+
+[All posts](/field-notes)
+
+# Explaining Snowflake Pricing
+
+Published on
+
+31 Mar 25
+
+Snowflake’s fundamental innovation is the disaggregation of storage and compute. Unlike traditional databases, Snowflake’s data warehouse allows you to independently purchase and scale compute and storage, enabling instantaneous scaling to arbitrarily-sized workloads.
+
+To be precise, Snowflake splits your costs into three components: storage, compute, and “cloud services”, which you can think of as administrative (i.e. control plane) workloads that run outside of your clusters.
+
+This article explains Snowflake’s three-layer architecture – **Storage, Compute, and Cloud Services** – and how each contributes to your bill. We’ll break down pricing for each layer, typical cost ratios (e.g. compute vs. storage), and where costs tend to scale up.
+
+## **Snowflake Pricing Model and its Three-Layer Architecture**
+
+Snowflake is built on a **decoupled, three-tier architecture**: a Storage layer (data persisted in cloud storage), a Compute layer (compute clusters called virtual warehouses that execute queries*)* and a Cloud Services layer​ (supporting services like authentication, optimization, and metadata management).
+
+This design is fundamental to how Snowflake charges you. Unlike traditional monolithic data warehouses, Snowflake **separates storage from compute**, which means you **pay separately** for each and can scale them independently​.
+
+![](https://cdn.prod.website-files.com/65dcbc0ed454e053755396ba/67e53918986818f7b1bad861_AD_4nXfAjStb1GhsV7oVAQMC4glsCC3aWhiknn_uvkNu4dR9JOKteFLHKkEuoF7iLhsSWOYK6GdtkdgrGDA47v8HDyrAd6DXnE5puo7gRxk-VcOuvh9Ci-mcrTdAkD8GBDYQNDEnCWDE.png)
+
+[Source - Snowflake](https://docs.snowflake.com/en/user-guide/intro-key-concepts)
+
+By design, this model gives you flexibility – you can scale up compute massively for a burst without increasing storage costs, or store tons of data cheaply without paying for idle CPUs. However, it also means an unexpected spike in query activity (compute) or data retention (storage) can directly inflate your bill. Let’s examine each layer in detail, including **how Snowflake prices it, typical cost proportions, and what drives those costs**.
+
+‍**‍**
+
+## **Snowflake’s Storage Layer: How Data Storage is Priced, and Why It’s Usually a Small Portion of Cost**
+
+Snowflake’s [storage layer](http://docs.snowflake.com) manages your data in a compressed, columnar format on the cloud provider’s disk. Snowflake runs on different cloud providers, so depending on what cloud provider you use, your tables will be stored in the storage service from that cloud.
+
+As soon as you load data tables into Snowflake, it is converted into Snowflake’s internal format (micro-partitions) and **stored in cloud storage** (S3, Azure Blob, GCS) under Snowflake’s management in an optimized compressed format.
+
+Storage is billed **per terabyte per month** at [a flat rate​.](https://www.cloudzero.com/blog/snowflake-pricing/#:~:text=Also%2C%20the%20monthly%20charge%20for,on%20the%20factors%20mentioned%20below)  Snowflake does **not charge for data ingestion** (no “ingress” fees) – you can load data in [for free​.](https://docs.snowflake.com/en/user-guide/cost-understanding-overall#:~:text=Data%20Transfer%20Resources) They **do charge for egress**, but storing data itself is straightforward per-TB pricing.
+
+Snowflake basically sells storage at cost; it’s roughly the same price that you would pay for storing your own data on S3. Importantly, Snowflake **compresses data by default**, so you’re charged on the compressed size. Snowflake storage is therefore generally cost-efficient​.
+
+The exact price depends on: your region, cloud provider, and whether you have a capacity commitment. As of recent pricing:
+
+* **On-Demand (pay-as-you-go)** storage costs about [**$40 per TB per month**](http://cloudzero.com) in a US region on AWS. This is the rate if you haven’t pre-purchased capacity – effectively the list price.
+
+* **Pre-Purchased Capacity** brings the storage rate down to roughly [**$23 per TB per month**](http://cloudzero.com) in US AWS regions​. Snowflake offers significant discounts if you commit usage in advance, similar to cloud reserved instances.
+
+* **Regional differences:** There are slight variations by [cloud and region](https://www.cloudzero.com/blog/snowflake-pricing/#:~:text=Deploying%20your%20Snowflake%20workload%20in,Central%29%20Region). For example, that $40/TB in AWS Virginia is about $46 per TB in AWS Canada Central. Europe and Asia-Pacific regions can be a bit higher due to cloud costs. But they’re all in the same ballpark order of magnitude
+
+Most Snowflake users are spending 5-10% of their bill on storage. It’s not uncommon to see thousands of dollars in compute credits used, while paying just a couple hundred dollars for many terabytes of data storage.This is by design – Snowflake enables you to separate scaling of storage from compute.
+
+You should only worry about storage costs if:
+
+* **You have a ton of data** (think over a petabyte). If your data volume doubles, your storage costs double linearly. This is obvious, but the ease of ingesting data into Snowflake (and keeping everything for analytic flexibility) can lead to bloat
+
+* **You’re storing data in Snowflake that you wouldn’t otherwise be using**. Snowflake’s Time Travel feature retains historical data for up to 1 day (Standard) or up to 90 days (for higher editions) unless you manually purge. If you’re not careful, this means deleted or updated data still occupies storage for the retention period. For example, if you update a large table daily and keep 90 days of history, your storage could be up to 3× what the “current” data size is.
+
+If you *are* worried, consider:
+
+* **Archiving cold data externally (Apache Iceberg):** If you have large volumes of infrequently accessed “cold” data, Snowflake now allows using [**Apache Iceberg tables**](https://docs.snowflake.com/en/user-guide/tables-iceberg#:~:text=Snowflake%20connects%20to%20your%20storage,For%20more%20information%2C%20see%20Billing) – essentially keeping the data in your own cloud storage and querying it in-place via Snowflake. Iceberg tables “incur no Snowflake storage costs” because the data isn’t stored in Snowflake’s managed storage​. You only pay Snowflake for compute when you query it, and you pay your cloud provider’s (cheaper) storage rates for the data at rest. This can significantly cut costs for data you don’t need hot in Snowflake.
+
+* **Using Snowflake’s compression and clustering:** Snowflake automatically compresses data, so there’s not much you need to do there aside from knowing your **true stored size is smaller** than raw. One tip is to **re-cluster (or rebuild) very fragmented tables** occasionally; if you have wide tables with lots of updates, sometimes rewriting them can yield better compression and drop deleted micro-partitions. Snowflake doesn’t charge extra for compression or clustering beyond the compute credits to do it.
+
+* **Dropping or offloading unused data:** It sounds obvious, but regularly purge data you no longer need in Snowflake. Also consider [**transient tables**](https://docs.snowflake.com/en/user-guide/cost-understanding-data-storage#:~:text=uncompressed%29) (which skip Fail-safe) for temporary data to avoid extra retention costs​. Transient tables and temporary tables do not incur the 7-day Fail-safe storage once they are dropped, meaning you won’t pay a week of storage for data you know is transient.
+
+## **Snowflake’s Cloud Services Layer: Overhead Activities and When You Get Charged**
+
+Cloud Services is Snowflake’s ‘brain’. This is the layer of the Snowflake architecture that coordinates all the different components of Snowflake to process user requests, login, query display, security and more.Think of it as **the overhead or control plane** that keeps storage and compute working together seamlessly.
+
+Cloud Services compute resources are managed by Snowflake, and so runs outside of your own warehouses. **Snowflake doesn’t charge much for this layer, unless usage is excessive.** In fact, Snowflake will discount your cloud compute bill by 10% of your regular compute bill, which means for most users this costs $0.
+
+You should only worry about this if you have:
+
+* **Extremely high query volume or metadata operations:** Every query has some overhead in the optimizer and results management. If you run huge numbers of tiny queries, the warehouses might finish them so fast that the dominant resource usage is actually the constant parsing/optimizing of queries. Similarly, if you are running lots of DDL (creating/dropping tables frequently, or altering structures), the metadata service might be working overtime.
+
+* **Very complex queries or large transactions:** A single complex query (with many joins or subqueries) can spend a lot of time in the optimization phase. If you have many such queries running, the optimizer’s CPU usage (which counts as cloud services) could add up beyond 10% of the actual execution time.
+
+* **Connection overhead and authentication storms:** If an application is repeatedly connecting/disconnecting, doing authentication handshakes or running many small queries each on a new connection, that could drive up overhead. Ideally, use connection pooling to avoid this scenario.
+
+Even in these cases, the cost impact is usually minor compared to compute. Hitting the 10% threshold means cloud services is 11% or 15% of your compute – so you might end up paying an extra, say, 5-10 credits on a day where you used 100 credits for compute. It’s not nothing (5-10 credits is $10-$20 on Standard, $15-$40 on Enterprise), but it’s likely not breaking the bank relative to the compute spend.
+
+Fun fact- at Espresso AI, we save customers so much money on their compute, that sometimes they will start seeing cloud services charges for the first time.
+
+## **Snowflake’s Compute Layer: Virtual Warehouses, Credits, and Why Compute Dominates Cost**
+
+Snowflake’s compute layer is where the heavy lifting happens – the actual query loading, processing, and execution. And accordingly, it’s where **roughly 80–90% of Snowflake costs typically come from**.
+
+Every time you run a query, load data, or perform any SQL operation, it uses a [**virtual warehouse**](https://docs.snowflake.com/en/user-guide/intro-key-concepts#:~:text=Query%20execution%20is%20performed%20in,Snowflake%20from%20a%20cloud%20provider), which is Snowflake’s term for an isolated compute cluster that processes your queries and executes your tasks​. Each warehouse has a size, which determines how many compute nodes it has and therefore how fast it can process data. Notably,[**each virtual warehouse is independent**](https://docs.snowflake.com/en/user-guide/intro-key-concepts#:~:text=cluster%20composed%20of%20multiple%20compute,Snowflake%20from%20a%20cloud%20provider)– they don’t share resources with each other​.
+
+Virtual warehouses are independent and do not share resources. This allows customers to create different warehouses/compute clusters that can handle different workloads or different use cases, and customers can configure those warehouses with different settings based on their needs. For example, you can have one warehouse dedicated to ETL jobs and another for ad-hoc analytics, and they won’t contend for CPU/IO. It also means you’re billed separately for each warehouse’s usage.
+
+![Understanding Snowflake Virtual Warehouses](https://cdn.prod.website-files.com/65dcbc0ed454e053755396ba/67e53fd2a95b569ae9419c0e_384e7708-6844-4717-b9d1-a13e983e0fbd.png)
+
+[Source](https://articles.analytics.today/snowflake-virtual-warehouses-what-you-need-to-know)
+
+Compute is metered in **Snowflake credits**. A [**Snowflake credit**](https://www.cloudzero.com/blog/snowflake-pricing/#:~:text=Snowflake%20pricing%20reflects%20your%20usage,Instead%2C%20you%20use%20Snowflake%20credits) **is essentially a unit of compute consumption** – specifically, it represents a certain amount of processing power for one hour​. So the more powerful the warehouse or the longer it runs, the more credits consumed. Snowflake's pricing model for compute can be broken down into:
+
+* **Warehouse sizes and credit consumption:** Snowflake offers warehouses ranging from X-Small to 6X-Large. Each size roughly doubles the compute resources of the previous, and thus [doubles the credits per hour​](https://www.cloudzero.com/blog/snowflake-pricing/#:~:text=Warehouses%20are%20now%20available%20in,doubles%20per%20full%20operational%20hour)
+
+* **Credits are billed per second (with a 1-minute minimum):** Snowflake’s billing is very granular. If you run a warehouse for 30 seconds, you’ll be billed 60 seconds worth (the minimum), but if you run 5 minutes 20 seconds, [you’ll be billed 5 minutes 20 seconds](https://www.cloudzero.com/blog/snowflake-pricing/#:~:text=,second)​. If you suspend a warehouse and later resume it, the minimum applies again on resume. This means **short intermittent uses can incur some overhead**
+
+* **Cost per credit ($$):** The dollar price you pay per credit varies by Snowflake edition and cloud region. As of 2025 pricing, the **Standard Edition** is about [**$2.00 per credit**](https://iomete.com/resources/blog/snowflake-compute-credit#:~:text=One%20Snowflake%20Compute%20Credit%20cost,Regions%20and%20varies%20per%20region) in US AWS regions. **Enterprise Edition** credits are around **$3.00 each**, and **Business Critical (higher tier)** are about [**$4.00 each**](https://iomete.com/resources/blog/snowflake-compute-credit#:~:text=One%20Snowflake%20Compute%20Credit%20cost,Regions%20and%20varies%20per%20region)**​**. This edition-based pricing means if you’re on Enterprise, you pay a 50% premium on compute vs. Standard – something to consider if you don’t need Enterprise features. All things equal, **$2/credit is a common reference point**.
+
+**What causes compute costs to grow?** The short answer: **doing more, doing it faster, or leaving compute running longer than necessary.**
+
+ Here are some common patterns that lead to unexpectedly high Snowflake compute bills:
+
+* **Leaving warehouses** [**running idle**](https://www.secoda.co/learn/how-to-optimize-costs-in-snowflake#:~:text=Moreover%2C%20setting%20the%20auto,effectively%20and%20maintaining%20cost%20efficiency)**:** Snowflake only charges when warehouses are running, but an idle running warehouse still accrues credits. A classic mistake is to have a warehouse set to never suspend (or a very long auto-suspend time) and forget it. Always-on warehouses (24/7) can be necessary for constant workloads, but **ensure the size matches the workload**; an oversized always-on warehouse will burn credits fast
+
+* **Over-provisioning (using a warehouse that’s too large):** If your queries could run fine on a Medium, but you use an X-Large out of caution, you’re paying 4× more per minute. A telltale sign is if your warehouse’s CPU is low but you still use a big size. [**Right-sizing warehouses** is one of the biggest cost wins.](https://espresso.ai/post/the-finops-optimize-phase-ensuring-cloud-cost-optimization)
+
+* **High concurrency driving multi-cluster warehouses:** Snowflake has an “**auto-scale**” feature where a warehouse can spin up additional clusters of the same size to handle concurrent queries. Each additional cluster doubles/triples the credits consumption during that period. If concurrency spikes are **frequent, consider a larger base warehouse or query pooling strategies** to avoid constant multi-cluster fan-out.
+
+* **Long-running or inefficient queries:** A poorly written query (e.g., missing a filter or doing an expensive cross join) can run for an hour on a large warehouse – consuming dozens of credits in one shot. Common culprits: scanning huge tables without pruning (no appropriate **clustering or partitioning**), using expensive user-defined functions or regex on every row, or not limiting result sets (returning millions of rows unnecessarily). Also, *failing queries* that run for a long time before erroring out still cost you. Monitoring for queries that use a lot of credits and tuning them is vital. **WAREHOUSE\_METERING\_HISTORY** views let you see [per-query credit usage](https://www.tridant.com/snowflake-costs/#:~:text=Snowflake%20provides%20complete%20transparency%20in,individual%20query%20in%20real%20time)​, so you can find the top credit-consuming queries.
+
+* **Many small queries with frequent stop/start:** If your usage pattern is lots of short bursts of queries, you might inadvertently incur the 1-minute minimum charge repeatedly. For example, if you set auto-suspend to 30 seconds and queries come in every 2 minutes, the warehouse will shut down and restart often – each restart costs 1 minute of credits
+
+* ‍**Serverless features usage:** Some Snowflake features use [Snowflake-managed compute](https://docs.snowflake.com/en/user-guide/cost-understanding-overall#:~:text=,as%20required%20for%20each%20workload) in the background and charge credits to your account. Notable ones: Snowpipe, Search Optimization Service, Materialized View maintenance,Tasks/Streams for continuous processing. These are billed as **“Serverless Compute”** usage​.
+
+To sum up, **compute cost = (warehouse credits consumed) × (price per credit)**​
+
+You reduce compute cost by either **using fewer credits** or **paying a lower rate per credit.**
+
+The latter comes down to your Snowflake edition and any pre-purchased discounts (if your usage is large, consider an Enterprise agreement for discounted credits, but note Enterprise edition itself charges more per credit). The former – using fewer credits – is where [architecture and good practices come in.](https://espresso.ai/post/the-finops-optimize-phase-ensuring-cloud-cost-optimization)
+
+## **Conclusion: Snowflake’s Pricing Where it Matters**
+
+‍The Snowflake pricing model means your total cost is split between three different layers. Importantly, the compute layer is often 10x as expensive as other layers in your Snowflake environment.  
+
+Most Snowflake customers run many queries and transformations daily, which incurs credit usage continuously. Storage cost is mostly static per TB, but compute cost scales with **activity**. If your analysts run twice as many queries this week, or your ETL job runs for twice as long, your compute credits double.
+
+So, yes, there are things you can do to reduce spend or optimize usage on the storage and cloud services layer.  But from a cost standpoint, this compute layer makes up 90% of what you will spend in Snowflake, and is therefore what you should prioritize optimizing.
+
+If you’re interested in optimizing your Snowflake spending, [book a call with our team!](https://espresso.ai/demo)
+
+Espresso AI uses ML to cut Snowflake and Databricks bills by up to 70%.
+
+The savings estimate is a 5-minute setup script, with no commitment and results in a few days. Email [ben@espresso.ai](mailto:ben@espresso.ai).
+
+## Frequently Asked Questions
+
+Snowflake is a cloud-based data platform that offers scalable storage, compute, and data sharing. Unlike traditional databases, it separates storage and compute, allowing users to pay for what they use. Snowflake runs on AWS, Azure, or GCP and is known for its ease of use and performance with structured and semi-structured data.
+
+A data warehouse is a centralized system designed for storing and analyzing large volumes of structured data. It supports business intelligence and reporting by aggregating data from multiple sources, making it easier to run complex queries for decision-making. Snowflake is an example of a modern, cloud-native data warehouse.
+
+Snowflake differs by separating storage from compute, allowing them to scale independently. Traditional data warehouses typically tie storage and compute together, leading to over-provisioning or bottlenecks. Snowflake’s architecture enables elastic scaling, concurrency, and cost savings.
+
+Snowflake’s compute layer consists of virtual warehouses that process data queries. Each virtual warehouse is an independent compute cluster that can scale up or down based on workload. This separation from storage means compute can be paused, resized, or run in parallel for greater efficiency and cost control.
+
+Snowflake’s compute is charged per-second based on the size and duration of the virtual warehouse running a query. Larger warehouses process data faster but cost more per second. Because compute is isolated, users can start, stop, or scale warehouses independently to manage costs precisely.
+
+[![](https://cdn.prod.website-files.com/65dcbc0ed454e053755396ba/687ea86cc4e138ec31fd4192_0R4A0455.jpg)
+
+Marthe Naudts](/authors/marthe-naudts)
+
+Share this post
+
+### Never miss an update
+
+Subscribe to our newsletter. Get exclusive insights delivered straight to your inbox.
+
+Success!
+
+Oops! Something went wrong while submitting the form.
+
+## Related articles
+
+No items found.
